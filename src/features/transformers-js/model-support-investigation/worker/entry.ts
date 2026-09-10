@@ -29,6 +29,7 @@ import type {
 import { exposeWorkerRemote, type WorkerServerApi } from "@/utils/worker-transport";
 import { parseInvestigationJson } from "@/features/transformers-js/model-support-investigation/logic/json-value-schema";
 import { runRuntimeIntegrityPreflight } from "@/features/transformers-js/model-support-investigation/logic/run-runtime-integrity-preflight";
+import { importPlanningRuntimeModule } from "@/features/transformers-js/model-support-investigation/worker/import-planning-runtime-module";
 import { runPartialModelSupportInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-partial-model-support-investigation";
 import { toPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
 import { classifyReplayMetadataAccess, collectReplayMetadata, REPLAY_METADATA_TARGET_BYTES, type InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
@@ -387,7 +388,7 @@ function reconstructProductionTextStreamerChunks({
 const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
   async runPartialInvestigation(request, onEvent, onRunCheckpoint, collectFreshMetadata) {
-    const { modelId, externalNetworkPolicy, executionPlan, replayMetadataBudgetBytes, ...unhandledRequest } = request;
+    const { runId, modelId, externalNetworkPolicy, executionPlan, replayMetadataBudgetBytes, ...unhandledRequest } = request;
     unhandledRequest satisfies Record<PropertyKey, never>;
     let replayMetadata: InvestigationReplayMetadataSidecar[] | undefined;
     let freshMetadata: import('@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types').FreshMetadataSummary | undefined;
@@ -410,9 +411,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         assets,
         applicationOrigin: self.location.origin,
         runtimeFetch: investigationFetch,
-        importRuntimeModule: async ({ url }) => {
-          await import(/* @vite-ignore */ url);
-        },
+        importRuntimeModule: importPlanningRuntimeModule,
         runWasmControl: async () => {
           const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
             executionProviders: ["wasm"],
@@ -498,7 +497,9 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         },
         onEvent,
         onRunUpdate: ({ run }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run }) }),
-        createRunId: () => crypto.randomUUID(),
+        // The host publishes this identity before the Worker starts. Every
+        // planning checkpoint must belong to that same investigation.
+        createRunId: () => runId,
         now: () => new Date().toISOString(),
       }),
       inspectRepository: () => inspectHuggingFaceRepository({
@@ -864,7 +865,6 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           const strategy = selectGenerationStrategy({
             modelType: typeof model.config.model_type === "string" ? model.config.model_type : undefined,
             activeModelId: runtimeTarget.normalizedModelId,
-            hasTools: true,
           }).kind;
           let parserObservation;
           let inputChunks: string[] = [];

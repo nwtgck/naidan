@@ -1,4 +1,5 @@
-import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import type { ChatMessage, LmParameters, MultimodalContent, ToolCall } from '@/01-models/types';
+import { exactObject } from '@/utils/exact-object';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
@@ -23,389 +24,312 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
 }
 
-// Singleton state for UI
-let activeModelId: string | undefined = undefined;
-let loadingModelId: string | undefined = undefined;
-let loadingStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
-let loadingProgress: number = 0;
-let progressItems = new Map<string, ProgressInfo>();
-let heavyFileDetectedAt: number = 0;
-let totalLoadedAmount: number = 0;
-let totalSizeAmount: number = 0;
-let loadingError: string | undefined = undefined;
-let isCached: boolean = false;
-let isLoadingFromCache: boolean = false;
-let currentDevice: string = 'wasm';
-const downloadedModelRevisionHints = new Map<string, string | undefined>();
+/** Owns one service's state and Production clients; explicit Download I/O is not owned here. */
+export function createTransformersJsService({ createWorkerClient }: {
+  createWorkerClient: () => TransformersJsWorkerClient,
+}) {
+  // The ordinary UI singleton and isolated callers use this same implementation.
+  let activeModelId: string | undefined = undefined;
+  let loadingModelId: string | undefined = undefined;
+  let loadingStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+  let loadingProgress: number = 0;
+  let progressItems = new Map<string, ProgressInfo>();
+  let heavyFileDetectedAt: number = 0;
+  let totalLoadedAmount: number = 0;
+  let totalSizeAmount: number = 0;
+  let loadingError: string | undefined = undefined;
+  let isCached: boolean = false;
+  let isLoadingFromCache: boolean = false;
+  let currentDevice: string = 'wasm';
+  const downloadedModelRevisionHints = new Map<string, string | undefined>();
 
-const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
+  const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
-function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
-  const timestamp = (() => {
-    const dateCtor = globalThis.Date;
-    if (typeof dateCtor === 'function') {
-      return new dateCtor().toISOString();
-    }
-    return '0';
-  })();
-  console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
-    at: timestamp,
-    ...details,
-  });
-}
-
-function cloneLmParameters({ params }: { params: LmParameters | undefined }): LmParameters | undefined {
-  if (!params) return undefined;
-
-  return {
-    temperature: params.temperature,
-    topP: params.topP,
-    maxCompletionTokens: params.maxCompletionTokens,
-    presencePenalty: params.presencePenalty,
-    frequencyPenalty: params.frequencyPenalty,
-    stop: params.stop ? [...params.stop] : undefined,
-    reasoning: {
-      effort: params.reasoning?.effort,
-    },
-  };
-}
-
-function cloneToolCalls({ toolCalls }: { toolCalls: ToolCall[] | undefined }): ToolCall[] | undefined {
-  if (!toolCalls) return undefined;
-
-  return toolCalls.map(toolCall => ({
-    id: toolCall.id,
-    type: 'function',
-    function: {
-      name: toolCall.function.name,
-      arguments: toolCall.function.arguments,
-    },
-  }));
-}
-
-function cloneChatMessages({ messages }: { messages: ChatMessage[] }): ChatMessage[] {
-  return messages.map(message => ({
-    role: message.role,
-    content: Array.isArray(message.content)
-      ? message.content.map(part => {
-        switch (part.type) {
-        case 'text':
-          return { type: 'text', text: part.text };
-        case 'image_url':
-          return { type: 'image_url', image_url: { url: part.image_url.url } };
-        default: {
-          const _ex: never = part;
-          return _ex;
-        }
-        }
-      })
-      : message.content,
-    tool_calls: cloneToolCalls({ toolCalls: message.tool_calls }),
-    tool_call_id: message.tool_call_id,
-  }));
-}
-
-function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined }): WorkerToolDefinition[] | undefined {
-  if (!tools) return undefined;
-
-  return tools.map(tool => ({
-    type: 'function',
-    function: {
-      name: tool.function.name,
-      description: tool.function.description,
-      parameters: JSON.parse(JSON.stringify(tool.function.parameters)) as WorkerToolJsonObject,
-    },
-  }));
-}
-
-type ProgressListener = ({
-  status,
-  progress,
-  error,
-  isCached,
-  isLoadingFromCache,
-  progressItems,
-  loadingModelId,
-}: {
-  status: typeof loadingStatus,
-  progress: number,
-  error: string | undefined,
-  isCached: boolean,
-  isLoadingFromCache: boolean,
-  progressItems: ReadonlyMap<string, ProgressInfo>,
-  loadingModelId: string | undefined,
-}) => void;
-const listeners: Set<ProgressListener> = new Set();
-
-type ModelListListener = () => void;
-const modelListListeners: Set<ModelListListener> = new Set();
-
-function notify() {
-  listeners.forEach(l => l({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId }));
-}
-
-function updateProgress({ info }: { info: ProgressInfo }) {
-  const file = info.file || info.name;
-
-  // 1. Handle generic (non-file) progress events
-  if (!file) {
-    if (typeof info.progress === 'number') {
-      if (info.progress < 100) {
-        loadingProgress = Math.max(loadingProgress, Math.round(info.progress));
+  function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
+    const timestamp = (() => {
+      const dateCtor = globalThis.Date;
+      if (typeof dateCtor === 'function') {
+        return new dateCtor().toISOString();
       }
-    }
-    return;
-  }
-
-  // 2. Track per-file progress (Immutable update for Vue reactivity)
-  const currentItem = progressItems.get(file) || { progress: 0, loaded: 0 };
-  const newItem = { ...currentItem, ...info };
-
-  if (info.status === 'done') {
-    newItem.progress = 100;
-    if (newItem.total === undefined || newItem.total === 0) {
-      newItem.total = info.loaded;
-    }
-  }
-
-  const nextProgressItems = new Map(progressItems);
-  nextProgressItems.set(file, newItem);
-  progressItems = nextProgressItems;
-
-  // 3. Calculate metrics and detect phases
-  let currentTotalLoaded = 0;
-  let currentTotalSize = 0;
-  let hasHeavyFile = false;
-
-  for (const item of progressItems.values()) {
-    const name = item.file || item.name || '';
-    // Identify heavy assets (weights, split data)
-    const isHeavy = /\.(onnx|safetensors|bin|pth|model|data)$/i.test(name) ||
-                    name.includes('_data') ||
-                    (item.total || 0) > 5 * 1024 * 1024;
-
-    if (isHeavy) {
-      hasHeavyFile = true;
-      if (heavyFileDetectedAt === 0) heavyFileDetectedAt = Date.now();
-    }
-
-    if (item.loaded !== undefined) {
-      currentTotalLoaded += item.loaded;
-    }
-    if (item.total !== undefined && item.total > 0) {
-      currentTotalSize += item.total;
-    }
-  }
-
-  // 4. Multi-phase Progress Calculation
-
-  // Use a conservative floor of 200MB for byte display to keep it realistic
-  const effectiveTotalSize = Math.max(currentTotalSize, 200 * 1024 * 1024);
-  totalLoadedAmount = currentTotalLoaded;
-  totalSizeAmount = effectiveTotalSize;
-
-  let calculatedProgress = 0;
-  const timeSinceHeavy = heavyFileDetectedAt ? Date.now() - heavyFileDetectedAt : 0;
-
-  // Phase 1: Metadata Only (No heavy files yet)
-  if (!hasHeavyFile) {
-    const metadataProgress = (currentTotalLoaded / (2 * 1024 * 1024)) * 5;
-    calculatedProgress = Math.min(5, metadataProgress);
-  } else if (timeSinceHeavy < 3000 && currentTotalSize < 100 * 1024 * 1024) {
-    // Phase 2: Discovery Settling (Heavy files found, but waiting for all shards to appear)
-    // We stay capped at 15% for the first 3 seconds of heavy downloading,
-    // OR until we've recognized at least 100MB of total size.
-    const discoveryProgress = 5 + (currentTotalLoaded / (10 * 1024 * 1024)) * 10;
-    calculatedProgress = Math.min(15, discoveryProgress);
-  } else {
-    // Phase 3: Active Downloading
-    // Use the pessimistic denominator to prevent jumps if more shards appear later
-    const byteProgress = (currentTotalLoaded / effectiveTotalSize) * 100;
-    calculatedProgress = byteProgress;
-  }
-
-  // 5. Ensure monotonicity and cap at 99% until fully ready
-  let nextProgress = Math.max(loadingProgress, Math.round(calculatedProgress));
-
-  if (nextProgress >= 100) {
-    nextProgress = 99;
-  }
-
-  loadingProgress = nextProgress;
-}
-
-function notifyModelListChange() {
-  modelListListeners.forEach(l => l());
-}
-
-// Worker management
-let client: TransformersJsWorkerClient | undefined;
-let restartPromise: Promise<TransformersJsWorkerClient> | undefined;
-
-async function getClient(): Promise<TransformersJsWorkerClient> {
-  if (restartPromise !== undefined) {
-    return await restartPromise;
-  }
-  client ??= createTransformersJsWorkerClient();
-  return client;
-}
-
-/**
- * Re-creates the Worker after a fatal Wasm failure. Pending creation and
- * disposal are serialized so two worker instances cannot remain active.
- */
-async function restartWorker(): Promise<TransformersJsWorkerClient> {
-  if (restartPromise !== undefined) {
-    return await restartPromise;
-  }
-
-  const currentRestartPromise = restartWorkerOnce();
-  restartPromise = currentRestartPromise;
-  try {
-    return await currentRestartPromise;
-  } finally {
-    if (restartPromise === currentRestartPromise) {
-      restartPromise = undefined;
-    }
-  }
-}
-
-async function restartWorkerOnce(): Promise<TransformersJsWorkerClient> {
-  const previousClient = client;
-  client = undefined;
-
-  if (previousClient !== undefined) {
-    try {
-      await previousClient.dispose();
-    } catch (error) {
-      console.warn('[transformersJsService] Failed to dispose worker during restart:', error);
-    }
-  }
-
-  client = createTransformersJsWorkerClient();
-  return client;
-}
-
-async function getExistingClient(): Promise<TransformersJsWorkerClient | undefined> {
-  if (restartPromise !== undefined) {
-    return await restartPromise;
-  }
-  return client;
-}
-
-/**
- * Checks if an error message indicates a fatal state that requires a worker restart.
- */
-function isFatalError({ msg }: { msg: string }): boolean {
-  const m = msg.toLowerCase();
-  return m.includes('aborted()') ||
-         m.includes('[webgpu] kernel') ||
-         m.includes('protobuf parsing failed') ||
-         m.includes('allocation failed') ||
-         m.includes('out of memory');
-}
-
-
-async function selectDownloadedModelLoadRevision({ modelId }: { modelId: string }): Promise<string | undefined> {
-  const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
-  if (normalizedModelId.startsWith('user/')) return undefined;
-
-  if (downloadedModelRevisionHints.has(normalizedModelId)) {
-    const hintedRevision = downloadedModelRevisionHints.get(normalizedModelId);
-    // The hint only bridges one accepted Download to the immediately following
-    // cache-only Load. Keeping it indefinitely would pin this session to an old
-    // immutable revision even after Hugging Face main advances.
-    downloadedModelRevisionHints.delete(normalizedModelId);
-    return hintedRevision;
-  }
-
-  let inventory: Awaited<ReturnType<typeof inspectDownloadVerificationCachedRevisions>>;
-  try {
-    const storageRoot = await navigator.storage.getDirectory();
-    inventory = await inspectDownloadVerificationCachedRevisions({ modelId, storageRoot });
-  } catch (error) {
-    console.warn('[transformersJsService] Could not inspect cached revisions before loading downloaded artifacts; delegating cache resolution to the Production worker.', error);
-    return undefined;
-  }
-
-  // Loading is deliberately offline-only. The exact repository revision is
-  // resolved by Explicit Download; a later Load must select solely from OPFS
-  // and remain usable when Hugging Face is unavailable or `main` has advanced.
-  const candidates = planDownloadVerificationCachedRevisionLoadCandidates({
-    inventory,
-    resolvedRevision: undefined,
-  });
-  return candidates[0]?.loaderRevisionOption;
-}
-
-function productionDownloadPreparationError({ run }: {
-  run: Awaited<ReturnType<typeof runProductionDownloadPreparation>>;
-}): Error {
-  switch (run.status) {
-  case 'failed': {
-    const failureStage = run.failureStage;
-    const detail = (() => {
-      switch (failureStage) {
-      case 'runtime-artifacts':
-        return run.runtimeArtifacts.error;
-      case 'candidate-orchestration':
-        return run.candidates.error;
-      case undefined:
-        return undefined;
-      default: {
-        const _ex: never = failureStage;
-        throw new Error(`Unhandled Production download failure stage: ${_ex}`);
-      }
-      }
+      return '0';
     })();
-    if (detail !== undefined) return new Error(`${detail.name}: ${detail.message}`);
-    return new Error(`Production download preparation failed at ${run.failureStage}`);
+    console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
+      at: timestamp,
+      ...details,
+    });
   }
-  case 'exhausted':
-    return new Error('No Production model candidate could be downloaded and accepted from the local cache');
-  case 'accepted':
-    return new Error('Production download preparation unexpectedly requested an error for an accepted candidate');
-  default: {
-    const _ex: never = run;
-    throw new Error(`Unhandled Production download preparation status: ${String(_ex)}`);
-  }
-  }
-}
 
-export const transformersJsService = {
-  subscribe({ listener }: { listener: ProgressListener }) {
-    listeners.add(listener);
-    listener({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId });
-    return () => listeners.delete(listener);
-  },
+  function cloneLmParameters({ params }: { params: LmParameters | undefined }): LmParameters | undefined {
+    if (!params) return undefined;
 
-  subscribeModelList({ listener }: { listener: ModelListListener }) {
-    modelListListeners.add(listener);
-    return () => modelListListeners.delete(listener);
-  },
-
-  getState() {
     return {
-      status: loadingStatus,
-      progress: loadingProgress,
-      error: loadingError,
-      activeModelId,
-      loadingModelId,
-      device: currentDevice,
-      isCached,
-      isLoadingFromCache,
-      progressItems,
-      totalLoadedAmount,
-      totalSizeAmount,
+      temperature: params.temperature,
+      topP: params.topP,
+      maxCompletionTokens: params.maxCompletionTokens,
+      presencePenalty: params.presencePenalty,
+      frequencyPenalty: params.frequencyPenalty,
+      stop: params.stop ? [...params.stop] : undefined,
+      reasoning: {
+        effort: params.reasoning?.effort,
+      },
     };
-  },
+  }
+
+  function cloneToolCalls({ toolCalls }: { toolCalls: ToolCall[] | undefined }): ToolCall[] | undefined {
+    if (!toolCalls) return undefined;
+
+    return toolCalls.map(toolCall => ({
+      id: toolCall.id,
+      type: 'function',
+      function: {
+        name: toolCall.function.name,
+        arguments: toolCall.function.arguments,
+      },
+    }));
+  }
+
+  function cloneChatMessages({ messages }: { messages: ChatMessage[] }): ChatMessage[] {
+    return messages.map(message => {
+      const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+      unhandled satisfies Record<PropertyKey, never>;
+      // This is a detached native-template input, not a lossless JavaScript
+      // object clone. Undefined optional tool fields mean absence; creating
+      // their keys can select a template's tool-call branch. Keep empty lists.
+      return exactObject<ChatMessage>()({
+        role,
+        content: Array.isArray(content)
+          ? content.map((part): MultimodalContent => {
+            switch (part.type) {
+            case 'text': {
+              const { type, text, ...unhandledPart } = part;
+              unhandledPart satisfies Record<PropertyKey, never>;
+              return exactObject<Extract<MultimodalContent, { type: 'text' }>>()({ type, text });
+            }
+            case 'image_url': {
+              const { type, image_url, ...unhandledPart } = part;
+              unhandledPart satisfies Record<PropertyKey, never>;
+              const { url, ...unhandledImage } = image_url;
+              unhandledImage satisfies Record<PropertyKey, never>;
+              return exactObject<Extract<MultimodalContent, { type: 'image_url' }>>()({
+                type, image_url: exactObject<Extract<MultimodalContent, { type: 'image_url' }>['image_url']>()({ url }),
+              });
+            }
+            default: {
+              const _ex: never = part;
+              return _ex;
+            }
+            }
+          })
+          : content,
+        ...(tool_calls === undefined ? {} : { tool_calls: cloneToolCalls({ toolCalls: tool_calls }) }),
+        ...(tool_call_id === undefined ? {} : { tool_call_id }),
+      });
+    });
+  }
+
+  function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined }): WorkerToolDefinition[] | undefined {
+    if (!tools) return undefined;
+
+    return tools.map(tool => ({
+      type: 'function',
+      function: {
+        name: tool.function.name,
+        description: tool.function.description,
+        parameters: JSON.parse(JSON.stringify(tool.function.parameters)) as WorkerToolJsonObject,
+      },
+    }));
+  }
+
+  type ProgressListener = ({
+    status,
+    progress,
+    error,
+    isCached,
+    isLoadingFromCache,
+    progressItems,
+    loadingModelId,
+  }: {
+    status: typeof loadingStatus,
+    progress: number,
+    error: string | undefined,
+    isCached: boolean,
+    isLoadingFromCache: boolean,
+    progressItems: ReadonlyMap<string, ProgressInfo>,
+    loadingModelId: string | undefined,
+  }) => void;
+  const listeners: Set<ProgressListener> = new Set();
+
+  type ModelListListener = () => void;
+  const modelListListeners: Set<ModelListListener> = new Set();
+
+  function notify() {
+    if (!isOpen()) return;
+    listeners.forEach(l => l({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId }));
+  }
+
+  function updateProgress({ info }: { info: ProgressInfo }) {
+    if (!isOpen()) return;
+    const file = info.file || info.name;
+
+    // 1. Handle generic (non-file) progress events
+    if (!file) {
+      if (typeof info.progress === 'number') {
+        if (info.progress < 100) {
+          loadingProgress = Math.max(loadingProgress, Math.round(info.progress));
+        }
+      }
+      return;
+    }
+
+    // 2. Track per-file progress (Immutable update for Vue reactivity)
+    const currentItem = progressItems.get(file) || { progress: 0, loaded: 0 };
+    const newItem = { ...currentItem, ...info };
+
+    if (info.status === 'done') {
+      newItem.progress = 100;
+      if (newItem.total === undefined || newItem.total === 0) {
+        newItem.total = info.loaded;
+      }
+    }
+
+    const nextProgressItems = new Map(progressItems);
+    nextProgressItems.set(file, newItem);
+    progressItems = nextProgressItems;
+
+    // 3. Calculate metrics and detect phases
+    let currentTotalLoaded = 0;
+    let currentTotalSize = 0;
+    let hasHeavyFile = false;
+
+    for (const item of progressItems.values()) {
+      const name = item.file || item.name || '';
+      // Identify heavy assets (weights, split data)
+      const isHeavy = /\.(onnx|safetensors|bin|pth|model|data)$/i.test(name) ||
+        name.includes('_data') ||
+        (item.total || 0) > 5 * 1024 * 1024;
+
+      if (isHeavy) {
+        hasHeavyFile = true;
+        if (heavyFileDetectedAt === 0) heavyFileDetectedAt = Date.now();
+      }
+
+      if (item.loaded !== undefined) {
+        currentTotalLoaded += item.loaded;
+      }
+      if (item.total !== undefined && item.total > 0) {
+        currentTotalSize += item.total;
+      }
+    }
+
+    // 4. Multi-phase Progress Calculation
+
+    // Use a conservative floor of 200MB for byte display to keep it realistic
+    const effectiveTotalSize = Math.max(currentTotalSize, 200 * 1024 * 1024);
+    totalLoadedAmount = currentTotalLoaded;
+    totalSizeAmount = effectiveTotalSize;
+
+    let calculatedProgress = 0;
+    const timeSinceHeavy = heavyFileDetectedAt ? Date.now() - heavyFileDetectedAt : 0;
+
+    // Phase 1: Metadata Only (No heavy files yet)
+    if (!hasHeavyFile) {
+      const metadataProgress = (currentTotalLoaded / (2 * 1024 * 1024)) * 5;
+      calculatedProgress = Math.min(5, metadataProgress);
+    } else if (timeSinceHeavy < 3000 && currentTotalSize < 100 * 1024 * 1024) {
+      // Phase 2: Discovery Settling (Heavy files found, but waiting for all shards to appear)
+      // We stay capped at 15% for the first 3 seconds of heavy downloading,
+      // OR until we've recognized at least 100MB of total size.
+      const discoveryProgress = 5 + (currentTotalLoaded / (10 * 1024 * 1024)) * 10;
+      calculatedProgress = Math.min(15, discoveryProgress);
+    } else {
+      // Phase 3: Active Downloading
+      // Use the pessimistic denominator to prevent jumps if more shards appear later
+      const byteProgress = (currentTotalLoaded / effectiveTotalSize) * 100;
+      calculatedProgress = byteProgress;
+    }
+
+    // 5. Ensure monotonicity and cap at 99% until fully ready
+    let nextProgress = Math.max(loadingProgress, Math.round(calculatedProgress));
+
+    if (nextProgress >= 100) {
+      nextProgress = 99;
+    }
+
+    loadingProgress = nextProgress;
+  }
+
+  function notifyModelListChange() {
+    if (!isOpen()) return;
+    modelListListeners.forEach(l => l());
+  }
+
+  // Worker management
+  let client: TransformersJsWorkerClient | undefined;
+  let restartPromise: Promise<TransformersJsWorkerClient> | undefined;
+  let lifetime: 'open' | 'closing' | 'closed' = 'open';
+  let disposePromise: Promise<void> | undefined;
+  const ownedClients = new Set<TransformersJsWorkerClient>();
+  const clientDisposals = new WeakMap<TransformersJsWorkerClient, Promise<void>>();
+  const disposedError = new ProductionWorkerLifecycleError({ reason: 'disposed', message: 'Transformers.js service owner disposed' });
+
+  function isOpen(): boolean {
+    return lifetime === 'open';
+  }
+
+  function ensureOpen(): void {
+    if (!isOpen()) throw disposedError;
+  }
+
+  function disposeOwnedClient({ ownedClient }: { ownedClient: TransformersJsWorkerClient }): Promise<void> {
+    const existing = clientDisposals.get(ownedClient);
+    if (existing !== undefined) return existing;
+    let resolveDisposal!: () => void;
+    let rejectDisposal!: ReturnType<typeof Promise.withResolvers<void>>['reject'];
+    const disposal = new Promise<void>((resolve, reject) => {
+      resolveDisposal = resolve;
+      rejectDisposal = reject;
+    });
+    // Register before calling the client: physical termination can reject other
+    // pending operations, whose cleanup must share this one disposal attempt.
+    clientDisposals.set(ownedClient, disposal);
+    try {
+      void ownedClient.dispose().then(() => {
+        ownedClients.delete(ownedClient);
+        resolveDisposal();
+      }, error => {
+        ownedClients.delete(ownedClient);
+        rejectDisposal(error);
+      });
+    } catch (error) {
+      ownedClients.delete(ownedClient);
+      rejectDisposal(error);
+    }
+    return disposal;
+  }
+
+  function createOwnedClient(): TransformersJsWorkerClient {
+    ensureOpen();
+    const created = createWorkerClient();
+    ownedClients.add(created);
+    return created;
+  }
 
   /**
-   * Hard reset of the underlying engine worker.
+   * Terminal ownership boundary for Production clients, not unload/restart and
+   * not cancellation of separately owned Download or already-started OPFS I/O.
    */
-  async restart() {
-    await restartWorker();
+  function dispose(): Promise<void> {
+    if (disposePromise !== undefined) return disposePromise;
+    lifetime = 'closing';
+    let resolveDisposal!: () => void;
+    let rejectDisposal!: ReturnType<typeof Promise.withResolvers<void>>['reject'];
+    disposePromise = new Promise<void>((resolve, reject) => {
+      resolveDisposal = resolve;
+      rejectDisposal = reject;
+    });
+    client = undefined;
     activeModelId = undefined;
+    loadingModelId = undefined;
     loadingStatus = 'idle';
     loadingProgress = 0;
     progressItems = new Map<string, ProgressInfo>();
@@ -413,511 +337,215 @@ export const transformersJsService = {
     totalLoadedAmount = 0;
     totalSizeAmount = 0;
     loadingError = undefined;
-    notify();
-  },
+    isCached = false;
+    isLoadingFromCache = false;
+    downloadedModelRevisionHints.clear();
+    listeners.clear();
+    modelListListeners.clear();
+    // Includes the old client while restart is awaiting disposal. Termination is
+    // started synchronously; no remote unload or advisory ACK delays it.
+    const pendingDisposals = [...ownedClients].map(ownedClient => disposeOwnedClient({ ownedClient }));
+    void Promise.all(pendingDisposals).then(() => {
+      lifetime = 'closed';
+      resolveDisposal();
+    }, error => {
+      lifetime = 'closed';
+      rejectDisposal(error);
+    });
+    return disposePromise;
+  }
 
-  async listCachedModels(): Promise<Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }>> {
-    const results: Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }> = [];
-    try {
-      const root = await navigator.storage.getDirectory();
-      let modelsDir: FileSystemDirectoryHandle;
-      try {
-        modelsDir = await root.getDirectoryHandle('models', { create: false });
-      } catch {
-        return [];
-      }
-
-      // Helper to calculate directory stats and check for marker
-      const getDirStats = async ({ dir }: { dir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean }> => {
-        let size = 0;
-        let fileCount = 0;
-        let lastModified = 0;
-
-        const files = new Set<string>();
-        const markers = new Set<string>();
-        let hasWeights = false;
-
-        const scan = async ({ dir, path = '' }: { dir: FileSystemDirectoryHandle, path?: string }) => {
-          for await (const [name, handle] of dir.entries()) {
-            const h = handle as FileSystemHandle;
-            const fullPath = path ? `${path}/${name}` : name;
-
-            switch (h.kind) {
-            case 'file': {
-              if (name.startsWith('.') && name.endsWith('.complete')) {
-                markers.add(fullPath);
-              } else {
-                files.add(fullPath);
-                const file = await (h as FileSystemFileHandle).getFile();
-                size += file.size;
-                fileCount++;
-                if (file.lastModified > lastModified) lastModified = file.lastModified;
-              }
-              break;
-            }
-            case 'directory':
-              await scan({ dir: h as FileSystemDirectoryHandle, path: fullPath });
-              break;
-            default: {
-              const _ex: never = h.kind as never;
-              throw new Error(`Unhandled handle kind: ${_ex}`);
-            }
-            }
-          }
-        };
-        await scan({ dir });
-
-        // A model is considered complete if:
-        // 1. Every file present has a corresponding .complete marker
-        // 2. There is at least one weight file and it is complete
-        let allFilesComplete = true;
-        for (const file of files) {
-          const pathParts = file.split('/');
-          const fileName = pathParts.pop()!;
-          const dirPath = pathParts.join('/');
-          const markerPath = dirPath ? `${dirPath}/.${fileName}.complete` : `.${fileName}.complete`;
-
-          if (!markers.has(markerPath)) {
-            allFilesComplete = false;
-            break;
-          }
-
-          // Weight detection (similar to updateProgress logic)
-          if (/\.(onnx|safetensors|bin|pth|model|data)$/i.test(fileName) || fileName.includes('_data')) {
-            hasWeights = true;
-          }
-        }
-
-        return {
-          size,
-          fileCount,
-          lastModified,
-          isComplete: files.size > 0 && allFilesComplete && hasWeights,
-        };
-      };
-
-      const getHuggingFaceRepoStats = async ({ repoDir }: { repoDir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean }> => {
-        const aggregate = await getDirStats({ dir: repoDir });
-        let resolveDir: FileSystemDirectoryHandle;
-        try {
-          resolveDir = await repoDir.getDirectoryHandle('resolve', { create: false });
-        } catch {
-          return aggregate;
-        }
-
-        let sawRevisionDirectory = false;
-        let hasCommittedRevision = false;
-        for await (const [_revision, handle] of resolveDir.entries()) {
-          switch (handle.kind) {
-          case 'directory': {
-            sawRevisionDirectory = true;
-            const revisionStats = await getDirStats({ dir: handle as FileSystemDirectoryHandle });
-            if (revisionStats.isComplete) hasCommittedRevision = true;
-            break;
-          }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = handle;
-            throw new Error(`Unhandled FileSystemHandle: ${String(_ex)}`);
-          }
-          }
-        }
-
-        return {
-          ...aggregate,
-          // This remains a listing heuristic, not required-file authority. A
-          // partial immutable revision must not poison an otherwise committed
-          // legacy main (or another committed revision) and create a migration
-          // false-incomplete label. Explicit Download revalidates through the
-          // Production cache-only acceptance path before reporting success.
-          isComplete: sawRevisionDirectory ? hasCommittedRevision : aggregate.isComplete,
-        };
-      };
-
-      // Try 'user' directory (new)
-      try {
-        const userDir = await modelsDir.getDirectoryHandle('user', { create: false });
-        for await (const [name, handle] of userDir.entries()) {
-          const h = handle as FileSystemHandle;
-          switch (h.kind) {
-          case 'directory': {
-            const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
-            results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
-            break;
-          }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = h.kind;
-            return _ex;
-          }
-          }
-        }
-      } catch (e) { /* ignore */ }
-
-      // Try 'local' directory (old/fallback for migration)
-      try {
-        const localDir = await modelsDir.getDirectoryHandle('local', { create: false });
-        for await (const [name, handle] of localDir.entries()) {
-          const h = handle as FileSystemHandle;
-          switch (h.kind) {
-          case 'directory': {
-            const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
-            // We still label it as 'user/' to the rest of the app
-            results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
-            break;
-          }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = h.kind;
-            return _ex;
-          }
-          }
-        }
-      } catch (e) { /* ignore */ }
-
-      try {
-        const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
-        for await (const [orgName, orgHandle] of hfDir.entries()) {
-          const oh = orgHandle as FileSystemHandle;
-          switch (oh.kind) {
-          case 'directory': {
-            const orgDir = oh as FileSystemDirectoryHandle;
-            for await (const [repoName, repoHandle] of orgDir.entries()) {
-              const rh = repoHandle as FileSystemHandle;
-              switch (rh.kind) {
-              case 'directory': {
-                const stats = await getHuggingFaceRepoStats({ repoDir: rh as FileSystemDirectoryHandle });
-                results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
-                break;
-              }
-              case 'file':
-                break;
-              default: {
-                const _ex: never = rh.kind as never;
-                throw new Error(`Unhandled handle kind: ${_ex}`);
-              }
-              }
-            }
-            break;
-          }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = oh.kind as never;
-            throw new Error(`Unhandled handle kind: ${_ex}`);
-          }
-          }
-        }
-      } catch (e) { /* ignore */ }
-    } catch (err) {
-      console.warn('Failed to list cached models:', err);
+  async function getClient(): Promise<TransformersJsWorkerClient> {
+    ensureOpen();
+    if (restartPromise !== undefined) {
+      const restarted = await restartPromise;
+      ensureOpen();
+      return restarted;
     }
-    return results;
-  },
-
-  async importFile({ modelName, fileName, data }: { modelName: string, fileName: string, data: ArrayBuffer | ReadableStream }) {
-    const root = await navigator.storage.getDirectory();
-    const modelsDir = await root.getDirectoryHandle('models', { create: true });
-    const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-    const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
-
-    const parts = fileName.split('/').filter(p => !!p);
-    let currentDir = modelDir;
-    for (let i = 0; i < parts.length - 1; i++) {
-      currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
-    }
-
-    const lastPart = parts[parts.length - 1]!;
-    const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
-
-    if (!('createWritable' in fileHandle)) {
-      throw new Error('FileSystemFileHandle.createWritable is not supported');
-    }
-
-    const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
-
-    if (data instanceof ReadableStream) {
-      await data.pipeTo(writable);
-    } else {
-      await writable.write(data);
-      await writable.close();
-    }
-
-    // Create per-file completion marker
-    await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
-    notifyModelListChange();
-  },
-
-  async deleteModel({ modelId }: { modelId: string }) {
-    const root = await navigator.storage.getDirectory();
-    const modelsDir = await root.getDirectoryHandle('models', { create: true });
-
-    if (modelId.startsWith('user/')) {
-      const name = modelId.substring(5);
-      try {
-        const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-        await userDir.removeEntry(name, { recursive: true });
-      } catch {
-        // Fallback for old 'local' directory
-        try {
-          const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-          await localDir.removeEntry(name, { recursive: true });
-        } catch { /* ignore if both fail */ }
-      }
-    } else if (modelId.startsWith('hf.co/')) {
-      const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-      const parts = modelId.substring(6).split('/');
-      if (parts.length >= 1) {
-        // We usually want to delete the organization or the specific repo.
-        // For simplicity, if it's org/repo, we delete the repo entry inside the org folder.
-        const [org, repo] = parts;
-        if (org && repo) {
-          const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
-          await orgDir.removeEntry(repo, { recursive: true });
-
-          // Clean up empty org directory
-          let hasMore = false;
-          for await (const _ of orgDir.entries()) {
-            hasMore = true; break;
-          }
-          if (!hasMore) await hfDir.removeEntry(org);
-        } else if (org) {
-          await hfDir.removeEntry(org, { recursive: true });
-        }
-      }
-    } else {
-      // Fallback for clean names without prefix
-      try {
-        const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-        await localDir.removeEntry(modelId, { recursive: true });
-      } catch {
-        const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-        await hfDir.removeEntry(modelId, { recursive: true });
-      }
-    }
-    downloadedModelRevisionHints.delete(normalizeTransformersJsProductionModelId({ modelId }));
-    notifyModelListChange();
-  },
+    client ??= createOwnedClient();
+    return client;
+  }
 
   /**
-   * Loads an already-downloaded model. This MUST NOT start, resume, repair, or
-   * otherwise perform any model download; downloading is an explicit separate
-   * operation handled by downloadModel().
+   * Re-creates the Worker after a fatal Wasm failure. Pending creation and
+   * disposal are serialized so two worker instances cannot remain active.
    */
-  async loadDownloadedModel({ modelId }: { modelId: string }) {
-    if (activeModelId === modelId && loadingStatus === 'ready') return;
-
-    switch (loadingStatus) {
-    case 'loading':
-      throw new Error('Another model is currently loading');
-    case 'idle':
-    case 'ready':
-    case 'error':
-      break;
-    default: {
-      const _ex: never = loadingStatus;
-      throw new Error(`Unhandled loading status: ${_ex}`);
-    }
+  async function restartWorker(): Promise<TransformersJsWorkerClient> {
+    ensureOpen();
+    if (restartPromise !== undefined) {
+      const restarted = await restartPromise;
+      ensureOpen();
+      return restarted;
     }
 
+    const currentRestartPromise = restartWorkerOnce();
+    restartPromise = currentRestartPromise;
     try {
-      const loadStartedAt = performance.now();
-      const remote = await getClient();
-      const loadRevision = await selectDownloadedModelLoadRevision({ modelId });
-      // 1. Check cache FIRST before changing status to avoid UI flicker
-      const cached = await this.listCachedModels();
-      const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
-      const isLocal = modelId.startsWith('user/');
-      isLoadingFromCache = isLocal || cached.some(m => (m.id === modelId || m.id === hfId) && m.isComplete);
-
-      // 2. Now set loading state
-      loadingModelId = modelId;
-      loadingStatus = 'loading';
-      loadingProgress = 0;
-      progressItems = new Map<string, ProgressInfo>();
-      heavyFileDetectedAt = 0;
-      loadingError = undefined;
-      isCached = false;
-      notify();
-
-      let lastProgressNotify = 0;
-      const progress_callback: TransformersJsProgressCallback = ({ info }) => {
-        updateProgress({ info });
-        if (info.status === 'cached') {
-          isCached = true;
-        }
-
-        if (info.status !== 'progress' && info.status !== 'progress_total') {
-          debugLog({
-            event: 'load progress event',
-            details: {
-              modelId,
-              elapsedMs: Math.round(performance.now() - loadStartedAt),
-              info,
-            },
-          });
-        }
-
-        const now = Date.now();
-        // Transformers.js 4.2 emits a progress_total immediately before every
-        // progress event. Treat both as one high-frequency progress stream so
-        // they cannot bypass the 150ms notification throttle and saturate the
-        // main thread. Lifecycle events (done, cached, etc.) still notify
-        // immediately; updateProgress above still consumes every raw event.
-        if ((info.status !== 'progress' && info.status !== 'progress_total') || now - lastProgressNotify > 150) {
-          notify();
-          lastProgressNotify = now;
-        }
-      };
-
-      // Loading and downloading are deliberately separate operations.
-      // loadDownloadedModel() MUST NOT start, resume, repair, or otherwise
-      // perform a model download when local artifacts are missing/incomplete.
-      // The worker enforces this again at the Transformers.js/cache boundary.
-      debugLog({
-        event: 'load start',
-        details: { modelId, loadRevision, isLoadingFromCache },
-      });
-      debugLog({
-        event: 'worker loadDownloadedModel start',
-        details: {
-          modelId,
-          loadRevision,
-          elapsedMs: Math.round(performance.now() - loadStartedAt),
-        },
-      });
-
-      const result = await remote.loadDownloadedModel({ modelId, revision: loadRevision, progressCallback: progress_callback });
-      debugLog({
-        event: 'worker loadDownloadedModel complete',
-        details: {
-          modelId,
-          elapsedMs: Math.round(performance.now() - loadStartedAt),
-          device: result.device,
-        },
-      });
-      currentDevice = result.device;
-
-      activeModelId = modelId;
-      loadingModelId = undefined;
-      loadingStatus = 'ready';
-      notify();
-      notifyModelListChange();
-    } catch (e) {
-      console.error('[transformersJsService] Failed to load model:', modelId, e);
-      const errorMsg = e instanceof Error ? e.message : String(e);
-
-      // If the error is fatal, the worker is likely dead/poisoned and needs to be restarted
-      if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
-        console.warn(`[transformersJsService] Fatal error detected. Re-initializing worker...`);
-        await restartWorker();
+      const restarted = await currentRestartPromise;
+      ensureOpen();
+      return restarted;
+    } finally {
+      if (restartPromise === currentRestartPromise) {
+        restartPromise = undefined;
       }
-
-      loadingStatus = 'error';
-      loadingError = errorMsg;
-      activeModelId = undefined;
-      loadingModelId = undefined;
-      notify();
-      throw e;
     }
-  },
+  }
 
-  async downloadModel({ modelId }: { modelId: string }) {
-    switch (loadingStatus) {
-    case 'loading':
-      throw new Error('Another operation is in progress');
-    case 'idle':
-    case 'ready':
-    case 'error':
-      break;
-    default: {
-      const _ex: never = loadingStatus;
-      throw new Error(`Unhandled loading status: ${_ex}`);
-    }
+  async function restartWorkerOnce(): Promise<TransformersJsWorkerClient> {
+    ensureOpen();
+    const previousClient = client;
+    client = undefined;
+
+    if (previousClient !== undefined) {
+      try {
+        await disposeOwnedClient({ ownedClient: previousClient });
+      } catch (error) {
+        console.warn('[transformersJsService] Failed to dispose worker during restart:', error);
+      }
     }
 
+    ensureOpen();
+    client = createOwnedClient();
+    return client;
+  }
+
+  async function getExistingClient(): Promise<TransformersJsWorkerClient | undefined> {
+    ensureOpen();
+    if (restartPromise !== undefined) {
+      const restarted = await restartPromise;
+      ensureOpen();
+      return restarted;
+    }
+    return client;
+  }
+
+  async function recoverAfterFailure({ error }: { error: unknown }): Promise<void> {
     try {
-      const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
-      if (normalizedModelId.startsWith('user/')) {
-        throw new Error('Downloading local user models is not supported');
-      }
+      await restartWorker();
+      ensureOpen();
+    } catch (recoveryError) {
+      // Closing must prohibit replacement clients without replacing the failure
+      // which initiated recovery. Ordinary open-owner recovery stays unchanged.
+      if (!isOpen()) throw error;
+      throw recoveryError;
+    }
+  }
 
-      loadingModelId = modelId;
-      loadingStatus = 'loading';
-      loadingProgress = 0;
-      progressItems = new Map<string, ProgressInfo>();
-      heavyFileDetectedAt = 0;
-      loadingError = undefined;
-      isCached = false;
-      isLoadingFromCache = false;
-      notify();
+  /**
+   * Checks if an error message indicates a fatal state that requires a worker restart.
+   */
+  function isFatalError({ msg }: { msg: string }): boolean {
+    const m = msg.toLowerCase();
+    return m.includes('aborted()') ||
+      m.includes('[webgpu] kernel') ||
+      m.includes('protobuf parsing failed') ||
+      m.includes('allocation failed') ||
+      m.includes('out of memory');
+  }
 
-      let lastProgressNotify = 0;
-      const progress_callback: TransformersJsProgressCallback = ({ info }) => {
-        updateProgress({ info });
 
-        const now = Date.now();
-        if ((info.status !== 'progress' && info.status !== 'progress_total') || now - lastProgressNotify > 150) {
-          notify();
-          lastProgressNotify = now;
-        }
-      };
+  async function selectDownloadedModelLoadRevision({ modelId }: { modelId: string }): Promise<string | undefined> {
+    const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
+    if (normalizedModelId.startsWith('user/')) return undefined;
 
-      const { resolvedRevision } = await resolvePublicHuggingFaceRevision({ modelId });
-      const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision });
-      if (cachedReuse.reused) {
-        downloadedModelRevisionHints.set(normalizedModelId, cachedReuse.loadRevision);
-      } else {
-        const preparation = await runProductionDownloadPreparation({
-          modelId,
-          revision: resolvedRevision,
-          progressCallback: progress_callback,
-        });
-        switch (preparation.status) {
-        case 'accepted':
-          downloadedModelRevisionHints.set(normalizedModelId, resolvedRevision);
-          break;
-        case 'failed':
-        case 'exhausted':
-          throw productionDownloadPreparationError({ run: preparation });
+    if (downloadedModelRevisionHints.has(normalizedModelId)) {
+      const hintedRevision = downloadedModelRevisionHints.get(normalizedModelId);
+      // The hint only bridges one accepted Download to the immediately following
+      // cache-only Load. Keeping it indefinitely would pin this session to an old
+      // immutable revision even after Hugging Face main advances.
+      downloadedModelRevisionHints.delete(normalizedModelId);
+      return hintedRevision;
+    }
+
+    let inventory: Awaited<ReturnType<typeof inspectDownloadVerificationCachedRevisions>>;
+    try {
+      const storageRoot = await navigator.storage.getDirectory();
+      inventory = await inspectDownloadVerificationCachedRevisions({ modelId, storageRoot });
+    } catch (error) {
+      console.warn('[transformersJsService] Could not inspect cached revisions before loading downloaded artifacts; delegating cache resolution to the Production worker.', error);
+      return undefined;
+    }
+
+    // Loading is deliberately offline-only. The exact repository revision is
+    // resolved by Explicit Download; a later Load must select solely from OPFS
+    // and remain usable when Hugging Face is unavailable or `main` has advanced.
+    const candidates = planDownloadVerificationCachedRevisionLoadCandidates({
+      inventory,
+      resolvedRevision: undefined,
+    });
+    return candidates[0]?.loaderRevisionOption;
+  }
+
+  function productionDownloadPreparationError({ run }: {
+    run: Awaited<ReturnType<typeof runProductionDownloadPreparation>>;
+  }): Error {
+    switch (run.status) {
+    case 'failed': {
+      const failureStage = run.failureStage;
+      const detail = (() => {
+        switch (failureStage) {
+        case 'runtime-artifacts':
+          return run.runtimeArtifacts.error;
+        case 'candidate-orchestration':
+          return run.candidates.error;
+        case undefined:
+          return undefined;
         default: {
-          const _ex: never = preparation;
-          throw new Error(`Unhandled Production download preparation result: ${String(_ex)}`);
+          const _ex: never = failureStage;
+          throw new Error(`Unhandled Production download failure stage: ${_ex}`);
         }
         }
-      }
-
-      loadingStatus = 'idle';
-      loadingProgress = 0;
-      loadingModelId = undefined;
-      notify();
-      notifyModelListChange();
-    } catch (e) {
-      console.error('[transformersJsService] Failed to download model:', modelId, e);
-      const errorMsg = e instanceof Error ? e.message : String(e);
-
-      if (isFatalError({ msg: errorMsg })) {
-        console.warn('[transformersJsService] Fatal error detected during download. Re-initializing worker...');
-        await restartWorker();
-      }
-
-      loadingStatus = 'error';
-      loadingError = errorMsg;
-      loadingModelId = undefined;
-      notify();
-      throw e;
+      })();
+      if (detail !== undefined) return new Error(`${detail.name}: ${detail.message}`);
+      return new Error(`Production download preparation failed at ${run.failureStage}`);
     }
-  },
+    case 'exhausted':
+      return new Error('No Production model candidate could be downloaded and accepted from the local cache');
+    case 'accepted':
+      return new Error('Production download preparation unexpectedly requested an error for an accepted candidate');
+    default: {
+      const _ex: never = run;
+      throw new Error(`Unhandled Production download preparation status: ${String(_ex)}`);
+    }
+    }
+  }
 
-  async unloadModel() {
-    try {
-      const remote = await getExistingClient();
-      if (remote !== undefined) {
-        await remote.unloadModel();
-      }
+  const service = {
+    subscribe({ listener }: { listener: ProgressListener }) {
+      ensureOpen();
+      listeners.add(listener);
+      listener({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId });
+      return () => listeners.delete(listener);
+    },
+
+    subscribeModelList({ listener }: { listener: ModelListListener }) {
+      ensureOpen();
+      modelListListeners.add(listener);
+      return () => modelListListeners.delete(listener);
+    },
+
+    getState() {
+      return {
+        status: loadingStatus,
+        progress: loadingProgress,
+        error: loadingError,
+        activeModelId,
+        loadingModelId,
+        device: currentDevice,
+        isCached,
+        isLoadingFromCache,
+        progressItems,
+        totalLoadedAmount,
+        totalSizeAmount,
+      };
+    },
+
+    /**
+     * Hard reset of the underlying engine worker.
+     */
+    async restart() {
+      await restartWorker();
+      ensureOpen();
       activeModelId = undefined;
       loadingStatus = 'idle';
       loadingProgress = 0;
@@ -926,107 +554,657 @@ export const transformersJsService = {
       totalLoadedAmount = 0;
       totalSizeAmount = 0;
       loadingError = undefined;
-      isCached = false;
-      isLoadingFromCache = false;
       notify();
-    } catch (e) {
-      console.error('[transformersJsService] Failed to unload model:', e);
-      // If unload fails, it's likely the worker is dead anyway
-      await restartWorker();
-      activeModelId = undefined;
-      loadingStatus = 'idle';
-      notify();
-    }
-  },
+    },
 
-  async interrupt() {
-    const remote = await getExistingClient();
-    if (remote !== undefined) {
-      await remote.interrupt();
-    }
-  },
-
-  async resetCache() {
-    const remote = await getExistingClient();
-    if (remote !== undefined) {
-      await remote.resetCache();
-    }
-    downloadedModelRevisionHints.clear();
-  },
-
-  /**
-   * Generates text through the worker.
-   */
-  async generateText({ messages, onChunk, onToolCalls, params, tools, signal }: {
-    messages: ChatMessage[],
-    onChunk: TransformersJsChunkCallback,
-    onToolCalls: TransformersJsToolCallsCallback,
-    params?: LmParameters,
-    tools?: WorkerToolDefinition[],
-    signal?: AbortSignal,
-  }) {
-    switch (loadingStatus) {
-    case 'idle':
-    case 'loading':
-    case 'error':
-      throw new Error('Model not loaded');
-    case 'ready':
-      break;
-    default: {
-      const _ex: never = loadingStatus;
-      throw new Error(`Unhandled loading status: ${_ex}`);
-    }
-    }
-
-    let interruptPromise: Promise<void> | undefined;
-    const onAbort = () => {
-      if (interruptPromise !== undefined) {
-        return;
-      }
-      interruptPromise = (async () => {
+    async listCachedModels(): Promise<Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }>> {
+      ensureOpen();
+      const results: Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }> = [];
+      try {
+        const root = await navigator.storage.getDirectory();
+        let modelsDir: FileSystemDirectoryHandle;
         try {
-          await this.interrupt();
-        } catch (error) {
-          console.error('Failed to interrupt Transformers.js generation:', error);
+          modelsDir = await root.getDirectoryHandle('models', { create: false });
+        } catch {
+          return [];
         }
-      })();
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-    if (signal?.aborted === true) {
-      onAbort();
-    }
 
-    try {
-      const remote = await getClient();
-      if (signal?.aborted === true) {
-        await interruptPromise;
-        return;
+        // Helper to calculate directory stats and check for marker
+        const getDirStats = async ({ dir }: { dir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean }> => {
+          let size = 0;
+          let fileCount = 0;
+          let lastModified = 0;
+
+          const files = new Set<string>();
+          const markers = new Set<string>();
+          let hasWeights = false;
+
+          const scan = async ({ dir, path = '' }: { dir: FileSystemDirectoryHandle, path?: string }) => {
+            for await (const [name, handle] of dir.entries()) {
+              const h = handle as FileSystemHandle;
+              const fullPath = path ? `${path}/${name}` : name;
+
+              switch (h.kind) {
+              case 'file': {
+                if (name.startsWith('.') && name.endsWith('.complete')) {
+                  markers.add(fullPath);
+                } else {
+                  files.add(fullPath);
+                  const file = await (h as FileSystemFileHandle).getFile();
+                  size += file.size;
+                  fileCount++;
+                  if (file.lastModified > lastModified) lastModified = file.lastModified;
+                }
+                break;
+              }
+              case 'directory':
+                await scan({ dir: h as FileSystemDirectoryHandle, path: fullPath });
+                break;
+              default: {
+                const _ex: never = h.kind as never;
+                throw new Error(`Unhandled handle kind: ${_ex}`);
+              }
+              }
+            }
+          };
+          await scan({ dir });
+
+          // A model is considered complete if:
+          // 1. Every file present has a corresponding .complete marker
+          // 2. There is at least one weight file and it is complete
+          let allFilesComplete = true;
+          for (const file of files) {
+            const pathParts = file.split('/');
+            const fileName = pathParts.pop()!;
+            const dirPath = pathParts.join('/');
+            const markerPath = dirPath ? `${dirPath}/.${fileName}.complete` : `.${fileName}.complete`;
+
+            if (!markers.has(markerPath)) {
+              allFilesComplete = false;
+              break;
+            }
+
+            // Weight detection (similar to updateProgress logic)
+            if (/\.(onnx|safetensors|bin|pth|model|data)$/i.test(fileName) || fileName.includes('_data')) {
+              hasWeights = true;
+            }
+          }
+
+          return {
+            size,
+            fileCount,
+            lastModified,
+            isComplete: files.size > 0 && allFilesComplete && hasWeights,
+          };
+        };
+
+        const getHuggingFaceRepoStats = async ({ repoDir }: { repoDir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean }> => {
+          const aggregate = await getDirStats({ dir: repoDir });
+          let resolveDir: FileSystemDirectoryHandle;
+          try {
+            resolveDir = await repoDir.getDirectoryHandle('resolve', { create: false });
+          } catch {
+            return aggregate;
+          }
+
+          let sawRevisionDirectory = false;
+          let hasCommittedRevision = false;
+          for await (const [_revision, handle] of resolveDir.entries()) {
+            switch (handle.kind) {
+            case 'directory': {
+              sawRevisionDirectory = true;
+              const revisionStats = await getDirStats({ dir: handle as FileSystemDirectoryHandle });
+              if (revisionStats.isComplete) hasCommittedRevision = true;
+              break;
+            }
+            case 'file':
+              break;
+            default: {
+              const _ex: never = handle;
+              throw new Error(`Unhandled FileSystemHandle: ${String(_ex)}`);
+            }
+            }
+          }
+
+          return {
+            ...aggregate,
+            // This remains a listing heuristic, not required-file authority. A
+            // partial immutable revision must not poison an otherwise committed
+            // legacy main (or another committed revision) and create a migration
+            // false-incomplete label. Explicit Download revalidates through the
+            // Production cache-only acceptance path before reporting success.
+            isComplete: sawRevisionDirectory ? hasCommittedRevision : aggregate.isComplete,
+          };
+        };
+
+        // Try 'user' directory (new)
+        try {
+          const userDir = await modelsDir.getDirectoryHandle('user', { create: false });
+          for await (const [name, handle] of userDir.entries()) {
+            const h = handle as FileSystemHandle;
+            switch (h.kind) {
+            case 'directory': {
+              const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
+              results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
+              break;
+            }
+            case 'file':
+              break;
+            default: {
+              const _ex: never = h.kind;
+              return _ex;
+            }
+            }
+          }
+        } catch (e) { /* ignore */ }
+
+        // Try 'local' directory (old/fallback for migration)
+        try {
+          const localDir = await modelsDir.getDirectoryHandle('local', { create: false });
+          for await (const [name, handle] of localDir.entries()) {
+            const h = handle as FileSystemHandle;
+            switch (h.kind) {
+            case 'directory': {
+              const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
+              // We still label it as 'user/' to the rest of the app
+              results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
+              break;
+            }
+            case 'file':
+              break;
+            default: {
+              const _ex: never = h.kind;
+              return _ex;
+            }
+            }
+          }
+        } catch (e) { /* ignore */ }
+
+        try {
+          const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
+          for await (const [orgName, orgHandle] of hfDir.entries()) {
+            const oh = orgHandle as FileSystemHandle;
+            switch (oh.kind) {
+            case 'directory': {
+              const orgDir = oh as FileSystemDirectoryHandle;
+              for await (const [repoName, repoHandle] of orgDir.entries()) {
+                const rh = repoHandle as FileSystemHandle;
+                switch (rh.kind) {
+                case 'directory': {
+                  const stats = await getHuggingFaceRepoStats({ repoDir: rh as FileSystemDirectoryHandle });
+                  results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
+                  break;
+                }
+                case 'file':
+                  break;
+                default: {
+                  const _ex: never = rh.kind as never;
+                  throw new Error(`Unhandled handle kind: ${_ex}`);
+                }
+                }
+              }
+              break;
+            }
+            case 'file':
+              break;
+            default: {
+              const _ex: never = oh.kind as never;
+              throw new Error(`Unhandled handle kind: ${_ex}`);
+            }
+            }
+          }
+        } catch (e) { /* ignore */ }
+      } catch (err) {
+        console.warn('Failed to list cached models:', err);
       }
-      await remote.generateText({
-        messages: cloneChatMessages({ messages }),
-        onChunk,
-        onToolCalls,
-        params: cloneLmParameters({ params }),
-        tools: cloneWorkerTools({ tools }),
-      });
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
-        console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
-        await restartWorker();
+      return results;
+    },
+
+    async importFile({ modelName, fileName, data }: { modelName: string, fileName: string, data: ArrayBuffer | ReadableStream }) {
+      ensureOpen();
+      const root = await navigator.storage.getDirectory();
+      const modelsDir = await root.getDirectoryHandle('models', { create: true });
+      const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+      const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
+
+      const parts = fileName.split('/').filter(p => !!p);
+      let currentDir = modelDir;
+      for (let i = 0; i < parts.length - 1; i++) {
+        currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
+      }
+
+      const lastPart = parts[parts.length - 1]!;
+      const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
+
+      if (!('createWritable' in fileHandle)) {
+        throw new Error('FileSystemFileHandle.createWritable is not supported');
+      }
+
+      const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
+
+      if (data instanceof ReadableStream) {
+        await data.pipeTo(writable);
+      } else {
+        await writable.write(data);
+        await writable.close();
+      }
+
+      // Create per-file completion marker
+      await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
+      notifyModelListChange();
+    },
+
+    async deleteModel({ modelId }: { modelId: string }) {
+      ensureOpen();
+      const root = await navigator.storage.getDirectory();
+      const modelsDir = await root.getDirectoryHandle('models', { create: true });
+
+      if (modelId.startsWith('user/')) {
+        const name = modelId.substring(5);
+        try {
+          const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+          await userDir.removeEntry(name, { recursive: true });
+        } catch {
+          // Fallback for old 'local' directory
+          try {
+            const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+            await localDir.removeEntry(name, { recursive: true });
+          } catch { /* ignore if both fail */ }
+        }
+      } else if (modelId.startsWith('hf.co/')) {
+        const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+        const parts = modelId.substring(6).split('/');
+        if (parts.length >= 1) {
+          // We usually want to delete the organization or the specific repo.
+          // For simplicity, if it's org/repo, we delete the repo entry inside the org folder.
+          const [org, repo] = parts;
+          if (org && repo) {
+            const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
+            await orgDir.removeEntry(repo, { recursive: true });
+
+            // Clean up empty org directory
+            let hasMore = false;
+            for await (const _ of orgDir.entries()) {
+              hasMore = true; break;
+            }
+            if (!hasMore) await hfDir.removeEntry(org);
+          } else if (org) {
+            await hfDir.removeEntry(org, { recursive: true });
+          }
+        }
+      } else {
+        // Fallback for clean names without prefix
+        try {
+          const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+          await localDir.removeEntry(modelId, { recursive: true });
+        } catch {
+          const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+          await hfDir.removeEntry(modelId, { recursive: true });
+        }
+      }
+      downloadedModelRevisionHints.delete(normalizeTransformersJsProductionModelId({ modelId }));
+      notifyModelListChange();
+    },
+
+    /**
+     * Loads an already-downloaded model. This MUST NOT start, resume, repair, or
+     * otherwise perform any model download; downloading is an explicit separate
+     * operation handled by downloadModel().
+     */
+    async loadDownloadedModel({ modelId }: { modelId: string }) {
+      ensureOpen();
+      if (activeModelId === modelId && loadingStatus === 'ready') return;
+
+      switch (loadingStatus) {
+      case 'loading':
+        throw new Error('Another model is currently loading');
+      case 'idle':
+      case 'ready':
+      case 'error':
+        break;
+      default: {
+        const _ex: never = loadingStatus;
+        throw new Error(`Unhandled loading status: ${_ex}`);
+      }
+      }
+
+      try {
+        const loadStartedAt = performance.now();
+        const remote = await getClient();
+        ensureOpen();
+        const loadRevision = await selectDownloadedModelLoadRevision({ modelId });
+        ensureOpen();
+        // 1. Check cache FIRST before changing status to avoid UI flicker
+        const cached = await this.listCachedModels();
+        ensureOpen();
+        const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
+        const isLocal = modelId.startsWith('user/');
+        isLoadingFromCache = isLocal || cached.some(m => (m.id === modelId || m.id === hfId) && m.isComplete);
+
+        // 2. Now set loading state
+        loadingModelId = modelId;
+        loadingStatus = 'loading';
+        loadingProgress = 0;
+        progressItems = new Map<string, ProgressInfo>();
+        heavyFileDetectedAt = 0;
+        loadingError = undefined;
+        isCached = false;
+        notify();
+
+        let lastProgressNotify = 0;
+        const progress_callback: TransformersJsProgressCallback = ({ info }) => {
+          if (!isOpen()) return;
+          updateProgress({ info });
+          if (info.status === 'cached') {
+            isCached = true;
+          }
+
+          if (info.status !== 'progress' && info.status !== 'progress_total') {
+            debugLog({
+              event: 'load progress event',
+              details: {
+                modelId,
+                elapsedMs: Math.round(performance.now() - loadStartedAt),
+                info,
+              },
+            });
+          }
+
+          const now = Date.now();
+          // Transformers.js 4.2 emits a progress_total immediately before every
+          // progress event. Treat both as one high-frequency progress stream so
+          // they cannot bypass the 150ms notification throttle and saturate the
+          // main thread. Lifecycle events (done, cached, etc.) still notify
+          // immediately; updateProgress above still consumes every raw event.
+          if ((info.status !== 'progress' && info.status !== 'progress_total') || now - lastProgressNotify > 150) {
+            notify();
+            lastProgressNotify = now;
+          }
+        };
+
+        // Loading and downloading are deliberately separate operations.
+        // loadDownloadedModel() MUST NOT start, resume, repair, or otherwise
+        // perform a model download when local artifacts are missing/incomplete.
+        // The worker enforces this again at the Transformers.js/cache boundary.
+        debugLog({
+          event: 'load start',
+          details: { modelId, loadRevision, isLoadingFromCache },
+        });
+        debugLog({
+          event: 'worker loadDownloadedModel start',
+          details: {
+            modelId,
+            loadRevision,
+            elapsedMs: Math.round(performance.now() - loadStartedAt),
+          },
+        });
+
+        const result = await remote.loadDownloadedModel({ modelId, revision: loadRevision, progressCallback: progress_callback });
+        ensureOpen();
+        debugLog({
+          event: 'worker loadDownloadedModel complete',
+          details: {
+            modelId,
+            elapsedMs: Math.round(performance.now() - loadStartedAt),
+            device: result.device,
+          },
+        });
+        currentDevice = result.device;
+
+        activeModelId = modelId;
+        loadingModelId = undefined;
+        loadingStatus = 'ready';
+        notify();
+        notifyModelListChange();
+      } catch (e) {
+        if (!isOpen()) throw e;
+        console.error('[transformersJsService] Failed to load model:', modelId, e);
+        const errorMsg = e instanceof Error ? e.message : String(e);
+
+        // If the error is fatal, the worker is likely dead/poisoned and needs to be restarted
+        if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
+          console.warn(`[transformersJsService] Fatal error detected. Re-initializing worker...`);
+          await recoverAfterFailure({ error: e });
+        }
+
+        if (!isOpen()) throw e;
+        loadingStatus = 'error';
+        loadingError = errorMsg;
+        activeModelId = undefined;
+        loadingModelId = undefined;
+        notify();
+        throw e;
+      }
+    },
+
+    async downloadModel({ modelId }: { modelId: string }) {
+      ensureOpen();
+      switch (loadingStatus) {
+      case 'loading':
+        throw new Error('Another operation is in progress');
+      case 'idle':
+      case 'ready':
+      case 'error':
+        break;
+      default: {
+        const _ex: never = loadingStatus;
+        throw new Error(`Unhandled loading status: ${_ex}`);
+      }
+      }
+
+      try {
+        const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
+        if (normalizedModelId.startsWith('user/')) {
+          throw new Error('Downloading local user models is not supported');
+        }
+
+        loadingModelId = modelId;
+        loadingStatus = 'loading';
+        loadingProgress = 0;
+        progressItems = new Map<string, ProgressInfo>();
+        heavyFileDetectedAt = 0;
+        loadingError = undefined;
+        isCached = false;
+        isLoadingFromCache = false;
+        notify();
+
+        let lastProgressNotify = 0;
+        const progress_callback: TransformersJsProgressCallback = ({ info }) => {
+          if (!isOpen()) return;
+          updateProgress({ info });
+
+          const now = Date.now();
+          if ((info.status !== 'progress' && info.status !== 'progress_total') || now - lastProgressNotify > 150) {
+            notify();
+            lastProgressNotify = now;
+          }
+        };
+
+        const { resolvedRevision } = await resolvePublicHuggingFaceRevision({ modelId });
+        ensureOpen();
+        const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision });
+        ensureOpen();
+        if (cachedReuse.reused) {
+          downloadedModelRevisionHints.set(normalizedModelId, cachedReuse.loadRevision);
+        } else {
+          const preparation = await runProductionDownloadPreparation({
+            modelId,
+            revision: resolvedRevision,
+            progressCallback: progress_callback,
+          });
+          ensureOpen();
+          switch (preparation.status) {
+          case 'accepted':
+            downloadedModelRevisionHints.set(normalizedModelId, resolvedRevision);
+            break;
+          case 'failed':
+          case 'exhausted':
+            throw productionDownloadPreparationError({ run: preparation });
+          default: {
+            const _ex: never = preparation;
+            throw new Error(`Unhandled Production download preparation result: ${String(_ex)}`);
+          }
+          }
+        }
+
+        loadingStatus = 'idle';
+        loadingProgress = 0;
+        loadingModelId = undefined;
+        notify();
+        notifyModelListChange();
+      } catch (e) {
+        if (!isOpen()) throw e;
+        console.error('[transformersJsService] Failed to download model:', modelId, e);
+        const errorMsg = e instanceof Error ? e.message : String(e);
+
+        if (isFatalError({ msg: errorMsg })) {
+          console.warn('[transformersJsService] Fatal error detected during download. Re-initializing worker...');
+          await recoverAfterFailure({ error: e });
+        }
+
+        if (!isOpen()) throw e;
+        loadingStatus = 'error';
+        loadingError = errorMsg;
+        loadingModelId = undefined;
+        notify();
+        throw e;
+      }
+    },
+
+    async unloadModel() {
+      ensureOpen();
+      try {
+        const remote = await getExistingClient();
+        ensureOpen();
+        if (remote !== undefined) {
+          await remote.unloadModel();
+        }
+        ensureOpen();
+        activeModelId = undefined;
+        loadingStatus = 'idle';
+        loadingProgress = 0;
+        progressItems = new Map<string, ProgressInfo>();
+        heavyFileDetectedAt = 0;
+        totalLoadedAmount = 0;
+        totalSizeAmount = 0;
+        loadingError = undefined;
+        isCached = false;
+        isLoadingFromCache = false;
+        notify();
+      } catch (e) {
+        if (!isOpen()) throw e;
+        console.error('[transformersJsService] Failed to unload model:', e);
+        // If unload fails, it's likely the worker is dead anyway
+        await recoverAfterFailure({ error: e });
+        if (!isOpen()) throw e;
         activeModelId = undefined;
         loadingStatus = 'idle';
         notify();
       }
-      throw e;
-    } finally {
-      signal?.removeEventListener('abort', onAbort);
-      if (interruptPromise !== undefined) {
-        await interruptPromise;
+    },
+
+    async interrupt() {
+      ensureOpen();
+      const remote = await getExistingClient();
+      ensureOpen();
+      if (remote !== undefined) {
+        await remote.interrupt();
       }
-    }
-  },
-};
+    },
+
+    async resetCache() {
+      ensureOpen();
+      const remote = await getExistingClient();
+      ensureOpen();
+      if (remote !== undefined) {
+        await remote.resetCache();
+      }
+      downloadedModelRevisionHints.clear();
+    },
+
+    /**
+     * Generates text through the worker.
+     */
+    async generateText({ messages, onChunk, onToolCalls, params, tools, signal }: {
+      messages: ChatMessage[],
+      onChunk: TransformersJsChunkCallback,
+      onToolCalls: TransformersJsToolCallsCallback,
+      params?: LmParameters,
+      tools?: WorkerToolDefinition[],
+      signal?: AbortSignal,
+    }) {
+      ensureOpen();
+      switch (loadingStatus) {
+      case 'idle':
+      case 'loading':
+      case 'error':
+        throw new Error('Model not loaded');
+      case 'ready':
+        break;
+      default: {
+        const _ex: never = loadingStatus;
+        throw new Error(`Unhandled loading status: ${_ex}`);
+      }
+      }
+
+      let interruptPromise: Promise<void> | undefined;
+      const onAbort = () => {
+        if (interruptPromise !== undefined) {
+          return;
+        }
+        interruptPromise = (async () => {
+          try {
+            await this.interrupt();
+          } catch (error) {
+            console.error('Failed to interrupt Transformers.js generation:', error);
+          }
+        })();
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted === true) {
+        onAbort();
+      }
+
+      try {
+        const remote = await getClient();
+        ensureOpen();
+        if (signal?.aborted === true) {
+          await interruptPromise;
+          return;
+        }
+        await remote.generateText({
+          messages: cloneChatMessages({ messages }),
+          onChunk,
+          onToolCalls,
+          params: cloneLmParameters({ params }),
+          tools: cloneWorkerTools({ tools }),
+        });
+        ensureOpen();
+      } catch (e) {
+        if (!isOpen()) throw e;
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
+          console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
+          await recoverAfterFailure({ error: e });
+          if (!isOpen()) throw e;
+          activeModelId = undefined;
+          loadingStatus = 'idle';
+          notify();
+        }
+        throw e;
+      } finally {
+        signal?.removeEventListener('abort', onAbort);
+        if (interruptPromise !== undefined) {
+          await interruptPromise;
+        }
+      }
+    },
+  };
+
+  return { service, dispose };
+}
+
+export const transformersJsService = createTransformersJsService({ createWorkerClient: createTransformersJsWorkerClient }).service;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

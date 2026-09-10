@@ -1,3 +1,4 @@
+// @vitest-environment node
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { investigationExecutionSummary } from './investigation-execution-summary';

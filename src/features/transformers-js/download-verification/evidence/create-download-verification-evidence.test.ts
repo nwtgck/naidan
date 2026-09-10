@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
+// @vitest-environment node
 import JSZip from 'jszip';
 import { createDownloadVerificationEvidence } from '@/features/transformers-js/download-verification/evidence/create-download-verification-evidence';
 import type { DownloadVerificationEvidenceInput } from '@/features/transformers-js/download-verification/evidence/types';
+import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/production-load-receipt';
+
+function acceptedReceipt({ revision }: { revision: string | undefined }) {
+  const paths = ['config.json', 'onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'];
+  return productionLoadReceiptSchema.parse({
+    format: 'production-offline-load-receipt-v1', modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+    loaderRevisionOption: revision === undefined ? { status: 'omitted' } : { status: 'provided', value: revision },
+    autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'webgpu', dtype: 'q4' },
+    plannedRequiredPaths: paths, cacheLookup: { source: 'read-only-opfs-scoped-match', revision: revision ?? 'main', hitPaths: paths },
+    completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+    limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
+  });
+}
 
 function sampleEvidence(): DownloadVerificationEvidenceInput {
   const revision = '0123456789abcdef0123456789abcdef01234567';
@@ -107,7 +121,7 @@ describe('createDownloadVerificationEvidence', () => {
     const { blob, fileName } = await createDownloadVerificationEvidence({ evidence: sampleEvidence() });
     expect(fileName).toContain('LiquidAI-LFM2.5-230M-ONNX');
 
-    const zip = await JSZip.loadAsync(blob);
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
     expect(zip.file('manifest.json')).not.toBeNull();
     expect(zip.file('test-readiness.json')).not.toBeNull();
     expect(zip.file('download-lane/repository.json')).not.toBeNull();
@@ -168,7 +182,7 @@ describe('createDownloadVerificationEvidence', () => {
     };
 
     const { blob } = await createDownloadVerificationEvidence({ evidence });
-    const zip = await JSZip.loadAsync(blob);
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
     const events = (await zip.file('download-lane/events.jsonl')!.async('text'))
       .trim()
       .split('\n')
@@ -183,7 +197,7 @@ describe('createDownloadVerificationEvidence', () => {
 
   it('keeps probe-only evidence free of full model bodies and marks runtime/load evidence unobserved', async () => {
     const { blob } = await createDownloadVerificationEvidence({ evidence: sampleEvidence() });
-    const zip = await JSZip.loadAsync(blob);
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
     const paths = Object.keys(zip.files);
     expect(paths.some(path => path.endsWith('.onnx') || path.endsWith('.onnx_data'))).toBe(false);
 
@@ -202,6 +216,7 @@ describe('createDownloadVerificationEvidence runtime-complete mode', () => {
       schemaVersion: 1,
       status: 'accepted',
       source: 'production-download-preparation',
+      receipt: acceptedReceipt({ revision: evidence.run.resolvedRevision }),
       repositoryResolvedRevision: evidence.run.resolvedRevision,
       cacheRevision: evidence.run.resolvedRevision,
       loaderRevisionOption: evidence.run.resolvedRevision,
@@ -294,7 +309,7 @@ describe('createDownloadVerificationEvidence runtime-complete mode', () => {
     };
 
     const { blob } = await createDownloadVerificationEvidence({ evidence });
-    const zip = await JSZip.loadAsync(blob);
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
     const readiness = JSON.parse(await zip.file('test-readiness.json')!.async('text')) as {
       mode: string;
       domains: Array<{ domain: string; status: string }>;
@@ -361,6 +376,7 @@ describe('createDownloadVerificationEvidence runtime-complete mode', () => {
       schemaVersion: 1,
       status: 'accepted',
       source: 'reused-production-cache',
+      receipt: acceptedReceipt({ revision: undefined }),
       repositoryResolvedRevision: evidence.run.resolvedRevision,
       cacheRevision: 'main',
       loaderRevisionOption: null,
@@ -373,7 +389,7 @@ describe('createDownloadVerificationEvidence runtime-complete mode', () => {
     };
 
     const { blob } = await createDownloadVerificationEvidence({ evidence });
-    const zip = await JSZip.loadAsync(blob);
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
     const readiness = JSON.parse(await zip.file('test-readiness.json')!.async('text')) as {
       overall: string;
       domains: Array<{ domain: string; status: string; summary: string }>;

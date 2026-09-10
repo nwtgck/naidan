@@ -13,7 +13,7 @@ describe("Model Support Investigation Evidence Worker request", () => {
     expect(request).toBeInstanceOf(Blob);
     expect(() => structuredClone(request)).not.toThrow();
     await expect(readModelSupportInvestigationEvidenceWorkerRequest({ request })).resolves.toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       run: { runId: "run-1", modelId: "model-1" },
     });
   });

@@ -286,6 +286,15 @@ describe("evaluateEvidenceReadiness", () => {
       schemaVersion: 1,
       status: "accepted",
       source: "production-download-preparation",
+      receipt: {
+        format: 'production-offline-load-receipt-v1', modelId: 'org/model',
+        loaderRevisionOption: { status: 'provided', value: 'a'.repeat(40) },
+        autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'webgpu', dtype: 'q4' },
+        plannedRequiredPaths: ['config.json', 'onnx/model_q4.onnx'],
+        cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'a'.repeat(40), hitPaths: ['config.json', 'onnx/model_q4.onnx'] },
+        completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+        limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
+      },
       repositoryResolvedRevision: "a".repeat(40),
       cacheRevision: "a".repeat(40),
       loaderRevisionOption: "a".repeat(40),
@@ -306,6 +315,8 @@ describe("evaluateEvidenceReadiness", () => {
       source: "reused-production-cache",
       cacheRevision: "main",
       loaderRevisionOption: null,
+      receipt: { ...value.downloadEvidence.runtimeCompletion.receipt!, loaderRevisionOption: { status: 'omitted' },
+        cacheLookup: { ...value.downloadEvidence.runtimeCompletion.receipt!.cacheLookup, revision: 'main' } },
     };
     const legacyMainReport = evaluateEvidenceReadiness({ run: value });
     const legacyDownload = legacyMainReport.domains.find(item => item.domainId === "download");

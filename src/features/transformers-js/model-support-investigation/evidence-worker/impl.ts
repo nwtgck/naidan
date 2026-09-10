@@ -11,17 +11,19 @@ import { replayMetadataSidecarsSchema } from '@/features/transformers-js/model-s
 
 export function createModelSupportInvestigationEvidenceWorker(): IModelSupportInvestigationEvidenceWorker {
   return {
-    async createPartialEvidence({ request, replayMetadata }) {
+    async createPartialEvidence({ request, replayMetadata, nativeEvidence }) {
       const { run, recovery } = await readModelSupportInvestigationEvidenceWorkerRequest({ request });
       const sidecars = replayMetadata === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata);
-      return await createPartialModelSupportEvidence({ run, recovery, replayMetadata: sidecars });
+      return await createPartialModelSupportEvidence({ run, recovery, replayMetadata: sidecars, nativeEvidence });
     },
-    async createBatchEvidence({ request, replayMetadata }) {
+    async createBatchEvidence({ request, replayMetadata, nativeEvidence }) {
       const { batchId, items } = await readModelSupportInvestigationBatchEvidenceWorkerRequest({ request });
       if (replayMetadata !== undefined && replayMetadata.length !== items.length) throw new Error('Replay sidecar target count mismatch');
+      if (nativeEvidence !== undefined && (!Array.isArray(nativeEvidence) || nativeEvidence.length !== items.length)) throw new Error('Native sidecar target count mismatch');
       return await createBatchModelSupportEvidence({ batchId, items: items.map((item, index) => ({
         ...item,
         replayMetadata: replayMetadata?.[index] === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata[index]),
+        nativeEvidence: nativeEvidence?.[index],
       })) });
     },
     async createDownloadVerificationEvidence({ request }) {

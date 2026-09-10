@@ -42,6 +42,13 @@ export function createDownloadedModelWorkerFetch({
 
   return async (input, init) => {
     const url = new URL(requestUrl({ input }), workerLocationUrl);
+    // Embedded data is already local input, not network authority. Gemma's
+    // image adapter uses fetch to decode it into a Blob. Let the platform own
+    // data-URL decoding and abort semantics without permitting HTTP, blob, or
+    // file URLs outside the runtime allowlist below.
+    if (url.protocol === 'data:') {
+      return await originalFetch(input, { ...init, redirect: 'error' });
+    }
     if (!allowedUrls.has(url.href)) {
       throw new Error(`Downloaded-model Worker blocked non-runtime network request: ${url.href}`);
     }

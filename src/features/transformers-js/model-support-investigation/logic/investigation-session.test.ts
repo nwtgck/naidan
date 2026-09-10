@@ -18,6 +18,8 @@ function snapshot({ batchId }: { batchId: string }): Extract<InvestigationSessio
     runs: [],
     recoveries: [],
     replayMetadata: [],
+    nativeEvidence: [],
+    reservedProviderRetention: { nativeBinaryBytes: 0, nativeJsonCharacters: 0, providerJsonCharacters: 0 },
     selectedTarget: undefined,
   };
 }

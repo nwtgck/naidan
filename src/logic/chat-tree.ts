@@ -3,6 +3,7 @@ import { toRaw } from 'vue';
 import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat, ChatContent } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { MessageId } from '@/01-models/ids';
+import { splitAssistantThinking } from './assistant-thinking';
 
 export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -109,12 +110,11 @@ export function getAllMessages({ chat }: { chat: Chat | Readonly<Chat> }): Messa
 
 export function processThinking({ node }: { node: MessageNode }) {
   if (node.content === undefined) return;
-  const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
-  const matches = [...node.content.matchAll(thinkRegex)];
-  if (matches.length > 0) {
-    const thoughts = matches.map(m => m[1]?.trim()).filter(Boolean).join('\n\n---\n\n');
-    node.thinking = node.thinking ? `${node.thinking}\n\n---\n\n${thoughts}` : thoughts;
-    node.content = node.content.replace(thinkRegex, '').trim();
+  const { content, thinking, ...unhandled } = splitAssistantThinking({ content: node.content });
+  unhandled satisfies Record<PropertyKey, never>;
+  if (thinking !== undefined) {
+    node.thinking = node.thinking ? `${node.thinking}\n\n---\n\n${thinking}` : thinking;
+    node.content = content;
   }
 }
 

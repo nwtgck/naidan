@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "source": "reference-template-behavior-matrix",
+  "sourceMemberSha256": "4c4091ad7401dcf764c8aac2d8a122412d0fd97f01b1b1bc1820dc45eb8b4d91",
+  "modelId": "LiquidAI/LFM2.5-350M-ONNX",
+  "revision": "d11593fd9eb408e322667926656598896c2d5ff9",
+  "cases": [
+    {
+      "caseId": "system-user-generation",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Template probe system instruction."
+        },
+        {
+          "role": "user",
+          "content": "Template probe user message."
+        }
+      ],
+      "addGenerationPrompt": true,
+      "selectedTemplateSha256": "013eed60546434b6967e3483153d8c5c37abcb1d667f8b1f914683f2a9411531",
+      "renderedText": "<|startoftext|><|im_start|>system\nTemplate probe system instruction.<|im_end|>\n<|im_start|>user\nTemplate probe user message.<|im_end|>\n<|im_start|>assistant\n",
+      "inputTokenIds": [
+        1,
+        6,
+        24131,
+        708,
+        23609,
+        22856,
+        1678,
+        11497,
+        523,
+        7,
+        708,
+        6,
+        6423,
+        708,
+        23609,
+        22856,
+        5196,
+        6282,
+        523,
+        7,
+        708,
+        6,
+        64015,
+        708
+      ]
+    },
+    {
+      "caseId": "multi-turn-generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Template probe first user message."
+        },
+        {
+          "role": "assistant",
+          "content": "Template probe assistant response."
+        },
+        {
+          "role": "user",
+          "content": "Template probe second user message."
+        }
+      ],
+      "addGenerationPrompt": true,
+      "selectedTemplateSha256": "013eed60546434b6967e3483153d8c5c37abcb1d667f8b1f914683f2a9411531",
+      "renderedText": "<|startoftext|><|im_start|>user\nTemplate probe first user message.<|im_end|>\n<|im_start|>assistant\nTemplate probe assistant response.<|im_end|>\n<|im_start|>user\nTemplate probe second user message.<|im_end|>\n<|im_start|>assistant\n",
+      "inputTokenIds": [
+        1,
+        6,
+        6423,
+        708,
+        23609,
+        22856,
+        1509,
+        5196,
+        6282,
+        523,
+        7,
+        708,
+        6,
+        64015,
+        708,
+        23609,
+        22856,
+        16701,
+        4216,
+        523,
+        7,
+        708,
+        6,
+        6423,
+        708,
+        23609,
+        22856,
+        2341,
+        5196,
+        6282,
+        523,
+        7,
+        708,
+        6,
+        64015,
+        708
+      ]
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import type { InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
+import type { ProductionProviderNativeEvidenceSidecar } from '@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence';
 import type {
   ModelSupportInvestigationBatchEvidenceItem,
   ModelSupportInvestigationRecovery,
@@ -15,13 +16,15 @@ export interface ModelSupportInvestigationEvidenceArchive {
 }
 
 export interface IModelSupportInvestigationEvidenceWorker {
-  createPartialEvidence({ request, replayMetadata }: {
+  createPartialEvidence({ request, replayMetadata, nativeEvidence }: {
     request: Blob,
     replayMetadata?: InvestigationReplayMetadataSidecar[],
+    nativeEvidence?: ProductionProviderNativeEvidenceSidecar,
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
-  createBatchEvidence({ request, replayMetadata }: {
+  createBatchEvidence({ request, replayMetadata, nativeEvidence }: {
     request: Blob,
     replayMetadata?: Array<InvestigationReplayMetadataSidecar[] | undefined>,
+    nativeEvidence?: Array<ProductionProviderNativeEvidenceSidecar | undefined>,
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
   createDownloadVerificationEvidence({ request }: {
     request: Blob,
@@ -29,10 +32,11 @@ export interface IModelSupportInvestigationEvidenceWorker {
 }
 
 export interface ModelSupportInvestigationEvidenceWorkerClient {
-  createPartialEvidence({ run, recovery, replayMetadata }: {
+  createPartialEvidence({ run, recovery, replayMetadata, nativeEvidence }: {
     run: ModelSupportInvestigationRun,
     recovery: ModelSupportInvestigationRecovery | undefined,
     replayMetadata?: InvestigationReplayMetadataSidecar[],
+    nativeEvidence?: ProductionProviderNativeEvidenceSidecar,
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
   createBatchEvidence({ batchId, items }: {
     batchId: string,

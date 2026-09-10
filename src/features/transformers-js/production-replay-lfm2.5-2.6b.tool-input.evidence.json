@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "source": "reference-template-behavior-matrix",
+  "sourceMemberSha256": "a8217db0966688e510df7388d343187710be5b84bc291acf384586b15166bc32",
+  "modelId": "LiquidAI/LFM2.5-2.6B-ONNX",
+  "revision": "66826372fd4fa166f53be0371c9315745c07cace",
+  "cases": [
+    {
+      "caseId": "tools-generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "passed",
+      "selectedTemplateSha256": "8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c",
+      "renderedText": "<|startoftext|><|im_start|>system\nList of tools: [{\"type\": \"function\", \"function\": {\"name\": \"lookup_weather\", \"description\": \"Return deterministic weather fixture data.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}]<|im_end|>\n<|im_start|>user\nUse the weather tool for Tokyo.<|im_end|>\n<|im_start|>assistant\n<think>",
+      "inputTokenIds": [
+        124894,
+        124899,
+        23630,
+        207,
+        3120,
+        302,
+        5985,
+        34,
+        66155,
+        5882,
+        6380,
+        496,
+        5545,
+        1377,
+        496,
+        5545,
+        6380,
+        36579,
+        2554,
+        6380,
+        496,
+        30252,
+        1056,
+        71,
+        51492,
+        1377,
+        496,
+        19021,
+        6380,
+        496,
+        17319,
+        89936,
+        7420,
+        51639,
+        1317,
+        50007,
+        496,
+        29701,
+        6380,
+        36579,
+        5882,
+        6380,
+        496,
+        7022,
+        1377,
+        496,
+        38805,
+        6380,
+        36579,
+        47749,
+        6380,
+        36579,
+        5882,
+        6380,
+        496,
+        3987,
+        87961,
+        496,
+        34503,
+        6380,
+        34564,
+        47749,
+        88075,
+        19851,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        14374,
+        278,
+        7420,
+        6189,
+        374,
+        18943,
+        22,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901
+      ]
+    },
+    {
+      "caseId": "tool-result-continuation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call_template_probe_1",
+              "type": "function",
+              "function": {
+                "name": "lookup_weather",
+                "arguments": "{\"city\":\"Tokyo\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call_template_probe_1",
+          "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "failed",
+      "selectedTemplateSha256": "8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c",
+      "failureStage": "render",
+      "error": {
+        "name": "Error",
+        "message": "Tool call arguments must be a mapping, got a JSON-encoded string: parse arguments with json.loads() before applying the chat template"
+      }
+    }
+  ]
+}

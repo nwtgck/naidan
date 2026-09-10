@@ -4,6 +4,7 @@ import type { DownloadVerificationRevisionAcceptanceObservation } from '@/featur
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 import type { RuntimeAcceptanceProgressCallback } from './runtime-acceptance-progress';
 import { classifyProductionAcceptanceError, productionAcceptanceFailureStatus, serializeProductionAcceptanceError } from './production-acceptance-error';
+import { readProductionLoadResultReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
 
 function productionDevice({ device }: { device: string }): 'webgpu' | 'wasm' {
   switch (device) {
@@ -103,6 +104,7 @@ export async function acceptDownloadedProductionRevision({
       selectedDtype: result.dtype,
       observationMethod: 'production-cache-only-revision-runtime-preparation',
       error: undefined,
+      receipt: readProductionLoadResultReceipt({ value: result, modelId, revision: loadRevision }),
     };
   } catch (error) {
     if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');

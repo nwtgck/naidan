@@ -12,6 +12,10 @@ import type {
   TransformersJsModelLoadProgressObservation,
 } from '@/features/transformers-js/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
+import type { ProductionProviderCaptureSnapshot } from './logic/production-provider-capture-owner';
+import type { ProductionProviderNativeEvidenceSidecar } from './logic/production-provider-native-evidence';
+import type { ProductionProviderInvestigationResult } from './logic/run-production-provider-investigation';
+import type { ProductionProviderInvestigationLiveProgress } from './logic/production-provider-investigation-summary';
 
 export type ModelSupportInvestigationJsonValue =
   | string
@@ -859,6 +863,8 @@ export interface ModelSupportInvestigationCacheInventory {
 }
 
 export interface ModelSupportInvestigationRun {
+  productionProviderInvestigation?: ProductionProviderInvestigationResult['summary'],
+  productionProviderCapture?: ProductionProviderCaptureSnapshot,
   freshMetadata?: FreshMetadataSummary,
   replayMetadata?: InvestigationReplayMetadataSummary,
   schemaVersion: 1,
@@ -899,7 +905,7 @@ export interface ModelSupportInvestigationRun {
 
 export type ModelSupportInvestigationPlanningWorkerRun = Omit<
   ModelSupportInvestigationRun,
-  'downloadEvidence' | 'loadAttempts' | 'activeLoadAttempt' | 'productionLane' | 'laneComparison'
+  'downloadEvidence' | 'loadAttempts' | 'activeLoadAttempt' | 'productionLane' | 'laneComparison' | 'productionProviderCapture' | 'productionProviderInvestigation'
 > & {
   downloadEvidence: DownloadVerificationProbeEvidenceInput | undefined,
 };
@@ -998,6 +1004,7 @@ export interface ModelSupportInvestigationEvent {
   status: ModelSupportInvestigationStepStatus,
   detail: string,
   progress?: ModelSupportInvestigationProgressObservation,
+  productionProviderProgress?: ProductionProviderInvestigationLiveProgress,
 }
 
 export interface ModelSupportInvestigationRecordedEvent extends ModelSupportInvestigationEvent {
@@ -1031,6 +1038,7 @@ export type ModelSupportInvestigationBatchTargetStatus =
 
 export interface ModelSupportInvestigationBatchEvidenceItem {
   replayMetadata?: InvestigationReplayMetadataSidecar[],
+  nativeEvidence?: ProductionProviderNativeEvidenceSidecar,
   target: string,
   status: ModelSupportInvestigationBatchTargetStatus,
   run: ModelSupportInvestigationRun | undefined,
@@ -1039,6 +1047,7 @@ export interface ModelSupportInvestigationBatchEvidenceItem {
 }
 
 export interface ModelSupportInvestigationCheckpoint {
+  nativeEvidence?: ProductionProviderNativeEvidenceSidecar,
   replayMetadata?: InvestigationReplayMetadataSidecar[],
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery,
@@ -1046,6 +1055,7 @@ export interface ModelSupportInvestigationCheckpoint {
 
 export interface ModelSupportInvestigationPlanningRequest {
   replayMetadataBudgetBytes?: number,
+  runId: string,
   modelId: string,
   externalNetworkPolicy: ModelSupportInvestigationConfiguration['externalNetworkPolicy'],
   executionPlan: ModelSupportInvestigationExecutionPlan,
@@ -1085,6 +1095,7 @@ export interface ModelSupportInvestigationWorkerClient {
   }): Promise<ModelSupportInvestigationRun>,
   interrupt(): Promise<void>,
   dispose(): Promise<void>,
+  waitForEvidenceRelease(): Promise<void>,
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

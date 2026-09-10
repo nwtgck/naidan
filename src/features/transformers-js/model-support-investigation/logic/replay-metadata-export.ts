@@ -1,11 +1,11 @@
-import type JSZip from 'jszip';
+import { setEvidenceFile } from './evidence-archive';
 import { z } from 'zod';
 import { replayMetadataSummarySchema, replayMetadataSha256, validateReplayMetadataContent, REPLAY_METADATA_FILE_BYTES, type InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 
 export const replayMetadataSidecarsSchema = z.array(z.object({ path: z.string(), blob: z.instanceof(Blob) }).strict()).max(10);
 
-export async function addReplayMetadataToZip({ zip, summary, sidecars }: {
-  zip: JSZip,
+export async function addReplayMetadataToEvidenceFiles({ files, summary, sidecars }: {
+  files: Map<string, Blob>,
   summary: unknown,
   sidecars: InvestigationReplayMetadataSidecar[] | undefined,
 }): Promise<void> {
@@ -26,13 +26,13 @@ export async function addReplayMetadataToZip({ zip, summary, sidecars }: {
     const bytes = new Uint8Array(await attachment.blob.arrayBuffer());
     validateReplayMetadataContent({ path: attachment.path, bytes });
     if (await replayMetadataSha256({ bytes }) !== file.sha256) throw new Error('Replay metadata sidecar hash mismatch');
-    zip.file(`replay-metadata/files/${attachment.path}`, bytes);
+    setEvidenceFile({ files, path: `replay-metadata/files/${attachment.path}`, content: bytes });
   }
-  zip.file('replay-metadata/index.json', JSON.stringify({
+  setEvidenceFile({ files, path: 'replay-metadata/index.json', content: JSON.stringify({
     ...validated,
     replayScope: 'Allowlisted metadata only; not a completeness certificate for tokenizer/model runtime inputs. No model weights, past network events, or GPU execution state.',
     files: validated.files.map(file => ({ ...file, archived: paths.has(file.path) })),
-  }, undefined, 2));
+  }, undefined, 2) });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

@@ -5,12 +5,27 @@ import { expect, it, vi } from 'vitest';
 import * as transformation from './transform';
 import { TRANSFORMERS_JS_FIXES_PROVENANCE, transformersJsFixesSha256, applyTransformersJsFixes } from './transform';
 import { createTransformersJsFixesPlugin, createTransformersJsFixesViteConfig } from './plugin';
-import sections from './upstream/web-sections.json';
 
 const projectRoot = process.cwd();
 const packageRoot = path.join(projectRoot, 'node_modules/@huggingface/transformers');
 const original = readFileSync(path.join(packageRoot, 'dist/transformers.web.js'), 'utf8');
 const transformed = applyTransformersJsFixes({ code: original, version: '4.2.0' });
+
+function originalSection({ startMarker, endMarker, expectedSha256 }: {
+  startMarker: string; endMarker: string; expectedSha256: string;
+}) {
+  // The complete original bundle has already passed applyTransformersJsFixes'
+  // input hash check. Pin each extracted section independently to the reviewed
+  // bytes, including its original trailing newlines, without keeping a copy.
+  const from = original.indexOf(startMarker);
+  expect(from).toBeGreaterThanOrEqual(0);
+  expect(original.indexOf(startMarker, from + startMarker.length)).toBe(-1);
+  const to = original.indexOf(endMarker, from);
+  expect(to).toBeGreaterThan(from);
+  const section = original.slice(from, to);
+  expect(transformersJsFixesSha256({ code: section })).toBe(expectedSha256);
+  return section;
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -23,17 +38,50 @@ function deferred<T>() {
 }
 
 it('retains exact upstream originals and maps the bounded web edits to the original bundle', () => {
-  for (const relativePath of ['src/utils/model-loader.js', 'src/models/session.js', 'src/models/modeling_utils.js', 'LICENSE'] as const) {
-    const saved = readFileSync(new URL(`./upstream/${relativePath}`, import.meta.url));
-    expect(transformersJsFixesSha256({ code: saved })).toBe(TRANSFORMERS_JS_FIXES_PROVENANCE.upstreamHashes[relativePath]);
-    expect(transformersJsFixesSha256({ code: readFileSync(path.join(packageRoot, relativePath)) })).toBe(transformersJsFixesSha256({ code: saved }));
+  for (const [relativePath, expectedSha256] of Object.entries(TRANSFORMERS_JS_FIXES_PROVENANCE.upstreamHashes)) {
+    expect(transformersJsFixesSha256({ code: readFileSync(path.join(packageRoot, relativePath)) })).toBe(expectedSha256);
   }
+  const savedLicense = readFileSync(new URL('./upstream/LICENSE', import.meta.url));
+  expect(transformersJsFixesSha256({ code: savedLicense })).toBe(TRANSFORMERS_JS_FIXES_PROVENANCE.upstreamHashes.LICENSE);
+  expect(readFileSync(path.join(packageRoot, 'LICENSE'))).toEqual(savedLicense);
+  // These hashes were verified against the former unmodified references before
+  // removing their redundant source copies.
+  const sections = {
+    modelLoader: originalSection({
+      startMarker: 'async function getModelDataFiles(', endMarker: '// src/models/session.js',
+      expectedSha256: '4cf81c9c88860ba8dd0f299e26c4a2da33c2fb9130d125ba2485832a3648958f',
+    }),
+    session: originalSection({
+      startMarker: 'async function getSession(', endMarker: 'async function constructSessions(',
+      expectedSha256: '35eb6ed88032b17792172591c820e89bfd1ff2bbb44a5908e54d36ad76187489',
+    }),
+    modelPreparation: originalSection({
+      startMarker: '    const sessions = typeConfig.sessions(config, options, textOnly);',
+      endMarker: `\
+
+  }
+  /**
+   * Runs the model with the provided inputs`,
+      expectedSha256: '245efca51862a96afe06fa8d9d60595c4b29959faf481978e1e1fa84a8dbbbba',
+    }),
+    optionalConfigs: originalSection({
+      startMarker: 'async function get_optional_configs(', endMarker: '\n\n// src/models/models.js',
+      expectedSha256: 'e740709bab12cebcbb2ca8ef3a00fbb93f0ed797b46d35c4b4798992c12c810a',
+    }),
+  };
   expect(original).toContain(sections.modelLoader);
   expect(original).toContain(sections.session);
   expect(original).toContain(sections.modelPreparation);
   expect(original).toContain(sections.optionalConfigs);
   expect(transformed.originalSha256).toBe('25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff');
-  expect(transformed.transformedSha256).toBe('e839bd80c4d3b166cd574daebcbda66451ea464466db274ffd41df302f0274c0');
+  expect(transformed.transformedSha256).toBe('875b33675dcf7b646f7f39d2680d2612040b1eb570f865a537aea1118658b731');
+  const jinjaOriginal = originalSection({
+    startMarker: 'var TOKEN_TYPES = Object.freeze({', endMarker: '\n// src/utils/hub/FileResponse.js',
+    expectedSha256: TRANSFORMERS_JS_FIXES_PROVENANCE.bundledJinja.sectionSha256,
+  });
+  expect(original).toContain(jinjaOriginal);
+  expect(transformersJsFixesSha256({ code: jinjaOriginal })).toBe(TRANSFORMERS_JS_FIXES_PROVENANCE.bundledJinja.sectionSha256);
+  expect(transformersJsFixesSha256({ code: readFileSync(new URL('./upstream/jinja/LICENSE', import.meta.url)) })).toBe(TRANSFORMERS_JS_FIXES_PROVENANCE.bundledJinja.licenseSha256);
   const map = JSON.parse(transformed.map.toString()) as { sources: string[]; sourcesContent: string[]; mappings: string };
   expect(map.sources).toEqual(['transformers.web.js']);
   expect(map.sourcesContent).toEqual([original]);

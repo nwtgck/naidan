@@ -111,6 +111,7 @@ export async function completeDownloadVerificationRuntimeEvidence({
               : { device: selectedDevice, dtype: selectedDtype };
           })(),
           cacheReuse: reuse.acceptance,
+          receipt: reuse.acceptance.attempts.find(attempt => attempt.acceptance.status === 'accepted')?.acceptance.receipt,
           preparation: undefined,
           ...cacheObservation,
           error: undefined,

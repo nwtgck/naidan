@@ -1,4 +1,5 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
+import type { GenerationCaptureClient, GenerationCaptureRequest } from './generation-capture-protocol';
 import type {
   TransformersJsWorkerClient,
   ModelLoadResult,
@@ -10,6 +11,16 @@ import type {
 
 function createUnsupportedError(): Error {
   return new Error('Transformers.js is not available in standalone mode');
+}
+
+/** Standalone cannot create a Production recording Worker. */
+export function createTransformersJsGenerationCaptureClient({ runId: _runId, workerEpoch: _workerEpoch, limits: _limits, getActiveRequest: _getActiveRequest }: {
+  runId: string;
+  workerEpoch: number;
+  limits: GenerationCaptureRequest['limits'];
+  getActiveRequest: () => { runId: string; requestId: string } | undefined;
+}): GenerationCaptureClient {
+  throw createUnsupportedError();
 }
 
 export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {

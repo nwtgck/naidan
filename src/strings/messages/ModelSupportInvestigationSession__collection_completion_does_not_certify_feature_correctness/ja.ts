@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness = (): string => "調査工程の完了は、各機能が正しく動くことを保証しません。失敗・実行できなかった項目を先に表示します。実行成功と観測のみを区別し、未選択の範囲は未完了の作業に含めません。";

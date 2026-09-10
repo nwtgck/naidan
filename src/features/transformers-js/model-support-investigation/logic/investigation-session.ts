@@ -2,6 +2,8 @@ import type { ModelSupportInvestigationConfiguration } from './investigation-con
 import { promiseAllKeyed } from '@/utils/promise';
 import type { ModelSupportInvestigationTargetExecution } from './run-investigation-targets-sequentially';
 import type { InvestigationReplayMetadataSidecar } from './collect-replay-metadata';
+import type { ProductionProviderNativeEvidenceSidecar } from './production-provider-native-evidence';
+import { createInvestigationProviderRetentionBudget, investigationProviderRetentionLimits, measureInvestigationProviderRetention, type InvestigationProviderRetentionUsage } from './investigation-provider-retention';
 import type {
   ModelSupportInvestigationRecovery,
   ModelSupportInvestigationRun,
@@ -23,6 +25,8 @@ export type InvestigationSessionSnapshot = InvestigationSessionIdentity & ({
   runs: Array<[string, ModelSupportInvestigationRun]>;
   recoveries: Array<[string, ModelSupportInvestigationRecovery | undefined]>;
   replayMetadata: Array<[string, InvestigationReplayMetadataSidecar[]]>;
+  nativeEvidence: Array<[string, ProductionProviderNativeEvidenceSidecar]>;
+  reservedProviderRetention: InvestigationProviderRetentionUsage;
   selectedTarget: string | undefined;
 });
 
@@ -36,6 +40,21 @@ const MAX_RETAINED_SESSIONS = 2;
 function rememberInvestigationSession({ snapshot }: {
   snapshot: InvestigationSessionSnapshot;
 }): void {
+  switch (snapshot.view) {
+  case 'setup': break;
+  case 'results': {
+    // Charge a batch once, regardless of how many views reopen it. Different
+    // batches each own this finite logical allowance; history retains at most two.
+    createInvestigationProviderRetentionBudget({
+      limits: investigationProviderRetentionLimits,
+      retained: measureInvestigationProviderRetention({ runs: new Map(snapshot.runs), nativeEvidence: new Map(snapshot.nativeEvidence) }),
+    });
+    createInvestigationProviderRetentionBudget({ limits: investigationProviderRetentionLimits,
+      retained: snapshot.reservedProviderRetention });
+    break;
+  }
+  default: { const exhaustive: never = snapshot; throw new Error('Unhandled retained view: ' + exhaustive); }
+  }
   const captured = structuredClone(snapshot);
   const previous = sessions.findIndex(session => session.batchId === snapshot.batchId);
   if (previous >= 0) sessions.splice(previous, 1);

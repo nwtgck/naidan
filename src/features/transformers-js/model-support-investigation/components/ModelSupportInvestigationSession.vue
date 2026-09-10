@@ -37,6 +37,7 @@ import {
   normalizeInvestigationTarget,
   parseInvestigationTargets,
   resolveEffectiveScope,
+  resolveInvestigationExecutionPlan,
   type ModelSupportInvestigationConfiguration,
   type ModelSupportInvestigationExternalNetworkPolicy,
   type ModelSupportInvestigationPreset,
@@ -45,6 +46,7 @@ import {
 import { runInvestigationTargetsSequentially, type ModelSupportInvestigationTargetExecution } from "@/features/transformers-js/model-support-investigation/logic/run-investigation-targets-sequentially";
 import { evaluateEvidenceReadiness } from "@/features/transformers-js/model-support-investigation/logic/evaluate-evidence-readiness";
 import { investigationExecutionSummary } from '@/features/transformers-js/model-support-investigation/logic/investigation-execution-summary';
+import { investigationFeatureResults } from '@/features/transformers-js/model-support-investigation/logic/investigation-feature-results';
 import { assessSupportBoundaries } from "@/features/transformers-js/model-support-investigation/logic/assess-support-boundaries";
 import {
   DOWNLOAD_INVESTIGATION_COLLECTION_BUDGET_MS,
@@ -60,6 +62,10 @@ import type { InvestigationSessionSnapshot, InvestigationSessionView } from "@/f
 import { createInitialInvestigationCheckpoint, interruptInvestigationCheckpoint } from "@/features/transformers-js/model-support-investigation/logic/investigation-recovery";
 import type { InvestigationReplayMetadataSidecar } from "@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata";
 import type { TransformersJsProductionInvestigationActiveCandidateLoadAttempt } from "@/features/transformers-js/types";
+import { PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS, verifyProductionProviderNativeEvidenceSidecar, measureProductionProviderNativeEvidenceSidecar, type ProductionProviderNativeEvidenceSidecar } from '@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence';
+import { createInvestigationProviderRetentionBudget, emptyInvestigationProviderRetentionUsage, investigationProviderRetentionLimits, measureInvestigationProviderRetention, type InvestigationProviderRetentionUsage } from '@/features/transformers-js/model-support-investigation/logic/investigation-provider-retention';
+import { createProductionProviderCapturePolicy } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-policy';
+import { validateProductionProviderInvestigationLiveProgress, type ProductionProviderInvestigationLiveProgress } from '@/features/transformers-js/model-support-investigation/logic/production-provider-investigation-summary';
 
 const props = defineProps<{
   modelId: string,
@@ -79,7 +85,10 @@ const teardownError = ref<string | undefined>(undefined);
 void sessionView.ready.then(result => {
   if (!sessionView.isActive()) return;
   switch (result.status) {
-  case 'complete': sessionReady.value = true; return;
+  case 'complete':
+    sessionReady.value = true;
+    if (providerRetention.value !== undefined && !running.value) providerRetention.value = { ...providerRetention.value, reserved: emptyInvestigationProviderRetentionUsage() };
+    return;
   case 'failed': teardownError.value = result.error; return;
   default: {
     const _ex: never = result;
@@ -140,6 +149,22 @@ const newInvestigationPending = ref(false);
 const batchRunId = ref<string | undefined>(undefined);
 const currentOperation = ref<string | undefined>(undefined);
 const latestProgress = ref<ModelSupportInvestigationProgressObservation | undefined>(undefined);
+const providerLiveProgress = shallowRef<ProductionProviderInvestigationLiveProgress | undefined>(undefined);
+const providerRetention = shallowRef<{ retained: InvestigationProviderRetentionUsage; reserved: InvestigationProviderRetentionUsage } | undefined>(undefined);
+const nativeEvidenceVersion = ref(0);
+const providerProgressPresentation = computed(() => {
+  const terminal = run.value?.productionProviderInvestigation;
+  const live = providerLiveProgress.value;
+  if (terminal === undefined && live === undefined) return undefined;
+  const progress = terminal?.providerProgress ?? live!.progress.provider;
+  const phase: ProductionProviderInvestigationLiveProgress['progress']['phase'] | 'loading' | 'cleanup' | 'seal-release' = waitingForResources.value ?? (terminal !== undefined ? 'finished'
+    : live!.progress.phase === 'running' && progress.loadStatus === 'loading' ? 'loading' : live!.progress.phase);
+  return { phase, settled: progress.settledRequests, total: progress.selectedRequests, active: progress.activeRequest?.scenario };
+});
+const nativeRecording = computed(() => {
+  void nativeEvidenceVersion.value;
+  return selectedTarget.value === undefined ? 'not-recorded' : nativeEvidenceByTarget.get(selectedTarget.value)?.summary.recording ?? 'not-recorded';
+});
 const progressClockMs = ref(Date.now());
 let progressClock: ReturnType<typeof setInterval> | undefined;
 const displayedCurrentOperation = computed(() => (
@@ -563,6 +588,9 @@ const productionReasoningSummary = computed(() => {
 const evidenceReadiness = computed(() => run.value === undefined
   ? undefined
   : evaluateEvidenceReadiness({ run: run.value }));
+const featureResults = computed(() => run.value === undefined ? undefined : investigationFeatureResults({ run: run.value }));
+const targetFeatureResults = computed(() => new Map(targetExecutions.value.flatMap(execution => execution.run === undefined
+  ? [] : [[execution.target, investigationFeatureResults({ run: execution.run })] as const])));
 const executionSummary = computed(() => run.value === undefined
   ? undefined
   : investigationExecutionSummary({ run: run.value, recovery: recovery.value }));
@@ -833,31 +861,52 @@ type SessionWorkerClient = ReturnType<typeof createModelSupportInvestigationWork
   | ReturnType<typeof createModelSupportInvestigationEvidenceWorkerClient>;
 const ownedClients = new Set<SessionWorkerClient>();
 const clientDisposals = new WeakMap<SessionWorkerClient, Promise<void>>();
+const ownedEvidenceReleases = new Set<Promise<void>>();
+const nativeEvidenceByTarget = new Map<string, ProductionProviderNativeEvidenceSidecar>();
+// A progress checkpoint may repeat the exact immutable sidecar. Verification
+// owns one hash pass, while adoption is checked separately after its await.
+const nativeAdmissions = new WeakMap<ProductionProviderNativeEvidenceSidecar, {
+  runId: string; modelId: string; result: Promise<ProductionProviderNativeEvidenceSidecar>;
+}>();
+let resourceFailure: { status: 'failed'; cause: unknown } | undefined;
+const waitingForResources = ref<'cleanup' | 'seal-release' | undefined>(undefined);
 
-function disposeClientBestEffort({ client }: { client: SessionWorkerClient }): Promise<void> {
+function disposeOwnedClient({ client }: { client: SessionWorkerClient }): Promise<void> {
   const existing = clientDisposals.get(client);
   if (existing !== undefined) return existing;
   const disposal = (async () => {
     try {
       await client.dispose();
-    } catch {
-      // Both hosted clients physically terminate their Workers independently of
-      // advisory remote cleanup. Its failure must not replace observed Evidence.
+    } catch (error) {
+      // Disposal failure is not evidence that the Worker/native owner stopped.
+      // Preserve already adopted records, but never authorize another Load.
+      resourceFailure ??= { status: 'failed', cause: error };
+      throw error;
     } finally {
       ownedClients.delete(client);
     }
   })();
+  void disposal.catch(() => undefined);
   clientDisposals.set(client, disposal);
   return disposal;
 }
 
 async function disposeSessionWorkers(): Promise<void> {
-  await Promise.all([...ownedClients].map(client => disposeClientBestEffort({ client })));
+  // Start all physical disposals before waiting for a pending sealing owner.
+  const disposals = [...ownedClients].map(client => disposeOwnedClient({ client }));
+  await Promise.allSettled([...disposals, ...ownedEvidenceReleases]);
+  if (resourceFailure !== undefined) throw resourceFailure.cause;
 }
 
 function retireCurrentView(): void {
   if (!sessionView.isActive()) return;
-  rememberCurrentSession();
+  try {
+    rememberCurrentSession();
+  } catch {
+    // Serialization/admission failure must never prevent physical disposal.
+    // An earlier successfully adopted tab-memory snapshot remains untouched.
+    teardownError.value = 'The latest investigation checkpoint could not be retained';
+  }
   interruptionRequested = true;
   skipRequestedTarget = undefined;
   // Vue does not await unmount hooks. Retirement revokes persistence rights and
@@ -892,7 +941,7 @@ async function disposeActiveClient(): Promise<void> {
   const client = activeClient;
   if (client === undefined) return;
   activeClient = undefined;
-  await disposeClientBestEffort({ client });
+  await disposeOwnedClient({ client });
 }
 
 async function stopInvestigation(): Promise<void> {
@@ -932,6 +981,11 @@ function applyRunPresentation({
   sourceRun: ModelSupportInvestigationRun,
   sourceRecovery: ModelSupportInvestigationRecovery | undefined,
 }): void {
+  // Missing telemetry preserves a same-run sample, never another target's view.
+  if (run.value === undefined || run.value.runId !== sourceRun.runId || run.value.modelId !== sourceRun.modelId) {
+    providerLiveProgress.value = undefined;
+    latestProgress.value = undefined;
+  }
   selectedTarget.value = target;
   run.value = sourceRun;
   recovery.value = sourceRecovery;
@@ -941,6 +995,10 @@ function applyRunPresentation({
   currentOperation.value = sourceRun.currentOperation;
   const progress = sourceRecovery?.lastEvent?.progress;
   if (progress !== undefined) latestProgress.value = progress;
+  const providerProgress = sourceRecovery?.lastEvent?.productionProviderProgress;
+  if (providerProgress !== undefined) {
+    providerLiveProgress.value = validateProductionProviderInvestigationLiveProgress({ value: providerProgress, runId: sourceRun.runId, modelId: sourceRun.modelId });
+  }
 }
 
 async function runSingleTarget({ target, configuration, timeoutMs, replayMetadataBudgetBytes }: {
@@ -953,6 +1011,60 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
   const client = createModelSupportInvestigationWorkerClient();
   ownedClients.add(client);
   let acceptingCallbacks = true;
+  let operationStarted = false;
+  let expectedRunId: string | undefined;
+  let validationFailure: { cause: unknown } | undefined;
+  const pendingAdmissions = new Set<Promise<void>>();
+  function rejectCheckpoint({ cause }: { cause: unknown }): void {
+    if (!sessionView.isActive() || activeClient !== client) return;
+    validationFailure ??= { cause };
+    acceptingCallbacks = false;
+    void interruptClientBestEffort({ client });
+  }
+  function adoptNativeEvidence({ evidence, sourceRun }: { evidence: ProductionProviderNativeEvidenceSidecar; sourceRun: ModelSupportInvestigationRun }): void {
+    const provider = sourceRun.productionProviderCapture;
+    if (provider === undefined || sourceRun.modelId !== target || provider.runId !== sourceRun.runId || provider.modelId !== sourceRun.modelId) {
+      throw new Error('Invalid checkpoint recording identity');
+    }
+    // Admission precedes Blob reads; neither interrupt nor view retirement waits
+    // for this promise. Late verification has no authority to adopt a result.
+    const size = measureProductionProviderNativeEvidenceSidecar({ evidence });
+    if (size.binaryBytes > PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES) throw new Error('Invalid checkpoint recording capacity');
+    let admission = nativeAdmissions.get(evidence);
+    if (admission === undefined) {
+      admission = { runId: sourceRun.runId, modelId: sourceRun.modelId,
+        result: verifyProductionProviderNativeEvidenceSidecar({ evidence, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES }) };
+      nativeAdmissions.set(evidence, admission);
+    }
+    if (admission.runId !== sourceRun.runId || admission.modelId !== sourceRun.modelId) throw new Error('Invalid checkpoint recording identity');
+    const pending = admission.result.then(owned => {
+      if (!acceptingCallbacks || !sessionView.isActive() || activeClient !== client || expectedRunId !== sourceRun.runId) return;
+      nativeEvidenceByTarget.set(target, owned);
+      nativeEvidenceVersion.value++;
+    }, cause => rejectCheckpoint({ cause }));
+    pendingAdmissions.add(pending);
+    ownedEvidenceReleases.add(pending);
+    void pending.then(() => {
+      pendingAdmissions.delete(pending);
+      ownedEvidenceReleases.delete(pending);
+    });
+  }
+  const release = Promise.withResolvers<void>();
+  const ownsProviderSealing = resolveInvestigationExecutionPlan({ scope: configuration.scope }).generation;
+  const evidenceRelease = release.promise;
+  ownedEvidenceReleases.add(evidenceRelease);
+  void evidenceRelease.then(() => ownedEvidenceReleases.delete(evidenceRelease), error => {
+    ownedEvidenceReleases.delete(evidenceRelease);
+    resourceFailure ??= { status: 'failed', cause: error };
+  });
+  function observeEvidenceRelease(): void {
+    if (!ownsProviderSealing) return;
+    try {
+      void client.waitForEvidenceRelease().then(release.resolve, release.reject);
+    } catch (error) {
+      release.reject(error);
+    }
+  }
   activeClient = client;
   selectedTarget.value = target;
   run.value = undefined;
@@ -960,6 +1072,7 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
   steps.value = initialInvestigationSteps();
   currentOperation.value = lazyStrings.ModelSupportInvestigationModal__checking_same_origin_runtime_assets();
   latestProgress.value = undefined;
+  providerLiveProgress.value = undefined;
   try {
     const completedRun = await withInvestigationTargetBudget({
       timeoutMs,
@@ -968,27 +1081,66 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
         // real cause below, without accepting the client's user-stop checkpoint.
         acceptingCallbacks = false;
         void interruptClientBestEffort({ client });
-        void disposeClientBestEffort({ client });
+        void disposeOwnedClient({ client });
       },
-      start: () => client.runPartialInvestigation({
-        modelId: target,
-        configuration: structuredClone(configuration),
-        replayMetadataBudgetBytes,
-        onEvent: ({ event }) => {
-          if (acceptingCallbacks && sessionView.isActive()) updateStep({ event });
-        },
-        onCheckpoint: ({ checkpoint }) => {
-          if (!acceptingCallbacks || !sessionView.isActive()) return;
-          if (checkpoint.replayMetadata !== undefined) replayMetadataByTarget.set(target, checkpoint.replayMetadata);
-          applyRunPresentation({
-            target,
-            sourceRun: checkpoint.run,
-            sourceRecovery: checkpoint.recovery,
-          });
-        },
-      }),
+      start: () => {
+        operationStarted = true;
+        return client.runPartialInvestigation({
+          modelId: target,
+          configuration: structuredClone(configuration),
+          replayMetadataBudgetBytes,
+          onEvent: ({ event }) => {
+            if (!acceptingCallbacks || !sessionView.isActive() || activeClient !== client) return;
+            if (runByTarget.get(target)?.productionProviderInvestigation !== undefined) return;
+            try {
+              if (event.productionProviderProgress !== undefined) {
+                providerLiveProgress.value = validateProductionProviderInvestigationLiveProgress({ value: event.productionProviderProgress, runId: expectedRunId ?? '', modelId: target });
+              }
+              updateStep({ event });
+            } catch (cause) {
+              rejectCheckpoint({ cause });
+            }
+          },
+          onCheckpoint: ({ checkpoint }) => {
+            if (!acceptingCallbacks || !sessionView.isActive()) return;
+            try {
+              expectedRunId ??= checkpoint.run.runId;
+              if (checkpoint.run.runId !== expectedRunId) throw new Error('Invalid checkpoint run identity');
+              if (normalizeInvestigationTarget({ input: checkpoint.run.modelId }) !== target) throw new Error('Invalid checkpoint model identity');
+              if (checkpoint.nativeEvidence !== undefined) adoptNativeEvidence({ evidence: checkpoint.nativeEvidence, sourceRun: checkpoint.run });
+            } catch (cause) {
+              rejectCheckpoint({ cause });
+              return;
+            }
+            if (checkpoint.replayMetadata !== undefined) replayMetadataByTarget.set(target, checkpoint.replayMetadata);
+            applyRunPresentation({
+              target,
+              sourceRun: checkpoint.run,
+              sourceRecovery: checkpoint.recovery,
+            });
+          },
+        }).then(
+          value => {
+            observeEvidenceRelease(); return value;
+          },
+          error => {
+            observeEvidenceRelease(); throw error;
+          },
+        );
+      },
     });
+    await Promise.all([...pendingAdmissions]);
+    if (validationFailure !== undefined) throw validationFailure.cause;
     if (!acceptingCallbacks || !sessionView.isActive()) return completedRun;
+    try {
+      if (expectedRunId !== undefined && completedRun.runId !== expectedRunId) throw new Error('Invalid completed run identity');
+      if (normalizeInvestigationTarget({ input: completedRun.modelId }) !== target) throw new Error('Invalid completed model identity');
+    } catch (cause) {
+      // A terminal result has the same owner as its checkpoints even when no
+      // native recording was collected. Preserve the last accepted evidence.
+      validationFailure ??= { cause };
+      throw validationFailure.cause;
+    }
     applyRunPresentation({
       target,
       sourceRun: completedRun,
@@ -996,7 +1148,10 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
     });
     return completedRun;
   } catch (error) {
-    if (error instanceof InvestigationTargetBudgetError && sessionView.isActive()) {
+    // Checkpoint rejection uses interrupt for physical cancellation, but its
+    // validation cause owns the result even when interrupt rejects as a user stop.
+    const cause = validationFailure === undefined ? error : validationFailure.cause;
+    if ((validationFailure !== undefined || cause instanceof InvestigationTargetBudgetError) && sessionView.isActive()) {
       const now = () => new Date().toISOString();
       const initial = createInitialInvestigationCheckpoint({ modelId: target, runId: crypto.randomUUID(), now });
       const interrupted = interruptInvestigationCheckpoint({
@@ -1004,16 +1159,34 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
           run: runByTarget.get(target) ?? initial.run,
           recovery: recoveryByTarget.get(target) ?? initial.recovery,
         },
-        error,
+        error: cause,
         now,
       });
       applyRunPresentation({ target, sourceRun: interrupted.run, sourceRecovery: interrupted.recovery });
     }
-    throw error;
+    throw cause;
   } finally {
     acceptingCallbacks = false;
+    if (!operationStarted || !ownsProviderSealing) release.resolve();
     if (activeClient === client) activeClient = undefined;
-    await disposeClientBestEffort({ client });
+    try {
+      waitingForResources.value = 'cleanup';
+      await disposeOwnedClient({ client });
+      waitingForResources.value = 'seal-release';
+      await evidenceRelease;
+      // Rejected/expired runs may bypass the normal adoption await above. Their
+      // owned verification still holds the reservation until it actually settles.
+      await Promise.all([...pendingAdmissions]);
+    } catch (error) {
+      resourceFailure ??= { status: 'failed', cause: error };
+      interruptionRequested = true;
+      skipRequestedTarget = undefined;
+      teardownError.value = error instanceof Error ? error.message : 'Investigation resource release remains unconfirmed';
+      // Preserve the result already obtained above. This separate failure stops
+      // the next model and every new view, without rewriting that observation.
+    } finally {
+      waitingForResources.value = undefined;
+    }
     if (skipRequestedTarget === target) skippingCurrentTarget.value = false;
   }
 }
@@ -1199,6 +1372,22 @@ async function startInvestigation(): Promise<void> {
     : undefined;
   let startedTargetCount = 0;
   let remainingMetadataBytes = DOWNLOAD_INVESTIGATION_METADATA_BUDGET_BYTES;
+  const providerBudget = createInvestigationProviderRetentionBudget({
+    limits: investigationProviderRetentionLimits,
+    retained: emptyInvestigationProviderRetentionUsage(),
+  });
+  providerRetention.value = providerBudget.snapshot();
+  const executionPlan = resolveInvestigationExecutionPlan({ scope: configuration.scope });
+  const providerPlan = executionPlan.continuity
+    ? executionPlan.capabilityProbes ? 'full-v2' : 'generation-continuity-v2'
+    : executionPlan.capabilityProbes ? 'generation-capabilities-v2' : 'generation-v2';
+  const providerReservation = executionPlan.generation ? {
+    nativeBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
+    nativeJsonCharacters: PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS,
+    // Include the independent, bounded small investigation summary alongside
+    // the policy's Provider envelope reservation (UTF-16 code units, not bytes).
+    providerJsonCharacters: createProductionProviderCapturePolicy({ plan: providerPlan }).reservation.upperBoundCharacters + 65536,
+  } : emptyInvestigationProviderRetentionUsage();
 
   started.value = true;
   batchRunId.value = crypto.randomUUID();
@@ -1207,6 +1396,10 @@ async function startInvestigation(): Promise<void> {
     const executions = await runInvestigationTargetsSequentially({
       targets,
       runTarget: async ({ target }) => {
+        // Refuse before creating a Worker or issuing Load. A pending sealing
+        // owner remains reserved; a timer expiring is never a refund event.
+        const reservation = providerBudget.reserve({ maximum: providerReservation });
+        providerRetention.value = providerBudget.snapshot();
         const remainingTargets = targets.length - startedTargetCount++;
         const timeoutMs = collectionDeadline === undefined ? undefined : targetInvestigationBudgetMs({
           deadlineMs: collectionDeadline,
@@ -1220,6 +1413,15 @@ async function startInvestigation(): Promise<void> {
         try {
           return await runSingleTarget({ target, configuration, timeoutMs, replayMetadataBudgetBytes });
         } finally {
+          if (resourceFailure === undefined) {
+            const observedRun = runByTarget.get(target);
+            const nativeEvidence = nativeEvidenceByTarget.get(target);
+            reservation.release({ retained: measureInvestigationProviderRetention({
+              runs: observedRun === undefined ? new Map() : new Map([[target, observedRun]]),
+              nativeEvidence: nativeEvidence === undefined ? new Map() : new Map([[target, nativeEvidence]]),
+            }) });
+            providerRetention.value = providerBudget.snapshot();
+          }
           const actualBytes = settledReplayMetadataBytes({ summary: runByTarget.get(target)?.replayMetadata, freshMetadata: runByTarget.get(target)?.freshMetadata, recovery: recoveryByTarget.get(target) });
           if (actualBytes !== undefined) {
             remainingMetadataBytes = Math.max(0, remainingMetadataBytes + replayMetadataBudgetBytes - actualBytes);
@@ -1311,6 +1513,8 @@ function rememberCurrentSession(): void {
     runs: [...rememberedRuns.entries()],
     recoveries: [...rememberedRecoveries.entries()].map(([target, value]) => [target, value === undefined ? undefined : toRaw(value)]),
     replayMetadata: [...replayMetadataByTarget.entries()],
+    nativeEvidence: [...nativeEvidenceByTarget.entries()],
+    reservedProviderRetention: providerRetention.value?.reserved ?? emptyInvestigationProviderRetentionUsage(),
     selectedTarget: selectedTarget.value,
   } });
 }
@@ -1335,6 +1539,10 @@ function restorePreviousSession(): void {
   for (const [target, value] of snapshot.runs) runByTarget.set(target, value);
   for (const [target, value] of snapshot.recoveries) recoveryByTarget.set(target, value);
   for (const [target, value] of snapshot.replayMetadata) replayMetadataByTarget.set(target, value);
+  for (const [target, value] of snapshot.nativeEvidence) nativeEvidenceByTarget.set(target, value);
+  nativeEvidenceVersion.value++;
+  providerRetention.value = { retained: measureInvestigationProviderRetention({ runs: runByTarget, nativeEvidence: nativeEvidenceByTarget }),
+    reserved: sessionReady.value ? emptyInvestigationProviderRetentionUsage() : snapshot.reservedProviderRetention };
   const target = normalizedSeededTarget ?? snapshot.selectedTarget ?? snapshot.runs.at(-1)?.[0];
   const previousRun = target === undefined ? undefined : runByTarget.get(target);
   if (target !== undefined && previousRun !== undefined) {
@@ -1378,7 +1586,7 @@ function updateEvidenceExportPresentation({
 }
 
 async function downloadPartialEvidence(): Promise<void> {
-  if (evidenceExporting.value || !sessionReady.value || !sessionView.isActive()) return;
+  if (evidenceExporting.value || !sessionView.isActive()) return;
   const sourceRun = run.value;
   const executions = targetExecutions.value;
   if (sourceRun === undefined && executions.length === 0) return;
@@ -1390,6 +1598,7 @@ async function downloadPartialEvidence(): Promise<void> {
       run: snapshotEvidenceState({ value: sourceRun }),
       recovery: recovery.value === undefined ? undefined : snapshotEvidenceState({ value: recovery.value }),
       replayMetadata: replayMetadataByTarget.get(selectedTarget.value ?? sourceRun.modelId)?.slice(),
+      nativeEvidence: nativeEvidenceByTarget.get(selectedTarget.value ?? sourceRun.modelId),
     };
     const batchId = batchRunId.value ?? crypto.randomUUID();
     const capturedItems: ModelSupportInvestigationBatchEvidenceItem[] = executions.map(execution => {
@@ -1402,6 +1611,7 @@ async function downloadPartialEvidence(): Promise<void> {
         recovery: capturedRecovery === undefined ? undefined : snapshotEvidenceState({ value: capturedRecovery }),
         error: execution.error,
         replayMetadata: replayMetadataByTarget.get(execution.target)?.slice(),
+        nativeEvidence: nativeEvidenceByTarget.get(execution.target),
       };
     });
     const passedDetail = await evidenceExportDetail({ status: "passed" });
@@ -1420,6 +1630,7 @@ async function downloadPartialEvidence(): Promise<void> {
             run: exportedRun,
             recovery: sourceSnapshot.recovery,
             replayMetadata: sourceSnapshot.replayMetadata,
+            nativeEvidence: sourceSnapshot.nativeEvidence,
           });
         }
 
@@ -1441,7 +1652,13 @@ async function downloadPartialEvidence(): Promise<void> {
           items,
         });
       } finally {
-        await disposeClientBestEffort({ client: evidenceClient });
+        try {
+          await disposeOwnedClient({ client: evidenceClient });
+        } catch (error) {
+          // A completed ZIP stays valid. Cleanup is a separate authority gate
+          // for future work, not a reason to relabel or discard that artifact.
+          teardownError.value = error instanceof Error ? error.message : 'Investigation resource release remains unconfirmed';
+        }
       }
     })();
     if (!sessionView.isActive()) return;
@@ -1805,13 +2022,29 @@ defineExpose({
               @click="selectTargetExecution({ executionIndex })"
             >
               <Loader2Icon v-if="execution.status === 'running'" tw-class="w-3.5 h-3.5 animate-spin text-purple-500" />
-              <CheckCircle2Icon v-else-if="execution.status === 'passed'" tw-class="w-3.5 h-3.5 text-green-500" />
+              <AlertCircleIcon v-else-if="targetFeatureResults.get(execution.target)?.failed" tw-class="w-3.5 h-3.5 text-red-500" />
+              <CircleSlash2Icon v-else-if="targetFeatureResults.get(execution.target)?.notRun" tw-class="w-3.5 h-3.5 text-amber-500" />
               <AlertCircleIcon v-else-if="execution.status === 'failed' || execution.status === 'interrupted'" tw-class="w-3.5 h-3.5 text-red-500" />
               <CircleSlash2Icon v-else-if="execution.status === 'skipped'" tw-class="w-3.5 h-3.5 text-gray-400" />
               <CircleIcon v-else tw-class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
               <span tw-class="font-mono text-[10px] text-gray-700 dark:text-gray-200 truncate">{{ execution.target }}</span>
+              <span v-if="targetFeatureResults.get(execution.target)" tw-class="text-[10px] text-gray-600 dark:text-gray-300">
+                {{ lazyStrings.ModelSupportInvestigationSession__failed_and_not_run_checks({ failed: targetFeatureResults.get(execution.target)!.failed, notRun: targetFeatureResults.get(execution.target)!.notRun }) }}
+              </span>
             </button>
           </div>
+          <p v-for="execution in targetExecutions.filter(item => item.error !== undefined)" :key="`error-${execution.target}`" role="alert" :data-testid="`model-support-target-error-${execution.target}`" tw-class="px-2 text-xs text-red-600 dark:text-red-300 break-words">
+            <span v-if="execution.run === undefined">{{ lazyStrings.ModelSupportInvestigationModal__not_run() }} — </span>{{ execution.target }}: {{ execution.error }}
+          </p>
+          <section v-if="featureResults" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2" data-testid="model-support-feature-results">
+            <p tw-class="text-xs text-gray-700 dark:text-gray-200">{{ lazyStrings.ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness() }}</p>
+            <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.ModelSupportInvestigationSession__failed_and_not_run_checks({ failed: featureResults.failed, notRun: featureResults.notRun }) }}</p>
+            <div v-for="result in featureResults.results" :key="result.id" :data-feature="result.id" :data-outcome="result.outcome" tw-class="text-xs border-t border-gray-100 dark:border-gray-800 pt-2">
+              <p :tw-class="result.needsAttention ? 'text-amber-700 dark:text-amber-300' : 'text-gray-600 dark:text-gray-400'">{{ lazyStrings.ModelSupportInvestigationSession__feature_check_result({ kind: result.kind, outcome: result.outcome, context: result.context }) }}</p>
+              <p v-if="result.detail" tw-class="text-xs text-gray-700 dark:text-gray-200 break-words">{{ result.detail }}</p>
+              <p v-if="result.comparisonMismatch" tw-class="text-xs text-gray-600 dark:text-gray-400">{{ lazyStrings.ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure() }}</p>
+            </div>
+          </section>
           <div v-if="run" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-1">
             <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100" data-testid="model-support-fresh-metadata-status">
               {{ lazyStrings.ModelSupportInvestigationSession__fresh_metadata_preparation_status({ status: run.freshMetadata?.status ?? 'not-recorded' }) }}
@@ -1855,7 +2088,7 @@ defineExpose({
             <div tw-class="rounded-xl border border-purple-100 dark:border-purple-900/50 bg-purple-50/70 dark:bg-purple-900/20 p-4 flex items-start gap-3">
               <CircleIcon v-if="!started" tw-class="w-4 h-4 mt-0.5 text-gray-300 dark:text-gray-600 shrink-0" />
               <Loader2Icon v-else-if="running" tw-class="w-4 h-4 mt-0.5 text-purple-500 animate-spin shrink-0" />
-              <CheckCircle2Icon v-else-if="run?.status === 'passed'" tw-class="w-4 h-4 mt-0.5 text-green-500 shrink-0" />
+              <CircleIcon v-else-if="run?.status === 'passed'" tw-class="w-4 h-4 mt-0.5 text-gray-400 shrink-0" />
               <AlertCircleIcon v-else tw-class="w-4 h-4 mt-0.5 text-red-500 shrink-0" />
               <div tw-class="min-w-0">
                 <code tw-class="text-xs text-gray-700 dark:text-gray-200 break-all" data-testid="model-support-current-operation">{{ displayedCurrentOperation }}</code>
@@ -2033,6 +2266,12 @@ defineExpose({
         </section>
       </div>
 
+      <section v-if="providerProgressPresentation !== undefined" data-testid="model-support-provider-progress" aria-live="polite" tw-class="px-6 py-3 border-t border-gray-200 dark:border-gray-700 text-xs space-y-1">
+        <p>{{ lazyStrings.ModelSupportInvestigationSession__provider_collection_progress(providerProgressPresentation) }}</p>
+        <p v-if="providerLiveProgress !== undefined" data-testid="model-support-provider-deadlines">{{ lazyStrings.ModelSupportInvestigationSession__maximum_phase_deadlines({ runSeconds: providerLiveProgress.deadlines.runMs / 1000, collectionSeconds: providerLiveProgress.deadlines.collectionMs / 1000, sealingSeconds: providerLiveProgress.deadlines.sealingMs / 1000, cleanupSeconds: providerLiveProgress.deadlines.cleanupMs / 1000 }) }}</p>
+        <p>{{ lazyStrings.ModelSupportInvestigationSession__native_recording_is_not_correctness({ recording: nativeRecording }) }}</p>
+      </section>
+      <p v-if="providerRetention !== undefined" data-testid="model-support-provider-retention" tw-class="px-6 py-2 text-xs text-gray-500">{{ lazyStrings.ModelSupportInvestigationSession__recording_retention_budget({ retainedMiB: Math.ceil(providerRetention.retained.nativeBinaryBytes / 1048576), retainedCharacters: providerRetention.retained.nativeJsonCharacters + providerRetention.retained.providerJsonCharacters, reservedMiB: Math.ceil(providerRetention.reserved.nativeBinaryBytes / 1048576), reservedCharacters: providerRetention.reserved.nativeJsonCharacters + providerRetention.reserved.providerJsonCharacters }) }}</p>
       <div v-if="teardownError !== undefined" role="alert" data-testid="model-support-investigation-teardown-error" tw-class="px-6 py-3 text-sm text-red-600 dark:text-red-300">
         <p>{{ lazyStrings.ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another() }}</p>
         <p>{{ teardownError }}</p>
@@ -2087,7 +2326,7 @@ defineExpose({
         <button
           v-if="started"
           type="button"
-          :disabled="!sessionReady || teardownError !== undefined || (run === undefined && targetExecutions.length === 0) || evidenceExporting"
+          :disabled="(run === undefined && targetExecutions.length === 0) || evidenceExporting"
           tw-class="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           data-testid="model-support-investigation-download"
           @click="downloadPartialEvidence"

@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { archiveFor, assertRawModelSelection, assertRawTokenizer, installRawReplay, jsonBody, start } from './harness';
+import { originalBundledJinjaTemplate } from '../../../../../../../build/transformers-js-fixes/jinja-template-fixture';
 
 const modelId = 'LiquidAI/LFM2.5-230M-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
@@ -23,14 +24,39 @@ describe('LFM2.5 230M raw metadata replay', () => {
     await assertRawTokenizer({ modelId, expectedProcessor: undefined, template: 'construction-only' });
   });
 
-  it('rejects the original generation template tag in the pinned TJS parser', async () => {
+  it('renders the unmodified generation-tag template through the production browser artifact', async () => {
+    await assertRawTokenizer({ modelId, expectedProcessor: undefined, template: 'render' });
+  });
+
+  it('preserves assistant body and turn delimiters inside the original generation block', async () => {
+    const archive = await archiveFor({ modelId });
+    const { harness: h } = await start({ archive, bodyPaths: [] });
+    const tokenizer = await h.runtime.AutoTokenizer.from_pretrained(modelId, { revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined });
+    const rendered = tokenizer.apply_chat_template([
+      { role: 'user', content: 'Hello world' },
+      { role: 'assistant', content: 'Original assistant body.' },
+    ], { tokenize: false, add_generation_prompt: true });
+    expect(rendered).toBe(`\
+<|startoftext|><|im_start|>user
+Hello world<|im_end|>
+<|im_start|>assistant
+Original assistant body.<|im_end|>
+<|im_start|>assistant
+`);
+    expect(h.bodyReads).toEqual([]);
+    expect(h.sessions).not.toHaveBeenCalled();
+    expect(h.guardedFetch).not.toHaveBeenCalled();
+  });
+
+  it('retains the original generation-tag failure in the unmodified pinned browser parser', async () => {
     const archive = await archiveFor({ modelId });
     const originalTemplate = z.string().parse(jsonBody({ archive, path: 'tokenizer_config.json' }).chat_template);
     expect(originalTemplate).toMatch(/\{%[- ]*generation\s*[-]?%\}/u);
     const { harness: h } = await start({ archive, bodyPaths: [] });
     const tokenizer = await h.runtime.AutoTokenizer.from_pretrained(modelId, { revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined });
     expect(tokenizer.encode('Hello world', { add_special_tokens: false }).length).toBeGreaterThan(0);
-    expect(() => tokenizer.apply_chat_template([{ role: 'user', content: 'Hello world' }], { tokenize: false, add_generation_prompt: true })).toThrow('Unknown statement type: generation');
+    const OriginalTemplate = originalBundledJinjaTemplate();
+    expect(() => new OriginalTemplate(originalTemplate)).toThrow('Unknown statement type: generation');
     expect(h.sessions).not.toHaveBeenCalled();
     expect(h.guardedFetch).not.toHaveBeenCalled();
   });

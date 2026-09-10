@@ -2,6 +2,7 @@ import type { DownloadVerificationCachedRevisionInventory } from '@/features/tra
 import type { DownloadVerificationCachedRevisionAcceptanceResult } from '@/features/transformers-js/download-verification/logic/run-cached-revision-acceptance-orchestration';
 import type { DownloadVerificationProductionDownloadPreparationRun } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
+import type { ProductionLoadReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
 import type {
   DownloadVerificationModelArtifactRequestObservation,
   DownloadVerificationRun,
@@ -16,7 +17,7 @@ export type DownloadVerificationEvidenceStability =
 export interface DownloadVerificationRuntimeCompletionEvidence {
   schemaVersion: 1;
   status: 'accepted' | 'failed' | 'exhausted';
-  source: 'reused-production-cache' | 'production-download-preparation' | 'cache-only-unavailable' | 'cache-reuse-failed';
+  source: 'reused-production-cache' | 'production-download-preparation' | 'cache-only-unavailable' | 'cache-reuse-failed' | 'ordinary-provider-load';
   repositoryResolvedRevision: string;
   cacheRevision: string | null;
   loaderRevisionOption: string | null;
@@ -26,6 +27,7 @@ export interface DownloadVerificationRuntimeCompletionEvidence {
   cacheAfter: DownloadVerificationCachedRevisionInventory | undefined;
   cacheInspectionError: string | undefined;
   error: { name: string; message: string } | undefined;
+  receipt?: ProductionLoadReceipt;
 }
 
 export interface DownloadVerificationEvidenceInput {

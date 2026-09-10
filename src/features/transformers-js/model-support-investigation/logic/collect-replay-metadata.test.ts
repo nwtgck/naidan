@@ -1,3 +1,4 @@
+// @vitest-environment node
 import JSZip from 'jszip';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { classifyReplayMetadataAccess, collectReplayMetadata, REPLAY_METADATA_FILE_BYTES, REPLAY_METADATA_TARGET_BYTES, REPLAY_METADATA_BATCH_BYTES, REPLAY_METADATA_PATHS, replayMetadataSummarySchema, validateReplayMetadataContent, type InvestigationReplayMetadataSnapshot } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
@@ -6,7 +7,7 @@ import { createInitialInvestigationCheckpoint } from '@/features/transformers-js
 import { createModelSupportInvestigationEvidenceWorker } from '@/features/transformers-js/model-support-investigation/evidence-worker/impl';
 import { createModelSupportInvestigationEvidenceWorkerRequest } from '@/features/transformers-js/model-support-investigation/evidence-worker/request';
 import { createModelSupportInvestigationBatchEvidenceWorkerRequest } from '@/features/transformers-js/model-support-investigation/evidence-worker/batch-request';
-import { addReplayMetadataToZip } from '@/features/transformers-js/model-support-investigation/logic/replay-metadata-export';
+import { addReplayMetadataToEvidenceFiles } from '@/features/transformers-js/model-support-investigation/logic/replay-metadata-export';
 
 const revision = 'a'.repeat(40);
 const modelId = 'public/model';
@@ -202,7 +203,7 @@ describe('replay metadata Evidence integration', () => {
     expect(replayMetadataSummarySchema.safeParse({ ...snapshot.summary, files: [snapshot.summary.files[0], snapshot.summary.files[0]] }).success).toBe(false);
     const total = REPLAY_METADATA_FILE_BYTES * REPLAY_METADATA_PATHS.length;
     const forged = { ...snapshot.summary, receivedBytes: total, retainedBytes: total, files: REPLAY_METADATA_PATHS.map(path => ({ path, status: 'collected', source: 'remote-exact', byteLength: REPLAY_METADATA_FILE_BYTES, sha256: 'a'.repeat(64) })) };
-    await expect(addReplayMetadataToZip({ zip: new JSZip(), summary: forged, sidecars: undefined })).rejects.toThrow();
+    await expect(addReplayMetadataToEvidenceFiles({ files: new Map(), summary: forged, sidecars: undefined })).rejects.toThrow();
     const large = new Blob(['{}']);
     Object.defineProperty(large, 'size', { value: REPLAY_METADATA_BATCH_BYTES + 1 });
     const read = vi.fn();
@@ -234,11 +235,11 @@ describe('replay metadata Evidence integration', () => {
 
   it('rejects forged bytes/paths, and labels missing sidecars rather than claiming archived replayability', async () => {
     const snapshot = await collectReplayMetadata(options({ remoteFetch: async () => new Response(bytes) }));
-    await expect(addReplayMetadataToZip({ zip: new JSZip(), summary: snapshot.summary, sidecars: [{ path: '../secret', blob: new Blob([bytes]) }] })).rejects.toThrow();
-    await expect(addReplayMetadataToZip({ zip: new JSZip(), summary: snapshot.summary, sidecars: [{ path: 'config.json', blob: new Blob(['x'.repeat(bytes.length)]) }] })).rejects.toThrow();
-    const zip = new JSZip();
-    await addReplayMetadataToZip({ zip, summary: snapshot.summary, sidecars: undefined });
-    const index = JSON.parse(await zip.file('replay-metadata/index.json')!.async('string'));
+    await expect(addReplayMetadataToEvidenceFiles({ files: new Map(), summary: snapshot.summary, sidecars: [{ path: '../secret', blob: new Blob([bytes]) }] })).rejects.toThrow();
+    await expect(addReplayMetadataToEvidenceFiles({ files: new Map(), summary: snapshot.summary, sidecars: [{ path: 'config.json', blob: new Blob(['x'.repeat(bytes.length)]) }] })).rejects.toThrow();
+    const files = new Map<string, Blob>();
+    await addReplayMetadataToEvidenceFiles({ files, summary: snapshot.summary, sidecars: undefined });
+    const index = JSON.parse(await files.get('replay-metadata/index.json')!.text());
     expect(index.files[0].archived).toBe(false);
   });
 });

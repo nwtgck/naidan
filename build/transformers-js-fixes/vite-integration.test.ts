@@ -45,6 +45,9 @@ function assertPatchedConsumers({ code }: { code: string }) {
   expect(preparation.indexOf('typeConfig.sessions(')).toBeGreaterThan(preparation.indexOf('await get_optional_configs'));
   expect(preparation.indexOf('await constructSessions(')).toBeGreaterThan(preparation.indexOf('typeConfig.sessions('));
   expect(code).toContain('TransformersJsOptionalConfigurationError');
+  expect(code).toContain('case "generation":');
+  expect(code).toContain('generation takes no arguments');
+  expect(code).toContain('Expected endgeneration');
 }
 
 it('builds the replay library through only the production fix integration plugin and preserves ESM ORT identities', async () => {

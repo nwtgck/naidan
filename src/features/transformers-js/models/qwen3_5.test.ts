@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
   isQwen3_5Model,
-  TEST_ONLY as TRANSFORMERS_JS_QWEN3_5_TEST_ONLY,
+  assessQwen3_5NoToolContinuationEligibility,
+  normalizeQwen3_5ToolCallsForTemplate,
+  normalizeQwen3_5ProcessorInputs,
 } from './qwen3_5';
 import { toToolCallId } from '@/01-models/ids';
+import type { ChatMessage } from '@/01-models/types';
+
+// Historical comparisons only: neither helper is part of current Production.
+// Real-path tests separately require one full native render and no retry.
+function historicalRetryDecision({ error, isQwen3_5ToolContinuation }: { error: unknown; isQwen3_5ToolContinuation: boolean }): boolean {
+  return isQwen3_5ToolContinuation && error instanceof Error && error.message.includes("Cannot read properties of undefined (reading 'inputNames')");
+}
+function historicalToolContinuation({ promptHistory, messages }: { promptHistory: string; messages: ChatMessage[] }): string {
+  const history = promptHistory.endsWith('\n') ? promptHistory.slice(0, -1) : promptHistory;
+  const results = messages.filter(message => message.role === 'tool').map(message => `<tool_response>\n${typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}\n</tool_response>`).join('\n');
+  return `${history}\n${results}\n<|im_start|>assistant\n<think>\n`;
+}
 
 describe('transformers-js-qwen3_5', () => {
   it('detects Qwen3.5 from model type or model id', () => {
@@ -23,8 +37,8 @@ describe('transformers-js-qwen3_5', () => {
     })).toBe(false);
   });
 
-  it('explains why a full next-turn conversation is not currently eligible for no-tool KV continuation', () => {
-    const decision = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.assessQwen3_5NoToolContinuationEligibility({
+  it('recognizes the assistant plus next user shape without claiming token-prefix or cache validity', () => {
+    const decision = assessQwen3_5NoToolContinuationEligibility({
       messages: [
         { role: 'user', content: 'hello' },
         { role: 'assistant', content: 'hi' },
@@ -32,22 +46,18 @@ describe('transformers-js-qwen3_5', () => {
       ],
       conversationState: {
         modelId: 'hf.co/onnx-community/Qwen3.5-2B-ONNX',
-        promptHistory: 'prompt-history',
         messageCount: 1,
-        imageGridThw: undefined,
-        videoGridThw: undefined,
       },
       activeModelId: 'hf.co/onnx-community/Qwen3.5-2B-ONNX',
     });
 
     expect(decision).toEqual({
-      status: 'ineligible',
-      reason: 'message-count-mismatch',
+      status: 'eligible',
     });
   });
 
   it('normalizes JSON-string tool arguments to objects for the chat template', () => {
-    const normalized = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.normalizeQwen3_5ToolCallsForTemplate({
+    const normalized = normalizeQwen3_5ToolCallsForTemplate({
       toolCalls: [
         {
           id: toToolCallId({ raw: 'call_1' }),
@@ -66,19 +76,35 @@ describe('transformers-js-qwen3_5', () => {
     });
   });
 
+  it('rejects adjacent users as a continuation rather than reusing an unrelated cache', () => {
+    expect(assessQwen3_5NoToolContinuationEligibility({
+      messages: [{ role: 'user', content: 'first' }, { role: 'user', content: 'next' }],
+      conversationState: { modelId: 'synthetic', messageCount: 1 }, activeModelId: 'synthetic',
+    })).toEqual({ status: 'ineligible', reason: 'message-count-mismatch' });
+  });
+
+  it('requires the inserted assistant role even when the message count matches', () => {
+    expect(assessQwen3_5NoToolContinuationEligibility({
+      messages: [{ role: 'user', content: 'first' }, { role: 'system', content: 'not an assistant' }, { role: 'user', content: 'next' }],
+      conversationState: { modelId: 'synthetic', messageCount: 1 }, activeModelId: 'synthetic',
+    })).toEqual({ status: 'ineligible', reason: 'preceding-message-is-not-assistant' });
+  });
+
+  it('preserves a JSON argument named __proto__ while normalizing native dictionaries', () => {
+    const normalized = normalizeQwen3_5ToolCallsForTemplate({ toolCalls: [{
+      id: toToolCallId({ raw: 'synthetic-proto' }), type: 'function', function: { name: 'lookup', arguments: '{"__proto__":{"city":"Tokyo"}}' },
+    }] });
+    expect(JSON.stringify(normalized[0]!.function.arguments)).toBe('{"__proto__":{"city":"Tokyo"}}');
+    expect(Object.getPrototypeOf(normalized[0]!.function.arguments)).toBe(Object.prototype);
+  });
+
   it('removes null multimodal keys from continuation inputs', () => {
-    const mergedInputs = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.applyQwen3_5ContinuationState({
+    const mergedInputs = normalizeQwen3_5ProcessorInputs({
       inputs: {
         input_ids: [1, 2, 3],
         attention_mask: [1, 1, 1],
         pixel_values: null,
         image_grid_thw: null,
-      },
-      continuationState: {
-        modelId: 'hf.co/onnx-community/Qwen3.5-2B-ONNX',
-        pastKeyValues: {},
-        imageGridThw: undefined,
-        videoGridThw: undefined,
       },
     });
 
@@ -86,20 +112,20 @@ describe('transformers-js-qwen3_5', () => {
     expect(mergedInputs).not.toHaveProperty('image_grid_thw');
   });
 
-  it('retries only for the known transformers.js continuation crash', () => {
-    expect(TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.shouldRetryQwen3_5WithoutContinuation({
+  it('retains the historical crash retry classifier only as a test-local comparison', () => {
+    expect(historicalRetryDecision({
       error: new TypeError("Cannot read properties of undefined (reading 'inputNames')"),
       isQwen3_5ToolContinuation: true,
     })).toBe(true);
 
-    expect(TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.shouldRetryQwen3_5WithoutContinuation({
+    expect(historicalRetryDecision({
       error: new Error('some other failure'),
       isQwen3_5ToolContinuation: true,
     })).toBe(false);
   });
 
-  it('builds tool continuation prompts from the previously decoded history', () => {
-    const prompt = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.buildQwen3_5ToolContinuationPrompt({
+  it('retains the historical decoded-history tool suffix only as a test-local comparison', () => {
+    const prompt = historicalToolContinuation({
       promptHistory: `\
 <|im_start|>user
 hello<|im_end|>

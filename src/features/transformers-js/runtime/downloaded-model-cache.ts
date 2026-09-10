@@ -69,10 +69,11 @@ export function createDownloadedModelCacheScope({ modelId, revision }: {
   };
 }
 
-export function createDownloadedModelReadOnlyCache({ modelId, revision, onMatchObservation }: {
+export function createDownloadedModelReadOnlyCache({ modelId, revision, onMatchObservation, onScopedMatchObservation }: {
   modelId: string,
   revision: string | undefined,
   onMatchObservation?: ({ observation }: { observation: OpfsModelCacheMatchObservation }) => void,
+  onScopedMatchObservation?: ({ resourceKey, result }: { resourceKey: string; result: 'hit' | 'miss' }) => void,
 }): ReturnType<typeof createOpfsModelCache> {
   const scope = createDownloadedModelCacheScope({ modelId, revision });
   const cache = createOpfsModelCache({ mutationPolicy: 'read-only', revisionAliases: [] });
@@ -94,6 +95,17 @@ export function createDownloadedModelReadOnlyCache({ modelId, revision, onMatchO
         }
       })();
       const response = scopedUrl === undefined ? undefined : await cache.match(scopedUrl);
+      switch (resolution.kind) {
+      case 'admitted': {
+        // Receipt recording must not change cache or Load settlement semantics.
+        try {
+          onScopedMatchObservation?.({ resourceKey: resolution.resourceKey, result: response === undefined ? 'miss' : 'hit' });
+        } catch { /* Observation is advisory. */ }
+        break;
+      }
+      case 'outside-scope': case 'unsupported-method': break;
+      default: { const exhaustive: never = resolution; throw new Error('Unknown receipt cache scope: ' + exhaustive); }
+      }
       const aliased = scopedUrl !== undefined && scopedUrl !== urlString;
       // Each invocation owns its original identity across concurrent matches.
       onMatchObservation?.({ observation: {

@@ -1,16 +1,32 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as Comlink from 'comlink';
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from './runtime/fixtures/production-runtime-startup-fixture';
 
-// Mock Worker class
-class MockWorker {
-  terminate = vi.fn();
-  postMessage = vi.fn();
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
-  constructor() {}
+// Keep the real host startup/lease gate before the controlled progress RPC.
+// This facade does not execute model inference or native Worker communication.
+const workers: MockWorker[] = [];
+class MockWorker extends EventTarget {
+  private active = true;
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+  terminate = vi.fn(() => {
+    this.active = false;
+  });
+  postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+  // Worker constructors are a browser-platform positional boundary.
+  constructor(url: URL) {
+    super();
+    workers.push(this);
+    queueMicrotask(() => {
+      if (this.active && url.pathname.endsWith('/worker/bootstrap.ts')) this.startup.start();
+    });
+  }
 }
 
-vi.stubGlobal('Worker', MockWorker);
+afterEach(() => {
+  for (const worker of workers.splice(0)) worker.dispatchEvent(new Event('error'));
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 // Mock Comlink
 vi.mock('comlink', () => {
@@ -40,6 +56,10 @@ describe('transformersJsService progress logic', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.stubGlobal('Worker', MockWorker);
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
+    // Only the progress clock is synthetic; startup microtasks/timers stay real.
+    vi.useFakeTimers({ toFake: ['Date'] });
 
     // Clear navigator mock
     vi.stubGlobal('navigator', {
@@ -82,8 +102,6 @@ describe('transformersJsService progress logic', () => {
   });
 
   it('should stay in discovery phase (max 15%) for 3 seconds after heavy file seen', async () => {
-    vi.useFakeTimers();
-
     const mockRemote = {
       loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         // Metadata
@@ -117,7 +135,6 @@ describe('transformersJsService progress logic', () => {
   });
 
   it('should transition to active download phase after 3 seconds', async () => {
-    vi.useFakeTimers();
     const now = Date.now();
     vi.setSystemTime(now);
 
@@ -169,7 +186,7 @@ describe('transformersJsService progress logic', () => {
 
         // Actually, let's trigger Phase 3
         const startTime = Date.now();
-        vi.stubGlobal('Date', { now: () => startTime + 5000 }); // Force Phase 3
+        vi.setSystemTime(startTime + 5000); // Force Phase 3 without replacing the Date constructor.
 
         cb({ status: 'initiate', name: 'heavy.bin' });
         cb({ status: 'progress', name: 'heavy.bin', loaded: 100000000, total: 200000000 }); // 50% (of 200MB floor)
@@ -208,7 +225,7 @@ describe('transformersJsService progress logic', () => {
     const mockRemote = {
       loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         const startTime = Date.now();
-        vi.stubGlobal('Date', { now: () => startTime + 5000 }); // Force Phase 3
+        vi.setSystemTime(startTime + 5000); // Force Phase 3 without replacing the Date constructor.
 
         cb({ status: 'done', name: 'model.onnx', loaded: 1000000000, total: 1000000000 });
 

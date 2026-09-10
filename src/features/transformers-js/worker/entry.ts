@@ -7,6 +7,7 @@ import {
   AutoModelForImageTextToText,
   InterruptableStoppingCriteria,
   ModelRegistry,
+  Tensor,
   env,
   type PreTrainedModel,
   type PreTrainedTokenizer,
@@ -14,9 +15,12 @@ import {
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import { exposeWorkerRemote, type WorkerServerApi } from '@/utils/worker-transport';
+import { createGenerationDelivery } from './generation-delivery';
+import { splitAssistantThinking } from '@/logic/assistant-thinking';
 import type {
   ProgressInfo,
   ModelLoadResult,
+  ProductionModelLoadAcceptanceResult,
   ITransformersJsWorker,
   WorkerToolDefinition,
   TransformersJsProductionInvestigationAutoClass,
@@ -60,6 +64,8 @@ import { importProductionRuntimeModule } from '@/features/transformers-js/runtim
 import type { RequestProductionRuntimeModule } from './production-worker-startup';
 import { createHostedTransformersModelFetch } from '@/features/transformers-js/runtime/model-fetch';
 import { createDownloadedModelReadOnlyCache } from '@/features/transformers-js/runtime/downloaded-model-cache';
+import { createProductionLoadReceiptRecorder, type ProductionLoadReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
+import { createProductionLoadReceiptSlot, type ProductionLoadReceiptOwner } from './load-receipt';
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
 import {
   downloadedModelCandidatePlanError,
@@ -71,6 +77,40 @@ import { createRequiredDownloadedResourceOperation, disposeRejectedDownloadedRun
 import { isTransformersJsOptionalConfigurationError } from '@/features/transformers-js/runtime/transformers-js-optional-configuration-error';
 import { DOWNLOADED_MODEL_PREPARATION_ERROR_NAME, downloadedModelPreparationError, withDownloadedModelPreparationPhase } from '@/features/transformers-js/runtime/downloaded-model-preparation-error';
 import { promiseAllKeyed } from '@/utils/promise';
+import { createGenerationCapture, recordGenerationCapture, type GenerationCaptureCall } from './generation-capture';
+import { createProductionLoadIdentityTracker } from './load-identity';
+import {
+  generationCaptureRequestSchema, generationCaptureReadRequestSchema,
+  type GenerationCaptureRequest, type GenerationCaptureReadRequest, type GenerationCaptureReadResult,
+} from './generation-capture-protocol';
+
+let generationCapture: ReturnType<typeof createGenerationCapture> | undefined;
+let generationCaptureLimits: string | undefined;
+const productionLoadIdentity = createProductionLoadIdentityTracker();
+const productionLoadReceipt = createProductionLoadReceiptSlot();
+
+function beginGenerationCapture({ request }: { request: GenerationCaptureRequest | undefined }): GenerationCaptureCall | undefined {
+  if (request === undefined) return undefined;
+  let call: GenerationCaptureCall | undefined;
+  recordGenerationCapture({ record: () => {
+    const parsed = generationCaptureRequestSchema.safeParse(request);
+    if (!parsed.success) {
+      generationCapture?.noteIncomplete({ reason: 'invalid-context' });
+      return;
+    }
+    const { context, limits } = parsed.data;
+    if (generationCapture === undefined) {
+      generationCapture = createGenerationCapture({ run: { runId: context.runId, workerEpoch: context.workerEpoch }, limits, tensorClass: Tensor });
+      generationCaptureLimits = JSON.stringify(limits);
+    }
+    if (generationCaptureLimits !== JSON.stringify(limits)) {
+      generationCapture.noteIncomplete({ reason: 'limits-mismatch' });
+      return;
+    }
+    call = generationCapture.beginCall({ context, loadIdentity: productionLoadIdentity.snapshot() });
+  } });
+  return call;
+}
 
 /**
  * Internal interface for properties found on Transformers.js model instances
@@ -148,10 +188,12 @@ const generationRuntimeState: WorkerGenerationRuntimeState = {
   gemma4Processor: null,
   qwen3_5Processor: null,
   gptOssPastKeyValues: null,
-  qwen3_5PastKeyValues: null,
   qwen3_5ConversationState: undefined,
+  generationStateOwner: {},
+  qwen3_5SequenceCache: undefined,
 };
 const stoppingCriteria = new InterruptableStoppingCriteria();
+let activeStoppingCriteria = stoppingCriteria;
 
 /**
  * Runs the memory/session loading phase for a model that is already downloaded.
@@ -198,18 +240,26 @@ function debugLog({ event, details }: { event: string, details: Record<string, u
   });
 }
 
-function clearQwen3_5ContinuationState(): void {
+function invalidateGenerationState(): void {
+  generationRuntimeState.generationStateOwner = {};
+  generationRuntimeState.gptOssPastKeyValues = null;
+  generationRuntimeState.qwen3_5SequenceCache = undefined;
   generationRuntimeState.qwen3_5ConversationState = undefined;
 }
 
 function resetGenerationContinuationState(): void {
-  generationRuntimeState.gptOssPastKeyValues = null;
-  generationRuntimeState.qwen3_5PastKeyValues = null;
-  clearQwen3_5ContinuationState();
+  invalidateGenerationState();
   stoppingCriteria.reset();
 }
 
-function clearLoadedRuntimeState(): void {
+function clearLoadedRuntimeState({ loadIdentityOperation }: {
+  loadIdentityOperation: ReturnType<typeof productionLoadIdentity.beginLoad> | undefined,
+}): void {
+  // Diagnostic invalidation never decides whether the actual runtime clears.
+  recordGenerationCapture({ record: () => {
+    if (loadIdentityOperation === undefined) productionLoadIdentity.clear();
+    else loadIdentityOperation.clear();
+  } });
   model = null;
   gemma4Processor = null;
   generationRuntimeState.gemma4Processor = null;
@@ -249,6 +299,7 @@ type ProductionLoadRoute = {
   candidate: ProductionLoadCandidate,
   loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[],
   runtimePreparationDurationMs: number,
+  receipt: ProductionLoadReceipt | undefined,
 };
 
 async function loadDownloadedProductionModelCandidate({
@@ -326,6 +377,8 @@ async function loadDownloadedProductionTokenizerOrProcessor({
 
 
 async function loadProductionRuntime({
+  loadIdentitySource,
+  loadReceiptOwner,
   modelId,
   revision,
   candidates,
@@ -338,6 +391,8 @@ async function loadProductionRuntime({
   onCandidateAttempt = () => undefined,
   onRuntimePhase,
 }: {
+  loadIdentitySource: 'ordinary' | 'non-ordinary',
+  loadReceiptOwner: ProductionLoadReceiptOwner | undefined,
   modelId: string,
   revision: string | undefined,
   candidates: ProductionLoadCandidate[],
@@ -354,242 +409,262 @@ async function loadProductionRuntime({
     phase: 'config' | 'candidate-plan' | 'model-session' | 'tokenizer-processor' | 'ready',
   }) => void,
 }): Promise<ProductionLoadRoute> {
-  const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-  const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
-  assertGemma4RuntimeSupport({ modelId: cleanModelId });
-  const rawProgressCallback: TransformersProgressCallback = info => progressCallback({ info });
-  const runtimeModelCache = modelCache ?? createDownloadedModelReadOnlyCache({
-    modelId: cleanModelId,
-    revision,
-  });
+  invalidateGenerationState();
+  const receiptOperation = productionLoadReceipt.begin({ owner: loadReceiptOwner });
+  const receiptRecorder = createProductionLoadReceiptRecorder({ modelId, revision });
+  let loadIdentityOperation: ReturnType<typeof productionLoadIdentity.beginLoad> | undefined;
+  recordGenerationCapture({ record: () => {
+    loadIdentityOperation = productionLoadIdentity.beginLoad({ source: loadIdentitySource, modelId, revision });
+  } });
+  try {
+    const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
+    const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
+    assertGemma4RuntimeSupport({ modelId: cleanModelId });
+    const rawProgressCallback: TransformersProgressCallback = info => progressCallback({ info });
+    const runtimeModelCache = modelCache ?? createDownloadedModelReadOnlyCache({
+      modelId: cleanModelId,
+      revision,
+      onScopedMatchObservation: receiptRecorder.observe,
+    });
 
-  return await withDownloadedModelAccessMode({
-    modelCache: runtimeModelCache,
-    cacheOnlyFetch,
-    run: async () => {
-      onRuntimePhase?.({ phase: 'config' });
-      const config = await withDownloadedModelPreparationPhase({
-        phase: 'config',
-        run: () => AutoConfig.from_pretrained(cleanModelId, {
-          local_files_only: true,
-          progress_callback: info => runtimePreparationProgressCallback({ info }),
-          ...(revision === undefined ? {} : { revision }),
-        }),
-      });
-      const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
-      const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
-        modelId: cleanModelId,
-        modelType,
-      });
-      onRuntimePhase?.({ phase: 'candidate-plan' });
-      const candidatePlan = await withDownloadedModelPreparationPhase({
-        phase: 'candidate-plan',
-        run: () => planDownloadedModelCandidates({
-          modelId: cleanModelId,
-          revision,
-          candidates,
-          modelCache: runtimeModelCache,
-          getModelFiles: async ({ candidate }) => selectProductionModelResources({ autoClass, config, candidate }).paths,
-          getRuntimeFiles: async () => {
-            const tokenizerPaths = await ModelRegistry.get_tokenizer_files(cleanModelId);
-            switch (runtimeArtifactLoader) {
-            case 'tokenizer':
-              return tokenizerPaths;
-            case 'gemma4-processor':
-            case 'qwen3_5-processor':
-              return [...tokenizerPaths, ...await ModelRegistry.get_processor_files(cleanModelId)];
-            default: {
-              const _ex: never = runtimeArtifactLoader;
-              throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
-            }
-            }
-          },
-          workerLocationUrl: self.location.href,
-        }),
-      });
-      const completeCandidates = candidatePlan
-        .filter(entry => entry.status === 'checked')
-        .filter(entry => entry.complete);
-      if (completeCandidates.length === 0) {
-        throw downloadedModelCandidatePlanError({
-          modelId: cleanModelId,
-          revision,
-          entries: candidatePlan,
+    const route = await withDownloadedModelAccessMode({
+      modelCache: runtimeModelCache,
+      cacheOnlyFetch,
+      run: async () => {
+        onRuntimePhase?.({ phase: 'config' });
+        const config = await withDownloadedModelPreparationPhase({
+          phase: 'config',
+          run: () => AutoConfig.from_pretrained(cleanModelId, {
+            local_files_only: true,
+            progress_callback: info => runtimePreparationProgressCallback({ info }),
+            ...(revision === undefined ? {} : { revision }),
+          }),
         });
-      }
-
-      let selectedCandidate: ProductionLoadCandidate | undefined;
-      let selectedResources: ReturnType<typeof createRequiredDownloadedResourceOperation> | undefined;
-      let lastError: unknown;
-      const loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
-      for (const plan of completeCandidates) {
-        const { candidate } = plan;
-        const resources = createRequiredDownloadedResourceOperation({
+        const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
+        const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
           modelId: cleanModelId,
-          revision,
-          // AutoModel re-reads this required config after the initial AutoConfig
-          // and plan. Registry metadata lists do not include that second read.
-          requiredPaths: ['config.json', ...plan.requiredModelPaths, ...plan.requiredRuntimePaths],
-          workerLocationUrl: self.location.href,
-          modelCache: runtimeModelCache,
-          cacheOnlyFetch,
+          modelType,
         });
-        onCandidateStart({ candidate });
-        // This boundary includes cache reads and session creation. File progress
-        // alone cannot distinguish those operations or prove that either ended.
-        onRuntimePhase?.({ phase: 'model-session' });
-        const startedAt = performance.now();
-        debugLog({
-          event: 'worker tryLoad start',
-          details: {
-            activeModelId: cleanModelId,
+        onRuntimePhase?.({ phase: 'candidate-plan' });
+        const candidatePlan = await withDownloadedModelPreparationPhase({
+          phase: 'candidate-plan',
+          run: () => planDownloadedModelCandidates({
+            modelId: cleanModelId,
             revision,
-            autoClass,
-            device: candidate.device,
-            dtype: candidate.dtype,
-          },
+            candidates,
+            modelCache: runtimeModelCache,
+            getModelFiles: async ({ candidate }) => selectProductionModelResources({ autoClass, config, candidate }).paths,
+            getRuntimeFiles: async () => {
+              const tokenizerPaths = await ModelRegistry.get_tokenizer_files(cleanModelId);
+              switch (runtimeArtifactLoader) {
+              case 'tokenizer':
+                return tokenizerPaths;
+              case 'gemma4-processor':
+              case 'qwen3_5-processor':
+                return [...tokenizerPaths, ...await ModelRegistry.get_processor_files(cleanModelId)];
+              default: {
+                const _ex: never = runtimeArtifactLoader;
+                throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
+              }
+              }
+            },
+            workerLocationUrl: self.location.href,
+          }),
         });
-        try {
-          model = await withDownloadedModelAccessMode({
-            modelCache: resources.cache,
-            cacheOnlyFetch: resources.fetch,
-            run: () => loadDownloadedProductionModelCandidate({
-              cleanModelId,
-              autoClass,
-              candidate,
-              revision,
-              progressCallback: rawProgressCallback,
-            }),
+        const completeCandidates = candidatePlan
+          .filter(entry => entry.status === 'checked')
+          .filter(entry => entry.complete);
+        if (completeCandidates.length === 0) {
+          throw downloadedModelCandidatePlanError({
+            modelId: cleanModelId,
+            revision,
+            entries: candidatePlan,
           });
-          // Upstream tryCache and metadata prepasses may swallow our exception.
-          // A returned model is not success until this candidate's reads agree.
-          resources.assertHealthy();
-          const modelLoadDurationMs = Math.max(0, performance.now() - startedAt);
-          selectedCandidate = candidate;
-          selectedResources = resources;
-          const rawAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
-            candidate,
-            status: 'passed',
-            modelLoadDurationMs,
-            modelLoadProgress: undefined,
-            error: undefined,
-          };
-          const attempt = onCandidateAttempt({ attempt: rawAttempt }) ?? rawAttempt;
-          loadAttempts.push(attempt);
+        }
+
+        let selectedCandidate: ProductionLoadCandidate | undefined;
+        let selectedResources: ReturnType<typeof createRequiredDownloadedResourceOperation> | undefined;
+        let selectedRequiredPaths: string[] = [];
+        let lastError: unknown;
+        const loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
+        for (const plan of completeCandidates) {
+          const { candidate } = plan;
+          const resources = createRequiredDownloadedResourceOperation({
+            modelId: cleanModelId,
+            revision,
+            // AutoModel re-reads this required config after the initial AutoConfig
+            // and plan. Registry metadata lists do not include that second read.
+            requiredPaths: ['config.json', ...plan.requiredModelPaths, ...plan.requiredRuntimePaths],
+            workerLocationUrl: self.location.href,
+            modelCache: runtimeModelCache,
+            cacheOnlyFetch,
+          });
+          onCandidateStart({ candidate });
+          // This boundary includes cache reads and session creation. File progress
+          // alone cannot distinguish those operations or prove that either ended.
+          onRuntimePhase?.({ phase: 'model-session' });
+          const startedAt = performance.now();
           debugLog({
-            event: 'worker tryLoad success',
+            event: 'worker tryLoad start',
             details: {
               activeModelId: cleanModelId,
               revision,
               autoClass,
               device: candidate.device,
               dtype: candidate.dtype,
-              elapsedMs: Math.round(modelLoadDurationMs),
             },
           });
-          break;
-        } catch (error) {
-          lastError = typeof error === 'number' ? new Error(`Numeric error ${error}`) : error;
           try {
-            await resources.close();
-          } catch (cleanupError) {
-            lastError = cleanupError;
-          }
-          try {
+            model = await withDownloadedModelAccessMode({
+              modelCache: resources.cache,
+              cacheOnlyFetch: resources.fetch,
+              run: () => loadDownloadedProductionModelCandidate({
+                cleanModelId,
+                autoClass,
+                candidate,
+                revision,
+                progressCallback: rawProgressCallback,
+              }),
+            });
+            // Upstream tryCache and metadata prepasses may swallow our exception.
+            // A returned model is not success until this candidate's reads agree.
             resources.assertHealthy();
-          } catch (resourceError) {
-            lastError = resourceError;
-          }
-          if (model !== null) {
-            const rejectedModel = model;
-            model = null;
-            // Cleanup must not replace the original required-resource failure.
+            const modelLoadDurationMs = Math.max(0, performance.now() - startedAt);
+            selectedCandidate = candidate;
+            selectedResources = resources;
+            selectedRequiredPaths = ['config.json', ...plan.requiredModelPaths, ...plan.requiredRuntimePaths];
+            const rawAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
+              candidate,
+              status: 'passed',
+              modelLoadDurationMs,
+              modelLoadProgress: undefined,
+              error: undefined,
+            };
+            const attempt = onCandidateAttempt({ attempt: rawAttempt }) ?? rawAttempt;
+            loadAttempts.push(attempt);
+            debugLog({
+              event: 'worker tryLoad success',
+              details: {
+                activeModelId: cleanModelId,
+                revision,
+                autoClass,
+                device: candidate.device,
+                dtype: candidate.dtype,
+                elapsedMs: Math.round(modelLoadDurationMs),
+              },
+            });
+            break;
+          } catch (error) {
+            lastError = typeof error === 'number' ? new Error(`Numeric error ${error}`) : error;
             try {
-              await disposeRejectedDownloadedRuntime({ dispose: () => rejectedModel.dispose(), cause: lastError });
+              await resources.close();
             } catch (cleanupError) {
               lastError = cleanupError;
             }
-          }
-          const modelLoadDurationMs = Math.max(0, performance.now() - startedAt);
-          const rawAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
-            candidate,
-            status: 'failed',
-            modelLoadDurationMs,
-            modelLoadProgress: undefined,
-            error: serializeError({ error: lastError }),
-          };
-          const attempt = onCandidateAttempt({ attempt: rawAttempt }) ?? rawAttempt;
-          loadAttempts.push(attempt);
-          debugLog({
-            event: 'worker tryLoad failure',
-            details: {
-              activeModelId: cleanModelId,
-              revision,
-              autoClass,
-              device: candidate.device,
-              dtype: candidate.dtype,
-              elapsedMs: Math.round(modelLoadDurationMs),
-              error: lastError instanceof Error ? lastError.message : String(lastError),
-            },
-          });
-          if (lastError instanceof RequiredDownloadedModelResourceError || lastError instanceof RequiredDownloadedResourceCleanupError
+            try {
+              resources.assertHealthy();
+            } catch (resourceError) {
+              lastError = resourceError;
+            }
+            if (model !== null) {
+              const rejectedModel = model;
+              model = null;
+              // Cleanup must not replace the original required-resource failure.
+              try {
+                await disposeRejectedDownloadedRuntime({ dispose: () => rejectedModel.dispose(), cause: lastError });
+              } catch (cleanupError) {
+                lastError = cleanupError;
+              }
+            }
+            const modelLoadDurationMs = Math.max(0, performance.now() - startedAt);
+            const rawAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
+              candidate,
+              status: 'failed',
+              modelLoadDurationMs,
+              modelLoadProgress: undefined,
+              error: serializeError({ error: lastError }),
+            };
+            const attempt = onCandidateAttempt({ attempt: rawAttempt }) ?? rawAttempt;
+            loadAttempts.push(attempt);
+            debugLog({
+              event: 'worker tryLoad failure',
+              details: {
+                activeModelId: cleanModelId,
+                revision,
+                autoClass,
+                device: candidate.device,
+                dtype: candidate.dtype,
+                elapsedMs: Math.round(modelLoadDurationMs),
+                error: lastError instanceof Error ? lastError.message : String(lastError),
+              },
+            });
+            if (lastError instanceof RequiredDownloadedModelResourceError || lastError instanceof RequiredDownloadedResourceCleanupError
             || isTransformersJsOptionalConfigurationError({ error: lastError })) {
-            clearLoadedRuntimeState();
-            throw lastError;
+              clearLoadedRuntimeState({ loadIdentityOperation });
+              throw lastError;
+            }
           }
         }
-      }
 
-      if (model === null || selectedCandidate === undefined || selectedResources === undefined) {
-        throw lastError instanceof Error ? lastError : new Error('No production load candidate succeeded');
-      }
-
-      const runtimePreparationStartedAt = performance.now();
-      onRuntimePhase?.({ phase: 'tokenizer-processor' });
-      let processor: Awaited<ReturnType<typeof loadDownloadedProductionTokenizerOrProcessor>>;
-      try {
-        processor = await withDownloadedModelAccessMode({
-          modelCache: selectedResources.cache,
-          cacheOnlyFetch: selectedResources.fetch,
-          run: () => loadDownloadedProductionTokenizerOrProcessor({
-            cleanModelId,
-            modelType,
-            revision,
-            progressCallback: info => runtimePreparationProgressCallback({ info }),
-          }),
-        });
-        selectedResources.assertHealthy();
-        await selectedResources.close();
-        selectedResources.assertHealthy();
-      } catch (error) {
-        // close may have already timed out; cleanup must still reach the model.
-        await selectedResources.close().catch(() => undefined);
-        const rejectedModel = model;
-        clearLoadedRuntimeState();
-        let resourceError = error;
-        try {
-          selectedResources.assertHealthy();
-        } catch (failure) {
-          resourceError = failure;
+        if (model === null || selectedCandidate === undefined || selectedResources === undefined) {
+          throw lastError instanceof Error ? lastError : new Error('No production load candidate succeeded');
         }
-        const preparationError = downloadedModelPreparationError({ phase: 'tokenizer-processor', cause: resourceError });
-        await disposeRejectedDownloadedRuntime({ dispose: () => rejectedModel.dispose(), cause: preparationError });
-        selectedResources.assertHealthy();
-        throw preparationError;
-      }
-      const runtimePreparationDurationMs = Math.max(0, performance.now() - runtimePreparationStartedAt);
-      onRuntimePhase?.({ phase: 'ready' });
 
-      return {
-        cleanModelId,
-        autoClass,
-        processor,
-        candidate: selectedCandidate,
-        loadAttempts,
-        runtimePreparationDurationMs,
-      };
-    },
-  });
+        const runtimePreparationStartedAt = performance.now();
+        onRuntimePhase?.({ phase: 'tokenizer-processor' });
+        let processor: Awaited<ReturnType<typeof loadDownloadedProductionTokenizerOrProcessor>>;
+        try {
+          processor = await withDownloadedModelAccessMode({
+            modelCache: selectedResources.cache,
+            cacheOnlyFetch: selectedResources.fetch,
+            run: () => loadDownloadedProductionTokenizerOrProcessor({
+              cleanModelId,
+              modelType,
+              revision,
+              progressCallback: info => runtimePreparationProgressCallback({ info }),
+            }),
+          });
+          selectedResources.assertHealthy();
+          await selectedResources.close();
+          selectedResources.assertHealthy();
+        } catch (error) {
+        // close may have already timed out; cleanup must still reach the model.
+          await selectedResources.close().catch(() => undefined);
+          const rejectedModel = model;
+          clearLoadedRuntimeState({ loadIdentityOperation });
+          let resourceError = error;
+          try {
+            selectedResources.assertHealthy();
+          } catch (failure) {
+            resourceError = failure;
+          }
+          const preparationError = downloadedModelPreparationError({ phase: 'tokenizer-processor', cause: resourceError });
+          await disposeRejectedDownloadedRuntime({ dispose: () => rejectedModel.dispose(), cause: preparationError });
+          selectedResources.assertHealthy();
+          throw preparationError;
+        }
+        const runtimePreparationDurationMs = Math.max(0, performance.now() - runtimePreparationStartedAt);
+        onRuntimePhase?.({ phase: 'ready' });
+
+        return {
+          cleanModelId,
+          autoClass,
+          processor,
+          candidate: selectedCandidate,
+          loadAttempts,
+          runtimePreparationDurationMs,
+          receipt: receiptRecorder.finish({ autoClass, processor, candidate: selectedCandidate, plannedRequiredPaths: selectedRequiredPaths }),
+        };
+      },
+    });
+    recordGenerationCapture({ record: () => loadIdentityOperation?.finish({ route }) });
+    receiptOperation.finish({ receipt: route.receipt });
+    return route;
+  } finally {
+    receiptOperation.fail();
+    // Idempotent after success; on rejection retains no stale ready identity.
+    recordGenerationCapture({ record: () => loadIdentityOperation?.finish({ route: undefined }) });
+  }
 }
 
 function numberArrayFromTensorLike({ value }: { value: unknown }): number[] {
@@ -755,6 +830,10 @@ async function runObservedProductionTurn({
       pastKeyValuesProvided = pastKeyValues !== null && pastKeyValues !== undefined;
       inputPastKeyValuesSummary = opaqueStructureSummary({ value: pastKeyValues });
     },
+    onGenerateInvocation() {
+      // The legacy observation DTO has no actual-invocation settings field.
+      // Keep its existing capture phase until the dedicated collector is wired.
+    },
     onGenerateComplete({ result }) {
       sequenceTokenIds = generatedSequenceTokenIds({ result });
       outputPastKeyValuesSummary = opaqueStructureSummary({ value: Reflect.get(result, 'past_key_values') });
@@ -783,6 +862,7 @@ async function runObservedProductionTurn({
     stoppingCriteria,
     debugLog,
     observationSink,
+    generationCapture: undefined,
   });
 
   const generatedTokenIds = isEncoderDecoder
@@ -824,7 +904,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
    * perform any model download. Missing/incomplete artifacts must fail here.
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  async loadDownloadedModel(modelId: string, revision: string | undefined, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {
+  async loadDownloadedModel(modelId: string, revision: string | undefined, progressCallback: (x: ProgressInfo) => void, loadReceiptOwner?: ProductionLoadReceiptOwner): Promise<ModelLoadResult> {
     console.log('[transformersJsWorker] Starting loadDownloadedModel:', modelId);
 
     await this.unloadModel();
@@ -833,6 +913,8 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
 
     try {
       const route = await loadProductionRuntime({
+        loadIdentitySource: 'ordinary',
+        loadReceiptOwner,
         modelId,
         revision,
         candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
@@ -847,6 +929,8 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         },
       });
       console.log('[transformersJsWorker] Model loaded successfully.');
+      // The opt-in capture slot owns Load evidence. It must not leak into the
+      // ordinary public Load result or change its transport shape.
       return { device: route.candidate.device, dtype: route.candidate.dtype };
     } catch (error) {
       const errorMessage = typeof error === 'number'
@@ -864,12 +948,14 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
    * The access mode remains cache-only, so missing artifacts fail closed.
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundaries use positional top-level arguments.
-  async verifyDownloadedModelCandidate(modelId, revision, candidate, progressCallback): Promise<ModelLoadResult> {
+  async verifyDownloadedModelCandidate(modelId, revision, candidate, progressCallback): Promise<ProductionModelLoadAcceptanceResult> {
     await this.unloadModel();
     activeModelId = modelId;
     generationRuntimeState.activeModelId = modelId;
 
     const route = await loadProductionRuntime({
+      loadIdentitySource: 'non-ordinary',
+      loadReceiptOwner: undefined,
       modelId,
       revision,
       candidates: [candidate],
@@ -884,7 +970,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         };
       },
     });
-    return { device: route.candidate.device, dtype: route.candidate.dtype };
+    return { device: route.candidate.device, dtype: route.candidate.dtype, ...(route.receipt === undefined ? {} : { receipt: route.receipt }) };
   },
 
   /**
@@ -892,7 +978,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
    * Production fallback sequence against one explicit cache revision.
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundaries use positional top-level arguments.
-  async verifyDownloadedModelRevision(modelId, revision, progressCallback): Promise<ModelLoadResult> {
+  async verifyDownloadedModelRevision(modelId, revision, progressCallback): Promise<ProductionModelLoadAcceptanceResult> {
     await this.unloadModel();
     activeModelId = modelId;
     generationRuntimeState.activeModelId = modelId;
@@ -901,6 +987,8 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     let candidatePassed = false;
     try {
       const route = await loadProductionRuntime({
+        loadIdentitySource: 'non-ordinary',
+        loadReceiptOwner: undefined,
         modelId,
         revision,
         candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
@@ -929,7 +1017,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           }
         },
       });
-      return { device: route.candidate.device, dtype: route.candidate.dtype };
+      return { device: route.candidate.device, dtype: route.candidate.dtype, ...(route.receipt === undefined ? {} : { receipt: route.receipt }) };
     } catch (error) {
       if (error instanceof RequiredDownloadedModelResourceError || error instanceof RequiredDownloadedResourceCleanupError
         || (error instanceof Error && error.name === DOWNLOADED_MODEL_PREPARATION_ERROR_NAME)
@@ -1069,6 +1157,8 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       let route: Awaited<ReturnType<typeof loadProductionRuntime>>;
       try {
         route = await loadProductionRuntime({
+          loadIdentitySource: 'non-ordinary',
+          loadReceiptOwner: undefined,
           modelId: scenario.modelId,
           revision: scenario.loadRevision,
           candidates: scenario.candidates,
@@ -1136,7 +1226,6 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       const strategy = selectGenerationStrategy({
         modelType,
         activeModelId,
-        hasTools: false,
       });
       const isEncoderDecoder = Reflect.get(Reflect.get(loadedModel, 'config') ?? {}, 'is_encoder_decoder') === true;
       partialObservation.candidate = route.candidate;
@@ -1190,7 +1279,10 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         case 'passed': {
           const assistantMessage: ChatMessage = {
             role: 'assistant',
-            content: firstTurn.turn.generatedText,
+            // Reconstruct ordinary stored chat from settled strategy output.
+            // Native decoded text remains separate evidence, even when the
+            // visible stream is empty or contains only completed thinking.
+            content: splitAssistantThinking({ content: firstTurn.turn.streamChunks.join('') }).content,
           };
           const secondTurnMessages = [
             ...scenario.messages,
@@ -1302,7 +1394,6 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           const toolStrategy = selectGenerationStrategy({
             modelType,
             activeModelId,
-            hasTools: true,
           });
           toolStrategyKind = toolStrategy.kind;
           const turn = await runObservedProductionTurn({
@@ -1622,15 +1713,17 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
   },
 
   async unloadModel() {
+    productionLoadReceipt.clear();
     const unloadingModel = model;
-    clearLoadedRuntimeState();
+    clearLoadedRuntimeState({ loadIdentityOperation: undefined });
     if (unloadingModel) {
       await unloadingModel.dispose();
     }
   },
 
   async interrupt() {
-    stoppingCriteria.interrupt();
+    invalidateGenerationState();
+    activeStoppingCriteria.interrupt();
   },
 
   async resetCache() {
@@ -1646,88 +1739,141 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     onToolCalls: (toolCalls: ToolCall[]) => void,
     params?: LmParameters,
     tools?: WorkerToolDefinition[],
+    capture?: GenerationCaptureRequest,
   ): Promise<void> {
-    if (!model || !tokenizer) throw new Error('Model not loaded');
-
-    stoppingCriteria.reset();
-    const generationStart = performance.now();
-    const strategy = selectGenerationStrategy({
-      modelType: (model as ModelInternals | null)?.config?.model_type,
-      activeModelId,
-      hasTools: !!tools?.length,
-    });
-    debugLog({
-      event: 'tool routing',
-      details: {
-        activeModelId,
-        strategy: strategy.kind,
-        hasTools: !!tools?.length,
-        messageRoles: messages.map(message => ({
-          role: message.role,
-          hasToolCalls: !!message.tool_calls?.length,
-          hasToolCallId: !!message.tool_call_id,
-        })),
-      },
-    });
-
+    const cacheGeneration = {};
+    generationRuntimeState.generationStateOwner = cacheGeneration;
+    const requestStoppingCriteria = new InterruptableStoppingCriteria();
+    activeStoppingCriteria = requestStoppingCriteria;
+    const captureCall = beginGenerationCapture({ request: capture });
+    let captureOutcome: 'fulfilled' | 'rejected' = 'rejected';
     try {
+      if (!model || !tokenizer) throw new Error('Model not loaded');
+
+      const generationStart = performance.now();
+      const strategy = selectGenerationStrategy({
+        modelType: (model as ModelInternals | null)?.config?.model_type,
+        activeModelId,
+      });
       debugLog({
-        event: 'calling model.generate',
+        event: 'tool routing',
         details: {
           activeModelId,
           strategy: strategy.kind,
-          elapsedMs: Math.round(performance.now() - generationStart),
+          hasTools: !!tools?.length,
+          messageRoles: messages.map(message => ({
+            role: message.role,
+            hasToolCalls: !!message.tool_calls?.length,
+            hasToolCallId: !!message.tool_call_id,
+          })),
         },
       });
-      const pendingToolCalls: ToolCall[] = [];
-      await strategy.generate({
-        model,
-        tokenizer,
-        messages,
-        onChunk: ({ chunk }) => {
-          switch (strategy.kind) {
-          case 'standard':
-            break;
-          case 'gpt-oss':
-          case 'qwen3_5':
-          case 'gemma4':
-            console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
-            break;
-          default: {
-            const _ex: never = strategy.kind;
-            throw new Error(`Unhandled generation strategy: ${String(_ex)}`);
+
+      try {
+        debugLog({
+          event: 'calling model.generate',
+          details: {
+            activeModelId,
+            strategy: strategy.kind,
+            elapsedMs: Math.round(performance.now() - generationStart),
+          },
+        });
+        const pendingToolCalls: ToolCall[] = [];
+        const delivery = createGenerationDelivery({ onFailure: () => {
+          if (generationRuntimeState.generationStateOwner === cacheGeneration) {
+            invalidateGenerationState();
           }
+          // This criterion belongs only to this request, even after a newer
+          // request has taken ownership of shared continuation state.
+          requestStoppingCriteria.interrupt();
+        } });
+        let generationFailure: { error: unknown } | undefined;
+        try {
+          await strategy.generate({
+            model,
+            tokenizer,
+            messages,
+            onChunk: ({ chunk }) => {
+              if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'strategy-output', chunk }) });
+              switch (strategy.kind) {
+              case 'standard':
+                break;
+              case 'gpt-oss':
+              case 'qwen3_5':
+              case 'gemma4':
+                console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
+                break;
+              default: {
+                const _ex: never = strategy.kind;
+                throw new Error(`Unhandled generation strategy: ${String(_ex)}`);
+              }
+              }
+              delivery.enqueue({ deliver: () => {
+                if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'worker-send', chunk }) });
+                return onChunk(chunk);
+              } });
+            },
+            onRawChunk: ({ chunk }) => {
+              if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'strategy-raw', chunk }) });
+              console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
+            },
+            onToolCalls: ({ toolCalls }) => pendingToolCalls.push(...toolCalls),
+            params,
+            tools,
+            runtimeState: generationRuntimeState,
+            stoppingCriteria: requestStoppingCriteria,
+            debugLog,
+            observationSink: undefined,
+            generationCapture: captureCall,
+          });
+          if (pendingToolCalls.length > 0) {
+            delivery.enqueue({ deliver: () => onToolCalls(pendingToolCalls) });
           }
-          onChunk(chunk);
-        },
-        onRawChunk: ({ chunk }) => {
-          console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
-        },
-        onToolCalls: ({ toolCalls }) => pendingToolCalls.push(...toolCalls),
-        params,
-        tools,
-        runtimeState: generationRuntimeState,
-        stoppingCriteria,
-        debugLog,
-        observationSink: undefined,
-      });
-      if (pendingToolCalls.length > 0) {
-        await onToolCalls(pendingToolCalls);
+        } catch (error) {
+          generationFailure = { error };
+        }
+        try {
+          await delivery.finish();
+        } catch (error) {
+          // Preserve an inference failure when delivery also failed while
+          // settling its already emitted output.
+          if (generationFailure === undefined) throw error;
+        }
+        if (generationFailure !== undefined) throw generationFailure.error;
+        debugLog({
+          event: 'generation complete',
+          details: {
+            activeModelId,
+            strategy: strategy.kind,
+            elapsedMs: Math.round(performance.now() - generationStart),
+          },
+        });
+      } catch (err) {
+        if (generationRuntimeState.generationStateOwner === cacheGeneration) {
+          invalidateGenerationState();
+        }
+        console.error('[transformersJsWorker] Generation error:', err);
+        throw err;
       }
-      debugLog({
-        event: 'generation complete',
-        details: {
-          activeModelId,
-          strategy: strategy.kind,
-          elapsedMs: Math.round(performance.now() - generationStart),
-        },
-      });
-    } catch (err) {
-      clearQwen3_5ContinuationState();
-      generationRuntimeState.gptOssPastKeyValues = null;
-      generationRuntimeState.qwen3_5PastKeyValues = null;
-      console.error('[transformersJsWorker] Generation error:', err);
-      throw err;
+      captureOutcome = 'fulfilled';
+    } finally {
+      if (activeStoppingCriteria === requestStoppingCriteria) activeStoppingCriteria = stoppingCriteria;
+      if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.finish({ outcome: captureOutcome }) });
+    }
+  },
+
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Validate the entire untrusted Comlink request before reading its fields.
+  async takeGenerationCapture(request: GenerationCaptureReadRequest): Promise<GenerationCaptureReadResult> {
+    const parsed = generationCaptureReadRequestSchema.safeParse(request);
+    if (!parsed.success) return { status: 'invalid-context' };
+    const result = generationCapture === undefined ? { status: 'not-started' as const } : generationCapture.take({ run: parsed.data });
+    switch (result.status) {
+    case 'captured': case 'not-started': {
+      const loadObservation = productionLoadReceipt.snapshot({ owner: parsed.data });
+      return { ...result, ...(loadObservation === undefined ? {} : { loadObservation }) };
+    }
+    case 'already-taken': case 'wrong-run': case 'busy': case 'invalid-context': return result;
+    default: { const exhaustive: never = result; return exhaustive; }
     }
   },
 };

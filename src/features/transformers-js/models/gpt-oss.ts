@@ -10,6 +10,7 @@ import type { WorkerToolDefinition } from '@/features/transformers-js/types';
 import type { ToolCallId } from '@/01-models/ids';
 import { idToRaw } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
+import { exactObject } from '@/utils/exact-object';
 
 interface GenerationResult {
   past_key_values: unknown,
@@ -332,15 +333,21 @@ function buildGptOssPromptMessages({
 }): Array<{
   role: string,
   content: string,
-  tool_calls: ChatMessage['tool_calls'],
-  tool_call_id: string | undefined,
+  tool_calls?: ChatMessage['tool_calls'],
+  tool_call_id?: string,
 }> {
-  const formattedMessages = messages.map(message => ({
-    role: message.role,
-    content: typeof message.content === 'string' ? message.content : '',
-    tool_calls: message.tool_calls,
-    tool_call_id: message.tool_call_id === undefined ? undefined : idToRaw({ id: message.tool_call_id }),
-  }));
+  const formattedMessages = messages.map(message => {
+    const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+    unhandled satisfies Record<PropertyKey, never>;
+    // The native template checks key membership, so an absent optional field
+    // must not become an own undefined property while formatting history.
+    return exactObject<{ role: string; content: string; tool_calls?: ChatMessage['tool_calls']; tool_call_id?: string }>()({
+      role,
+      content: typeof content === 'string' ? content : '',
+      ...(tool_calls === undefined ? {} : { tool_calls }),
+      ...(tool_call_id === undefined ? {} : { tool_call_id: idToRaw({ id: tool_call_id }) }),
+    });
+  });
 
   // Keep gpt-oss close to the last known-good naidan path: pass the user's
   // existing conversation through with minimal reshaping, and only prepend the
@@ -351,17 +358,10 @@ function buildGptOssPromptMessages({
     formattedMessages.unshift({
       role: 'developer',
       content: formatGptOssToolDefinitions({ tools }),
-      tool_calls: undefined,
-      tool_call_id: undefined,
     });
   }
 
-  return formattedMessages.map(message => ({
-    role: message.role,
-    content: message.content,
-    tool_calls: message.tool_calls,
-    tool_call_id: message.tool_call_id,
-  }));
+  return formattedMessages;
 }
 
 function tryParseGptOssToolArguments({

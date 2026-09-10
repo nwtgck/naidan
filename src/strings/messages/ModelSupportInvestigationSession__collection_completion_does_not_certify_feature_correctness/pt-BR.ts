@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness = (): string => "Concluir a coleta não comprova a correção das funções. As verificações que falharam ou não foram executadas aparecem primeiro. Execução bem-sucedida e observação são distintas; escopos não selecionados não são tarefas pendentes.";

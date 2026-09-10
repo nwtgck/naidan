@@ -9,6 +9,38 @@ import {
 } from "./investigation-recovery";
 
 describe("investigation recovery", () => {
+  it('preserves completed Download probes when a later Provider operation stops', () => {
+    const now = () => '2026-09-10T00:00:00.000Z';
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'post-probe-stop', now });
+    checkpoint.run.steps = checkpoint.run.steps.map(step => step.id === 'download-evidence'
+      ? { ...step, status: 'passed', detail: 'Bounded probes completed' }
+      : step.id === 'loading-investigation' ? { ...step, status: 'running', detail: 'Provider pending' } : step);
+    const result = interruptInvestigationCheckpoint({ checkpoint, error: new Error('Owned Provider deadline'), now });
+    expect(result.run.steps.find(step => step.id === 'download-evidence')).toMatchObject({ status: 'passed', detail: 'Bounded probes completed' });
+    expect(result.run.steps.find(step => step.id === 'loading-investigation')).toMatchObject({ status: 'failed', detail: 'Interrupted: Owned Provider deadline' });
+    expect(result.recovery.interruption?.error.message).toBe('Owned Provider deadline');
+  });
+
+  it('refuses a completed checkpoint with an unclosed owner and preserves already settled evidence', () => {
+    const now = () => '2026-09-10T00:00:00.000Z';
+    const initial = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'terminal-owner', now });
+    const run = structuredClone(initial.run);
+    run.status = 'passed';
+    run.error = 'Earlier measured failure';
+    run.steps = run.steps.map(step => step.id === 'download-evidence'
+      ? { ...step, status: 'running', detail: 'Probe owner was not closed' }
+      : step.id === 'loading-investigation' ? { ...step, status: 'passed', detail: 'Existing Load completed' }
+        : step.id === 'runtime-assets' ? { ...step, status: 'passed', detail: 'Runtime ready' } : step);
+    const result = completeInvestigationCheckpoint({ checkpoint: initial, run, now });
+    expect(result.recovery.status).toBe('interrupted');
+    expect(result.recovery.interruption?.error).toMatchObject({ name: 'InvestigationTerminalInvariantError', message: 'Investigation completion retained running steps: download-evidence' });
+    expect(result.run.status).toBe('failed');
+    expect(result.run.error).toContain('Earlier measured failure');
+    expect(result.run.steps.find(step => step.id === 'download-evidence')).toMatchObject({ status: 'failed', detail: 'Interrupted: Investigation completion retained running steps: download-evidence' });
+    expect(result.run.steps.find(step => step.id === 'loading-investigation')).toMatchObject({ status: 'passed', detail: 'Existing Load completed' });
+    expect(run.steps.find(step => step.id === 'download-evidence')?.status).toBe('running');
+  });
+
   it('preserves completed fresh preparation when a later investigation phase is interrupted', () => {
     const now = () => '2026-09-09T00:00:00.000Z';
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'later-interruption', now });

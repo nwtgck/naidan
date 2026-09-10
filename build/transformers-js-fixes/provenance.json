@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageName": "@huggingface/transformers",
   "version": "4.2.0",
-  "patchId": "naidan-transformers-js-fixes-v2",
+  "patchId": "naidan-transformers-js-fixes-v3",
   "upstreamHashes": {
     "src/utils/model-loader.js": "37f8e739dac8f8fe07a18e65bdf10f613befcd3f9c93fe4058faba5232a284f7",
     "src/models/session.js": "f17cae95a879be9ab8b2ee3897bbfe37582c1442074cae3e373ecbd18725eae4",
@@ -11,12 +11,19 @@
     "package.json": "9cf12901d934e5a0628c6f163484abade392ab2d3b369d458ed3dfdeaa7f9a39",
     "src/models/modeling_utils.js": "0074443f1129e1eb435c1f42a305e747d2ae151e5041a3aa99586b245b80be03"
   },
-  "transformedWebSha256": "e839bd80c4d3b166cd574daebcbda66451ea464466db274ffd41df302f0274c0",
+  "transformedWebSha256": "875b33675dcf7b646f7f39d2680d2612040b1eb570f865a537aea1118658b731",
   "changes": [
     "getModelDataFiles: replace the async Promise executor with an owned then-chain.",
     "getSession: observe core and external-data rejection together through Promise.all.",
     "PreTrainedModel.from_pretrained: complete optional configuration preparation before session selection and creation.",
-    "get_optional_configs: preserve optional configuration error origin, filename, original error name/message, and cause; retain absent defaults."
+    "get_optional_configs: preserve optional configuration error origin, filename, original error name/message, and cause; retain absent defaults.",
+    "Bundled Jinja: replace generation-tag regex deletion with balanced transparent parser blocks; preserve literals and lexer whitespace controls, reject malformed tags. Rendering only, not assistant-mask tracking."
   ],
-  "scope": "Vite browser web bundle only; installed package files and Node exports remain unchanged."
+  "scope": "Vite browser web bundle only; installed package files and Node exports remain unchanged.",
+  "bundledJinja": {
+    "version": "0.5.6",
+    "sectionSha256": "19c501690f8dbf486a851a62abe81637f42adf9385a387313bb672382f267f36",
+    "licenseSha256": "d6e7b19451c1b3d1d66353bb4b1274138953b3bfd9ae60c56e77b1f548796982",
+    "licenseSource": "@huggingface/jinja 0.5.9 LICENSE (installed MIT notice); bundled implementation identity is independently pinned to the Transformers.js web source"
+  }
 }

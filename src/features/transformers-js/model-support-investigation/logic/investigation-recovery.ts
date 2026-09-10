@@ -189,6 +189,14 @@ export function completeInvestigationCheckpoint({
   run: ModelSupportInvestigationRun,
   now: () => string,
 }): ModelSupportInvestigationCheckpoint {
+  const unclosedSteps = run.steps.filter(step => step.status === 'running').map(step => step.id);
+  if (unclosedSteps.length > 0) {
+    const error = new Error(`Investigation completion retained running steps: ${unclosedSteps.join(', ')}`);
+    error.name = 'InvestigationTerminalInvariantError';
+    // Retain the arriving evidence before sealing the internal failure. Throwing
+    // here would leave the previous checkpoint as the only exportable snapshot.
+    return interruptInvestigationCheckpoint({ checkpoint: { ...checkpoint, run }, error, now });
+  }
   const at = now();
   return {
     run: cloneRun({ run }),

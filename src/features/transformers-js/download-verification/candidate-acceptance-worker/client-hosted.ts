@@ -1,7 +1,7 @@
 import { workerProxy } from '@/utils/worker-transport';
 import { createProductionWorkerSession, ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import type {
-  ModelLoadResult,
+  ProductionModelLoadAcceptanceResult,
   ProgressInfo,
   TransformersJsProductionInvestigationCandidate,
   TransformersJsProgressCallback,
@@ -13,12 +13,12 @@ export interface DownloadVerificationCandidateAcceptanceWorkerClient {
     loadRevision: string | undefined;
     candidate: TransformersJsProductionInvestigationCandidate;
     progressCallback: TransformersJsProgressCallback;
-  }): Promise<ModelLoadResult>;
+  }): Promise<ProductionModelLoadAcceptanceResult>;
   verifyDownloadedModelRevision({ modelId, loadRevision, progressCallback }: {
     modelId: string;
     loadRevision: string | undefined;
     progressCallback: TransformersJsProgressCallback;
-  }): Promise<ModelLoadResult>;
+  }): Promise<ProductionModelLoadAcceptanceResult>;
   dispose(): Promise<void>;
 }
 

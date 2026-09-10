@@ -50,6 +50,28 @@ const tools = [{
 }];
 
 describe('generateGptOss input observation', () => {
+  it.each(['absent', 'undefined'] as const)('omits %s tool fields before rendering ordinary assistant history', async shape => {
+    const { tokenizer, applyChatTemplate } = tokenizerFixture();
+    const ordinary = { role: 'assistant', content: 'Synthetic answer.' };
+    const messages = [
+      { role: 'user', content: 'Synthetic user.' },
+      shape === 'undefined' ? { ...ordinary, tool_calls: undefined, tool_call_id: undefined } : ordinary,
+      { role: 'user', content: 'Continue.' },
+    ];
+    await generateGptOss({
+      model: {} as never, tokenizer: tokenizer as never, messages,
+      onChunk: vi.fn(), onToolCalls: vi.fn(), params: undefined, tools,
+      pastKeyValues: undefined, stoppingCriteria, onInputPrepared: undefined,
+      generateWithModel: generateWithModelFixture(),
+    });
+    expect(applyChatTemplate.mock.calls[0]?.[0]).toStrictEqual([
+      { role: 'developer', content: expect.stringContaining('namespace functions') },
+      { role: 'user', content: 'Synthetic user.' },
+      ordinary,
+      { role: 'user', content: 'Continue.' },
+    ]);
+  });
+
   it('reports reconstructed full input and cache reuse for an observed tool continuation', async () => {
     const { tokenizer, applyChatTemplate, callable } = tokenizerFixture();
     const generateWithModel = generateWithModelFixture();

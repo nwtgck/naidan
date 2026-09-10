@@ -59,6 +59,38 @@ pwd
     expect(JSON.parse(calls[0]!.function.arguments)).toEqual({ shell_script: 'pwd' });
   });
 
+  it('preserves a JSON object parameter emitted by the native XML template grammar', () => {
+    // The pinned native template uses tojson for mapping values. This is a
+    // synthetic protocol control, not evidence that a model generated a tool.
+    parser.feed({ output: `\
+<tool_call>
+<function=lookup>
+<parameter=options>
+{"city": "Tokyo", "count": 2, "enabled": false}
+</parameter>
+</function>
+</tool_call>` });
+    const calls = parser.drainToolCalls();
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]!.function.arguments)).toEqual({ options: { city: 'Tokyo', count: 2, enabled: false } });
+    expect(onText).not.toHaveBeenCalled();
+  });
+
+  it('preserves a JSON array parameter emitted by the native XML template grammar', () => {
+    parser.feed({ output: `\
+<tool_call>
+<function=lookup>
+<parameter=items>
+["12", 12, {"nested": [true, null]}]
+</parameter>
+</function>
+</tool_call>` });
+    const calls = parser.drainToolCalls();
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]!.function.arguments)).toEqual({ items: ['12', 12, { nested: [true, null] }] });
+    expect(onText).not.toHaveBeenCalled();
+  });
+
   it('parses relaxed JSON-like tool calls with bare identifiers', () => {
     parser.feed({
       output: `\
@@ -76,6 +108,24 @@ pwd
       stderr_limit: 1024,
       timeout_ms: 5000,
     });
+  });
+
+  it('preserves a structured XML parameter named __proto__ as an own JSON key', () => {
+    parser.feed({ output: '<tool_call><function=lookup><parameter=__proto__>{"city":"Tokyo"}</parameter></function></tool_call>' });
+    const calls = parser.drainToolCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.function.arguments).toBe('{"__proto__":{"city":"Tokyo"}}');
+    const decoded: unknown = JSON.parse(calls[0]!.function.arguments);
+    expect(Object.hasOwn(decoded as object, '__proto__')).toBe(true);
+    expect(Object.getPrototypeOf(decoded)).toBe(Object.prototype);
+  });
+
+  it('preserves __proto__ inside relaxed JSON arguments without changing the dictionary prototype', () => {
+    parser.feed({ output: '<tool_call>{"name": lookup, "arguments": {"__proto__": {"city": Tokyo}}}</tool_call>' });
+    const calls = parser.drainToolCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.function.arguments).toBe('{"__proto__":{"city":"Tokyo"}}');
+    expect(Object.getPrototypeOf(JSON.parse(calls[0]!.function.arguments))).toBe(Object.prototype);
   });
 
   it('streams plain text outside tool calls', () => {

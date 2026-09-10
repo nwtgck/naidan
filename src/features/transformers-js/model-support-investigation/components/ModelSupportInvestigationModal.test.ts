@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Blob as NodeBlob } from 'node:buffer';
+import { webcrypto } from 'node:crypto';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toToolCallId } from '@/01-models/ids';
 import ModelSupportInvestigationModal from './ModelSupportInvestigationModal.vue';
 import { configurationForPreset } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import { createInvestigationSessionView, TEST_ONLY as sessionTestOnly } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
+import * as providerRetention from '@/features/transformers-js/model-support-investigation/logic/investigation-provider-retention';
+import * as nativeEvidenceModule from '@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence';
+import { createProductionProviderTrace } from '@/features/transformers-js/model-support-investigation/logic/production-provider-trace';
+import { captureScenarioInput } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-plan';
+import type { ProductionProviderCaptureSnapshot } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-owner';
+import type { ProductionProviderInvestigationLiveProgress } from '@/features/transformers-js/model-support-investigation/logic/production-provider-investigation-summary';
 import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
+import { ModelSupportInvestigationUserInterruptedError } from '@/features/transformers-js/model-support-investigation/logic/investigation-interruption';
 import type { ModelSupportInvestigationRun, ModelSupportInvestigationWorkerClient } from '@/features/transformers-js/model-support-investigation/types';
 
 const fixtureToolCallId = toToolCallId({ raw: 'call_fixture' });
@@ -15,6 +23,7 @@ const workerMocks = vi.hoisted(() => ({
   runPartialInvestigation: vi.fn(),
   interrupt: vi.fn(),
   dispose: vi.fn(),
+  waitForEvidenceRelease: vi.fn(),
 }));
 
 const evidenceMocks = vi.hoisted(() => ({
@@ -453,6 +462,26 @@ const completedRun: ModelSupportInvestigationRun = {
   error: undefined,
 };
 
+async function nativeCheckpoint() {
+  const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'native-run', now: () => completedRun.startedAt });
+  const requestId = 'native-run-first-turn';
+  const trace = createProductionProviderTrace({ requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } });
+  trace.settle({ outcome: 'fulfilled', error: undefined });
+  const provider: ProductionProviderCaptureSnapshot = {
+    format: 'production-provider-capture-v2', runId: checkpoint.run.runId, modelId: checkpoint.run.modelId, plan: 'first-only', run: { status: 'completed' },
+    lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [],
+    requests: [{ runId: checkpoint.run.runId, requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined,
+      input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), trace: trace.snapshot() }],
+    capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
+  };
+  checkpoint.run.productionProviderCapture = provider;
+  const nativeEvidence = await nativeEvidenceModule.createProductionProviderNativeEvidence({
+    native: { format: 'production-provider-native-collection-v1', runId: checkpoint.run.runId, maximumWorkerEpochs: 8, phase: 'not-requested', unrecordedWorkerCreations: 0, incompleteReasons: [], epochs: [] },
+    provider, maximumBinaryBytes: nativeEvidenceModule.PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
+  });
+  return { ...checkpoint, nativeEvidence };
+}
+
 describe('ModelSupportInvestigationModal', () => {
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
@@ -477,6 +506,7 @@ describe('ModelSupportInvestigationModal', () => {
       return completedRun;
     });
     workerMocks.dispose.mockResolvedValue(undefined);
+    workerMocks.waitForEvidenceRelease.mockResolvedValue(undefined);
     workerMocks.interrupt.mockResolvedValue(undefined);
     evidenceMocks.createPartialEvidence.mockResolvedValue({
       blob: new Blob(["evidence"]),
@@ -501,6 +531,67 @@ describe('ModelSupportInvestigationModal', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it.each([
+    { invalidRunId: 'foreign-run', invalidModelId: 'org/model', error: 'Invalid checkpoint run identity' },
+    { invalidRunId: 'accepted-run', invalidModelId: 'org/foreign', error: 'Invalid checkpoint model identity' },
+  ])('preserves $error in the UI and exported checkpoint after cancellation rejects as a user stop', async ({ invalidRunId, invalidModelId, error }) => {
+    workerMocks.runPartialInvestigation.mockImplementation(({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const pending = Promise.withResolvers<ModelSupportInvestigationRun>();
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: 'accepted-run', now: () => completedRun.startedAt });
+      workerMocks.interrupt.mockImplementation(async () => {
+        onCheckpoint({ checkpoint: { ...checkpoint, run: { ...checkpoint.run, error: 'Unrequested user-stop checkpoint' } } });
+        pending.reject(new ModelSupportInvestigationUserInterruptedError());
+      });
+      onCheckpoint({ checkpoint });
+      onCheckpoint({ checkpoint: { ...checkpoint, run: { ...checkpoint.run, runId: invalidRunId, modelId: invalidModelId } } });
+      return pending.promise;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    try {
+      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await flushPromises();
+      expect(workerMocks.interrupt).toHaveBeenCalledOnce();
+      expect(wrapper.get('[data-testid="model-support-target-error-org/model"]').text()).toContain(error);
+      expect(wrapper.text()).not.toContain('Model Support Investigation was stopped by the user');
+      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+      await flushPromises();
+      expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
+        run: { runId: 'accepted-run', modelId: 'org/model', status: 'failed', error: expect.stringContaining(error) },
+        recovery: { status: 'interrupted', interruption: { error: { message: error } } },
+      });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it.each([
+    { invalidRunId: 'foreign-run', invalidModelId: 'org/model', error: 'Invalid completed run identity' },
+    { invalidRunId: 'accepted-run', invalidModelId: 'org/foreign', error: 'Invalid completed model identity' },
+  ])('rejects $error without a native recording and preserves the accepted checkpoint for export', async ({ invalidRunId, invalidModelId, error }) => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: 'accepted-run', now: () => completedRun.startedAt });
+      onCheckpoint({ checkpoint });
+      return { ...checkpoint.run, runId: invalidRunId, modelId: invalidModelId, status: 'passed', error: undefined };
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    try {
+      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await flushPromises();
+      const targetError = wrapper.find('[data-testid="model-support-target-error-org/model"]');
+      expect(targetError.exists()).toBe(true);
+      expect(targetError.text()).toContain(error);
+      expect(wrapper.text()).not.toContain('Model Support Investigation was stopped by the user');
+      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+      await flushPromises();
+      expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
+        run: { runId: 'accepted-run', modelId: 'org/model', status: 'failed', error: expect.stringContaining(error) },
+        recovery: { status: 'interrupted', interruption: { error: { message: error } } },
+      });
+    } finally {
+      wrapper.unmount();
+    }
   });
 
   it('reopens completed results and exports retained metadata without rerunning the investigation', async () => {
@@ -683,7 +774,7 @@ org/second
     wrapper.unmount();
   });
 
-  it('waits for old Worker teardown on reopening and isolates its late checkpoints and batch finally', async () => {
+  it('waits for old Worker and sealing teardown on reopening and isolates its late checkpoints', async () => {
     const oldRun = Promise.withResolvers<ModelSupportInvestigationRun>();
     const oldDisposal = Promise.withResolvers<void>();
     let publishOld: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint'] | undefined;
@@ -704,10 +795,13 @@ org/second
     const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
     await flushPromises();
     expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
-    expect(reopened.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeDefined();
+    expect(reopened.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeUndefined();
     await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
     expect(confirmMocks.showConfirm).not.toHaveBeenCalled();
     oldDisposal.resolve();
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    oldRun.resolve({ ...structuredClone(completedRun), modelId: 'org/first', runId: 'late-old-run' });
     await flushPromises();
     await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
     await flushPromises();
@@ -718,7 +812,6 @@ org/second
     await flushPromises();
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-old-run', now: () => completedRun.startedAt });
     publishOld?.({ checkpoint });
-    oldRun.resolve({ ...structuredClone(completedRun), modelId: 'org/first', runId: 'late-old-run' });
     await flushPromises();
     expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(3);
     expect(reopened.get('[data-testid="model-support-current-operation"]').text()).toBe('org/second fresh result');
@@ -839,9 +932,10 @@ org/second
   });
 
   it('retains an interrupted checkpoint on teardown without restarting it when reopened', async () => {
+    const retiredRun = Promise.withResolvers<ModelSupportInvestigationRun>();
     workerMocks.runPartialInvestigation.mockImplementation(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
       onCheckpoint?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'pending-run', now: () => completedRun.startedAt }) });
-      return new Promise(() => undefined);
+      return retiredRun.promise;
     });
     const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
     await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
@@ -856,6 +950,9 @@ org/second
       run: { status: 'failed', runId: 'pending-run' },
       recovery: { status: 'interrupted', interruption: { error: { message: 'Investigation stopped when its modal was closed' } } },
     });
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    retiredRun.reject(new Error('Retired Worker operation stopped'));
+    await flushPromises();
     await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
     await flushPromises();
     expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
@@ -1091,6 +1188,237 @@ org/second`);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('org/model');
     expect(wrapper.get('[data-testid="model-support-target-row-org/model"]').text()).toContain('org/model');
     wrapper.unmount();
+  });
+
+  it('shows structured local Load and phase deadlines without parsing diagnostic text', async () => {
+    const pending = Promise.withResolvers<ModelSupportInvestigationRun>();
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'progress-run', now: () => completedRun.startedAt });
+    const live: ProductionProviderInvestigationLiveProgress = {
+      progress: { phase: 'running', provider: { runId: 'progress-run', modelId: 'org/model', plan: 'first-only', run: { status: 'running' }, lifetime: 'open', activeRequest: { runId: 'progress-run', requestId: 'progress-run-first-turn', scenario: 'first-turn' }, totalRequests: 1, selectedRequests: 1, settledRequests: 0, loadStatus: 'loading' }, stopReason: undefined, cleanup: 'not-requested', sealOwnership: 'settled' },
+      deadlines: { runMs: 1800000, collectionMs: 10000, sealingMs: 30000, cleanupMs: 5000 },
+    };
+    workerMocks.runPartialInvestigation.mockImplementationOnce(({ onCheckpoint, onEvent }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint });
+      onEvent({ event: { stepId: 'loading-investigation', status: 'running', detail: 'Unstructured diagnostic that says nothing about phase', productionProviderProgress: live } });
+      return pending.promise;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-provider-progress"]').text()).toContain('Loading the local model');
+    expect(wrapper.get('[data-testid="model-support-provider-deadlines"]').text()).toContain('requests 1800s; collection 10s; evidence preparation 30s; cleanup 5s');
+    expect(wrapper.get('[data-testid="model-support-provider-retention"]').text()).toContain('reserved: 64 MiB');
+    await wrapper.get('[data-testid="model-support-investigation-stop"]').trigger('click');
+    expect(workerMocks.interrupt).toHaveBeenCalledOnce();
+    pending.resolve(checkpoint.run);
+    await flushPromises();
+    wrapper.unmount();
+  });
+
+  it('clears another target live progress while preserving a same-run checkpoint without telemetry', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint, onEvent }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: modelId === 'org/first' ? 'progress-first' : 'progress-second', now: () => completedRun.startedAt });
+      onCheckpoint?.({ checkpoint });
+      if (modelId === 'org/second') {
+        onEvent({ event: {
+          stepId: 'loading-investigation', status: 'running', detail: 'Second target only',
+          progress: {
+            kind: 'model-load', artifactSource: 'downloaded-model-cache', candidateId: 'second-only-q4', sourceStatus: 'progress',
+            currentFile: undefined, fileLoaded: undefined, fileTotal: undefined, fileProgress: undefined,
+            aggregateLoaded: undefined, aggregateTotal: undefined, aggregateProgress: undefined,
+            firstActivityAt: completedRun.startedAt, lastForwardProgressAt: undefined,
+            eventCount: 1, progressEventCount: 1, progressTotalEventCount: 0, forwardProgressCount: 1,
+            repeatedWithoutForwardProgressCount: 0, publishedSampleCount: 1, lastActivityAt: completedRun.startedAt,
+          },
+          productionProviderProgress: {
+            progress: { phase: 'running', provider: { runId: checkpoint.run.runId, modelId, plan: 'first-only', run: { status: 'running' }, lifetime: 'open', activeRequest: { runId: checkpoint.run.runId, requestId: `${checkpoint.run.runId}-first-turn`, scenario: 'first-turn' }, totalRequests: 1, selectedRequests: 1, settledRequests: 0, loadStatus: 'loading' }, stopReason: undefined, cleanup: 'not-requested', sealOwnership: 'settled' },
+            deadlines: { runMs: 1800000, collectionMs: 10000, sealingMs: 30000, cleanupMs: 5000 },
+          },
+        } });
+        // A later same-run checkpoint does not erase already received telemetry.
+        onCheckpoint?.({ checkpoint });
+      }
+      return { ...checkpoint.run, status: 'failed', completedAt: completedRun.completedAt };
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second`);
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-testid="model-support-provider-progress"]').text()).toContain('Loading the local model');
+    expect(wrapper.get('[data-testid="model-support-live-progress"]').text()).toContain('second-only-q4');
+    await wrapper.get('[data-testid="model-support-target-org/first"]').trigger('click');
+    expect(wrapper.find('[data-testid="model-support-provider-progress"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-support-live-progress"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-support-provider-deadlines"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('refuses a recording reservation before creating an investigation Worker or Load', async () => {
+    const original = providerRetention.createInvestigationProviderRetentionBudget;
+    const budget = vi.spyOn(providerRetention, 'createInvestigationProviderRetentionBudget').mockImplementation(({ retained }) => original({
+      limits: { nativeBinaryBytes: 1, nativeJsonCharacters: 1, providerJsonCharacters: 1 }, retained,
+    }));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    try {
+      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await flushPromises();
+      expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+      expect(workerMocks.dispose).not.toHaveBeenCalled();
+      expect(wrapper.text()).toContain('Investigation recording capacity is exhausted');
+    } finally {
+      budget.mockRestore();
+      wrapper.unmount();
+    }
+  });
+
+  it('holds the next target until the completed host releases pending sealing ownership', async () => {
+    const released = Promise.withResolvers<void>();
+    workerMocks.waitForEvidenceRelease.mockReturnValueOnce(released.promise);
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({ ...structuredClone(completedRun), modelId }));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second`);
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    expect(workerMocks.waitForEvidenceRelease).toHaveBeenCalledOnce();
+    released.resolve();
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it('adopts one verified sidecar per identity and reuses it for repeated checkpoints and export', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    vi.stubGlobal('crypto', webcrypto);
+    const checkpoint = await nativeCheckpoint();
+    const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar');
+    workerMocks.runPartialInvestigation.mockImplementationOnce(async ({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint }); onCheckpoint?.({ checkpoint });
+      return checkpoint.run;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(verify).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].nativeEvidence.json).toBe(checkpoint.nativeEvidence.json);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    verify.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('does not adopt late sidecar verification after close and preserves the earlier Provider prefix', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    vi.stubGlobal('crypto', webcrypto);
+    const checkpoint = await nativeCheckpoint();
+    const pending = Promise.withResolvers<typeof checkpoint.nativeEvidence>();
+    const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar').mockReturnValueOnce(pending.promise);
+    workerMocks.runPartialInvestigation.mockImplementationOnce(async ({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint }); return checkpoint.run;
+    });
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({ run: { productionProviderCapture: { runId: 'native-run' } }, nativeEvidence: undefined });
+    pending.resolve(checkpoint.nativeEvidence);
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[1]?.[0].nativeEvidence).toBeUndefined();
+    expect(verify).toHaveBeenCalledOnce();
+    verify.mockRestore();
+    reopened.unmount();
+  });
+
+  it('holds a rejected target reservation until its pending checkpoint verification settles', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    vi.stubGlobal('crypto', webcrypto);
+    const checkpoint = await nativeCheckpoint();
+    const pending = Promise.withResolvers<typeof checkpoint.nativeEvidence>();
+    const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar').mockReturnValueOnce(pending.promise);
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      if (modelId === 'org/model') {
+        onCheckpoint?.({ checkpoint }); throw new Error('Model request failed');
+      }
+      return { ...structuredClone(completedRun), modelId };
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    pending.resolve(checkpoint.nativeEvidence);
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    verify.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('preserves the current result but stops the batch when cleanup is unconfirmed', async () => {
+    workerMocks.dispose.mockRejectedValue(new Error('Cleanup remains unconfirmed'));
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({ ...structuredClone(completedRun), modelId }));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second`);
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    expect(wrapper.text()).toContain('Cleanup remains unconfirmed');
+    expect(wrapper.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('retires and disposes immediately even when retaining the last checkpoint throws', async () => {
+    const running = Promise.withResolvers<ModelSupportInvestigationRun>();
+    workerMocks.runPartialInvestigation.mockImplementationOnce(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'close-failure', now: () => completedRun.startedAt }) });
+      return running.promise;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const measure = vi.spyOn(providerRetention, 'measureInvestigationProviderRetention').mockImplementationOnce(() => {
+      throw new Error('Checkpoint retention refused');
+    });
+    try {
+      expect(() => wrapper.unmount()).not.toThrow();
+      expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    } finally {
+      measure.mockRestore();
+      running.reject(new Error('Disposed'));
+      await flushPromises();
+    }
+  });
+
+  it.each([undefined, null, new Error('Cleanup remains unconfirmed')])('keeps rejection state independently from the cleanup thrown value: %s', async (reason) => {
+    workerMocks.dispose.mockRejectedValue(reason);
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({ ...structuredClone(completedRun), modelId }));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    wrapper.unmount();
+    await flushPromises();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeUndefined();
+    expect(await createInvestigationSessionView({ initialSnapshot: undefined }).ready).toMatchObject({ status: 'failed' });
+    reopened.unmount();
   });
 
   it('runs multiple normalized targets sequentially and keeps per-target status', async () => {
@@ -1770,6 +2098,9 @@ org/second
     expect(summary).toContain('reconstructed-full-conversation');
     expect(summary).toContain('<expected-prefix>');
     expect(summary).toContain('<actual-prefix>');
+    const feature = wrapper.get('[data-feature="production-continuity"]');
+    expect(feature.attributes('data-outcome')).toBe('passed');
+    expect(feature.text()).toContain('does not establish a feature failure');
     wrapper.unmount();
   });
 
@@ -1842,7 +2173,9 @@ org/second
   });
 
   it('keeps raw progress event churn out of the current operation while showing forward-progress diagnostics', async () => {
-    workerMocks.runPartialInvestigation.mockImplementation(async ({ onEvent }) => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ onEvent, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId: completedRun.modelId, runId: completedRun.runId, now: () => completedRun.startedAt });
+      onCheckpoint?.({ checkpoint });
       onEvent({
         event: {
           stepId: 'loading-investigation',
@@ -1874,6 +2207,7 @@ org/second
             cacheAliasHitCount: 1,
             cacheMatchedBytes: 8_388_608,
             remoteFetchAttemptCount: 0,
+            firstActivityAt: completedRun.startedAt,
             lastActivityAt: new Date().toISOString(),
             lastForwardProgressAt: new Date().toISOString(),
           },
@@ -2025,6 +2359,26 @@ org/second
     expect(wrapper.text()).toContain('archive verification failed');
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('shows nested feature failures before details even when investigation collection passed', async () => {
+    const result = structuredClone(completedRun);
+    const observation = result.productionLane.observation;
+    if (!observation) throw new Error('Missing Production fixture');
+    observation.firstTurn = { status: 'failed', error: { name: 'GenerationError', message: 'first turn failed' } };
+    observation.continuity = { status: 'not-run', reason: 'First turn did not generate' };
+    workerMocks.runPartialInvestigation.mockResolvedValue(result);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: result.modelId } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const results = wrapper.get('[data-testid="model-support-feature-results"]');
+    expect(results.text()).toContain('first turn failed');
+    expect(results.text()).toContain('First turn did not generate');
+    expect(results.text()).toContain('does not certify');
+    expect(results.get('[data-feature="production-first-turn"]').attributes('data-outcome')).toBe('failed');
+    expect(results.get('[data-feature="production-continuity"]').attributes('data-outcome')).toBe('not-run');
+    expect(wrapper.get('[data-testid="model-support-target-org/model"]').text()).toContain('1 failed');
     wrapper.unmount();
   });
 

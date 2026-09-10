@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "source": "reference-template-behavior-matrix",
+  "sourceMemberSha256": "4c4091ad7401dcf764c8aac2d8a122412d0fd97f01b1b1bc1820dc45eb8b4d91",
+  "modelId": "LiquidAI/LFM2.5-350M-ONNX",
+  "revision": "d11593fd9eb408e322667926656598896c2d5ff9",
+  "cases": [
+    {
+      "caseId": "tools-generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "passed",
+      "selectedTemplateSha256": "013eed60546434b6967e3483153d8c5c37abcb1d667f8b1f914683f2a9411531",
+      "renderedText": "<|startoftext|><|im_start|>system\nList of tools: [{\"type\": \"function\", \"function\": {\"name\": \"lookup_weather\", \"description\": \"Return deterministic weather fixture data.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}]<|im_end|>\n<|im_start|>user\nUse the weather tool for Tokyo.<|im_end|>\n<|im_start|>assistant\n",
+      "inputTokenIds": [
+        1,
+        6,
+        24131,
+        708,
+        3621,
+        803,
+        6486,
+        535,
+        1607,
+        38685,
+        6383,
+        6881,
+        997,
+        6046,
+        1878,
+        997,
+        6046,
+        6881,
+        37080,
+        3055,
+        6881,
+        997,
+        30753,
+        1557,
+        572,
+        51993,
+        1878,
+        997,
+        19522,
+        6881,
+        997,
+        17820,
+        15249,
+        3547,
+        7921,
+        52140,
+        1818,
+        50508,
+        997,
+        30202,
+        6881,
+        37080,
+        6383,
+        6881,
+        997,
+        7523,
+        1878,
+        997,
+        39306,
+        6881,
+        37080,
+        48250,
+        6881,
+        37080,
+        6383,
+        6881,
+        997,
+        4488,
+        511,
+        37602,
+        997,
+        35004,
+        6881,
+        35065,
+        48250,
+        13829,
+        2608,
+        20352,
+        7,
+        708,
+        6,
+        6423,
+        708,
+        14875,
+        779,
+        7921,
+        6690,
+        875,
+        19444,
+        523,
+        7,
+        708,
+        6,
+        64015,
+        708
+      ]
+    },
+    {
+      "caseId": "tool-result-continuation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call_template_probe_1",
+              "type": "function",
+              "function": {
+                "name": "lookup_weather",
+                "arguments": "{\"city\":\"Tokyo\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call_template_probe_1",
+          "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "passed",
+      "selectedTemplateSha256": "013eed60546434b6967e3483153d8c5c37abcb1d667f8b1f914683f2a9411531",
+      "renderedText": "<|startoftext|><|im_start|>system\nList of tools: [{\"type\": \"function\", \"function\": {\"name\": \"lookup_weather\", \"description\": \"Return deterministic weather fixture data.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}]<|im_end|>\n<|im_start|>user\nUse the weather tool for Tokyo.<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>tool\n{\"temperatureC\":20,\"condition\":\"clear\"}<|im_end|>\n<|im_start|>assistant\n",
+      "inputTokenIds": [
+        1,
+        6,
+        24131,
+        708,
+        3621,
+        803,
+        6486,
+        535,
+        1607,
+        38685,
+        6383,
+        6881,
+        997,
+        6046,
+        1878,
+        997,
+        6046,
+        6881,
+        37080,
+        3055,
+        6881,
+        997,
+        30753,
+        1557,
+        572,
+        51993,
+        1878,
+        997,
+        19522,
+        6881,
+        997,
+        17820,
+        15249,
+        3547,
+        7921,
+        52140,
+        1818,
+        50508,
+        997,
+        30202,
+        6881,
+        37080,
+        6383,
+        6881,
+        997,
+        7523,
+        1878,
+        997,
+        39306,
+        6881,
+        37080,
+        48250,
+        6881,
+        37080,
+        6383,
+        6881,
+        997,
+        4488,
+        511,
+        37602,
+        997,
+        35004,
+        6881,
+        35065,
+        48250,
+        13829,
+        2608,
+        20352,
+        7,
+        708,
+        6,
+        6423,
+        708,
+        14875,
+        779,
+        7921,
+        6690,
+        875,
+        19444,
+        523,
+        7,
+        708,
+        6,
+        64015,
+        708,
+        7,
+        708,
+        6,
+        47266,
+        708,
+        38685,
+        593,
+        25793,
+        544,
+        6881,
+        898,
+        2512,
+        25556,
+        42066,
+        14644,
+        511,
+        602,
+        7,
+        708,
+        6,
+        64015,
+        708
+      ]
+    }
+  ]
+}

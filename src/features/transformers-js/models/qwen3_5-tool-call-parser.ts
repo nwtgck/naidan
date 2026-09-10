@@ -8,7 +8,9 @@ const TOOL_CALL_CLOSE = '</tool_call>';
 const relaxedIdentifierPattern = /^[A-Za-z_$][A-Za-z0-9_$.-]*$/;
 const toolCallPayloadSchema = z.object({
   name: z.string(),
-  arguments: z.record(z.string(), z.unknown()),
+  // Both parsers produce local JSON-shaped values. Validate the dictionary
+  // without a record clone that silently removes a legitimate __proto__ key.
+  arguments: z.custom<Record<string, unknown>>(value => typeof value === 'object' && value !== null && !Array.isArray(value)),
 });
 
 function buildToolCall({ name, parameters }: {
@@ -37,7 +39,7 @@ function tryParseQwen3_5ToolCall({ content }: {
 
   const [, name, body] = functionMatch;
   if (!name || body === undefined) return null;
-  const parameters: Record<string, unknown> = {};
+  const parameters = Object.create(null) as Record<string, unknown>;
   const parameterPattern = /<parameter=([^\n>]+)>\s*([\s\S]*?)\s*<\/parameter>/g;
 
   let match: RegExpExecArray | null;
@@ -68,6 +70,17 @@ function tryParseQwen3_5ToolCall({ content }: {
     if (!Number.isNaN(numericValue) && `${numericValue}` === value) {
       parameters[parameterName] = numericValue;
       continue;
+    }
+
+    // The native template serializes mapping and sequence parameters with
+    // tojson. Preserve that structure without changing scalar interpretation
+    // or treating malformed JSON-like text as executable/relaxed input.
+    if (value.startsWith('{') || value.startsWith('[')) {
+      const structured = tryParseStrictJson({ content: value });
+      if (structured !== null && typeof structured === 'object') {
+        parameters[parameterName] = structured;
+        continue;
+      }
     }
 
     parameters[parameterName] = value;
@@ -141,7 +154,7 @@ class RelaxedJsonValueParser {
 
   private parseObject(): Record<string, unknown> {
     this.consume({ expected: '{' });
-    const result: Record<string, unknown> = {};
+    const result = Object.create(null) as Record<string, unknown>;
     this.skipWhitespace();
     if (this.peek() === '}') {
       this.consume({ expected: '}' });

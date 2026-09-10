@@ -23,6 +23,9 @@ inside `from_pretrained()`.
   fallback artifacts.
 - A Production Load Worker may fetch only required Naidan same-origin runtime
   assets such as ONNX Runtime MJS/Wasm.
+- Decoding embedded `data:` input through platform fetch is local processing,
+  not network access. Do not confuse it with permission to fetch remote images,
+  arbitrary same-origin endpoints, or other URL schemes.
 - OPFS access during Load must be read-only.
 - A missing required local file is a terminal Load error.
 - Load must not repair the cache, resume a download, or call the Explicit
@@ -73,6 +76,10 @@ inside `from_pretrained()`.
   probes, but it must not download, resume, or repair model artifacts.
 - A raw Transformers.js progress status of `download` is not proof of network
   transfer. Determine the source from cache and fetch observations.
+- Evidence ZIP creation and validation at runtime must use the existing shared
+  `@/utils/zip-stream` core. JSZip is development-only; it may serve as an
+  independent test/build tool, but must not be imported by runtime code, including
+  runtime-facing type imports. Do not add a JSZip compatibility wrapper.
 
 ## Investigation knowledge
 
@@ -120,6 +127,11 @@ inside `from_pretrained()`.
 
 - Investigation ZIPs are development inputs, not test-time dependencies. Only
   `naidan/` is published; sibling handoff and evidence directories are private.
+- Investigation archive layouts and observation schemas are not application
+  persistence contracts. Breaking changes are allowed when they improve capture,
+  analysis, or evidence-derived tests. Identify the format so old observations
+  are not silently misinterpreted. This does not authorize changes to model-cache
+  or user-setting persistence, or fabrication of observations missing in old ZIPs.
 - Select the data needed to reproduce and verify a contract, remove personal
   information, and commit that test data inside this repository. Do not commit
   entire investigation archives, unused logs, user conversations, or environment
@@ -134,6 +146,21 @@ inside `from_pretrained()`.
   readable in per-model tests. Share mechanics only when a change to that
   responsibility should intentionally affect all consumers, not merely because
   current code or values look alike.
+- Both Download and generation regressions must protect successful model paths,
+  not only reproduce known failures. Use comparable applicable scenarios across
+  exact models so shared implementation changes can be checked against unchanged
+  model-specific expectations. Record missing evidence even for models that
+  currently appear to work, including what additional capture would enable.
+- Within one replay boundary, prefer one test file per exact model, grouping
+  scenarios with `describe()`. Separate evidence files do not require separate
+  test files. Add scenario suffixes only for a concrete execution or maintenance
+  boundary, not automatically for every capability or new observation.
+- Keep model-specific scenarios in a comparable simple-to-complex order: basic
+  user/system input, first generation and settlement, supplied history and
+  same-runtime continuity, independent next input, reasoning, tools, then
+  multimodal input. Keep supporting native controls near the relevant contract.
+  Order by the behavior being verified, not when a test was added or whether it
+  currently passes. Missing evidence does not justify empty or skipped tests.
 - Treat an unrecorded resource as missing evidence, not as proof that the
   repository does not contain it. Record known absence explicitly and reject
   unexpected fixture requests instead of falling through to the internet.

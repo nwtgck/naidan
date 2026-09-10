@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "source": "reference-template-behavior-matrix",
+  "sourceMemberSha256": "8f15582679e84b7492b24a50da14671d171ec463a6f0eb7cf909aced0807e3ab",
+  "modelId": "onnx-community/gemma-4-E2B-it-ONNX",
+  "revision": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
+  "selectedTemplateSha256": "781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf",
+  "caseId": "tool-result-continuation",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Use the weather tool for Tokyo."
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_template_probe_1",
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "arguments": "{\"city\":\"Tokyo\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_template_probe_1",
+      "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "lookup_weather",
+        "description": "Return deterministic weather fixture data.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ]
+        }
+      }
+    }
+  ],
+  "addGenerationPrompt": true,
+  "renderedText": "<bos><|turn>system\n<|tool>declaration:lookup_weather{description:<|\"|>Return deterministic weather fixture data.<|\"|>,parameters:{properties:{city:{type:<|\"|>STRING<|\"|>}},required:[<|\"|>city<|\"|>],type:<|\"|>OBJECT<|\"|>}}<tool|><turn|>\n<|turn>user\nUse the weather tool for Tokyo.<turn|>\n<|turn>model\n<|tool_call>call:lookup_weather{{\"city\":\"Tokyo\"}}<tool_call|><|tool_response>response:lookup_weather{value:<|\"|>{\"temperatureC\":20,\"condition\":\"clear\"}<|\"|>}<tool_response|>",
+  "inputTokenIds": [
+    2,
+    105,
+    9731,
+    107,
+    46,
+    163688,
+    236787,
+    48656,
+    236779,
+    19323,
+    236782,
+    7777,
+    236787,
+    52,
+    13293,
+    64745,
+    7606,
+    26215,
+    1262,
+    236761,
+    52,
+    236764,
+    19031,
+    29616,
+    15921,
+    29616,
+    13319,
+    29616,
+    2084,
+    236787,
+    52,
+    35410,
+    52,
+    5237,
+    15979,
+    24845,
+    52,
+    13319,
+    52,
+    1604,
+    2084,
+    236787,
+    52,
+    60688,
+    52,
+    1807,
+    47,
+    106,
+    107,
+    105,
+    2364,
+    107,
+    10896,
+    506,
+    7606,
+    5904,
+    573,
+    21038,
+    236761,
+    106,
+    107,
+    105,
+    4368,
+    107,
+    48,
+    6639,
+    236787,
+    48656,
+    236779,
+    19323,
+    236782,
+    14937,
+    13319,
+    12375,
+    89265,
+    127096,
+    49,
+    50,
+    6275,
+    236787,
+    48656,
+    236779,
+    19323,
+    236782,
+    2394,
+    236787,
+    52,
+    14937,
+    27495,
+    236780,
+    1083,
+    236778,
+    236771,
+    2098,
+    19216,
+    12375,
+    9347,
+    25938,
+    52,
+    236783,
+    51
+  ]
+}

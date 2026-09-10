@@ -4,16 +4,17 @@ import type {
   ModelSupportInvestigationRun,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { investigationJsonObjectSchema } from "@/features/transformers-js/model-support-investigation/logic/json-value-schema";
+import { decodeEvidenceRun, encodeEvidenceRun, encodedEvidenceRunSchema } from './run-request';
 
 interface ModelSupportInvestigationEvidenceWorkerRequestPayload {
-  schemaVersion: 1,
+  schemaVersion: 2,
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery | undefined,
 }
 
 const evidenceWorkerRequestSchema = z.object({
-  schemaVersion: z.literal(1),
-  run: investigationJsonObjectSchema,
+  schemaVersion: z.literal(2),
+  ...encodedEvidenceRunSchema.shape,
   recovery: investigationJsonObjectSchema.optional(),
 }).strict();
 
@@ -27,8 +28,8 @@ export function createModelSupportInvestigationEvidenceWorkerRequest({
   // Validate the complete graph before crossing the Worker boundary. Accidental functions or
   // proxies therefore fail locally instead of surfacing as a postMessage DataCloneError.
   const cloned = structuredClone({
-    schemaVersion: 1 as const,
-    run,
+    schemaVersion: 2 as const,
+    ...encodeEvidenceRun({ run }),
     recovery,
   } satisfies ModelSupportInvestigationEvidenceWorkerRequestPayload);
   return new Blob([JSON.stringify(cloned)], { type: "application/json" });
@@ -46,7 +47,7 @@ export async function readModelSupportInvestigationEvidenceWorkerRequest({
   }
   return {
     schemaVersion: result.data.schemaVersion,
-    run: result.data.run as unknown as ModelSupportInvestigationRun,
+    run: decodeEvidenceRun({ run: result.data.run, providerCaptureEvidence: result.data.providerCaptureEvidence, providerInvestigationEvidence: result.data.providerInvestigationEvidence }),
     recovery: result.data.recovery as unknown as ModelSupportInvestigationRecovery | undefined,
   };
 }

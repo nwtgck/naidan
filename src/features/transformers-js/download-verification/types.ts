@@ -154,6 +154,7 @@ export interface DownloadVerificationCandidateOrchestrationResult {
 }
 
 export interface DownloadVerificationCandidateAcceptanceObservation {
+  receipt?: import('@/features/transformers-js/runtime/production-load-receipt').ProductionLoadReceipt;
   modelId: string;
   resolvedRevision: string;
   loaderRevisionOption: string | null;
@@ -167,6 +168,7 @@ export interface DownloadVerificationCandidateAcceptanceObservation {
 }
 
 export interface DownloadVerificationRevisionAcceptanceObservation {
+  receipt?: import('@/features/transformers-js/runtime/production-load-receipt').ProductionLoadReceipt;
   modelId: string;
   repositoryResolvedRevision: string | null;
   cacheRevision: string;

@@ -266,8 +266,8 @@ describe('runPartialModelSupportInvestigation', () => {
     });
     expect(result.templateBehavior?.tokenizerClass).toBe('ProbeTokenizer');
     expect(result.steps.find(step => step.id === 'download-evidence')).toMatchObject({
-      status: 'running',
-      detail: '0 actual candidate artifact-request observations and 0 bounded transport probes collected; Production cache acceptance is pending',
+      status: 'blocked',
+      detail: '0 actual candidate artifact-request observations and 0 bounded transport probes collected; 0 observation errors; no successful artifact-request observation; bounded probe collection ended; Production runtime cache acceptance is a separate observation',
     });
     expect(events).toHaveLength(12);
   });
@@ -573,10 +573,10 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(result.steps.find(step => step.id === 'download-evidence')?.status).toBe('blocked');
     expect(result.steps.find(step => step.id === 'model-declarations')?.status).toBe('passed');
     expect(result.steps.find(step => step.id === 'model-file-plan')?.status).toBe('passed');
-    expect(result.steps.find(step => step.id === 'template-behavior')?.status).toBe('passed');
+    expect(result.steps.find(step => step.id === 'template-behavior')?.status).toBe('blocked');
     expect(collectDownloadEvidence).not.toHaveBeenCalled();
     expect(inspectDeclarations).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository: undefined, cache });
-    expect(inspectTemplateBehavior).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository: undefined });
+    expect(inspectTemplateBehavior).not.toHaveBeenCalled();
     expect(inspectModelFilePlan).toHaveBeenCalledWith({
       runtimeTarget: result.runtimeTarget, repository: undefined, declarations: result.declarations, cache,
     });
@@ -642,11 +642,11 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(result.steps.find(step => step.id === 'download-evidence')?.status).toBe('skipped');
     expect(result.steps.find(step => step.id === 'model-declarations')?.status).toBe('passed');
     expect(result.steps.find(step => step.id === 'model-file-plan')?.status).toBe('passed');
-    expect(result.steps.find(step => step.id === 'template-behavior')?.status).toBe('passed');
+    expect(result.steps.find(step => step.id === 'template-behavior')?.status).toBe('blocked');
     expect(inspectRepository).not.toHaveBeenCalled();
     expect(collectDownloadEvidence).not.toHaveBeenCalled();
     expect(inspectDeclarations).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository: undefined, cache });
-    expect(inspectTemplateBehavior).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository: undefined });
+    expect(inspectTemplateBehavior).not.toHaveBeenCalled();
     expect(inspectModelFilePlan).toHaveBeenCalledWith({
       runtimeTarget: result.runtimeTarget, repository: undefined, declarations: result.declarations, cache,
     });

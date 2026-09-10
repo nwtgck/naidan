@@ -1,4 +1,4 @@
-import JSZip from 'jszip';
+import { createEvidenceArchive, setEvidenceFile } from '@/features/transformers-js/model-support-investigation/logic/evidence-archive';
 import { HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST } from '@/features/transformers-js/runtime/runtime-asset-manifest';
 import { TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES } from '@/features/transformers-js/production-load-candidates';
 import type {
@@ -7,6 +7,7 @@ import type {
   DownloadVerificationEvidenceStability,
 } from '@/features/transformers-js/download-verification/evidence/types';
 import { verifyGeneratedEvidenceArchive } from '@/features/transformers-js/model-support-investigation/logic/verify-evidence-archive';
+import { downloadRuntimeAcceptanceIdentity } from './runtime-acceptance-identity';
 
 interface DownloadVerificationCandidateEvidence {
   candidate: import('@/features/transformers-js/types').TransformersJsProductionInvestigationCandidate;
@@ -102,16 +103,7 @@ function candidateEvidence({ evidence }: { evidence: DownloadVerificationEvidenc
   });
 }
 
-function runtimeRevisionIdentity({ evidence }: { evidence: DownloadVerificationEvidenceInput }): 'exact-resolved-revision' | 'legacy-main-unverified' | 'unverified' | undefined {
-  const completion = evidence.runtimeCompletion;
-  if (completion === undefined || completion.status !== 'accepted') return undefined;
-  if (
-    completion.cacheRevision === completion.repositoryResolvedRevision
-    && completion.loaderRevisionOption === completion.repositoryResolvedRevision
-  ) return 'exact-resolved-revision';
-  if (completion.cacheRevision === 'main' && completion.loaderRevisionOption === null) return 'legacy-main-unverified';
-  return 'unverified';
-}
+const runtimeRevisionIdentity = downloadRuntimeAcceptanceIdentity;
 
 function testReadiness({ evidence, candidates }: {
   evidence: DownloadVerificationEvidenceInput;
@@ -227,6 +219,8 @@ function prefetchNotRunReason({ evidence }: { evidence: DownloadVerificationEvid
     return 'No complete Production candidate was available in local cache; Model Support Investigation intentionally did not download missing model artifacts.';
   case 'cache-reuse-failed':
     return 'Production cache-only acceptance failed before any model artifact download could be attempted.';
+  case 'ordinary-provider-load':
+    return 'The ordinary Provider performed its existing offline Load; no independent acceptance Load or model artifact download was started.';
   default: {
     const _ex: never = completion.source;
     throw new Error(`Unhandled runtime completion source: ${_ex}`);
@@ -429,6 +423,7 @@ export function createDownloadVerificationEvidenceLaneFiles({ evidence }: {
       loaderRevisionOption: evidence.runtimeCompletion.loaderRevisionOption,
       revisionIdentity: runtimeRevisionIdentity({ evidence }) ?? null,
       selectedCandidate: evidence.runtimeCompletion.selectedCandidate ?? null,
+      receipt: evidence.runtimeCompletion.receipt ?? null,
       cacheReuse: evidence.runtimeCompletion.cacheReuse ?? null,
       error: evidence.runtimeCompletion.error ?? null,
     }, undefined, 2)}\n`,
@@ -441,11 +436,11 @@ export function createDownloadVerificationEvidenceLaneFiles({ evidence }: {
 export async function createDownloadVerificationEvidence({ evidence }: {
   evidence: DownloadVerificationEvidenceInput;
 }): Promise<DownloadVerificationEvidenceArchive> {
-  const zip = new JSZip();
+  const files = new Map<string, Blob>();
   const { files: laneFiles, readiness, candidates, runtimeIdentity } = createDownloadVerificationEvidenceLaneFiles({ evidence });
 
-  zip.file('SUMMARY.md', summaryMarkdown({ evidence, candidates }));
-  zip.file('run.json', `${JSON.stringify({
+  setEvidenceFile({ files, path: 'SUMMARY.md', content: summaryMarkdown({ evidence, candidates }) });
+  setEvidenceFile({ files, path: 'run.json', content: `${JSON.stringify({
     schemaVersion: 1,
     runId: evidence.runId,
     mode: evidence.mode,
@@ -455,12 +450,12 @@ export async function createDownloadVerificationEvidence({ evidence }: {
     startedAt: evidence.run.startedAt,
     completedAt: evidence.run.finishedAt,
     runtimeIdentity,
-  }, undefined, 2)}\n`);
-  zip.file('test-readiness.json', `${JSON.stringify(readiness, undefined, 2)}\n`);
+  }, undefined, 2)}\n` });
+  setEvidenceFile({ files, path: 'test-readiness.json', content: `${JSON.stringify(readiness, undefined, 2)}\n` });
   for (const [path, content] of Object.entries(laneFiles)) {
-    zip.file(path, content);
+    setEvidenceFile({ files, path, content });
   }
-  zip.file('package-assessment.json', `${JSON.stringify({
+  setEvidenceFile({ files, path: 'package-assessment.json', content: `${JSON.stringify({
     schemaVersion: 1,
     status: 'valid-partial',
     runId: evidence.runId,
@@ -470,23 +465,21 @@ export async function createDownloadVerificationEvidence({ evidence }: {
       ...runtimeAcceptanceLimitation({ evidence }),
       'First inference, generation, protocol, and continuity evidence are separate Model Support Investigation domains.',
     ],
-  }, undefined, 2)}\n`);
+  }, undefined, 2)}\n` });
 
-  const manifestFiles = await Promise.all(Object.entries(zip.files)
-    .filter(([, file]) => !file.dir)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(async ([path, file]) => {
-      const bytes = await file.async('uint8array');
-      return { path, byteLength: bytes.byteLength, sha256: await sha256Hex({ bytes }) };
-    }));
-  zip.file('manifest.json', `${JSON.stringify({
+  const manifestFiles = [];
+  for (const [path, file] of [...files].sort(([left], [right]) => left.localeCompare(right))) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    manifestFiles.push({ path, byteLength: bytes.byteLength, sha256: await sha256Hex({ bytes }) });
+  }
+  setEvidenceFile({ files, path: 'manifest.json', content: `${JSON.stringify({
     schemaVersion: 1,
     runId: evidence.runId,
     generatedAt: evidence.run.finishedAt,
     files: manifestFiles,
-  }, undefined, 2)}\n`);
+  }, undefined, 2)}\n` });
 
-  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  const blob = await createEvidenceArchive({ files });
   await verifyGeneratedEvidenceArchive({ blob });
   return {
     blob,

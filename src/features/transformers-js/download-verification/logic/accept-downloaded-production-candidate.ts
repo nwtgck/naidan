@@ -4,6 +4,7 @@ import type { DownloadVerificationCandidateAcceptanceObservation } from '@/featu
 import type { TransformersJsProductionInvestigationCandidate, TransformersJsProgressCallback } from '@/features/transformers-js/types';
 
 import { productionAcceptanceFailureStatus, serializeProductionAcceptanceError } from './production-acceptance-error';
+import { readProductionLoadResultReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
 
 export async function acceptDownloadedProductionCandidate({ modelId, resolvedRevision, loadRevision, candidate, progressCallback = () => undefined, signal }: {
   modelId: string;
@@ -45,6 +46,7 @@ export async function acceptDownloadedProductionCandidate({ modelId, resolvedRev
       status: 'accepted',
       observationMethod: 'production-cache-only-runtime-preparation',
       error: undefined,
+      receipt: readProductionLoadResultReceipt({ value: result, modelId, revision: loadRevision }),
     };
   } catch (error) {
     if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');

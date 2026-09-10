@@ -36,6 +36,8 @@ export function toPlanningWorkerRun({
   run: ModelSupportInvestigationRun,
 }): ModelSupportInvestigationPlanningWorkerRun {
   const {
+    productionProviderCapture,
+    productionProviderInvestigation,
     downloadEvidence,
     loadAttempts,
     activeLoadAttempt,
@@ -43,6 +45,9 @@ export function toPlanningWorkerRun({
     laneComparison,
     ...planningRun
   } = run;
+  if (productionProviderCapture !== undefined || productionProviderInvestigation !== undefined) {
+    throw new Error('Planning Worker must not return Production Provider capture');
+  }
   if (loadAttempts.length !== 0) {
     throw new Error('Planning Worker must not return model load attempts');
   }
@@ -75,6 +80,11 @@ export function fromPlanningWorkerRun({
 }: {
   run: ModelSupportInvestigationPlanningWorkerRun,
 }): ModelSupportInvestigationRun {
+  // This field belongs to the host-owned Provider capture, never to planning.
+  // Reject presence before spreading so a forged accessor is not evaluated.
+  if (Object.hasOwn(run, 'productionProviderCapture') || Object.hasOwn(run, 'productionProviderInvestigation')) {
+    throw new Error('Planning Worker must not return Production Provider capture');
+  }
   return {
     ...run,
     loadAttempts: [],

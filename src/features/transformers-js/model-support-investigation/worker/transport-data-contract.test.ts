@@ -11,6 +11,7 @@ import type {
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
   ModelLoadResult,
+  ProductionModelLoadAcceptanceResult,
   ProgressInfo,
   TransformersJsPrefetchResult,
   TransformersJsProductionInvestigationObservation,
@@ -53,6 +54,7 @@ type WorkerTransportData =
   | TransformersJsProductionInvestigationObservation
   | ProgressInfo
   | ModelLoadResult
+  | ProductionModelLoadAcceptanceResult
   | TransformersJsPrefetchResult
   | ChatMessage
   | LmParameters
@@ -60,6 +62,7 @@ type WorkerTransportData =
   | WorkerToolDefinition;
 
 const workerTransportFunctionPaths: AssertNever<FunctionPath<WorkerTransportData>>[] = [];
+const ordinaryLoadExtraFields: AssertNever<Exclude<keyof ModelLoadResult, 'device' | 'dtype'>>[] = [];
 const functionPathProbe: FunctionPath<{
   nested: {
     callback: ({ value }: { value: string }) => void,
@@ -69,6 +72,7 @@ const functionPathProbe: FunctionPath<{
 describe("Model Support Investigation Worker transport data", () => {
   it("keeps transported DTOs free of functions and callable class instances", () => {
     expect(workerTransportFunctionPaths).toEqual([]);
+    expect(ordinaryLoadExtraFields).toEqual([]);
     expect(functionPathProbe).toBe("nested.callback");
   });
 });

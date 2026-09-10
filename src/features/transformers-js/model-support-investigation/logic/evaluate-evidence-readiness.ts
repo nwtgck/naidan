@@ -6,7 +6,7 @@ import type {
   ModelSupportInvestigationToolParserObservation,
   ModelSupportInvestigationToolResultTemplateRoundTrip,
 } from "@/features/transformers-js/model-support-investigation/types";
-import type { DownloadVerificationRuntimeCompletionEvidence } from "@/features/transformers-js/download-verification/evidence/types";
+import { downloadRuntimeAcceptanceIdentity } from '@/features/transformers-js/download-verification/evidence/runtime-acceptance-identity';
 import type {
   TransformersJsProductionInvestigationActiveCandidateLoadAttempt,
   TransformersJsProductionInvestigationReasoningEffortObservation,
@@ -258,18 +258,6 @@ function productionToolResultContinuationAnswer({ observation }: {
   }
 }
 
-function runtimeCompletionRevisionIdentity({ completion }: {
-  completion: DownloadVerificationRuntimeCompletionEvidence | undefined,
-}): 'exact-resolved-revision' | 'legacy-main-unverified' | 'unverified' | undefined {
-  if (completion === undefined || completion.status !== 'accepted') return undefined;
-  if (
-    completion.cacheRevision === completion.repositoryResolvedRevision
-    && completion.loaderRevisionOption === completion.repositoryResolvedRevision
-  ) return 'exact-resolved-revision';
-  if (completion.cacheRevision === 'main' && completion.loaderRevisionOption === null) return 'legacy-main-unverified';
-  return 'unverified';
-}
-
 function downgradeForUnverifiedRuntimeRevision({
   status,
   unverified,
@@ -359,7 +347,7 @@ export function evaluateEvidenceReadiness({ run }: {
   const successfulDownloadTransportCount = downloadEvidence?.run.transportObservations.filter(item => item.error === undefined).length ?? 0;
   const downloadRuntimeCompletion = downloadEvidence?.runtimeCompletion;
   const downloadRuntimeAccepted = downloadRuntimeCompletion?.status === 'accepted';
-  const downloadRuntimeRevisionIdentity = runtimeCompletionRevisionIdentity({ completion: downloadRuntimeCompletion });
+  const downloadRuntimeRevisionIdentity = downloadEvidence === undefined ? undefined : downloadRuntimeAcceptanceIdentity({ evidence: downloadEvidence });
   const downloadRuntimeRevisionUnverified = downloadRuntimeAccepted && downloadRuntimeRevisionIdentity !== 'exact-resolved-revision';
   const runtimeRevisionUnverified = downloadRuntimeRevisionUnverified || runtimeTargetRevisionUnverified;
   const downloadReadinessStatus = (() => {
@@ -493,6 +481,18 @@ export function evaluateEvidenceReadiness({ run }: {
     ...(productionPartialObservation?.activeLoadAttempt === undefined ? [] : ["production-lane/active-load-attempt.json"]),
   ];
   const productionReadiness = (() => {
+    if (run.productionProviderCapture !== undefined || run.productionProviderInvestigation !== undefined) {
+      const requests = run.productionProviderInvestigation?.requests ?? run.productionProviderCapture!.requests;
+      return {
+        status: 'partial' as const,
+        summary: 'Public Provider requests were recorded through the ordinary generation route. This is not a Reference token-difference comparison or proof of complete native replay; consult each request outcome separately.',
+        answer: `${requests.filter(request => request.status === 'settled').length}/${requests.length} recorded requests settled; separate Reference comparison not executed`,
+        evidencePaths: [
+          ...(run.productionProviderCapture === undefined ? [] : ['production-provider/capture.json']),
+          ...(run.productionProviderInvestigation === undefined ? [] : ['production-provider/summary.json']),
+        ],
+      };
+    }
     switch (run.productionLane.status) {
     case "passed": {
       const observation = run.productionLane.observation;
@@ -600,6 +600,14 @@ export function evaluateEvidenceReadiness({ run }: {
   })();
 
   const continuityReadiness = (() => {
+    const providerContinuity = run.productionProviderInvestigation?.requests.find(request => request.scenario === 'continuity')
+      ?? run.productionProviderCapture?.requests.find(request => request.scenario === 'continuity');
+    if (providerContinuity !== undefined) return {
+      status: 'partial' as const,
+      summary: 'A bounded public Provider continuity request record is available. Its request status is separate from native KV contents, which this projection does not certify.',
+      answer: `Provider continuity: ${providerContinuity.status}${providerContinuity.notStartedReason === undefined ? '' : ` (${providerContinuity.notStartedReason})`}; native KV contents not certified`,
+      evidencePaths: run.productionProviderInvestigation === undefined ? ['production-provider/capture.json'] : ['production-provider/summary.json'],
+    };
     if (productionObservation === undefined) {
       return {
         status: "not-observed" as const,
@@ -907,7 +915,7 @@ export function evaluateEvidenceReadiness({ run }: {
             ? `Download runtime completion ended with ${downloadRuntimeCompletion.status}${downloadRuntimeCompletion.error === undefined ? '.' : `: ${downloadRuntimeCompletion.error.name}: ${downloadRuntimeCompletion.error.message}`}`
             : downloadRuntimeAccepted
               ? downloadRuntimeRevisionUnverified
-                ? `${observedDownloadCandidateCount} actual Transformers.js candidate artifact-request observation(s); ${successfulDownloadTransportCount}/${downloadTransportCount} bounded transport probes completed without an observed transport error; Production cache-only runtime acceptance succeeded at legacy main, but exact identity with frozen revision ${downloadRuntimeCompletion.repositoryResolvedRevision} remains unverified.`
+                ? `${observedDownloadCandidateCount} actual Transformers.js candidate artifact-request observation(s); ${successfulDownloadTransportCount}/${downloadTransportCount} bounded transport probes completed without an observed transport error; Production cache-only runtime acceptance succeeded at ${downloadRuntimeCompletion.cacheRevision ?? 'an unobserved cache revision'}, but exact identity with frozen revision ${downloadRuntimeCompletion.repositoryResolvedRevision} remains unverified.`
                 : `${observedDownloadCandidateCount} actual Transformers.js candidate artifact-request observation(s); ${successfulDownloadTransportCount}/${downloadTransportCount} bounded transport probes completed without an observed transport error; Production cache-only runtime acceptance succeeded at ${downloadRuntimeCompletion.loaderRevisionOption ?? 'main'} with exact frozen-revision identity.`
               : `${observedDownloadCandidateCount} actual Transformers.js candidate artifact-request observation(s); ${successfulDownloadTransportCount}/${downloadTransportCount} bounded transport probes completed without an observed transport error.`,
       questionId: "download-production-artifact-discovery",

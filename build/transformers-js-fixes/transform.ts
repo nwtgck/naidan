@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import MagicString from 'magic-string';
 import { z } from 'zod';
 import originalProvenance from './provenance.json';
-import originalReplacements from './replacements.json';
+import originalReplacements from './replacements';
 
 export const TRANSFORMERS_JS_FIXES_PROVENANCE = z.object({
   schemaVersion: z.literal(1), packageName: z.literal('@huggingface/transformers'),
-  version: z.literal('4.2.0'), patchId: z.literal('naidan-transformers-js-fixes-v2'),
+  version: z.literal('4.2.0'), patchId: z.literal('naidan-transformers-js-fixes-v3'),
   upstreamHashes: z.object({
     'src/utils/model-loader.js': z.string().regex(/^[a-f0-9]{64}$/u),
     'src/models/session.js': z.string().regex(/^[a-f0-9]{64}$/u),
@@ -16,9 +16,13 @@ export const TRANSFORMERS_JS_FIXES_PROVENANCE = z.object({
     'package.json': z.string().regex(/^[a-f0-9]{64}$/u),
   }).strict(),
   transformedWebSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  bundledJinja: z.object({
+    version: z.literal('0.5.6'), sectionSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    licenseSha256: z.string().regex(/^[a-f0-9]{64}$/u), licenseSource: z.string().min(1),
+  }).strict(),
   changes: z.array(z.string()), scope: z.string(),
 }).strict().parse(originalProvenance);
-const replacements = z.array(z.object({ before: z.string().min(1), after: z.string() }).strict()).length(5).parse(originalReplacements);
+const replacements = z.array(z.object({ before: z.string().min(1), after: z.string() }).strict()).length(7).parse(originalReplacements);
 
 export function transformersJsFixesSha256({ code }: { code: string | Uint8Array }): string {
   return createHash('sha256').update(code).digest('hex');

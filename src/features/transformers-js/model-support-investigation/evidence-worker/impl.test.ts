@@ -26,7 +26,7 @@ describe("createModelSupportInvestigationEvidenceWorker", () => {
     const { createModelSupportInvestigationEvidenceWorker } = await import("./impl");
     const worker = createModelSupportInvestigationEvidenceWorker();
     const request = new Blob([JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       run: { runId: "run-1" },
     })], { type: "application/json" });
 
@@ -58,7 +58,7 @@ describe("createModelSupportInvestigationEvidenceWorker", () => {
       status: "passed",
       run: { runId: "run-a", modelId: "org/model-a" },
     }];
-    const request = new Blob([JSON.stringify({ schemaVersion: 1, batchId: "batch-1", items })], { type: "application/json" });
+    const request = new Blob([JSON.stringify({ schemaVersion: 2, batchId: "batch-1", items })], { type: "application/json" });
 
     await expect(worker.createBatchEvidence({ request })).resolves.toBe(archive);
     expect(mocks.createBatchEvidence).toHaveBeenCalledWith({

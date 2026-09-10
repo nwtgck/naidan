@@ -23,6 +23,36 @@ async function loopbackServer({ listener }: { listener: RequestListener }) {
 const runtimePath = '/transformers/ort-wasm-simd-threaded.asyncify.mjs';
 
 describe('createDownloadedModelWorkerFetch', () => {
+  it('decodes percent-encoded embedded bytes without interpreting them as a network URL', async () => {
+    const guarded = createDownloadedModelWorkerFetch({
+      originalFetch: globalThis.fetch, workerLocationUrl: 'https://naidan.example/worker.js',
+      environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+    });
+    const response = await guarded(new URL('data:application/octet-stream,%00%FF%80%2C'));
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(Uint8Array.of(0, 255, 128, 44));
+    expect(response.headers.get('content-type')).toBe('application/octet-stream');
+  });
+
+  it('preserves cancellation of embedded-data Requests', async () => {
+    const guarded = createDownloadedModelWorkerFetch({
+      originalFetch: globalThis.fetch, workerLocationUrl: 'https://naidan.example/worker.js',
+      environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+    });
+    const controller = new AbortController();
+    const reason = new Error('Fixture image read cancelled');
+    controller.abort(reason);
+    await expect(guarded(new Request('data:image/png;base64,AAAA', { signal: controller.signal })))
+      .rejects.toBe(reason);
+  });
+
+  it('propagates malformed embedded-data errors without a fallback request', async () => {
+    const guarded = createDownloadedModelWorkerFetch({
+      originalFetch: globalThis.fetch, workerLocationUrl: 'https://naidan.example/worker.js',
+      environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+    });
+    await expect(guarded('data:image/png;base64,***')).rejects.toThrow();
+  });
+
   it('does not send a request to a forbidden same-origin redirect target', async () => {
     const received: string[] = [];
     const server = await loopbackServer({ listener: (request, response) => {
@@ -154,6 +184,10 @@ describe('createDownloadedModelWorkerFetch', () => {
     'https://naidan.example/api/model-proxy',
     'https://naidan.example/models/user/model/config.json',
     'https://naidan.example/transformers/unlisted.wasm',
+    'https://naidan.example/data:image/png;base64,AAAA',
+    'blob:https://naidan.example/unowned-image',
+    'file:///fixture-image.png',
+    'javascript:void(0)',
   ])('fails closed for non-runtime request %s', async url => {
     const originalFetch = vi.fn();
     const fetch = createDownloadedModelWorkerFetch({

@@ -100,7 +100,7 @@ describe("Transformers.js Comlink transport contracts", () => {
 
     try {
       const planningResult = await remote.runPartialInvestigation(
-        { modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
+        { runId: "host-run", modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
         Comlink.proxy(onEvent),
         Comlink.proxy(onRunCheckpoint),
         Comlink.proxy(async () => {

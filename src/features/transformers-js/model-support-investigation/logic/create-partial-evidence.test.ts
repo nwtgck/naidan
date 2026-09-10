@@ -1,6 +1,15 @@
+// @vitest-environment node
 import JSZip from "jszip";
-import { createInitialInvestigationCheckpoint } from './investigation-recovery';
-import { describe, expect, it } from "vitest";
+import { webcrypto } from 'node:crypto';
+import { completeInvestigationCheckpoint, createInitialInvestigationCheckpoint } from './investigation-recovery';
+import { createProductionProviderCaptureOwner } from './production-provider-capture-owner';
+import { verifyGeneratedEvidenceArchive } from './verify-evidence-archive';
+import * as archiveVerifier from './verify-evidence-archive';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProductionProviderCaptureSnapshot } from './production-provider-capture-owner';
+import type { ProductionProviderNativeCollectionSnapshot } from './production-provider-generation-capture-owner';
+import * as nativeEvidence from './production-provider-native-evidence';
+import * as evidenceArchive from './evidence-archive';
 import type {
   ModelSupportInvestigationEvidencePackageAssessment,
   ModelSupportInvestigationRun,
@@ -10,6 +19,9 @@ import {
   createBatchModelSupportEvidence,
   createPartialModelSupportEvidence,
 } from "./create-partial-evidence";
+
+// These serialization tests require real Web Blob/streams, not a DOM. JSZip
+// remains an independent test-only reader for the produced ZIP transport.
 
 function runtimeAssetIdentity(): ModelSupportInvestigationRuntimeAssetIdentity {
   return {
@@ -44,7 +56,357 @@ function runtimeAssetIdentity(): ModelSupportInvestigationRuntimeAssetIdentity {
   };
 }
 
+// Fixed DTOs exercise ZIP serialization only, not a new generation or capture.
+function nativeRecords({ runId, modelId }: { runId: string; modelId: string }) {
+  const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId, now: () => '2026-09-09T00:00:00.000Z' });
+  const context = { runId, workerEpoch: 1, requestId: `${runId}-first-turn`, generationCallId: 1 };
+  const provider: ProductionProviderCaptureSnapshot = {
+    format: 'production-provider-capture-v2', runId, modelId, plan: 'first-only', run: { status: 'completed' },
+    lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [],
+    requests: [{ runId, requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined, input: {
+      messages: [{ role: 'user', content: 'Template probe user message.' }], tools: [],
+      parameters: { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+    }, trace: {
+      format: 'production-provider-trace-v2', requestId: context.requestId,
+      limits: { maximumEvents: 20, maximumCharacters: 1024, maximumFieldCharacters: 16384 },
+      completeness: 'complete', failure: undefined, events: [], lateEvents: [], retainedCharacters: 0,
+      settled: { sequence: 0, outcome: { status: 'fulfilled' }, events: [], completeness: 'complete', failure: undefined },
+    } }],
+    capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
+  };
+  checkpoint.run.productionProviderCapture = provider;
+  const native: ProductionProviderNativeCollectionSnapshot = {
+    format: 'production-provider-native-collection-v1', runId, maximumWorkerEpochs: 8, phase: 'finished', unrecordedWorkerCreations: 0, incompleteReasons: [],
+    epochs: [{ workerEpoch: 1, lifetime: { status: 'observed', value: { runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: modelId, requestedRevision: undefined }], incompleteReasons: [] } },
+      collection: { status: 'returned', result: { status: 'captured', capture: {
+        schemaVersion: 1, runId, workerEpoch: 1, byteOrder: 'little-endian',
+        limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
+        calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
+        events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
+        incompleteReasons: [], unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+      } } } }],
+  };
+  return { ...checkpoint, native };
+}
+
+async function savedNativeEvidence({ run, native }: { run: ModelSupportInvestigationRun; native: ProductionProviderNativeCollectionSnapshot }) {
+  if (run.productionProviderCapture === undefined) throw new Error('Expected test Provider capture');
+  return nativeEvidence.createProductionProviderNativeEvidence({ native, provider: run.productionProviderCapture, maximumBinaryBytes: nativeEvidence.PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
+}
+
+describe('native sidecars in generated Evidence ZIPs', () => {
+  it('preserves each saved image-size matrix and native call in multi-model batch re-export', async () => {
+    const records = [nativeRecords({ runId: 'size-one', modelId: 'org/one' }), nativeRecords({ runId: 'size-two', modelId: 'org/two' })];
+    const items = await Promise.all(records.map(async (item, index) => {
+      const collection = item.native.epochs[0]!.collection;
+      if (collection.status !== 'returned' || collection.result.status !== 'captured') throw new Error('Expected native fixture');
+      const capture = collection.result.capture;
+      capture.events.push({ kind: 'inputs', identity: { ...capture.calls[0]!.context, nativeInvocationOrdinal: 1 }, phase: 'native-kwargs', values: [
+        { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[index + 1, index + 2]] } },
+        { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: [[256, 512]] } },
+      ] });
+      return { target: item.run.modelId, status: 'passed' as const, run: item.run, recovery: item.recovery, nativeEvidence: await savedNativeEvidence({ run: item.run, native: item.native }), error: undefined };
+    }));
+    const verifyInner = vi.spyOn(archiveVerifier, 'verifyGeneratedEvidenceFiles');
+    const first = await createBatchModelSupportEvidence({ batchId: 'image-sizes-batch', items });
+    const second = await createBatchModelSupportEvidence({ batchId: 'image-sizes-batch', items: structuredClone(items) });
+    const firstZip = await JSZip.loadAsync(await first.blob.arrayBuffer());
+    const secondZip = await JSZip.loadAsync(await second.blob.arrayBuffer());
+    for (const [index, prefix] of ['models/001-org-one/', 'models/002-org-two/'].entries()) {
+      const path = `${prefix}generation-native/capture.json`;
+      expect(await firstZip.file(path)!.async('text')).toBe(items[index]!.nativeEvidence.json);
+      expect(await secondZip.file(path)!.async('text')).toBe(items[index]!.nativeEvidence.json);
+      const envelope = JSON.parse(await secondZip.file(path)!.async('text'));
+      expect(envelope.epochs[0].collection.result.capture.calls).toHaveLength(1);
+      expect(envelope.epochs[0].collection.result.capture.events[1].values[0].snapshot).toEqual({ status: 'image-sizes', values: [[index + 1, index + 2]] });
+    }
+    // Batch creation validates each inner dossier before namespacing. Its
+    // outer manifest is a batch, not a single-run verifier input.
+    expect(verifyInner).toHaveBeenCalledTimes(4);
+  });
+  beforeEach(() => {
+    vi.stubGlobal('crypto', webcrypto);
+    vi.stubGlobal('fetch', vi.fn(() => {
+      throw new Error('Export must not access the network');
+    }));
+    vi.stubGlobal('Worker', vi.fn(() => {
+      throw new Error('Export must not create a Worker or call Load/RPC');
+    }));
+    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn(() => {
+      throw new Error('Export must not access OPFS');
+    }) } });
+  });
+  afterEach(() => {
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(globalThis.Worker).not.toHaveBeenCalled();
+    expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
+    vi.restoreAllMocks(); vi.unstubAllGlobals();
+  });
+
+  it('compresses the outer batch once after assembling uncompressed model file sets', async () => {
+    const one = nativeRecords({ runId: 'archive-one', modelId: 'org/one' });
+    const two = nativeRecords({ runId: 'archive-two', modelId: 'org/two' });
+    const compression = vi.spyOn(evidenceArchive, 'createEvidenceArchive');
+    const result = await createBatchModelSupportEvidence({ batchId: 'one-archive', items: [one, two].map(item => ({ target: item.run.modelId, status: 'passed' as const, run: item.run, recovery: item.recovery, error: undefined })) });
+    expect(compression).toHaveBeenCalledTimes(1);
+    const inputs = compression.mock.calls[0]![0].files;
+    expect(inputs.get('models/001-org-one/run.json')).toBeInstanceOf(Blob);
+    expect(inputs.get('models/002-org-two/run.json')).toBeInstanceOf(Blob);
+    const oracle = await JSZip.loadAsync(await result.blob.arrayBuffer());
+    expect(oracle.file('models/001-org-one/manifest.json')).not.toBeNull();
+    expect(oracle.file('models/002-org-two/manifest.json')).not.toBeNull();
+  });
+
+  it('closes the final batch reader when semantic verification throws', async () => {
+    const item = nativeRecords({ runId: 'reader-close', modelId: 'org/one' });
+    const open = evidenceArchive.openEvidenceArchive;
+    const close = vi.fn<() => Promise<void>>();
+    const failure = new Error('Injected final archive read failure');
+    vi.spyOn(evidenceArchive, 'openEvidenceArchive').mockImplementation(async input => {
+      const opened = await open(input);
+      close.mockImplementation(opened.close);
+      return { reader: { paths: opened.reader.paths, async read() {
+        throw failure;
+      } }, close };
+    });
+    await expect(createBatchModelSupportEvidence({ batchId: 'reader-close', items: [{ target: item.run.modelId, status: 'passed', run: item.run, recovery: item.recovery, error: undefined }] })).rejects.toBe(failure);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes native bytes exactly once with a run reference and stable re-export from saved snapshots', async () => {
+    const { run, recovery, native } = nativeRecords({ runId: 'native-single', modelId: 'org/one' });
+    const sourceProvider = JSON.stringify(run.productionProviderCapture);
+    const sidecar = await savedNativeEvidence({ run, native });
+    const encode = vi.spyOn(nativeEvidence, 'createProductionProviderNativeEvidence');
+    const first = await createPartialModelSupportEvidence({ run, recovery, nativeEvidence: sidecar });
+    const second = await createPartialModelSupportEvidence({ run, recovery, nativeEvidence: structuredClone(sidecar) });
+    expect(encode).not.toHaveBeenCalled();
+    const firstZip = await JSZip.loadAsync(await first.blob.arrayBuffer());
+    const secondZip = await JSZip.loadAsync(await second.blob.arrayBuffer());
+    const savedRun = JSON.parse(await firstZip.file('run.json')!.async('string'));
+    expect(savedRun.productionProviderNativeCapture).toEqual({ format: 'production-provider-native-reference-v1', path: 'generation-native/capture.json' });
+    expect(Object.hasOwn(run, 'productionProviderNativeCapture')).toBe(false);
+    expect(JSON.stringify(run.productionProviderCapture)).toBe(sourceProvider);
+    expect(savedRun.status).toBe(run.status);
+    const paths = Object.keys(firstZip.files).filter(path => !firstZip.files[path]!.dir && path.startsWith('generation-native/'));
+    expect(paths.sort()).toEqual(['generation-native/capture.json', 'generation-native/tensors/000001.bin']);
+    expect(await firstZip.file('generation-native/tensors/000001.bin')!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
+    for (const path of ['run.json', 'production-provider/capture.json', 'generation-native/capture.json', 'generation-native/tensors/000001.bin', 'manifest.json']) {
+      expect(await secondZip.file(path)!.async('uint8array')).toEqual(await firstZip.file(path)!.async('uint8array'));
+    }
+    const manifest = JSON.parse(await firstZip.file('manifest.json')!.async('string'));
+    expect(manifest.files).toContainEqual(expect.objectContaining({ path: 'generation-native/tensors/000001.bin', byteLength: 2, sha256: 'c42522128b49193de8cd45d8f7589cd7e085e65f138640d57d4482e5f7189623' }));
+    await expect(verifyGeneratedEvidenceArchive({ blob: first.blob })).resolves.toMatchObject({ runId: run.runId });
+    expect(await firstZip.file('SUMMARY.md')!.async('string')).toContain('does not certify Load success or complete replay');
+  });
+
+  it('rejects foreign native run identity and native capture without a Provider snapshot', async () => {
+    const { run, recovery, native } = nativeRecords({ runId: 'native-identity', modelId: 'org/one' });
+    const sidecar = await savedNativeEvidence({ run, native });
+    await expect(createPartialModelSupportEvidence({ run, recovery, nativeEvidence: { ...sidecar, json: sidecar.json.replaceAll('native-identity', 'foreign') } })).rejects.toThrow();
+    const { productionProviderCapture: _provider, ...withoutProvider } = run;
+    await expect(createPartialModelSupportEvidence({ run: withoutProvider, recovery, nativeEvidence: sidecar })).rejects.toThrow();
+  });
+
+  it('keeps refusal and unavailable collection distinct from an absent sidecar', async () => {
+    const { run, recovery, native } = nativeRecords({ runId: 'native-partial', modelId: 'org/one' });
+    const epoch = native.epochs[0]!;
+    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Expected test capture');
+    const capture = epoch.collection.result.capture;
+    capture.events.push({ kind: 'inputs', identity: { ...capture.calls[0]!.context, nativeInvocationOrdinal: 1 }, phase: 'pre-budget', values: [{ name: 'private-key-not-exportable', snapshot: { status: 'not-recorded', reason: 'excluded-field' } }] });
+    const refused = await createPartialModelSupportEvidence({ run, recovery, nativeEvidence: await savedNativeEvidence({ run, native }) });
+    const refusedZip = await JSZip.loadAsync(await refused.blob.arrayBuffer());
+    const refusedIndex = await refusedZip.file('generation-native/capture.json')!.async('string');
+    expect(JSON.parse(refusedIndex).epochs[0].collection).toEqual({ status: 'export-refused', reason: 'unsupported-native-key' });
+    expect(refusedIndex).not.toContain('private-key-not-exportable');
+    expect(Object.keys(refusedZip.files).some(path => path.endsWith('.bin'))).toBe(false);
+    const unavailable = await createPartialModelSupportEvidence({ run, recovery, nativeEvidence: await savedNativeEvidence({ run, native: { ...native, epochs: [{ ...epoch, collection: { status: 'unavailable', reason: 'session-inactive' } }] } }) });
+    const unavailableZip = await JSZip.loadAsync(await unavailable.blob.arrayBuffer());
+    expect(JSON.parse(await unavailableZip.file('generation-native/capture.json')!.async('string')).epochs[0].collection.status).toBe('unavailable');
+    const absent = await createPartialModelSupportEvidence({ run, recovery });
+    const absentZip = await JSZip.loadAsync(await absent.blob.arrayBuffer());
+    expect(absentZip.file('generation-native/capture.json')).toBeNull();
+    expect(Object.hasOwn(JSON.parse(await absentZip.file('run.json')!.async('string')), 'productionProviderNativeCapture')).toBe(false);
+  });
+
+  it('keeps each batch model ordinal local and passes a decreasing shared tensor budget to the real verifier', async () => {
+    const one = nativeRecords({ runId: 'batch-one', modelId: 'org/one' });
+    const two = nativeRecords({ runId: 'batch-two', modelId: 'org/two' });
+    const items = await Promise.all([one, two].map(async item => ({ target: item.run.modelId, status: 'passed' as const, run: item.run, recovery: item.recovery, nativeEvidence: await savedNativeEvidence({ run: item.run, native: item.native }), error: undefined })));
+    const encoder = vi.spyOn(nativeEvidence, 'createProductionProviderNativeEvidence');
+    const verifier = vi.spyOn(nativeEvidence, 'verifyProductionProviderNativeEvidenceSidecar');
+    const result = await createBatchModelSupportEvidence({ batchId: 'native-batch', items });
+    const zip = await JSZip.loadAsync(await result.blob.arrayBuffer());
+    expect(verifier.mock.calls.map(([input]) => input.maximumBinaryBytes)).toEqual([256 * 1024 * 1024, 256 * 1024 * 1024 - 2]);
+    expect(encoder).not.toHaveBeenCalled();
+    for (const [prefix, expectedRun] of [['models/001-org-one/', 'batch-one'], ['models/002-org-two/', 'batch-two']]) {
+      const index = JSON.parse(await zip.file(`${prefix}generation-native/capture.json`)!.async('string'));
+      expect(index.runId).toBe(expectedRun);
+      expect(index.epochs[0].collection.result.capture.events[0].snapshot.bytes.path).toBe('generation-native/tensors/000001.bin');
+      expect(await zip.file(`${prefix}generation-native/tensors/000001.bin`)!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
+    }
+  });
+
+  it('rejects an orphan batch sidecar instead of dropping it with a missing run', async () => {
+    const { run, native } = nativeRecords({ runId: 'orphan-native', modelId: 'org/one' });
+    const sidecar = await savedNativeEvidence({ run, native });
+    await expect(createBatchModelSupportEvidence({ batchId: 'orphan-batch', items: [{ target: 'org/one', status: 'interrupted', run: undefined, recovery: undefined, nativeEvidence: sidecar, error: undefined }] })).rejects.toThrow(/^Native capture Evidence requires its investigation run$/u);
+  });
+
+  it('propagates a real enclosing-byte refusal without exporting only the earlier batch models', async () => {
+    const one = nativeRecords({ runId: 'budget-one', modelId: 'org/one' });
+    const two = nativeRecords({ runId: 'budget-two', modelId: 'org/two' });
+    const items = await Promise.all([one, two].map(async item => ({ target: item.run.modelId, status: 'passed' as const, run: item.run, recovery: item.recovery, nativeEvidence: await savedNativeEvidence({ run: item.run, native: item.native }), error: undefined })));
+    const original = nativeEvidence.verifyProductionProviderNativeEvidenceSidecar;
+    // Exercise the real bounded verifier with a tiny remaining allowance. The
+    // preceding test independently fixes the production batch allowance wiring.
+    const verifier = vi.spyOn(nativeEvidence, 'verifyProductionProviderNativeEvidenceSidecar')
+      .mockImplementationOnce(input => original(input))
+      .mockImplementationOnce(input => original({ ...input, maximumBinaryBytes: 1 }));
+    await expect(createBatchModelSupportEvidence({ batchId: 'budget-batch', items })).rejects.toThrow(/^Invalid native capture evidence$/u);
+    expect(verifier).toHaveBeenCalledTimes(2);
+  });
+
+  it('checks aggregate native JSON admission before any Blob body read or digest', async () => {
+    const { run, recovery, native } = nativeRecords({ runId: 'json-budget', modelId: 'org/one' });
+    const sidecar = await savedNativeEvidence({ run, native });
+    const measure = nativeEvidence.measureProductionProviderNativeEvidenceSidecar;
+    // The real measurement is tested with real strings in the helper suite.
+    // Substitute only its scalar count to test batch arithmetic without a huge string.
+    vi.spyOn(nativeEvidence, 'measureProductionProviderNativeEvidenceSidecar').mockImplementation(input => ({ ...measure(input), jsonCharacters: 32 * 1024 * 1024 + 1 }));
+    const read = vi.spyOn(Blob.prototype, 'arrayBuffer');
+    const digest = vi.spyOn(crypto.subtle, 'digest');
+    const item = { target: run.modelId, status: 'passed' as const, run, recovery, nativeEvidence: sidecar, error: undefined };
+    await expect(createBatchModelSupportEvidence({ batchId: 'json-budget', items: [item, item] })).rejects.toThrow(/^Native capture batch Evidence exceeds its retained data budget$/u);
+    expect(read).not.toHaveBeenCalled();
+    expect(digest).not.toHaveBeenCalled();
+  });
+
+  it('checks aggregate native binary admission before any Blob body read or digest', async () => {
+    const { run, recovery, native } = nativeRecords({ runId: 'binary-budget', modelId: 'org/one' });
+    const sidecar = await savedNativeEvidence({ run, native });
+    const measure = nativeEvidence.measureProductionProviderNativeEvidenceSidecar;
+    // Admission arithmetic uses scalar measurements, not fabricated large Blobs.
+    vi.spyOn(nativeEvidence, 'measureProductionProviderNativeEvidenceSidecar').mockImplementation(input => ({ ...measure(input), binaryBytes: 64 * 1024 * 1024 }));
+    const read = vi.spyOn(Blob.prototype, 'arrayBuffer');
+    const digest = vi.spyOn(crypto.subtle, 'digest');
+    const item = { target: run.modelId, status: 'passed' as const, run, recovery, nativeEvidence: sidecar, error: undefined };
+    await expect(createBatchModelSupportEvidence({ batchId: 'binary-budget', items: [item, item, item, item, item] })).rejects.toThrow(/^Native capture batch Evidence exceeds its retained data budget$/u);
+    expect(read).not.toHaveBeenCalled();
+    expect(digest).not.toHaveBeenCalled();
+  });
+
+  it('rechecks a replaced later sidecar after an earlier model await', async () => {
+    const one = nativeRecords({ runId: 'replace-one', modelId: 'org/one' });
+    const two = nativeRecords({ runId: 'replace-two', modelId: 'org/two' });
+    const first = await savedNativeEvidence({ run: one.run, native: one.native });
+    const second = await savedNativeEvidence({ run: two.run, native: two.native });
+    const replacement = { ...second, json: second.json + ' ' };
+    const items = [
+      { target: one.run.modelId, status: 'passed' as const, run: one.run, recovery: one.recovery, nativeEvidence: first, error: undefined },
+      { target: two.run.modelId, status: 'passed' as const, run: two.run, recovery: two.recovery, nativeEvidence: second, error: undefined },
+    ];
+    const measure = nativeEvidence.measureProductionProviderNativeEvidenceSidecar;
+    vi.spyOn(nativeEvidence, 'measureProductionProviderNativeEvidenceSidecar').mockImplementation(input => ({ ...measure(input),
+      // Model the capacity of the replacement without allocating a huge JSON document.
+      ...(input.evidence === replacement ? { jsonCharacters: 64 * 1024 * 1024 } : {}),
+    }));
+    const verify = nativeEvidence.verifyProductionProviderNativeEvidenceSidecar;
+    const verification = vi.spyOn(nativeEvidence, 'verifyProductionProviderNativeEvidenceSidecar').mockImplementationOnce(async input => {
+      const result = await verify(input);
+      items[1]!.nativeEvidence = replacement;
+      return result;
+    });
+    await expect(createBatchModelSupportEvidence({ batchId: 'replacement', items })).rejects.toThrow(/^Native capture batch Evidence exceeds its retained data budget$/u);
+    expect(verification).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("createPartialModelSupportEvidence", () => {
+  it('exports an internally unclosed owner as failed evidence without inventing a user stop', async () => {
+    const now = () => '2026-09-10T00:00:00.000Z';
+    const initial = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'terminal-invariant-zip', now });
+    initial.run.error = 'Earlier measured failure';
+    initial.run.steps = initial.run.steps.map(step => step.id === 'download-evidence' ? { ...step, status: 'passed', detail: 'Bounded probes completed' } : step);
+    const checkpoint = completeInvestigationCheckpoint({ checkpoint: initial, run: initial.run, now });
+    const { blob } = await createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery });
+    await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: initial.run.runId });
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    const run = JSON.parse(await zip.file('run.json')!.async('text'));
+    const recovery = JSON.parse(await zip.file('recovery/checkpoint.json')!.async('text'));
+    expect(run.status).toBe('failed');
+    expect(run.error).toContain('Earlier measured failure');
+    expect(run.error).not.toContain('stopped by the user');
+    expect(run.steps).toContainEqual({ id: 'download-evidence', status: 'passed', detail: 'Bounded probes completed' });
+    expect(recovery.interruption.error).toMatchObject({ name: 'InvestigationTerminalInvariantError', message: 'Investigation completion retained running steps: runtime-assets' });
+  });
+
+  it('exports Provider capture once with a typed run reference and verified archive manifest', async () => {
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/provider', runId: 'zip-provider', now: () => '2026-09-09T00:00:00.000Z' });
+    const owner = createProductionProviderCaptureOwner({ runId: checkpoint.run.runId, modelId: checkpoint.run.modelId, plan: 'first-only',
+      createWorkerClient: () => {
+        throw new Error('Not-started export must not create a Worker');
+      }, traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
+    });
+    try {
+      checkpoint.run.productionProviderCapture = owner.snapshot();
+      const { blob } = await createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery });
+      const archive = await JSZip.loadAsync(await blob.arrayBuffer());
+      const capture = JSON.parse(await archive.file('production-provider/capture.json')!.async('string'));
+      expect(capture.snapshot.run.status).toBe('not-started');
+      expect(capture.snapshot.requests[0].input).toEqual({ captureValue: 'undefined' });
+      expect(capture.limitations.replayEligibility).toBe('not-established');
+      const run = JSON.parse(await archive.file('run.json')!.async('string'));
+      expect(run.productionProviderCapture).toEqual({ format: 'production-provider-capture-reference-v1', path: 'production-provider/capture.json' });
+      expect(run.status).toBe(checkpoint.run.status);
+      const manifest = JSON.parse(await archive.file('manifest.json')!.async('string'));
+      expect(manifest.files).toContainEqual(expect.objectContaining({ path: 'production-provider/capture.json', byteLength: expect.any(Number), sha256: expect.stringMatching(/^[a-f0-9]{64}$/u) }));
+      await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: checkpoint.run.runId });
+      expect(await archive.file('SUMMARY.md')!.async('string')).toContain('does not establish replay eligibility');
+      archive.file('production-provider/capture.json', '{}');
+      const corrupted = await archive.generateAsync({ type: 'blob' });
+      await expect(verifyGeneratedEvidenceArchive({ blob: corrupted })).rejects.toThrow('mismatch');
+    } finally {
+      await owner.dispose();
+    }
+  });
+
+  it('rejects a raw capture carrying extra private fields instead of copying it into run.json', async () => {
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/provider', runId: 'zip-private', now: () => '2026-09-09T00:00:00.000Z' });
+    const owner = createProductionProviderCaptureOwner({ runId: checkpoint.run.runId, modelId: checkpoint.run.modelId, plan: 'first-only',
+      createWorkerClient: () => {
+        throw new Error('Export must not create a Worker');
+      }, traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
+    });
+    try {
+      const capture = { ...owner.snapshot(), privatePath: '/private/not-for-export' };
+      checkpoint.run.productionProviderCapture = capture;
+      await expect(createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery })).rejects.toThrow(/^Invalid Production Provider capture evidence$/u);
+    } finally {
+      await owner.dispose();
+    }
+  });
+
+  it('summarizes nested failures and selected blocked work independently of a passed collection boundary', async () => {
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/nested', runId: 'nested', now: () => '2026-09-09T00:00:00.000Z' });
+    checkpoint.run.status = 'passed';
+    checkpoint.run.productionLane = { status: 'passed', observation: undefined, error: undefined, partialObservation: {
+      modelId: 'org/nested', resolvedRevision: 'a'.repeat(40), candidate: undefined, route: undefined, isEncoderDecoder: undefined,
+      firstTurn: { status: 'failed', error: { name: 'GenerationError', message: 'first turn failed' } },
+      continuity: { status: 'not-run', reason: 'First turn did not generate' },
+      toolResultContinuation: undefined, reasoning: undefined, multimodal: undefined,
+    } };
+    const { blob } = await createPartialModelSupportEvidence({ run: checkpoint.run, recovery: { ...checkpoint.recovery, status: 'completed' } });
+    const archive = await JSZip.loadAsync(await blob.arrayBuffer());
+    const summary = await archive.file('SUMMARY.md')!.async('string');
+    expect(summary).toContain('production-first-turn: failed');
+    expect(summary).toContain('GenerationError: first turn failed');
+    expect(summary).toContain('production-continuity: not-run');
+    expect(summary).toContain('First turn did not generate');
+    expect(summary).toContain('does not certify');
+    expect(JSON.parse(await archive.file('run.json')!.async('string')).status).toBe('passed');
+  });
+
   it('exports a failed preparation stage separately from successful HTTP responses', async () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'preparation-failure', now: () => '2026-09-09T00:00:00.000Z' });
     const run: ModelSupportInvestigationRun = { ...checkpoint.run, freshMetadata: {

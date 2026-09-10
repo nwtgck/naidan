@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-imports -- Gemma 4 worker adapter intentionally depends on transformers.js runtime image utilities. */
 import type { RawImage as TransformersRawImage, PreTrainedTokenizer } from '@huggingface/transformers';
-import type { ChatMessage } from '@/01-models/types';
+import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import { z } from 'zod';
 
 export type Gemma4TemplateContentPart =
   | { type: 'text', text: string }
@@ -9,6 +10,8 @@ export type Gemma4TemplateContentPart =
 export interface Gemma4TemplateMessage {
   role: string,
   content: string | Gemma4TemplateContentPart[],
+  tool_calls?: Array<Omit<ToolCall, 'function'> & { function: Omit<ToolCall['function'], 'arguments'> & { arguments: Record<string, unknown> } }>,
+  tool_call_id?: ChatMessage['tool_call_id'],
 }
 
 export interface Gemma4ProcessorLike {
@@ -22,6 +25,32 @@ export interface Gemma4ProcessorLike {
   tokenizer: PreTrainedTokenizer,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the Transformers tokenizer apply_chat_template signature.
   apply_chat_template(messages: Gemma4TemplateMessage[], options: Record<string, unknown>): string,
+}
+
+export function getGemma4ThinkingTemplateOptions({ parameters }: { parameters: LmParameters | undefined }): { enable_thinking?: boolean } {
+  const effort = parameters?.reasoning?.effort;
+  switch (effort) {
+  case undefined: return {};
+  case 'none': return { enable_thinking: false };
+  case 'low':
+  case 'medium':
+  case 'high': return { enable_thinking: true };
+  default: {
+    const exhaustive: never = effort;
+    throw new Error(`Unhandled Gemma reasoning effort: ${String(exhaustive)}`);
+  }
+  }
+}
+
+export function validateGemma4ToolCallsForTemplate({ toolCalls }: { toolCalls: ToolCall[] }): void {
+  for (const call of toolCalls) {
+    validateGemma4ToolName({ name: call.function.name });
+    parseGemma4ToolArguments({ argumentsText: call.function.arguments });
+  }
+}
+
+export function validateGemma4ToolName({ name }: { name: string }): void {
+  if (!/^[A-Za-z0-9_$.-]+$/.test(name)) throw new Error('Gemma native tool template cannot preserve this bare tool name');
 }
 
 export function isGemma4Model({
@@ -51,34 +80,35 @@ export async function buildGemma4TemplateInput({
   const templateMessages: Gemma4TemplateMessage[] = [];
 
   for (const message of messages) {
-    const normalizedRole = normalizeGemma4Role({ role: message.role });
-
-    if (message.role === 'tool') {
-      templateMessages.push({
-        role: normalizedRole,
-        content: `Tool result:\n${flattenGemma4MessageContent({ message })}`,
-      });
-      continue;
+    const { role, content, tool_calls, tool_call_id, ...unhandledMessage } = message;
+    unhandledMessage satisfies Record<PropertyKey, never>;
+    const normalizedRole = normalizeGemma4Role({ role });
+    if (normalizedRole === 'tool') {
+      // The native tool-response macro quotes strings with the same unescaped
+      // delimiter as arguments and concatenates text parts without separators.
+      const responseText = typeof content === 'string' ? content : content
+        .filter(part => part.type === 'text').map(part => part.text).join('');
+      validateGemma4TemplateArgument({ value: responseText, depth: 0 });
     }
+    if (tool_calls !== undefined) validateGemma4ToolCallsForTemplate({ toolCalls: tool_calls });
+    const toolFields = {
+      ...(tool_call_id === undefined ? {} : { tool_call_id }),
+      ...(tool_calls === undefined ? {} : { tool_calls: tool_calls.map(call => ({
+        ...call, function: { ...call.function, arguments: parseGemma4ToolArguments({ argumentsText: call.function.arguments }) },
+      })) }),
+    };
 
-    if (message.role === 'assistant' && message.tool_calls?.length) {
+    if (typeof content === 'string') {
       templateMessages.push({
         role: normalizedRole,
-        content: buildGemma4AssistantToolSummary({ message }),
-      });
-      continue;
-    }
-
-    if (typeof message.content === 'string') {
-      templateMessages.push({
-        role: normalizedRole,
-        content: message.content,
+        content,
+        ...toolFields,
       });
       continue;
     }
 
     const contentParts: Gemma4TemplateContentPart[] = [];
-    for (const part of message.content) {
+    for (const part of content) {
       switch (part.type) {
       case 'text':
         contentParts.push({ type: 'text', text: part.text });
@@ -97,6 +127,7 @@ export async function buildGemma4TemplateInput({
     templateMessages.push({
       role: normalizedRole,
       content: contentParts.length > 0 ? contentParts : '',
+      ...toolFields,
     });
   }
 
@@ -114,57 +145,9 @@ function normalizeGemma4Role({
   switch (role) {
   case 'developer':
     return 'system';
-  case 'tool':
-    return 'user';
   default:
     return role;
   }
-}
-
-function buildGemma4AssistantToolSummary({
-  message,
-}: {
-  message: ChatMessage,
-}): string {
-  const sections: string[] = [];
-  const visibleContent = flattenGemma4MessageContent({ message });
-  if (visibleContent.length > 0) {
-    sections.push(visibleContent);
-  }
-
-  for (const toolCall of message.tool_calls ?? []) {
-    sections.push(`Tool call: ${JSON.stringify({
-      name: toolCall.function.name,
-      arguments: parseGemma4ToolArguments({ argumentsText: toolCall.function.arguments }),
-    })}`);
-  }
-
-  return sections.join('\n\n');
-}
-
-function flattenGemma4MessageContent({
-  message,
-}: {
-  message: ChatMessage,
-}): string {
-  if (typeof message.content === 'string') {
-    return message.content;
-  }
-
-  return message.content
-    .map(part => {
-      switch (part.type) {
-      case 'text':
-        return part.text;
-      case 'image_url':
-        return '[Image]';
-      default: {
-        const exhaustive: never = part;
-        throw new Error(`Unhandled Gemma 4 content part: ${String(exhaustive)}`);
-      }
-      }
-    })
-    .join('\n');
 }
 
 function parseGemma4ToolArguments({
@@ -172,16 +155,37 @@ function parseGemma4ToolArguments({
 }: {
   argumentsText: string,
 }): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(argumentsText) as unknown;
-    return isPlainObject(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
+  const argumentsObject = z.custom<Record<string, unknown>>(value => typeof value === 'object' && value !== null && !Array.isArray(value))
+    .parse(JSON.parse(argumentsText) as unknown);
+  validateGemma4TemplateArgument({ value: argumentsObject, depth: 0 });
+  return argumentsObject;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
+function validateGemma4TemplateArgument({ value, depth }: { value: unknown; depth: number }): void {
+  // The native template does not escape its quote delimiter or bare keys and
+  // renders null as an empty slot. Reject known lossy input; do not invent an
+  // escaping convention that the native model does not use.
+  if (depth > 64 || value === null) throw new Error('Gemma native tool template cannot preserve this argument value');
+  switch (typeof value) {
+  case 'string':
+    if (value.includes('<|"|>')) throw new Error('Gemma native tool template cannot preserve a string containing its quote delimiter');
+    return;
+  case 'boolean': return;
+  case 'number':
+    if (!Number.isFinite(value)) throw new Error('Gemma native tool template requires finite numeric arguments');
+    return;
+  case 'object':
+    if (Array.isArray(value)) {
+      for (const item of value) validateGemma4TemplateArgument({ value: item, depth: depth + 1 });
+    } else {
+      for (const [key, item] of Object.entries(value)) {
+        if (!/^[A-Za-z0-9_$.-]+$/.test(key)) throw new Error('Gemma native tool template cannot preserve this bare argument key');
+        validateGemma4TemplateArgument({ value: item, depth: depth + 1 });
+      }
+    }
+    return;
+  default: throw new Error('Gemma native tool template cannot preserve this argument type');
+  }
 }
 
 async function readGemma4Image({

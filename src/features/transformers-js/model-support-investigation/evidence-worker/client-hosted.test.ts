@@ -44,7 +44,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     const request = vi.mocked(remote.createPartialEvidence).mock.calls[0]?.[0].request;
     expect(request).toBeInstanceOf(Blob);
     expect(JSON.parse(await request!.text())).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       run: { runId: "run-1" },
     });
     await client.dispose();
@@ -79,7 +79,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     await expect(client.createBatchEvidence({ batchId: "batch-1", items })).resolves.toBe(archive);
     const request = vi.mocked(remote.createBatchEvidence).mock.calls[0]?.[0].request;
     expect(JSON.parse(await request!.text())).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       batchId: "batch-1",
       items: [{
         target: "org/model-a",

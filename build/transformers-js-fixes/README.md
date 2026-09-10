@@ -8,7 +8,7 @@ covered by this fix.
 
 ## What changes
 
-Five exact web-bundle edits address resource ownership and optional preparation:
+Seven exact web-bundle edits address resource ownership, optional preparation and template parsing:
 
 1. `getModelDataFiles` no longer uses an async Promise executor. Each external
    file's rejection now reaches the returned Promise instead of leaving an
@@ -24,6 +24,15 @@ Five exact web-bundle edits address resource ownership and optional preparation:
    The name remains distinguishable after Comlink transports an Error without
    its custom fields. Naidan classifies this specific origin as terminal; an
    ordinary backend Error or unrelated SyntaxError is not reclassified.
+4. The bundled Jinja parser handles balanced `generation` / `endgeneration`
+   blocks instead of deleting tag-shaped source text with a regular expression.
+   The existing lexer handles whitespace controls, while recursive parsing
+   retains nested statements and rejects malformed blocks. A parsed block uses
+   the existing `Program` evaluation in the same environment, so body text and
+   assignments are preserved without introducing a new scope. Quoted literals
+   and runtime message contents are not rewritten. This is rendering support,
+   not assistant-token masks, generation-span tracking or an AST formatting
+   round-trip guarantee.
 
 Resource selection, dtype, device, external binding paths, optional-file absence
 defaults and successful constructor arguments are unchanged. Optional metadata
@@ -60,7 +69,7 @@ or alternate unpatched browser path.
 Original web SHA-256:
 `25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff`.
 Transformed web SHA-256:
-`e839bd80c4d3b166cd574daebcbda66451ea464466db274ffd41df302f0274c0`.
+`875b33675dcf7b646f7f39d2680d2612040b1eb570f865a537aea1118658b731`.
 
 `buildTransformersJsFixesArtifact` runs a real Vite library build with the same
 plugin, `configFile: false`, and no application plugins. Runtime regression
@@ -72,17 +81,37 @@ Those generated artifacts are temporary local test outputs, not public fixtures.
 
 ## Original evidence and maps
 
-`upstream/src/utils/model-loader.js`, `upstream/src/models/session.js`,
-`upstream/src/models/modeling_utils.js` and `upstream/LICENSE` preserve the
-original package bytes. `upstream/web-sections.json`
-retains the corresponding unmodified web functions. `provenance.json` records
-those inputs, the installed package metadata and full web-bundle hashes.
-`replacements.json` contains the five exact before/after web edits. The full original web
-bundle is supplied by the pinned dependency, not redundantly copied here.
+The pinned installed dependency supplies the unchanged
+`src/utils/model-loader.js`, `src/models/session.js`,
+`src/models/modeling_utils.js` and complete web bundle. `provenance.json` records
+those input hashes, the installed package metadata and full web-bundle hashes.
+Tests read these originals directly and verify their identities rather than
+keeping redundant source copies. The four corresponding web sections are
+extracted at reviewed boundaries; independent SHA-256 values in
+`transform.test.ts` preserve their exact bytes, including trailing newlines.
+Those section identities were verified against the former unmodified copies
+before removing them. `upstream/LICENSE` retains the existing package notice.
+`replacements.ts` contains the seven exact before/after web edits as `String.raw`
+literals. Their whitespace and trailing newlines are part of the edits; they are
+not trimmed or normalized. This keeps source backslashes readable without JSON
+escaping. The full original web bundle is supplied by the pinned dependency,
+not redundantly copied here.
 
-The files under `upstream/` are unmodified references in this implementation;
-the corrected code is the result of `applyTransformersJsFixes`, emitted by Vite.
-They are not a second runtime imported by Production. Future source-derived
+The unchanged Jinja section is extracted directly from that exact original
+browser bundle. Its source marker identifies Jinja 0.5.6;
+the separately installed `@huggingface/jinja` 0.5.9 lexer differs and is not used
+as a matching source baseline or replacement runtime. The section includes the
+lexer, parser and interpreter needed to execute original failure evidence.
+Its SHA is recorded in `bundledJinja`. `upstream/jinja/LICENSE` retains the MIT
+notice available from the installed Jinja 0.5.9 package; provenance identifies
+that notice's source separately rather than claiming possession of a 0.5.6
+source package. The original bundle section and model templates remain unchanged.
+
+Only the two existing license notices remain under `upstream/` in this
+implementation; retaining them preserves existing notices, without changing
+their provenance or making a new licensing determination. The corrected code
+is the result of `applyTransformersJsFixes`, emitted by Vite, not a second
+runtime imported by Production. Future source-derived
 fixes may keep a locally modified upstream file when appropriate, provided its
 changes and original baseline remain distinguishable. Preserve upstream code
 structure and use the upstream-file lint exemption instead of burying a fix in
@@ -90,7 +119,7 @@ Naidan style-only changes. The integration code and tests remain normally linted
 
 The map keeps the original web bundle as `sourcesContent`. The installed bundle
 does not provide a source map to individual upstream source files, so this layer
-does not claim source-level symbolication into the three preserved originals.
+does not claim source-level symbolication into the three original source files.
 Integration tests check that emitted map source names are relative, not developer
 home paths or file URLs. Public provenance contains no investigation ZIP, run
 identifier or local input path.

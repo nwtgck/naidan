@@ -1,5 +1,9 @@
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, type WorkerRemote } from "@/utils/worker-transport";
 import { createProductionWorkerSession } from '@/features/transformers-js/worker/production-worker-session';
+import { createTransformersJsGenerationCaptureClient, createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
+import { createProductionProviderInvestigation } from '@/features/transformers-js/model-support-investigation/logic/run-production-provider-investigation';
+import { createProductionProviderInvestigationSummaryEvidence, readProductionProviderInvestigationSummaryEvidence, validateProductionProviderInvestigationLiveProgress } from '@/features/transformers-js/model-support-investigation/logic/production-provider-investigation-summary';
+import { PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES } from '@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence';
 import { createFreshMetadataWorkerClient } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/client-hosted';
 import { freshMetadataRequestSchema, FRESH_METADATA_MAX_BYTES } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
@@ -41,6 +45,9 @@ import {
 } from "@/features/transformers-js/model-support-investigation/logic/production-lane-timeout";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 import { resolveInvestigationExecutionPlan } from "@/features/transformers-js/model-support-investigation/logic/investigation-config";
+import { downloadProbeOutcome } from '@/features/transformers-js/model-support-investigation/logic/download-probe-outcome';
+import { providerLoadRuntimeCompletion } from '@/features/transformers-js/model-support-investigation/logic/provider-load-runtime-completion';
+import { downloadRuntimeAcceptanceIdentity } from '@/features/transformers-js/download-verification/evidence/runtime-acceptance-identity';
 import {
   DEFAULT_PLANNING_TIMEOUT_MS,
   type ModelSupportInvestigationPlanningStage,
@@ -218,16 +225,16 @@ function legacyMainHasBoundedMismatch({ provenance }: {
   )) ?? false;
 }
 
-function runtimeRevisionIdentityDetail({ completion }: {
-  completion: DownloadVerificationRuntimeCompletionEvidence,
+function runtimeRevisionIdentityDetail({ evidence }: {
+  evidence: ModelSupportInvestigationRun['downloadEvidence'],
 }): string {
-  const exact = completion.cacheRevision === completion.repositoryResolvedRevision
-    && completion.loaderRevisionOption === completion.repositoryResolvedRevision;
+  const exact = evidence !== undefined && downloadRuntimeAcceptanceIdentity({ evidence }) === 'exact-resolved-revision';
   return exact ? '' : '; exact frozen-revision identity remains unverified';
 }
 
-function runtimeCompletionOutcome({ completion }: {
+function runtimeCompletionOutcome({ completion, evidence }: {
   completion: DownloadVerificationRuntimeCompletionEvidence | undefined,
+  evidence: ModelSupportInvestigationRun['downloadEvidence'],
 }): { accepted: boolean; blocked: boolean; detail: string; errorDetail: string | undefined } {
   if (completion === undefined) {
     return {
@@ -242,7 +249,7 @@ function runtimeCompletionOutcome({ completion }: {
     return {
       accepted: true,
       blocked: false,
-      detail: `Runtime cache accepted from ${completion.source} at ${completion.loaderRevisionOption ?? 'main'}${completion.selectedCandidate === undefined ? '' : ` using ${completion.selectedCandidate.device}/${completion.selectedCandidate.dtype}`}${runtimeRevisionIdentityDetail({ completion })}`,
+      detail: `Runtime cache accepted from ${completion.source} at ${completion.loaderRevisionOption ?? 'main'}${completion.selectedCandidate === undefined ? '' : ` using ${completion.selectedCandidate.device}/${completion.selectedCandidate.dtype}`}${runtimeRevisionIdentityDetail({ evidence })}`,
       errorDetail: undefined,
     };
   case 'exhausted':
@@ -257,6 +264,7 @@ function runtimeCompletionOutcome({ completion }: {
     case 'reused-production-cache':
     case 'production-download-preparation':
     case 'cache-reuse-failed':
+    case 'ordinary-provider-load':
       return {
         accepted: false,
         blocked: false,
@@ -300,6 +308,10 @@ export function createModelSupportInvestigationWorkerClient({
   let userInterruptionRequested = false;
   let activeInterrupt: (() => void) | undefined;
   let activeRuntimeAbortController: AbortController | undefined;
+  let providerInvestigation: ReturnType<typeof createProductionProviderInvestigation> | undefined;
+  let invocation: 'not-started' | 'started' = 'not-started';
+  let runTermination: 'pending' | 'finished' = 'pending';
+  let disposal: Promise<void> | undefined;
 
   const terminateAllWorkers = (): void => {
     for (const client of activeMetadataClients) client.dispose();
@@ -362,6 +374,11 @@ export function createModelSupportInvestigationWorkerClient({
 
   return {
     async runPartialInvestigation({ modelId, configuration, onEvent, onCheckpoint, replayMetadataBudgetBytes }) {
+      switch (invocation) {
+      case 'started': throw new Error('Model Support Investigation client can run only once');
+      case 'not-started': invocation = 'started'; break;
+      default: { const exhaustive: never = invocation; throw new Error('Unhandled investigation invocation: ' + exhaustive); }
+      }
       const now = (): string => new Date().toISOString();
       const userInterruptionError = new ModelSupportInvestigationUserInterruptedError();
       const interruption = Promise.withResolvers<never>();
@@ -386,10 +403,11 @@ export function createModelSupportInvestigationWorkerClient({
       checkpoint = { ...checkpoint, run: withExecutionPolicy({ run: checkpoint.run }) };
       let userInterruptionCheckpointPublished = false;
       let retainedReplayMetadata: ModelSupportInvestigationCheckpoint['replayMetadata'];
+      let retainedNativeEvidence: ModelSupportInvestigationCheckpoint['nativeEvidence'];
       let flushActiveProductionInterruptionEvidence: (() => void) | undefined;
       const publishCheckpoint = ({ force = false }: { force?: boolean } = {}): void => {
         if (userInterruptionRequested && !force) return;
-        onCheckpoint({ checkpoint: { ...structuredClone(checkpoint), ...(retainedReplayMetadata === undefined ? {} : { replayMetadata: retainedReplayMetadata }) } });
+        onCheckpoint({ checkpoint: { ...structuredClone(checkpoint), ...(retainedReplayMetadata === undefined ? {} : { replayMetadata: retainedReplayMetadata }), ...(retainedNativeEvidence === undefined ? {} : { nativeEvidence: retainedNativeEvidence }) } });
       };
       const publishEvent = ({ event }: Parameters<typeof onEvent>[0]): void => {
         if (userInterruptionRequested) return;
@@ -399,6 +417,13 @@ export function createModelSupportInvestigationWorkerClient({
       };
       activeInterrupt = () => {
         if (userInterruptionRequested) return;
+        if (providerInvestigation !== undefined) {
+          userInterruptionRequested = true;
+          // The coordinator owns finite partial sealing after this synchronous
+          // stop. Do not let the legacy rejection race discard its final result.
+          providerInvestigation.interrupt({ reason: 'user-requested' });
+          return;
+        }
         flushActiveProductionInterruptionEvidence?.();
         activeRuntimeAbortController?.abort(userInterruptionError);
         userInterruptionRequested = true;
@@ -420,6 +445,7 @@ export function createModelSupportInvestigationWorkerClient({
         try {
           const operation = planningHandle.remote.runPartialInvestigation(
             {
+              runId: checkpoint.run.runId,
               modelId,
               externalNetworkPolicy: configuration.externalNetworkPolicy,
               executionPlan,
@@ -427,6 +453,9 @@ export function createModelSupportInvestigationWorkerClient({
             },
             workerProxy({ value: ({ event }) => {
               if (!planningAcceptingCallbacks) return;
+              // Planning has no Provider collection owner. Do not forward a
+              // forged host-only progress projection from that Worker boundary.
+              if (Object.hasOwn(event, 'productionProviderProgress')) return;
               planningStage = event.stepId;
               publishEvent({ event });
             } }),
@@ -530,6 +559,100 @@ export function createModelSupportInvestigationWorkerClient({
         checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
         publishCheckpoint();
 
+        if (executionPlan.generation) {
+          const plan = executionPlan.continuity
+            ? executionPlan.capabilityProbes ? 'full-v2' : 'generation-continuity-v2'
+            : executionPlan.capabilityProbes ? 'generation-capabilities-v2' : 'generation-v2';
+          // This is a maximum adoption deadline for the whole script, not a
+          // sleep or a claim that normal collection requires thirty minutes.
+          const deadlines = { runMs: productionLaneTimeoutMs, collectionMs: 10_000, sealingMs: 30_000, cleanupMs: 5_000 };
+          const owned = createProductionProviderInvestigation({
+            runId: partialRun.runId, modelId: partialRun.modelId, plan,
+            maximumWorkerEpochs: 8, maximumNativeBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, deadlines,
+            createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => createTransformersJsGenerationCaptureClient({
+              runId, workerEpoch, getActiveRequest,
+              limits: { maxCalls: 32, maxInvocationsPerCall: 8, maxEvents: 4096, maxTextBytes: 262144,
+                maxTensorBytes: 16777216, maxTotalTensorBytes: 67108864,
+                maxTokensPerStreamEvent: 65536, maxTotalStreamTokens: 262144, maxTotalStreamTokenBytes: 8388608 },
+            }),
+            createUnrecordedWorkerClient: createTransformersJsWorkerClient,
+            onProgress: ({ progress }) => {
+              if (providerInvestigation !== owned || disposed) return;
+              const event = { stepId: 'loading-investigation', status: 'running',
+                detail: `Public Provider collection: ${progress.phase}; settled ${progress.provider.settledRequests}/${progress.provider.selectedRequests}; active ${progress.provider.activeRequest?.scenario ?? 'none'}`,
+                productionProviderProgress: validateProductionProviderInvestigationLiveProgress({ value: { progress, deadlines }, runId: partialRun.runId, modelId: partialRun.modelId }),
+              } satisfies Parameters<typeof onEvent>[0]['event'];
+              // After a user stop, only this owned small coordinator telemetry
+              // remains observable. It cannot publish a new raw checkpoint.
+              if (userInterruptionRequested) onEvent({ event });
+              else publishEvent({ event });
+            },
+          });
+          providerInvestigation = owned;
+          publishEvent({ event: { stepId: 'loading-investigation', status: 'running',
+            detail: `Public Provider collection ${plan}; maximum deadlines run=${deadlines.runMs}ms, collection=${deadlines.collectionMs}ms, sealing=${deadlines.sealingMs}ms, cleanup=${deadlines.cleanupMs}ms`,
+            productionProviderProgress: validateProductionProviderInvestigationLiveProgress({ value: { progress: owned.getProgress(), deadlines }, runId: partialRun.runId, modelId: partialRun.modelId }),
+          } });
+          const result = await owned.run();
+          const summary = readProductionProviderInvestigationSummaryEvidence({
+            ...createProductionProviderInvestigationSummaryEvidence({ summary: result.summary, runId: partialRun.runId, modelId: partialRun.modelId }),
+            runId: partialRun.runId, modelId: partialRun.modelId,
+          });
+          if (providerInvestigation !== owned) throw new Error('Investigation result owner changed');
+          retainedNativeEvidence = result.nativeEvidence;
+          const rejected = summary.requests.filter(request => request.outcome === 'rejected').length;
+          const unexecuted = summary.requests.filter(request => request.status === 'not-started' && request.notStartedReason !== 'scope-not-selected').length;
+          const incomplete = summary.requests.filter(request => request.completeness === 'incomplete').length;
+          const failed = summary.completion === 'interrupted' || rejected > 0 || unexecuted > 0 || incomplete > 0
+            || summary.providerEvidence === 'refused' || summary.nativeEvidenceStatus !== 'available'
+            || result.nativeEvidence?.summary.recording !== 'recorded'
+            || summary.cleanup !== 'completed' || summary.sealOwnership !== 'settled';
+          const detail = `Public Provider collection ended; ${rejected} rejected, ${unexecuted} unexecuted, ${incomplete} incomplete callback projections; native=${summary.nativeEvidenceStatus}; native recording=${result.nativeEvidence?.summary.recording ?? 'unavailable'}; cleanup=${summary.cleanup}`;
+          const completedRun: ModelSupportInvestigationRun = {
+            ...partialRun, completedAt: now(), currentOperation: detail,
+            status: partialRun.status === 'failed' || failed ? 'failed' : 'passed',
+            productionProviderCapture: result.provider, productionProviderInvestigation: summary,
+            steps: partialRun.steps.map(step => {
+              switch (step.id) {
+              case 'loading-investigation': return { ...step, status: failed ? 'failed' : 'passed', detail };
+              case 'lane-comparison': return { ...step, status: 'skipped', detail: 'Public Provider collection replaces the independent Reference and direct Production comparison; parity was not observed' };
+              case 'template-behavior': return { ...step, status: 'skipped', detail: 'Template inputs are observed only through the public Provider capture; no independent template execution' };
+              case 'runtime-assets': case 'repository-information': case 'download-evidence': case 'existing-model-data':
+              case 'model-declarations': case 'model-file-plan': case 'evidence-export': return step;
+              default: { const exhaustive: never = step.id; throw new Error('Unhandled Provider step: ' + exhaustive); }
+              }
+            }),
+          };
+          const runtimeCompletion = completedRun.downloadEvidence === undefined ? undefined : providerLoadRuntimeCompletion({
+            repositoryResolvedRevision: completedRun.downloadEvidence.run.resolvedRevision, provider: completedRun.productionProviderCapture,
+            summary: completedRun.productionProviderInvestigation, nativeJson: retainedNativeEvidence?.json,
+          });
+          if (completedRun.downloadEvidence !== undefined && runtimeCompletion !== undefined) {
+            completedRun.downloadEvidence = { ...completedRun.downloadEvidence, mode: 'runtime-complete', runtimeCompletion };
+            const identity = downloadRuntimeAcceptanceIdentity({ evidence: completedRun.downloadEvidence });
+            completedRun.steps = completedRun.steps.map(step => {
+              switch (step.id) {
+              case 'download-evidence': return {
+                ...step, detail: `${step.detail ?? 'Bounded probe collection ended'}; ordinary Provider Load receipt=${runtimeCompletion.status}; frozen-revision identity=${identity ?? 'not-observed'}; no independent acceptance Load`,
+              };
+              case 'runtime-assets': case 'repository-information': case 'existing-model-data': case 'model-declarations':
+              case 'model-file-plan': case 'loading-investigation': case 'template-behavior': case 'lane-comparison': case 'evidence-export': return step;
+              default: { const exhaustive: never = step.id; throw new Error('Unknown receipt presentation step: ' + exhaustive); }
+              }
+            });
+          }
+          checkpoint = completeInvestigationCheckpoint({ checkpoint, run: completedRun, now });
+          if (userInterruptionRequested || disposed) {
+            checkpoint = interruptInvestigationCheckpoint({ checkpoint, error: userInterruptionError, now });
+            userInterruptionCheckpointPublished = true;
+          }
+          // Only this owned terminal adoption bypasses the user-stop callback
+          // gate. A disposed host must never write into a later modal instance.
+          if (!disposed) publishCheckpoint({ force: true });
+          if (userInterruptionRequested || disposed) throw userInterruptionError;
+          return checkpoint.run;
+        }
+
         if (partialRun.downloadEvidence !== undefined && executionPlan.modelLoad) {
           const evidenceBeforeAcceptance = partialRun.downloadEvidence;
           const runtimeCandidateSelection = partialRun.modelFilePlan === undefined
@@ -618,11 +741,12 @@ export function createModelSupportInvestigationWorkerClient({
                 loaderRevisionOption: completion.loaderRevisionOption,
               };
             }
-            const outcome = runtimeCompletionOutcome({ completion });
+            const outcome = runtimeCompletionOutcome({ completion, evidence: completedEvidence });
+            const probes = downloadProbeOutcome({ evidence: completedEvidence });
             partialRun.steps = updateDownloadEvidenceCoordinatorStep({
               steps: partialRun.steps,
-              status: outcome.accepted || outcome.blocked ? 'passed' : 'failed',
-              detail: outcome.detail,
+              status: probes.status === 'failed' || (!outcome.accepted && !outcome.blocked) ? 'failed' : probes.status,
+              detail: `${probes.detail}; ${outcome.detail}`,
             });
             partialRun.currentOperation = outcome.detail;
             partialRun.completedAt = now();
@@ -643,10 +767,11 @@ export function createModelSupportInvestigationWorkerClient({
         }
 
         if (partialRun.downloadEvidence !== undefined && !executionPlan.modelLoad) {
+          const probes = downloadProbeOutcome({ evidence: partialRun.downloadEvidence });
           partialRun.steps = updateDownloadEvidenceCoordinatorStep({
             steps: partialRun.steps,
-            status: 'passed',
-            detail: 'Probe-only Download Evidence collected; runtime cache acceptance was skipped because Model Load is not selected',
+            status: probes.status,
+            detail: `${probes.detail}; runtime cache acceptance was skipped because Model Load is not selected`,
           });
           partialRun.currentOperation = 'Repository / Download investigation completed without Model Load';
           partialRun.completedAt = now();
@@ -666,11 +791,11 @@ export function createModelSupportInvestigationWorkerClient({
           partialRun.completedAt = now();
           checkpoint = completeInvestigationCheckpoint({ checkpoint, run: partialRun, now });
           publishCheckpoint();
-          return partialRun;
+          return checkpoint.run;
         }
 
         const runtimeCompletion: DownloadVerificationRuntimeCompletionEvidence | undefined = partialRun.downloadEvidence?.runtimeCompletion;
-        const runtimeCompletionAccepted = runtimeCompletionOutcome({ completion: runtimeCompletion }).accepted;
+        const runtimeCompletionAccepted = runtimeCompletionOutcome({ completion: runtimeCompletion, evidence: partialRun.downloadEvidence }).accepted;
         if (executionPlan.generation && runtimeCompletionAccepted && runtimeCompletion !== undefined && partialRun.runtimeTarget !== undefined) {
           const templateHandle = createWorkerHandle();
           let templateTimedOut = false;
@@ -835,7 +960,7 @@ export function createModelSupportInvestigationWorkerClient({
           loadRun.completedAt = now();
           checkpoint = completeInvestigationCheckpoint({ checkpoint, run: loadRun, now });
           publishCheckpoint();
-          return loadRun;
+          return checkpoint.run;
         }
 
         const completedRun = await runProductionLaneComparison({
@@ -1074,7 +1199,7 @@ export function createModelSupportInvestigationWorkerClient({
         });
         checkpoint = completeInvestigationCheckpoint({ checkpoint, run: completedRun, now });
         publishCheckpoint();
-        return completedRun;
+        return checkpoint.run;
       } catch (error) {
         const interruptedByUser = userInterruptionRequested
           || isModelSupportInvestigationUserInterruptedError({ error });
@@ -1088,6 +1213,7 @@ export function createModelSupportInvestigationWorkerClient({
         }
         throw interruptedByUser ? userInterruptionError : error;
       } finally {
+        runTermination = 'finished';
         activeRuntimeAbortController = undefined;
         activeInterrupt = undefined;
       }
@@ -1095,16 +1221,29 @@ export function createModelSupportInvestigationWorkerClient({
     async interrupt(): Promise<void> {
       activeInterrupt?.();
     },
-    async dispose(): Promise<void> {
-      if (disposed) return;
+    dispose(): Promise<void> {
+      if (disposal !== undefined) return disposal;
       disposed = true;
       try {
         // Acceptance Workers are owned by the revision-acceptance client, not
         // either local Worker set. Reuse the interruption boundary to abort
         // that owner, freeze callbacks and settle the outstanding run as well.
-        activeInterrupt?.();
+        if (providerInvestigation !== undefined) {
+          disposal = providerInvestigation.dispose();
+        } else {
+          activeInterrupt?.();
+          disposal = Promise.resolve();
+        }
       } finally {
         terminateAllWorkers();
+      }
+      return disposal;
+    },
+    waitForEvidenceRelease(): Promise<void> {
+      switch (runTermination) {
+      case 'pending': return Promise.reject(new Error('Evidence release requires the investigation run to finish'));
+      case 'finished': return providerInvestigation?.waitForEvidenceRelease() ?? Promise.resolve();
+      default: { const exhaustive: never = runTermination; throw new Error('Unhandled investigation termination: ' + exhaustive); }
       }
     },
   };

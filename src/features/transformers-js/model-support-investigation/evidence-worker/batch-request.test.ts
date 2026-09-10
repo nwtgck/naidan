@@ -25,14 +25,14 @@ describe("Model Support Investigation batch Evidence Worker request", () => {
   it("round-trips every requested target as clone-safe JSON", async () => {
     const request = createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId: "batch-1", items });
     await expect(readModelSupportInvestigationBatchEvidenceWorkerRequest({ request })).resolves.toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       batchId: "batch-1",
       items,
     });
   });
 
   it("rejects an empty target list", async () => {
-    const request = new Blob([JSON.stringify({ schemaVersion: 1, batchId: "batch-1", items: [] })]);
+    const request = new Blob([JSON.stringify({ schemaVersion: 2, batchId: "batch-1", items: [] })]);
     await expect(readModelSupportInvestigationBatchEvidenceWorkerRequest({ request })).rejects.toThrow(
       "Invalid Model Support Investigation batch Evidence Worker request",
     );

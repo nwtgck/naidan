@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IModelSupportInvestigationWorker } from "@/features/transformers-js/model-support-investigation/types";
 import type { WorkerServerApi } from "@/utils/worker-transport";
+import { configurationForPreset, resolveInvestigationExecutionPlan } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 
 const mocks = vi.hoisted(() => ({
   expose: vi.fn(),
@@ -245,6 +246,22 @@ describe("model-support-investigation worker", () => {
     });
     mocks.modelDispose.mockResolvedValue(undefined);
     await import("./entry");
+  });
+
+  it('retains the host run identity in every preflight checkpoint and planning result', async () => {
+    const onRunCheckpoint = vi.fn();
+    const configuration = configurationForPreset({ preset: 'offline' });
+    const run = await exposedWorker().runPartialInvestigation({
+      runId: 'host-created-run', modelId: 'org/model', externalNetworkPolicy: configuration.externalNetworkPolicy,
+      executionPlan: resolveInvestigationExecutionPlan({ scope: configuration.scope }),
+    }, vi.fn(), onRunCheckpoint, vi.fn(async () => {
+      throw new Error('Offline planning cannot request fresh metadata');
+    }));
+    expect(onRunCheckpoint).toHaveBeenCalled();
+    expect(new Set(onRunCheckpoint.mock.calls.map(([checkpoint]) => checkpoint.run.runId))).toEqual(new Set(['host-created-run']));
+    expect(run.runId).toBe('host-created-run');
+    expect(crypto.randomUUID).not.toHaveBeenCalled();
+    expect(mocks.modelFromPretrained).not.toHaveBeenCalled();
   });
 
   it("loads the fixed candidate through the normal Chat main revision and preserves resolved-SHA evidence", async () => {

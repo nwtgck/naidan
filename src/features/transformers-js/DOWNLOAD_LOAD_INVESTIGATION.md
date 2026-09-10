@@ -415,10 +415,13 @@ aliases, optional metadata, or device compatibility.
 ### Current bounded upstream fixes
 
 The [Transformers.js fixes integration](../../../build/transformers-js-fixes/README.md)
-preserves three original upstream source files, their license, the relevant
-web-bundle sections, and reviewed input/output hashes inside this repository.
-It transforms the browser bundle through Vite without modifying installed
-package files or adding an install hook. The Node exports remain unmodified.
+reads unchanged upstream sources and the original web bundle from the pinned
+installed dependency, validating their recorded hashes. Earlier unmodified
+source copies were removed after byte-identity checks; this repository retains
+the license notices, provenance, and exact before/after edits in `String.raw`
+literals. Tests independently validate the extracted web sections. It transforms
+the browser bundle through Vite without modifying installed package files or
+adding an install hook. The Node exports remain unmodified.
 
 The transform makes external-data retrieval return its rejection chain and
 observes core and external-data promises together from the outset. It does not

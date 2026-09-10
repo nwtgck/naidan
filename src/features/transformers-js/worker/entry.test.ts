@@ -12,6 +12,23 @@ import {
 
 import { initializeProductionEntryFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
+import { generationCaptureReadResultSchema, type GenerationCaptureRequest } from './generation-capture-protocol';
+import { toToolCallId } from '@/01-models/ids';
+import type { ChatMessage } from '@/01-models/types';
+import { applyTransformersJsFixes } from '../../../../build/transformers-js-fixes/transform';
+import { bundledJinjaTemplate } from '../../../../build/transformers-js-fixes/jinja-template-fixture';
+
+const captureRequest: GenerationCaptureRequest = {
+  context: { runId: 'synthetic-run', workerEpoch: 1, requestId: 'first', generationCallId: 1 },
+  limits: { maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 64, maxTextBytes: 4096, maxTensorBytes: 4096, maxTotalTensorBytes: 16384, maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 },
+};
+const captureRun = { runId: 'synthetic-run', workerEpoch: 1 };
+const standardLoadIdentity = {
+  status: 'ready', workerLoadOrdinal: 1, requestedModelId: 'standard-model', requestedRevision: { status: 'omitted' },
+  cleanModelId: 'standard-model', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer',
+  selectedCandidate: { device: 'webgpu', dtype: 'q4f16' },
+  resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
+};
 
 vi.mock('@/features/transformers-js/runtime/import-production-runtime-module', () => ({
   // Native Blob imports are a browser-only platform boundary, not model I/O.
@@ -59,6 +76,7 @@ vi.mock('@/features/transformers-js/runtime/plan-downloaded-model-candidates', a
 
 // Mock @huggingface/transformers
 vi.mock('@huggingface/transformers', () => ({
+  Tensor: class {},
   AutoConfig: {
     from_pretrained: vi.fn(),
   },
@@ -91,8 +109,13 @@ vi.mock('@huggingface/transformers', () => ({
     get_processor_files: vi.fn(async () => ['preprocessor_config.json']),
   },
   InterruptableStoppingCriteria: class {
-    reset = mockResetFn;
-    interrupt = mockInterruptFn;
+    interrupted = false;
+    reset() {
+      this.interrupted = false; mockResetFn();
+    }
+    interrupt() {
+      this.interrupted = true; mockInterruptFn();
+    }
   },
   StoppingCriteriaList: class extends Array { },
   env: {
@@ -983,7 +1006,7 @@ describe('transformers-js.worker', () => {
 
   it('runs a normal-Chat-revision Production Lane scenario with an explicit candidate list', async () => {
     const comlink = await import('comlink');
-    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    const { AutoModelForCausalLM, AutoTokenizer, TextStreamer } = await import('@huggingface/transformers');
     await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const dispose = vi.fn();
@@ -991,18 +1014,34 @@ describe('transformers-js.worker', () => {
       .mockReturnValueOnce('observed production output')
       .mockReturnValueOnce('continued output')
       .mockReturnValueOnce('tool result continuation output');
+    let emitChunk: ((output: string) => void) | undefined;
+    vi.mocked(TextStreamer).mockImplementation(function (_tokenizer, options) {
+      emitChunk = options?.callback_function ?? undefined;
+      return {} as InstanceType<typeof TextStreamer>;
+    });
+    // Successful synthetic inference supplies both native result tokens and
+    // the stream that ordinary chat actually uses to reconstruct history.
     const generate = vi.fn()
-      .mockResolvedValueOnce({
-        past_key_values: { layer_0: {} },
-        sequences: { data: BigInt64Array.from([10n, 11n, 20n, 21n]) },
+      .mockImplementationOnce(async () => {
+        emitChunk?.('observed production output');
+        return {
+          past_key_values: { layer_0: {} },
+          sequences: { data: BigInt64Array.from([10n, 11n, 20n, 21n]) },
+        };
       })
-      .mockResolvedValueOnce({
-        past_key_values: { layer_0: {}, layer_1: {} },
-        sequences: { data: BigInt64Array.from([10n, 11n, 20n, 21n, 30n, 40n]) },
+      .mockImplementationOnce(async () => {
+        emitChunk?.('continued output');
+        return {
+          past_key_values: { layer_0: {}, layer_1: {} },
+          sequences: { data: BigInt64Array.from([10n, 11n, 20n, 21n, 30n, 40n]) },
+        };
       })
-      .mockResolvedValueOnce({
-        past_key_values: { tool_layer: {} },
-        sequences: { data: BigInt64Array.from([50n, 51n, 52n, 60n]) },
+      .mockImplementationOnce(async () => {
+        emitChunk?.('tool result continuation output');
+        return {
+          past_key_values: { tool_layer: {} },
+          sequences: { data: BigInt64Array.from([50n, 51n, 52n, 60n]) },
+        };
       });
     (AutoModelForCausalLM.from_pretrained as any).mockResolvedValue({
       dispose,
@@ -1249,6 +1288,101 @@ describe('transformers-js.worker', () => {
     expect(stages).not.toContain('model-support-production-tool-result-continuation');
     expect(stages).not.toContain('model-support-production-reasoning-differential');
     expect(stages).not.toContain('model-support-production-multimodal');
+  });
+
+  it('rebuilds ordinary assistant history from interpreted stream content instead of raw decoded tokens', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, TextStreamer } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const worker = vi.mocked(comlink.expose).mock.calls[0]?.[0] as WorkerServerApi<ITransformersJsWorker>;
+    let emitChunk: ((output: string) => void) | undefined;
+    vi.mocked(TextStreamer).mockImplementation(function (_tokenizer, options) {
+      emitChunk = options?.callback_function ?? undefined;
+      return {} as InstanceType<typeof TextStreamer>;
+    });
+    const generate = vi.fn(async () => {
+      emitChunk?.('<think>Internal analysis.</think>Visible answer.');
+      return { sequences: { data: BigInt64Array.from([10n, 11n, 20n]) }, past_key_values: undefined };
+    });
+    vi.mocked(AutoModelForCausalLM.from_pretrained).mockResolvedValue({
+      config: { model_type: 'example' }, generate, dispose: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>);
+    const applyChatTemplate = vi.fn((_messages: unknown, options?: Record<string, unknown>) => {
+      if (options?.['tokenize'] === false) return '<|im_start|>assistant\n';
+      return { input_ids: { data: BigInt64Array.from([10n, 11n]) } };
+    });
+    vi.mocked(AutoTokenizer.from_pretrained).mockResolvedValue({
+      apply_chat_template: applyChatTemplate,
+      decode: () => '<|channel|>analysis<|message|>Raw diagnostic output.',
+    } as unknown as Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>);
+    const observation = await worker.runModelSupportInvestigationScenario({
+      modelId: 'org/model', resolvedRevision: 'a'.repeat(40), loadRevision: undefined,
+      candidates: [{ device: 'webgpu', dtype: 'q4' }],
+      messages: [{ role: 'user', content: 'hello' }],
+      followUpMessage: { role: 'user', content: 'Continue.' },
+      toolResultContinuation: undefined, maxNewTokens: 16,
+      runContinuity: true, runCapabilityProbes: false,
+      multimodalFixture: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE,
+    }, vi.fn(), vi.fn());
+
+    expect(observation.firstTurn).toMatchObject({
+      status: 'passed', turn: { generatedText: '<|channel|>analysis<|message|>Raw diagnostic output.' },
+    });
+    expect(observation.continuity).toMatchObject({
+      status: 'passed', assistantMessage: { role: 'assistant', content: 'Visible answer.' },
+    });
+    expect(applyChatTemplate).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant', content: 'Visible answer.' }),
+    ]), expect.anything());
+  });
+
+  it.each([
+    { scenario: 'no emitted output', stream: [], expectedContent: '' },
+    { scenario: 'completed thinking only', stream: ['<think>', 'Private thought.', '</think>'], expectedContent: '' },
+    { scenario: 'whitespace with no thinking', stream: ['  visible  '], expectedContent: '  visible  ' },
+    { scenario: 'unfinished thinking', stream: ['<think>', 'Partial thought.'], expectedContent: '<think>Partial thought.' },
+    { scenario: 'split completed thinking and answer', stream: ['<thi', 'nk>Private</th', 'ink> Visible '], expectedContent: 'Visible' },
+  ])('reconstructs $scenario from observed stream without falling back to native decoded text', async ({ stream, expectedContent }) => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, TextStreamer } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const worker = vi.mocked(comlink.expose).mock.calls[0]?.[0] as WorkerServerApi<ITransformersJsWorker>;
+    let emitChunk: ((output: string) => void) | undefined;
+    vi.mocked(TextStreamer).mockImplementation(function (_tokenizer, options) {
+      emitChunk = options?.callback_function ?? undefined;
+      return {} as InstanceType<typeof TextStreamer>;
+    });
+    const generate = vi.fn(async () => {
+      for (const chunk of stream) emitChunk?.(chunk);
+      return { sequences: { data: BigInt64Array.from([10n, 11n, 20n]) }, past_key_values: undefined };
+    });
+    vi.mocked(AutoModelForCausalLM.from_pretrained).mockResolvedValue({
+      config: { model_type: 'example' }, generate, dispose: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>);
+    const applyChatTemplate = vi.fn((_messages: unknown, options?: Record<string, unknown>) => {
+      if (options?.['tokenize'] === false) return '<|im_start|>assistant\n';
+      return { input_ids: { data: BigInt64Array.from([10n, 11n]) } };
+    });
+    const rawText = '<|channel|>analysis<|message|>Raw diagnostic output.';
+    vi.mocked(AutoTokenizer.from_pretrained).mockResolvedValue({
+      apply_chat_template: applyChatTemplate, decode: () => rawText,
+    } as unknown as Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>);
+    const observation = await worker.runModelSupportInvestigationScenario({
+      modelId: 'org/model', resolvedRevision: 'a'.repeat(40), loadRevision: undefined,
+      candidates: [{ device: 'webgpu', dtype: 'q4' }],
+      messages: [{ role: 'user', content: 'hello' }], followUpMessage: { role: 'user', content: 'Continue.' },
+      toolResultContinuation: undefined, maxNewTokens: 16, runContinuity: true, runCapabilityProbes: false,
+      multimodalFixture: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE,
+    }, vi.fn(), vi.fn());
+    expect(observation.firstTurn).toMatchObject({
+      status: 'passed', turn: { generatedText: rawText, generatedTokenIds: [20], streamChunks: stream },
+    });
+    expect(observation.continuity).toMatchObject({
+      status: 'passed', assistantMessage: { role: 'assistant', content: expectedContent },
+    });
+    expect(applyChatTemplate).toHaveBeenCalledWith(expect.arrayContaining([
+      { role: 'assistant', content: expectedContent },
+    ]), expect.anything());
   });
 
   it('records decoded token context around a reconstructed Production continuity prefix mismatch', async () => {
@@ -2802,6 +2936,330 @@ describe('transformers-js.worker', () => {
       await workerObj.loadDownloadedModel('standard-model', undefined, vi.fn());
     });
 
+    it('awaits actual Comlink chunk delivery before generation settles', async () => {
+      const comlink = await vi.importActual<typeof import('comlink')>('comlink');
+      const channel = new MessageChannel();
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const delivered: string[] = [];
+
+      comlink.expose(async (chunk: string) => {
+        entered.resolve();
+        await release.promise;
+        delivered.push(chunk);
+      }, channel.port1);
+
+      const callback = comlink.wrap<(chunk: string) => Promise<void>>(channel.port2);
+      tokensToEmit = ['Synthetic output.'];
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const pending = worker.generateText([], callback, vi.fn(), undefined, undefined);
+      try {
+        expect(await Promise.race([
+          pending.then(() => 'settled'),
+          entered.promise.then(() => 'callback-entered'),
+        ])).toBe('callback-entered');
+        release.resolve();
+        await pending;
+        expect(delivered).toEqual(['Synthetic output.']);
+      } finally {
+        release.resolve();
+        await pending;
+        channel.port1.close();
+        channel.port2.close();
+      }
+    });
+
+    it('owns actual Comlink rejection while inference is pending and keeps the next generation independent', async () => {
+      const comlink = await vi.importActual<typeof import('comlink')>('comlink');
+      const channel = new MessageChannel();
+      const interrupted = Promise.withResolvers<void>();
+      const finishInference = Promise.withResolvers<void>();
+      const received: string[] = [];
+      mockInterruptFn.mockImplementationOnce(() => {
+        interrupted.resolve();
+      });
+
+      comlink.expose(async (chunk: string) => {
+        received.push(chunk);
+        throw new Error('Chunk recipient rejected delivery');
+      }, channel.port1);
+
+      const callback = comlink.wrap<(chunk: string) => Promise<void>>(channel.port2);
+      mockGenerate.mockImplementationOnce(async () => {
+        capturedCallback?.('first');
+        capturedCallback?.('must not arrive');
+        await finishInference.promise;
+        return { past_key_values: {} };
+      });
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const pending = worker.generateText([], callback, vi.fn(), undefined, undefined, captureRequest);
+      const rejected = expect(pending).rejects.toThrow('Chunk recipient rejected delivery');
+      try {
+        await interrupted.promise;
+        expect(received).toEqual(['first']);
+        finishInference.resolve();
+        await rejected;
+        const oldStreamer = capturedCallback;
+        tokensToEmit = ['next'];
+        const next = vi.fn();
+        await worker.generateText([], next, vi.fn(), undefined, undefined);
+        oldStreamer?.('late from first generation');
+        expect(next).toHaveBeenCalledExactlyOnceWith('next');
+        expect(received).toEqual(['first']);
+        expect(await worker.takeGenerationCapture(captureRun)).toMatchObject({
+          status: 'captured', capture: { calls: [expect.objectContaining({ outcome: 'rejected' })] },
+        });
+      } finally {
+        finishInference.resolve();
+        await rejected;
+        channel.port1.close();
+        channel.port2.close();
+      }
+    });
+
+    it.each(['fulfilled', 'rejected'] as const)('settles emitted callbacks before propagating inference failure with %s delivery', async deliveryOutcome => {
+      const inferenceFailure = new Error('Inference failed after emitting');
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      mockGenerate.mockImplementationOnce(async () => {
+        capturedCallback?.('partial');
+        throw inferenceFailure;
+      });
+      const callback = vi.fn(async () => {
+        entered.resolve();
+        await release.promise;
+        if (deliveryOutcome === 'rejected') throw new Error('Delivery also failed');
+      });
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const pending = worker.generateText([], callback, vi.fn(), undefined, undefined);
+      let settled = false;
+      const observed = pending.catch(error => {
+        settled = true; return error;
+      });
+      await entered.promise;
+      expect(settled).toBe(false);
+      release.resolve();
+      expect(await observed).toBe(inferenceFailure);
+    });
+
+    it('completes acknowledged partial output after interruption before settling', async () => {
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const received: string[] = [];
+      tokensToEmit = ['partial'];
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const pending = worker.generateText([], async chunk => {
+        entered.resolve();
+        await release.promise;
+        received.push(chunk);
+      }, vi.fn(), undefined, undefined);
+      await entered.promise;
+      await worker.interrupt();
+      expect(mockInterruptFn).toHaveBeenCalledOnce();
+      expect(received).toEqual([]);
+      release.resolve();
+      await pending;
+      expect(received).toEqual(['partial']);
+    });
+
+    it('leaves capture unstarted for ordinary generation and preserves callback and tokenizer counts when enabled', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      tokensToEmit = ['Synthetic output.'];
+      const ordinaryChunks = vi.fn();
+      await worker.generateText([], ordinaryChunks, vi.fn(), undefined, undefined);
+      expect(await worker.takeGenerationCapture(captureRun)).toEqual({ status: 'not-started' });
+      const ordinaryTemplateCalls = mockApplyTemplate.mock.calls.length;
+      mockApplyTemplate.mockClear();
+      const capturedChunks = vi.fn();
+      await worker.generateText([], capturedChunks, vi.fn(), undefined, undefined, captureRequest);
+      expect(capturedChunks.mock.calls).toEqual(ordinaryChunks.mock.calls);
+      expect(mockApplyTemplate).toHaveBeenCalledTimes(ordinaryTemplateCalls);
+      expect(mockGenerate).toHaveBeenCalledTimes(2);
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      expect(result.status).toBe('captured');
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls).toEqual([{ context: captureRequest.context, loadIdentity: standardLoadIdentity, outcome: 'fulfilled', invocations: [
+        { nativeInvocationOrdinal: 1, stream: { status: 'unavailable', reason: 'method-descriptor' } },
+      ] }]);
+      expect(result.capture.events.filter(event => event.kind === 'native-call').map(event => event.phase)).toEqual(['entering', 'fulfilled']);
+      expect(result.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);
+      expect(result.capture.events.filter(event => event.kind === 'chunk').map(event => event.phase)).toEqual(['strategy-raw', 'strategy-output', 'worker-send']);
+      expect(await worker.takeGenerationCapture(captureRun)).toEqual({ status: 'already-taken' });
+    });
+
+    it('retains partial capture on native rejection and rethrows the identical native error', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const failure = new Error('Synthetic native failure');
+      mockGenerate.mockImplementation(async () => {
+        capturedCallback?.('Partial output.');
+        throw failure;
+      });
+      await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest)).rejects.toBe(failure);
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls[0]?.outcome).toBe('rejected');
+      expect(result.capture.calls[0]?.loadIdentity).toEqual(standardLoadIdentity);
+      expect(result.capture.events.filter(event => event.kind === 'native-call').map(event => event.phase)).toEqual(['entering', 'rejected']);
+      expect(result.capture.events.some(event => event.kind === 'sequence')).toBe(false);
+      expect(result.capture.events.some(event => event.kind === 'chunk')).toBe(true);
+    });
+
+    it('keeps one completed Load across cache reset and invalidates it synchronously on unload', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
+      await worker.resetCache();
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, { ...captureRequest, context: { ...captureRequest.context, generationCallId: 2 } });
+      await worker.unloadModel();
+      await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, { ...captureRequest, context: { ...captureRequest.context, generationCallId: 3 } })).rejects.toThrow('Model not loaded');
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls.map(call => call.loadIdentity)).toEqual([standardLoadIdentity, standardLoadIdentity, { status: 'not-observed', reason: 'runtime-cleared' }]);
+      expect(mockGenerate).toHaveBeenCalledTimes(2);
+      const tfMock = await import('@huggingface/transformers');
+      expect(tfMock.AutoModelForCausalLM.from_pretrained).toHaveBeenCalledOnce();
+    });
+
+    it('records the selected fallback candidate only after the ordinary runtime preparation succeeds', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const tfMock = await import('@huggingface/transformers');
+      vi.mocked(tfMock.AutoModelForCausalLM.from_pretrained)
+        .mockRejectedValueOnce(new Error('Synthetic incompatible webgpu q4f16 candidate'))
+        .mockRejectedValueOnce(new Error('Synthetic incompatible webgpu q4 candidate'));
+      await expect(worker.loadDownloadedModel('standard-model', 'synthetic-revision', vi.fn())).resolves.toEqual({ device: 'wasm', dtype: 'q4' });
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls[0]?.loadIdentity).toEqual({ ...standardLoadIdentity, workerLoadOrdinal: 2, requestedRevision: { status: 'provided', value: 'synthetic-revision' }, selectedCandidate: { device: 'wasm', dtype: 'q4' } });
+      expect(tfMock.AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(4);
+      expect(tfMock.AutoTokenizer.from_pretrained).toHaveBeenCalledTimes(2);
+      expect(mockGenerate).toHaveBeenCalledOnce();
+    });
+
+    it('does not promote a passed model candidate when tokenizer preparation subsequently fails', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const tfMock = await import('@huggingface/transformers');
+      const failure = new Error('Synthetic tokenizer preparation failure');
+      vi.mocked(tfMock.AutoTokenizer.from_pretrained).mockRejectedValueOnce(failure);
+      await expect(worker.loadDownloadedModel('standard-model', undefined, vi.fn())).rejects.toMatchObject({ name: 'DownloadedModelPreparationError', cause: failure });
+      expect(await worker.takeGenerationCapture(captureRun)).toEqual({ status: 'not-started' });
+      await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest)).rejects.toThrow('Model not loaded');
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls[0]?.loadIdentity).toEqual({ status: 'not-observed', reason: 'no-completed-load' });
+      expect(mockGenerate).not.toHaveBeenCalled();
+      expect(tfMock.AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(2);
+    });
+
+    it('marks a verification-loaded runtime untracked rather than reusing the preceding ordinary identity', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      await worker.verifyDownloadedModelCandidate('standard-model', undefined, { device: 'wasm', dtype: 'q4' }, vi.fn());
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls[0]?.loadIdentity).toEqual({ status: 'not-observed', reason: 'untracked-load-path' });
+      expect(mockGenerate).toHaveBeenCalledOnce();
+    });
+
+    it('does not restore Load readiness while unload disposal is pending or after its identical rejection', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const tfMock = await import('@huggingface/transformers');
+      const loadedModel = await vi.mocked(tfMock.AutoModelForCausalLM.from_pretrained).mock.results[0]!.value;
+      const disposal = Promise.withResolvers<void>();
+      vi.spyOn(loadedModel, 'dispose').mockImplementationOnce(() => disposal.promise);
+      const unloading = worker.unloadModel();
+      const failure = new Error('Synthetic disposal failure');
+      const rejectedUnload = expect(unloading).rejects.toBe(failure);
+      try {
+        await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest)).rejects.toThrow('Model not loaded');
+      } finally {
+        disposal.reject(failure);
+        await rejectedUnload;
+      }
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls[0]?.loadIdentity).toEqual({ status: 'not-observed', reason: 'runtime-cleared' });
+      expect(mockGenerate).not.toHaveBeenCalled();
+    });
+
+    it('marks overlapping private Load completions ambiguous without changing their existing control flow', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const tfMock = await import('@huggingface/transformers');
+      const config = await vi.mocked(tfMock.AutoConfig.from_pretrained).mock.results[0]!.value;
+      const heldConfig = Promise.withResolvers<typeof config>();
+      const started = Promise.withResolvers<void>();
+      vi.mocked(tfMock.AutoConfig.from_pretrained).mockImplementationOnce(() => {
+        started.resolve();
+        return heldConfig.promise;
+      });
+      const first = worker.loadDownloadedModel('standard-model', 'first', vi.fn());
+      await started.promise;
+      try {
+        await expect(worker.loadDownloadedModel('standard-model', 'second', vi.fn())).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
+      } finally {
+        heldConfig.resolve(config);
+        await first;
+      }
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls[0]?.loadIdentity).toEqual({ status: 'not-observed', reason: 'overlapping-lifecycle' });
+      expect(tfMock.AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
+      expect(mockGenerate).toHaveBeenCalledOnce();
+    });
+
+    it('records a budget rejection without claiming that the native invocation entered', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      mockApplyTemplate.mockReturnValue({ input_ids: { dims: [1, 128_000] } });
+      await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest)).rejects.toThrow('model context is full');
+      expect(mockGenerate).not.toHaveBeenCalled();
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls[0]?.outcome).toBe('rejected');
+      expect(result.capture.events.map(event => event.kind)).toEqual(['inputs']);
+    });
+
+    it('returns busy without consuming an active capture and captures after normal settlement', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      let complete!: (value: { past_key_values: null }) => void;
+      mockGenerate.mockImplementation(() => new Promise(resolve => {
+        complete = resolve;
+      }));
+      const pending = worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
+      expect(mockGenerate).toHaveBeenCalledOnce();
+      expect(await worker.takeGenerationCapture(captureRun)).toEqual({ status: 'busy' });
+      complete({ past_key_values: null });
+      await pending;
+      expect((await worker.takeGenerationCapture(captureRun)).status).toBe('captured');
+    });
+
+    it('does not overwrite the owning run when a later generate requests a foreign epoch', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, {
+        ...captureRequest, context: { ...captureRequest.context, workerEpoch: 2, generationCallId: 2 },
+      });
+      expect(mockGenerate).toHaveBeenCalledTimes(2);
+      expect(await worker.takeGenerationCapture({ ...captureRun, workerEpoch: 2 })).toEqual({ status: 'wrong-run' });
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls).toHaveLength(1);
+      expect(result.capture.incompleteReasons).toContain('wrong-run');
+    });
+
+    it('rejects a changed recording capacity without changing either native generation or the original capacity', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
+      await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, {
+        context: { ...captureRequest.context, generationCallId: 2 }, limits: { ...captureRequest.limits, maxCalls: 1 },
+      });
+      expect(mockGenerate).toHaveBeenCalledTimes(2);
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.calls).toHaveLength(1);
+      expect(result.capture.limits).toEqual(captureRequest.limits);
+      expect(result.capture.incompleteReasons).toContain('limits-mismatch');
+    });
+
     it('uses the remaining declared model context instead of a fixed 1024-token fallback', async () => {
       mockApplyTemplate.mockImplementation((_messages, options) => {
         if (options?.tokenize === false) return '<|im_start|>assistant\n';
@@ -3110,6 +3568,34 @@ Use shell tools.<|im_end|>
   });
 
   describe('generateText — Qwen3.5 model tool calls', () => {
+    async function observeQwenRuntimeState() {
+      const module = await import('@/features/transformers-js/generation-strategies');
+      const select = module.selectGenerationStrategy;
+      let state: import('@/features/transformers-js/generation-strategies').WorkerGenerationRuntimeState | undefined;
+      const spy = vi.spyOn(module, 'selectGenerationStrategy').mockImplementation(args => {
+        const strategy = select(args);
+        return { ...strategy, generate: context => {
+          state = context.runtimeState;
+          return strategy.generate(context);
+        } };
+      });
+      return { getState() {
+        if (state === undefined) throw new Error('Expected actual strategy runtime state');
+        return state;
+      }, restore() {
+        spy.mockRestore();
+      } };
+    }
+    // Use the actual pinned browser Jinja, whose version differs from the
+    // separately installed package, and each model's unchanged native grammar.
+    const NativeTemplate = bundledJinjaTemplate({ code: applyTransformersJsFixes({
+      code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'), version: '4.2.0',
+    }).code });
+    const nativeTemplates = {
+      '2B': new NativeTemplate(readFileSync('src/features/transformers-js/download-verification/fixtures/model-runtime-data/qwen3.5-2b/chat_template.jinja', 'utf8')),
+      '4B': new NativeTemplate(readFileSync('src/features/transformers-js/download-verification/fixtures/model-runtime-data/qwen3.5-4b/chat_template.jinja', 'utf8')),
+    };
+    let nativeTemplate: InstanceType<typeof NativeTemplate>;
     let workerObj: any;
     let capturedCallback: ((output: string) => void) | undefined;
     let tokensToEmit: string[];
@@ -3128,6 +3614,7 @@ Use shell tools.<|im_end|>
     beforeEach(async () => {
       capturedCallback = undefined;
       tokensToEmit = [];
+      nativeTemplate = nativeTemplates['2B'];
 
       const tfMock = await import('@huggingface/transformers');
 
@@ -3150,10 +3637,9 @@ Use shell tools.<|im_end|>
       };
 
       (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
-      mockApplyTemplate = vi.fn().mockReturnValue({
-        input_ids: [1, 2, 3],
-        attention_mask: [1, 1, 1],
-        image_grid_thw: 'grid-state',
+      mockApplyTemplate = vi.fn((messages: unknown[], options: Record<string, unknown>) => {
+        expect(options['tokenize']).toBe(false);
+        return nativeTemplate.render({ messages, ...options });
       });
       mockCallableTokenizer = Object.assign(
         vi.fn().mockReturnValue({ input_ids: [9, 9, 9] }),
@@ -3175,6 +3661,197 @@ Use shell tools.<|im_end|>
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadDownloadedModel('onnx-community/Qwen3.5-2B-ONNX', undefined, vi.fn());
+    });
+
+    it('does not let a late rejected callback from an older request interrupt or clear the next request', async () => {
+      const observation = await observeQwenRuntimeState();
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const callback = Promise.withResolvers<void>();
+      const emitted = Promise.withResolvers<void>();
+      const failure = new Error('Older callback rejected after a newer request');
+      tokensToEmit = ['old output'];
+      const older = worker.generateText([{ role: 'user', content: 'old' }], () => {
+        emitted.resolve(); return callback.promise;
+      }, vi.fn(), undefined, undefined);
+      const olderOutcome = older.catch(error => error as unknown);
+      try {
+        await emitted.promise;
+        tokensToEmit = [];
+        await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
+        const newState = observation.getState().qwen3_5ConversationState;
+        expect(newState).toBeDefined();
+        const oldCriterion = mockModel.generate.mock.calls[0]![0].stopping_criteria[0];
+        const newCriterion = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
+        expect(oldCriterion).not.toBe(newCriterion);
+        callback.reject(failure);
+        expect(await olderOutcome).toBe(failure);
+        expect(observation.getState().qwen3_5ConversationState).toBe(newState);
+        expect(oldCriterion.interrupted).toBe(true);
+        expect(newCriterion.interrupted).toBe(false);
+      } finally {
+        callback.resolve(); await olderOutcome; observation.restore();
+      }
+    });
+
+    it('keeps an interrupted invocation stopped across resetCache while a new request gets a fresh criterion', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const entered = Promise.withResolvers<{ interrupted: boolean }>();
+      const complete = Promise.withResolvers<{ past_key_values: object }>();
+      mockModel.generate.mockImplementationOnce((options: { stopping_criteria: Array<{ interrupted: boolean }> }) => {
+        entered.resolve(options.stopping_criteria[0]!);
+        return complete.promise;
+      });
+      const pending = worker.generateText([{ role: 'user', content: 'old' }], vi.fn(), vi.fn(), undefined, undefined);
+      const criterion = await entered.promise;
+      try {
+        expect(criterion.interrupted).toBe(false);
+        await worker.interrupt();
+        expect(criterion.interrupted).toBe(true);
+        await worker.resetCache();
+        expect(criterion.interrupted).toBe(true);
+        await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
+        const next = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
+        expect(next).not.toBe(criterion);
+        expect(next.interrupted).toBe(false);
+        expect(criterion.interrupted).toBe(true);
+      } finally {
+        complete.resolve({ past_key_values: {} }); await pending;
+      }
+    });
+
+    it('interrupts only its own still-running native call when an older callback fails after a newer request starts', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const callback = Promise.withResolvers<void>();
+      const emitted = Promise.withResolvers<void>();
+      const native = Promise.withResolvers<{ past_key_values: object }>();
+      const failure = new Error('Older running native callback failure');
+      mockModel.generate.mockImplementationOnce(() => {
+        capturedCallback?.('old output'); return native.promise;
+      });
+      const older = worker.generateText([{ role: 'user', content: 'old' }], () => {
+        emitted.resolve(); return callback.promise;
+      }, vi.fn(), undefined, undefined);
+      const outcome = older.catch(error => error as unknown);
+      try {
+        await emitted.promise;
+        await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
+        const oldCriterion = mockModel.generate.mock.calls[0]![0].stopping_criteria[0];
+        const newCriterion = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
+        callback.reject(failure);
+        await vi.waitFor(() => expect(oldCriterion.interrupted).toBe(true));
+        expect(newCriterion.interrupted).toBe(false);
+        native.resolve({ past_key_values: {} });
+        expect(await outcome).toBe(failure);
+      } finally {
+        callback.resolve(); native.resolve({ past_key_values: {} }); await outcome;
+      }
+    });
+
+    it('does not re-register Qwen state when resetCache completes before a native result', async () => {
+      const observation = await observeQwenRuntimeState();
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const entered = Promise.withResolvers<void>();
+      const complete = Promise.withResolvers<{ past_key_values: object }>();
+      mockModel.generate.mockImplementationOnce(() => {
+        entered.resolve(); return complete.promise;
+      });
+      const pending = worker.generateText([{ role: 'user', content: 'pending' }], vi.fn(), vi.fn(), undefined, undefined);
+      try {
+        await entered.promise;
+        await worker.resetCache();
+        complete.resolve({ past_key_values: {} });
+        await pending;
+        expect(observation.getState().qwen3_5ConversationState).toBeUndefined();
+        expect(observation.getState().qwen3_5SequenceCache).toBeUndefined();
+        expect(observation.getState()).not.toHaveProperty('qwen3_5PastKeyValues');
+      } finally {
+        complete.resolve({ past_key_values: {} }); await pending; observation.restore();
+      }
+    });
+
+    it('does not re-register Qwen state after unload while the original native request is pending', async () => {
+      const observation = await observeQwenRuntimeState();
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const entered = Promise.withResolvers<void>();
+      const complete = Promise.withResolvers<{ past_key_values: object }>();
+      mockModel.generate.mockImplementationOnce(() => {
+        entered.resolve(); return complete.promise;
+      });
+      const pending = worker.generateText([{ role: 'user', content: 'pending' }], vi.fn(), vi.fn(), undefined, undefined);
+      try {
+        await entered.promise;
+        await worker.unloadModel();
+        complete.resolve({ past_key_values: {} });
+        await pending;
+        expect(observation.getState().qwen3_5ConversationState).toBeUndefined();
+        expect(observation.getState().qwen3_5SequenceCache).toBeUndefined();
+        expect(observation.getState()).not.toHaveProperty('qwen3_5PastKeyValues');
+      } finally {
+        complete.resolve({ past_key_values: {} }); await pending; observation.restore();
+      }
+    });
+
+    it.each(['2B', '4B'] as const)('preserves the %s native thinking default when effort is omitted', async modelSize => {
+      nativeTemplate = nativeTemplates[modelSize];
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      await worker.loadDownloadedModel(`onnx-community/Qwen3.5-${modelSize}-ONNX`, undefined, vi.fn());
+      const messages = [{ role: 'user', content: 'Synthetic default probe.' }];
+      await worker.generateText(messages, vi.fn(), vi.fn(), undefined, undefined);
+      expect(mockApplyTemplate).toHaveBeenCalledExactlyOnceWith(messages, {
+        tokenize: false, add_generation_prompt: true,
+      });
+      const prompt = mockProcessor.mock.calls[0]?.[0];
+      const expectedSuffix = modelSize === '2B'
+        ? `\
+<|im_start|>assistant
+<think>
+
+</think>
+
+`
+        : `\
+<|im_start|>assistant
+<think>
+`;
+      expect(typeof prompt).toBe('string');
+      expect(prompt.endsWith(expectedSuffix)).toBe(true);
+      expect(mockProcessor.mock.calls[0]).toHaveLength(1);
+    });
+
+    it('passes ordered decoded images and fresh processor tensors through the Worker without text-cache reuse', async () => {
+      const { RawImage } = await import('@huggingface/transformers');
+      const firstImage = { data: Uint8ClampedArray.of(1, 2, 3), width: 1, height: 1, channels: 3 };
+      const secondImage = { data: Uint8ClampedArray.of(4, 5, 6), width: 1, height: 1, channels: 3 };
+      const firstUrl = 'data:image/png;base64,first-synthetic-image';
+      const secondUrl = 'data:image/png;base64,second-synthetic-image';
+      vi.mocked(RawImage.read).mockImplementation(async input => {
+        if (input === firstUrl) return firstImage as never;
+        if (input === secondUrl) return secondImage as never;
+        throw new Error('Unprovided synthetic image');
+      });
+      const firstPixels = { data: Float32Array.of(1, 2, 3), dims: [1, 3] };
+      const secondPixels = { data: Float32Array.of(1, 2, 3, 4, 5, 6), dims: [2, 3] };
+      const firstGrid = { data: BigInt64Array.of(1n, 1n, 1n), dims: [1, 3] };
+      const secondGrid = { data: BigInt64Array.of(1n, 1n, 1n, 1n, 1n, 1n), dims: [2, 3] };
+      mockProcessor.mockResolvedValueOnce({ input_ids: [7, 8, 9], pixel_values: firstPixels, image_grid_thw: firstGrid });
+      mockProcessor.mockResolvedValueOnce({ input_ids: [7, 8, 9], pixel_values: secondPixels, image_grid_thw: secondGrid });
+      const messages: ChatMessage[] = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: firstUrl } }] }];
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      await worker.generateText(messages, vi.fn(), vi.fn(), undefined, undefined);
+      messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: secondUrl } }] });
+      await worker.generateText(messages, vi.fn(), vi.fn(), undefined, undefined);
+      expect(mockProcessor.mock.calls[0]).toEqual([expect.stringContaining('<|vision_start|><|image_pad|><|vision_end|>'), [firstImage]]);
+      expect(mockProcessor.mock.calls[1]).toEqual([expect.any(String), [firstImage, secondImage]]);
+      expect(mockModel.generate.mock.calls[0]?.[0].pixel_values).toBe(firstPixels);
+      expect(mockModel.generate.mock.calls[0]?.[0].image_grid_thw).toBe(firstGrid);
+      expect(mockModel.generate.mock.calls[1]?.[0].pixel_values).toBe(secondPixels);
+      expect(mockModel.generate.mock.calls[1]?.[0].image_grid_thw).toBe(secondGrid);
+      expect(mockModel.generate.mock.calls[1]?.[0].past_key_values).toBeNull();
+      await worker.generateText([{ role: 'user', content: 'Independent text input.' }], vi.fn(), vi.fn(), undefined, undefined);
+      expect(mockModel.generate.mock.calls[2]?.[0]).not.toHaveProperty('pixel_values');
+      expect(mockModel.generate.mock.calls[2]?.[0]).not.toHaveProperty('image_grid_thw');
+      expect(mockProcessor.mock.calls[2]).toHaveLength(1);
+      expect(RawImage.read).toHaveBeenCalledTimes(3);
     });
 
     it('observes the existing Qwen3.5 reasoning effort prompt differential', async () => {
@@ -3291,7 +3968,7 @@ Use shell tools.<|im_end|>
         secondTurn: {
           inputTokenIds: [10, 11, 99, 30],
           fullConversationInput: { status: 'observed', inputTokenIds: [10, 11, 99, 30] },
-          cacheDecision: { status: 'not-reused', reason: 'qwen3_5-message-count-mismatch' },
+          cacheDecision: { status: 'not-reused', reason: 'qwen3_5-cache-prefix-or-native-preconditions-unverified' },
           pastKeyValuesProvided: false,
         },
         prefixComparison: {
@@ -3371,6 +4048,37 @@ Use shell tools.<|im_end|>
       });
     });
 
+    it('captures consecutive user inputs through one full native processor call without unsafe cache reuse', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const first = [{ role: 'user', content: 'Synthetic first input.' }];
+      // Two adjacent users are not the assistant-plus-user continuation shape.
+      const continuation = [...first, { role: 'user', content: 'Synthetic next input.' }];
+      await worker.generateText(first, vi.fn(), vi.fn(), undefined, undefined);
+      mockProcessor.mockClear();
+      mockApplyTemplate.mockClear();
+      await worker.generateText(continuation, vi.fn(), vi.fn(), undefined, undefined);
+      expect(mockProcessor).toHaveBeenCalledOnce();
+      const ordinaryTemplateCallCount = mockApplyTemplate.mock.calls.length;
+      expect(ordinaryTemplateCallCount).toBeGreaterThan(0);
+      const ordinaryPrompt = mockProcessor.mock.calls[0]?.[0];
+      expect(ordinaryPrompt).not.toContain('prompt-history');
+      expect(ordinaryPrompt).toBe(nativeTemplate.render({ messages: continuation, tokenize: false, add_generation_prompt: true }));
+      expect(mockModel.generate.mock.lastCall?.[0].past_key_values).toBeNull();
+      await worker.resetCache();
+      await worker.generateText(first, vi.fn(), vi.fn(), undefined, undefined);
+      mockProcessor.mockClear();
+      mockApplyTemplate.mockClear();
+      await worker.generateText(continuation, vi.fn(), vi.fn(), undefined, undefined, captureRequest);
+      expect(mockProcessor).toHaveBeenCalledOnce();
+      expect(mockProcessor.mock.calls[0]?.[0]).toBe(ordinaryPrompt);
+      expect(mockApplyTemplate).toHaveBeenCalledTimes(ordinaryTemplateCallCount);
+      expect(mockModel.generate).toHaveBeenCalledTimes(4);
+      expect(mockModel.generate.mock.lastCall?.[0].past_key_values).toBeNull();
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);
+    });
+
     it('parses Qwen3.5 XML-like tool calls', async () => {
       tokensToEmit = [
         '<tool_call>\n',
@@ -3393,7 +4101,9 @@ Use shell tools.<|im_end|>
         { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
       ];
 
-      await workerObj.generateText([], vi.fn(), onToolCalls, undefined, tools);
+      // The native grammar requires a user query; generated parser tokens
+      // remain the independent XML fixture under test.
+      await workerObj.generateText([{ role: 'user', content: 'Run the synthetic tool.' }], vi.fn(), onToolCalls, undefined, tools);
 
       expect(onToolCalls).toHaveBeenCalledOnce();
       const [calls] = onToolCalls.mock.calls[0]!;
@@ -3419,7 +4129,9 @@ Use shell tools.<|im_end|>
         { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
       ];
 
-      await workerObj.generateText([], onChunk, onToolCalls, undefined, tools);
+      // Supply the native template's required query without changing the
+      // independent relaxed-JSON output parser fixture or its expectations.
+      await workerObj.generateText([{ role: 'user', content: 'Run the synthetic tool.' }], onChunk, onToolCalls, undefined, tools);
 
       expect(onToolCalls).toHaveBeenCalledOnce();
       const [calls] = onToolCalls.mock.calls[0]!;
@@ -3434,7 +4146,7 @@ Use shell tools.<|im_end|>
       expect(onChunk).not.toHaveBeenCalledWith(expect.stringContaining('<tool_call>'));
     });
 
-    it('injects Qwen3.5 tool instructions via system prompt instead of template tools', async () => {
+    it('renders Qwen3.5 tool instructions in the native system prompt using template tools', async () => {
       const tools: WorkerToolDefinition[] = [
         { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
       ];
@@ -3451,11 +4163,14 @@ Use shell tools.<|im_end|>
       const processor = await processorMock.mock.results[0]?.value;
       expect(processor).toHaveBeenCalledOnce();
       expect(processor.mock.calls[0]?.[0]).toContain('# Tools');
-      expect(processor.mock.calls[0]?.[0]).toContain('"name":"shell_execute"');
-      expect(mockApplyTemplate).not.toHaveBeenCalled();
+      expect(processor.mock.calls[0]?.[0]).toContain('"name": "shell_execute"');
+      expect(mockApplyTemplate).toHaveBeenCalledExactlyOnceWith(
+        [{ role: 'user', content: 'list files' }],
+        { tokenize: false, add_generation_prompt: true, tools },
+      );
     });
 
-    it('serializes Qwen3.5 assistant tool call arguments as JSON objects in prompts', async () => {
+    it('normalizes Qwen3.5 tool arguments into objects for native XML serialization', async () => {
       const tools: WorkerToolDefinition[] = [
         { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
       ];
@@ -3485,7 +4200,12 @@ Use shell tools.<|im_end|>
 
       const processorMock = (await import('@huggingface/transformers')).AutoProcessor.from_pretrained as any;
       const processor = await processorMock.mock.results[0]?.value;
-      expect(processor.mock.calls[0]?.[0]).toContain('"arguments":{"shell_script":"ls -la","stdout_limit":100}');
+      expect(mockApplyTemplate.mock.calls[0]?.[0]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', tool_calls: [expect.objectContaining({
+          function: { name: 'shell_execute', arguments: { shell_script: 'ls -la', stdout_limit: 100 } },
+        })] }),
+      ]));
+      expect(processor.mock.calls[0]?.[0]).toContain(`<function=shell_execute>\n<parameter=shell_script>\nls -la\n</parameter>\n<parameter=stdout_limit>\n100\n</parameter>`);
     });
 
     it('uses full prompts without Qwen3.5 tool continuation past_key_values reuse', async () => {
@@ -3542,7 +4262,7 @@ file-a
         past_key_values: null,
       }));
       expect(mockModel.generate.mock.calls[0]?.[0]).not.toHaveProperty('pixel_values');
-      expect(mockApplyTemplate).not.toHaveBeenCalled();
+      expect(mockApplyTemplate).toHaveBeenCalledOnce();
     });
 
     it('clears Qwen3.5 no-tool continuation state when resetCache is called', async () => {
@@ -3819,7 +4539,7 @@ file-a
       expect(observation.multimodal).not.toHaveProperty('fixture.dataUrl');
     });
 
-    it('does not inject tool definitions into the Gemma 4 chat template', async () => {
+    it('passes supplied tool definitions to the native Gemma 4 chat template', async () => {
       const tools: WorkerToolDefinition[] = [
         { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
       ];
@@ -3834,7 +4554,7 @@ file-a
 
       expect(mockProcessor.apply_chat_template).toHaveBeenCalledWith(
         [{ role: 'user', content: 'list files' }],
-        { add_generation_prompt: true },
+        { add_generation_prompt: true, tools },
       );
     });
   });
@@ -4012,6 +4732,35 @@ file-a
         expect.stringContaining('<|start|>my_tool to=assistant'),
         expect.objectContaining({ add_special_tokens: false }),
       );
+    });
+
+    it('captures a GPT-OSS tool continuation without preparing an extra full-conversation template', async () => {
+      const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
+      const first = [{ role: 'user', content: 'Synthetic tool request.' }];
+      const callId = toToolCallId({ raw: 'call_1' });
+      const continuation = [
+        ...first,
+        { role: 'assistant', content: '', tool_calls: [{ id: callId, type: 'function' as const, function: { name: 'my_tool', arguments: '{}' } }] },
+        { role: 'tool', content: 'Synthetic tool result.', tool_call_id: callId },
+      ];
+      await worker.generateText(first, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
+      mockApplyTemplate.mockClear();
+      mockCallableTokenizer.mockClear();
+      await worker.generateText(continuation, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
+      expect(mockApplyTemplate).not.toHaveBeenCalled();
+      expect(mockCallableTokenizer).toHaveBeenCalledOnce();
+      const ordinaryCall = mockCallableTokenizer.mock.calls[0];
+      await worker.resetCache();
+      await worker.generateText(first, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
+      mockApplyTemplate.mockClear();
+      mockCallableTokenizer.mockClear();
+      await worker.generateText(continuation, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL], captureRequest);
+      expect(mockApplyTemplate).not.toHaveBeenCalled();
+      expect(mockCallableTokenizer).toHaveBeenCalledOnce();
+      expect(mockCallableTokenizer.mock.calls[0]).toEqual(ordinaryCall);
+      const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
+      if (result.status !== 'captured') throw new Error('Expected capture');
+      expect(result.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);
     });
 
     it('does not treat stale historical tool results as a continuation', async () => {

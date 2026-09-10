@@ -1,6 +1,7 @@
+// @vitest-environment node
 import JSZip from 'jszip';
 import { z } from 'zod';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadedModelReadOnlyCache } from '@/features/transformers-js/runtime/downloaded-model-cache';
 import { createDownloadedModelWorkerFetch } from '@/features/transformers-js/runtime/offline-worker-fetch';
 import { selectTransformersJsProductionRuntimeArtifactLoader } from '@/features/transformers-js/production-routing';
@@ -32,14 +33,17 @@ const toyBodies = {
   'chat_template.jinja': "{% for message in messages %}{{ message['content'] }}{% endfor %}",
 };
 
+beforeEach(() => {
+  // The read-only OPFS URL mapper owns a Worker origin; Node has no self.
+  // Native Blob/streams remain untouched throughout collection and ZIP export.
+  vi.stubGlobal('self', { location: new URL('http://localhost/assets/replay-worker.js') });
+});
 afterEach(() => vi.unstubAllGlobals());
 
 async function capture({ modelId, revision, bodies }: { modelId: string, revision: string, bodies: Record<string, string> }): Promise<InvestigationReplayMetadataSnapshot> {
   const files = new Map(Object.entries(bodies).map(([path, text]) => {
     const bytes = new TextEncoder().encode(text);
     const blob = new Blob([bytes]);
-    // jsdom lacks Blob.stream(); preserve its Blob identity for Zod validation.
-    Object.defineProperty(blob, 'stream', { value: () => new Response(bytes).body! });
     return [path, blob] as const;
   }));
   return await collectReplayMetadata({
@@ -76,7 +80,6 @@ async function restore({ zip, prefix }: { zip: JSZip, prefix: string }) {
     const bytes = await entry.async('uint8array');
     if (bytes.length !== file.byteLength || await replayMetadataSha256({ bytes }) !== file.sha256) throw new Error(`Replay integrity mismatch: ${file.path}`);
     const blob = new Blob([Uint8Array.from(bytes)]);
-    Object.defineProperty(blob, 'stream', { value: () => new Response(Uint8Array.from(bytes)).body! });
     restored.set(file.path, blob);
   }
   return { summary, files: restored };

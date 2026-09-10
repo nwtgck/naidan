@@ -1,6 +1,9 @@
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
 import type { ProductionCandidateResourcePlan } from '@/features/transformers-js/runtime/production-resource-plan';
+import type { GenerationCaptureRequest, GenerationCaptureReadRequest, GenerationCaptureReadResult } from './worker/generation-capture-protocol';
+import type { ProductionLoadReceiptOwner } from './worker/load-receipt';
+import type { ProductionLoadReceipt } from './runtime/production-load-receipt';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -56,6 +59,11 @@ export interface ModelLoadResult {
   device: string,
   /** Exact Production dtype selected by runtime fallback when available. */
   dtype?: TransformersJsProductionInvestigationDtype,
+}
+
+/** Diagnostic acceptance APIs only; ordinary Load results keep their public shape. */
+export interface ProductionModelLoadAcceptanceResult extends ModelLoadResult {
+  receipt?: ProductionLoadReceipt,
 }
 
 export interface ScannedModelFile {
@@ -538,7 +546,7 @@ export interface ITransformersJsWorker {
    * load instead of falling back to a remote fetch.
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  loadDownloadedModel(modelId: string, revision: string | undefined, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<ModelLoadResult>,
+  loadDownloadedModel(modelId: string, revision: string | undefined, progressCallback: WorkerProxy<(x: ProgressInfo) => void>, loadReceiptOwner?: ProductionLoadReceiptOwner): Promise<ModelLoadResult>,
   /**
    * Download Verification only: verifies exactly one Production candidate from
    * already-downloaded artifacts. No candidate fallback or remote model fetch.
@@ -550,7 +558,7 @@ export interface ITransformersJsWorker {
     candidate: TransformersJsProductionInvestigationCandidate,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is proxied across the Comlink boundary.
     progressCallback: WorkerProxy<(x: ProgressInfo) => void>,
-  ): Promise<ModelLoadResult>,
+  ): Promise<ProductionModelLoadAcceptanceResult>,
   /**
    * Download Verification only: verifies one cached revision using the full
    * Production candidate fallback sequence. No remote model fetch.
@@ -561,7 +569,7 @@ export interface ITransformersJsWorker {
     revision: string | undefined,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is proxied across the Comlink boundary.
     progressCallback: WorkerProxy<(x: ProgressInfo) => void>,
-  ): Promise<ModelLoadResult>,
+  ): Promise<ProductionModelLoadAcceptanceResult>,
   unloadModel(): Promise<void>,
   interrupt(): Promise<void>,
   resetCache(): Promise<void>,
@@ -573,8 +581,10 @@ export interface ITransformersJsWorker {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onToolCalls: WorkerProxy<(toolCalls: ToolCall[]) => void>,
     params?: LmParameters,
-    tools?: WorkerToolDefinition[]
+    tools?: WorkerToolDefinition[],
+    capture?: GenerationCaptureRequest,
   ): Promise<void>,
+  takeGenerationCapture({ runId, workerEpoch }: GenerationCaptureReadRequest): Promise<GenerationCaptureReadResult>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runModelSupportInvestigationScenario(
     scenario: TransformersJsProductionInvestigationScenario,

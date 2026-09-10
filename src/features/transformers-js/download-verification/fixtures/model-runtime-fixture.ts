@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { URL as NodeUrl } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { z } from 'zod';
 
@@ -38,7 +39,7 @@ const manifestSchema = z.object({
 function readRecordedResource({ directory, resource }: {
   directory: URL, resource: z.infer<typeof recordedResourceSchema>,
 }): Uint8Array {
-  const stored = readFileSync(new URL(resource.asset, directory));
+  const stored = readFileSync(new NodeUrl(resource.asset, directory));
   const bytes = (() => {
     switch (resource.encoding) {
     case 'identity': return stored;
@@ -59,8 +60,9 @@ function readRecordedResource({ directory, resource }: {
 export function readModelFixture({ modelId }: { modelId: string }) {
   const slug = modelDirectories[modelId];
   if (slug === undefined) throw new Error(`No checked-in model fixture: ${modelId}`);
-  const directory = new URL(`./model-runtime-data/${slug}/`, import.meta.url);
-  const manifest = manifestSchema.parse(JSON.parse(readFileSync(new URL('model.evidence.json', directory), 'utf8')));
+  // Fixture paths belong to Node's filesystem, not Vite's browser asset graph.
+  const directory = new NodeUrl(`./model-runtime-data/${slug}/`, import.meta.url);
+  const manifest = manifestSchema.parse(JSON.parse(readFileSync(new NodeUrl('model.evidence.json', directory), 'utf8')));
   if (manifest.modelId !== modelId) throw new Error('Mismatched checked-in model identity');
   if (new Set(manifest.resources.map(resource => resource.path)).size !== manifest.resources.length
     || new Set(manifest.modelArtifacts.map(resource => resource.path)).size !== manifest.modelArtifacts.length) {

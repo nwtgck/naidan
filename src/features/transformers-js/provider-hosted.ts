@@ -8,7 +8,18 @@ import type { ToolApprovalContext } from '@/features/tools/approval';
 import type { WorkerToolDefinition, WorkerToolJsonObject } from './types';
 import { zodToJsonSchema } from '@/utils/lm-tools';
 
-export class TransformersJsProvider implements LmProvider {
+export type TransformersJsProviderService = Pick<typeof transformersJsService,
+  'loadDownloadedModel' | 'generateText' | 'listCachedModels'> & {
+    getState(): Pick<ReturnType<typeof transformersJsService.getState>, 'status' | 'activeModelId'>,
+  };
+
+class HostedTransformersJsProvider implements LmProvider {
+  private readonly service: TransformersJsProviderService;
+
+  constructor({ service }: { service: TransformersJsProviderService }) {
+    this.service = service;
+  }
+
   async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[],
     model: string,
@@ -27,7 +38,7 @@ export class TransformersJsProvider implements LmProvider {
   }): Promise<void> {
 
     // Auto-load if needed
-    const state = transformersJsService.getState();
+    const state = this.service.getState();
     if (state.activeModelId !== model || state.status !== 'ready') {
       const status = state.status;
       switch (status) {
@@ -46,7 +57,7 @@ export class TransformersJsProvider implements LmProvider {
       }
 
       console.log(`[TransformersJsProvider] Auto-loading model: ${model}`);
-      await transformersJsService.loadDownloadedModel({ modelId: model });
+      await this.service.loadDownloadedModel({ modelId: model });
     }
 
     const workerTools: WorkerToolDefinition[] | undefined = tools && tools.length > 0
@@ -70,7 +81,7 @@ export class TransformersJsProvider implements LmProvider {
       let receivedToolCalls: ToolCall[] = [];
       let fullContent = '';
 
-      await transformersJsService.generateText({
+      await this.service.generateText({
         messages: currentMessages,
         onChunk: ({ chunk }) => {
           fullContent += chunk; onChunk({ chunk });
@@ -162,13 +173,26 @@ export class TransformersJsProvider implements LmProvider {
 
   async listModels({ signal: _signal }: { signal?: AbortSignal }): Promise<string[]> {
     try {
-      const models = await transformersJsService.listCachedModels();
+      const models = await this.service.listCachedModels();
       // Only return complete models to the general selector to ensure they are ready for use
       return models.filter(m => m.isComplete).map(m => m.id);
     } catch (err) {
       console.warn('Failed to list local models for provider:', err);
       return [];
     }
+  }
+}
+
+/** The normal facade and isolated owners share this exact chat/tool-loop implementation. */
+export function createTransformersJsProvider({ service }: { service: TransformersJsProviderService }): LmProvider {
+  return new HostedTransformersJsProvider({ service });
+}
+
+// Preserve the ordinary facade (including its standalone replacement) without
+// temporarily swapping module state or introducing an alternate chat path.
+export class TransformersJsProvider extends HostedTransformersJsProvider {
+  constructor() {
+    super({ service: transformersJsService });
   }
 }
 

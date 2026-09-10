@@ -16,6 +16,7 @@ import { serializeInvestigationError } from '@/features/transformers-js/model-su
 import type { ModelSupportInvestigationExecutionPlan, ModelSupportInvestigationExternalNetworkPolicy } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import { runtimeTargetFromLocalCache, runtimeTargetFromRepository, selectLocalCacheRevision } from '@/features/transformers-js/model-support-investigation/logic/runtime-target';
 import type { InvestigationReplayMetadataSummary } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
+import { downloadProbeOutcome } from './download-probe-outcome';
 
 
 function recordStepError({
@@ -258,11 +259,16 @@ export async function runPartialModelSupportInvestigation({
       });
       try {
         run.downloadEvidence = await collectDownloadEvidence({ repository: run.repository, runId: run.runId });
-        const observed = run.downloadEvidence.modelArtifactObservations.filter(item => item.status === 'observed').length;
+        const outcome = downloadProbeOutcome({ evidence: run.downloadEvidence });
+        for (const error of outcome.errors) {
+          const cause = new Error(error.message);
+          cause.name = error.name;
+          errors.push(recordStepError({ run, stepId: 'download-evidence', error: cause }).message);
+        }
         emit({
           stepId: 'download-evidence',
-          status: 'running',
-          detail: `${observed} actual candidate artifact-request observations and ${run.downloadEvidence.run.transportObservations.length} bounded transport probes collected; Production cache acceptance is pending`,
+          status: outcome.status,
+          detail: outcome.detail,
         });
       } catch (error) {
         const detail = recordStepError({ run, stepId: 'download-evidence', error }).message;
@@ -434,11 +440,11 @@ export async function runPartialModelSupportInvestigation({
         status: 'skipped',
         detail: 'Skipped because Generation is not selected by investigation scope',
       });
-    } else if (deferTemplateBehavior && run.runtimeTarget.source === 'repository') {
+    } else if (deferTemplateBehavior) {
       emit({
         stepId: 'template-behavior',
         status: 'blocked',
-        detail: 'Deferred until runtime-complete preparation has selected a Production-accepted cache revision',
+        detail: 'Deferred to the public Provider investigation; planning does not independently execute tokenizer templates',
       });
     } else {
       emit({

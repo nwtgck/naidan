@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure = (): string => "Se observó una diferencia en la comparación. Esto por sí solo no demuestra un fallo funcional; revise las entradas comparadas y la evidencia de generación.";
