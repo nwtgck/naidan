@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { LmParameters } from "@/01-models/types";
+import type { ChatMessage, LmParameters } from "@/01-models/types";
+import { toToolCallId } from '@/01-models/ids';
 import type { GenerationCaptureCall } from "./worker/generation-capture";
+import * as standardToolProtocol from './standard-tool-call-protocol';
 
 vi.mock("@huggingface/transformers", () => ({
   TextStreamer: class {
@@ -14,6 +16,7 @@ vi.mock("@huggingface/transformers", () => ({
     push(): void {}
   },
   Tensor: class {},
+  RawImage: { read: vi.fn(async () => ({ width: 1, height: 1, data: Uint8Array.of(0, 0, 0) })) },
 }));
 
 import {
@@ -66,6 +69,161 @@ describe('shared generation state publication ownership', () => {
     } finally {
       fixture.generate.mockRestore();
     }
+  });
+});
+
+describe('verified content-route tool publication', () => {
+  it.each([
+    { name: 'multiple framed calls', output: '<|tool_call_start|>[lookup_weather(city="Tokyo"), lookup_weather(city="Osaka")]<|tool_call_end|>', rejected: true, expectedText: '', expectedCalls: 0 },
+    { name: 'bare bracket text', output: '[lookup_weather(city="Tokyo")]', rejected: false, expectedText: '[lookup_weather(city="Tokyo")]', expectedCalls: 0 },
+    { name: 'one complete framed call', output: '<|tool_call_start|>[lookup_weather(city="Tokyo")]<|tool_call_end|>', rejected: false, expectedText: '', expectedCalls: 1 },
+  ])('checks $name before publishing executable calls', async ({ output, rejected, expectedText, expectedCalls }) => {
+    // Synthetic syntax controls, not captured model inference. The real parser
+    // and strategy publication ordering are the boundary under test here.
+    const resolve = vi.spyOn(standardToolProtocol, 'resolveStandardToolHandling').mockReturnValue({
+      outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: [10, 11],
+    });
+    const chunks: string[] = [];
+    const published: unknown[] = [];
+    const generate = vi.fn(async ({ streamer }: { streamer: { emit(text: string): void } }) => {
+      streamer.emit(output); return { sequences: [], past_key_values: null };
+    });
+    try {
+      const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({
+        model: { generate } as never,
+        tokenizer: { all_special_ids: [7, 10, 11], decode: () => '', apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } } } as never,
+        messages: [{ role: 'user', content: 'Use a tool.' }],
+        onChunk: ({ chunk }) => {
+          chunks.push(chunk);
+        }, onRawChunk: vi.fn(),
+        onToolCalls: ({ toolCalls }) => {
+          published.push(...toolCalls);
+        },
+        params: explicitParameters,
+        tools: [{ type: 'function', function: { name: 'lookup_weather', description: 'Fixed tool', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }],
+        runtimeState: { activeModelId: 'synthetic/content', gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
+        stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+      });
+      if (rejected) await expect(operation).rejects.toThrow('Content tool history does not support multiple calls');
+      else await operation;
+      expect(published).toHaveLength(expectedCalls);
+      expect(chunks.join('')).toBe(expectedText);
+      expect(generate).toHaveBeenCalledOnce();
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+});
+
+describe('Qwen prompt-owned reasoning delivery', () => {
+  const openPrompt = `\
+<|im_start|>assistant
+<think>
+`;
+  const closedPrompt = `\
+<|im_start|>assistant
+<think>
+
+</think>
+
+`;
+  it.each([
+    { name: 'default native open prompt', effort: undefined, prompt: openPrompt, output: ['Reason', '</think>Answer'], expected: '<think>Reason</think>Answer' },
+    { name: 'enabled native open prompt', effort: 'low', prompt: openPrompt, output: ['Reason', '</think>Answer'], expected: '<think>Reason</think>Answer' },
+    { name: 'disabled native closed prompt', effort: 'none', prompt: closedPrompt, output: ['Answer'], expected: 'Answer' },
+    { name: 'default native closed prompt', effort: undefined, prompt: closedPrompt, output: ['Answer'], expected: 'Answer' },
+    { name: 'enabled template without an open suffix', effort: 'high', prompt: '<|im_start|>assistant\n', output: ['Answer'], expected: 'Answer' },
+    { name: 'already generated split opening tag', effort: 'medium', prompt: openPrompt, output: ['<thi', 'nk>Reason', '</think>Answer'], expected: '<think>Reason</think>Answer' },
+    { name: 'no native output', effort: undefined, prompt: openPrompt, output: ['', ''], expected: '' },
+    { name: 'partial generated opening at stream end', effort: undefined, prompt: openPrompt, output: ['<thi'], expected: '<think><thi' },
+    { name: 'literal user suffix is not an assistant thinking prefix', effort: undefined, prompt: `\
+<|im_start|>user
+literal <think>
+`, output: ['Answer'], expected: 'Answer' },
+    { name: 'unknown custom template suffix is not inferred', effort: 'high', prompt: 'custom user text <think>\n', output: ['Answer'], expected: 'Answer' },
+  ] satisfies Array<{ name: string; effort: LmParameters['reasoning']['effort']; prompt: string; output: string[]; expected: string }>)('$name', async ({ effort, prompt, output, expected }) => {
+    const chunks: string[] = [];
+    const tools: unknown[] = [];
+    const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
+    const apply_chat_template = vi.fn(() => prompt);
+    const generate = vi.fn(async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
+      for (const text of output) streamer.emit(text);
+      return { past_key_values: null, sequences: [] };
+    });
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      model: { generate, sessions: {} } as never, tokenizer: { apply_chat_template } as never,
+      messages: [{ role: 'user', content: 'A fixed prompt.' }],
+      onChunk: ({ chunk }) => {
+        chunks.push(chunk);
+      }, onRawChunk: vi.fn(), onToolCalls: ({ toolCalls }) => {
+        tools.push(...toolCalls);
+      },
+      params: { ...explicitParameters, reasoning: { effort } }, tools: undefined,
+      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
+        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+    });
+    expect(chunks.join('')).toBe(expected);
+    if (expected === '') expect(chunks).toEqual([]);
+    expect(tools).toEqual([]);
+    expect(apply_chat_template).toHaveBeenCalledOnce();
+    expect(processor).toHaveBeenCalledExactlyOnceWith(prompt);
+    expect(generate).toHaveBeenCalledOnce();
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({ input_ids: { dims: [1, 2] }, past_key_values: null }));
+  });
+
+  it('does not publish an empty thinking opener for tool syntax without assistant text', async () => {
+    const chunks: string[] = [];
+    const calls: unknown[] = [];
+    const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      model: { sessions: {}, generate: async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
+        streamer.emit('<tool_call><function=lookup_weather><parameter=city>Tokyo</parameter></function></tool_call>');
+        return { past_key_values: null, sequences: [] };
+      } } as never,
+      tokenizer: { apply_chat_template: () => openPrompt } as never, messages: [{ role: 'user', content: 'Weather.' }],
+      onChunk: ({ chunk }) => {
+        chunks.push(chunk);
+      }, onRawChunk: vi.fn(), onToolCalls: ({ toolCalls }) => {
+        calls.push(...toolCalls);
+      },
+      params: explicitParameters, tools: undefined,
+      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
+        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+    });
+    expect(chunks).toEqual([]);
+    expect(calls).toEqual([{ id: expect.any(String), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }]);
+  });
+
+  it.each(['tool-continuation', 'image'] as const)('restores the current %s prompt opening without changing prepared inputs', async kind => {
+    const chunks: string[] = [];
+    const messages: ChatMessage[] = kind === 'tool-continuation' ? [
+      { role: 'user', content: 'Use the weather tool for Tokyo.' },
+      { role: 'assistant', content: '', tool_calls: [{ id: toToolCallId({ raw: 'fixed-call' }), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }] },
+      { role: 'tool', tool_call_id: toToolCallId({ raw: 'fixed-call' }), content: '{"temperatureC":20}' },
+    ] : [{ role: 'user', content: [{ type: 'text', text: 'Describe this image.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,fixed-platform-input' } }] }];
+    const prepared = { input_ids: { dims: [1, 2] }, ...(kind === 'image' ? { pixel_values: { dims: [1, 3, 1, 1] }, image_grid_thw: { dims: [1, 3] } } : {}) };
+    const processor = Object.assign(vi.fn(async (_prompt: string, _images?: unknown[]) => prepared), { batch_decode: vi.fn(() => []) });
+    const apply_chat_template = vi.fn(() => openPrompt);
+    const generate = vi.fn(async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
+      streamer.emit('Reason</think>Answer'); return { past_key_values: null, sequences: [] };
+    });
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      model: { generate, sessions: { vision_encoder: {} } } as never, tokenizer: { apply_chat_template } as never, messages,
+      onChunk: ({ chunk }) => {
+        chunks.push(chunk);
+      }, onRawChunk: vi.fn(), onToolCalls: vi.fn(), params: explicitParameters,
+      tools: kind === 'tool-continuation' ? [{ type: 'function', function: { name: 'lookup_weather', description: 'Fixed tool', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }] : undefined,
+      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
+        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+    });
+    expect(chunks.join('')).toBe('<think>Reason</think>Answer');
+    expect(apply_chat_template).toHaveBeenCalledOnce();
+    expect(processor).toHaveBeenCalledOnce();
+    expect(processor.mock.calls[0]?.[0]).toBe(openPrompt);
+    expect(generate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ ...prepared, past_key_values: null }));
   });
 });
 

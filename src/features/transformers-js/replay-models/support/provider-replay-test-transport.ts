@@ -6,12 +6,14 @@ import type { ProductionRuntimeModuleEndpoint } from '@/features/transformers-js
 
 const workerOptionsSchema = z.object({ type: z.literal('module') }).strict();
 
+export type ProviderReplayTestWorkerConstructor = new (url: string | URL, options: WorkerOptions | undefined) => ProviderReplayTestWorker;
+
 /** One literal Production bootstrap, not a dispatcher that repairs unknown entries. */
 export function createProviderReplayTestWorkerConstructor({ scriptUrl, start, onConstructed }: {
   scriptUrl: URL,
   start: ({ worker }: { worker: ProviderReplayTestWorker }) => Promise<void>,
   onConstructed: ({ worker }: { worker: ProviderReplayTestWorker }) => void,
-}) {
+}): ProviderReplayTestWorkerConstructor {
   let constructed = false;
   return class extends ProviderReplayTestWorker {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the browser Worker constructor without changing its arguments.

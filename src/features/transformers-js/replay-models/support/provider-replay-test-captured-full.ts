@@ -77,8 +77,8 @@ function verifyInvocationEvidence({ invocation }: { invocation: Invocation }) {
     if (new Set(names).size !== names.length) throw new Error('Duplicate captured native key');
   }
   exact({ label: 'complete input evidence', actual: invocation.inputs.map(input => input.name).sort(), expected: keys.filter(key => !controlKeys.has(key)).sort() });
-  // Zero-cache captures in this lane have no pre-budget slicing. Other lanes
-  // must define their own cache transformation instead of relaxing this gate.
+  // These zero-cache and explicitly owned full-prefix captures have no
+  // pre-budget slicing. Other cache transformations need a separate contract.
   exact({ label: 'pre-budget input identity', actual: invocation.preInputs, expected: invocation.inputs });
   exact({ label: 'recorded sequence byte length', actual: invocation.sequence.tokens.length * 8, expected: invocation.sequence.byteLength });
   exact({ label: 'recorded sequence dtype', actual: invocation.sequence.dtype, expected: 'int64' });
@@ -115,14 +115,39 @@ export function parseCapturedFullReplay({ value }: { value: unknown }): Captured
   return evidence;
 }
 
-/** Native inference replacement only; no output is released before all gates. */
-export function replayCapturedFullInvocation({ invocation, options, runtime, modelConfig, parameters }: {
+type InvocationReplayArguments = {
   invocation: Invocation;
   options: Parameters<ProviderReplayGenerate>[0]['options'];
   runtime: Parameters<ProviderReplayGenerate>[0]['runtime'];
   modelConfig: unknown;
   parameters: unknown;
-}) {
+};
+export type CapturedReplayResult = {
+  sequences: InstanceType<InvocationReplayArguments['runtime']['Tensor']>;
+  past_key_values: NonNullable<InvocationReplayArguments['options']['past_key_values']> | null;
+};
+/** Source-derived ownership/length control, never captured GPU KV contents. */
+export type OwnedReplayCacheControl = {
+  previousSequence: CapturedReplayResult['sequences'];
+  pastKeyValues: NonNullable<InvocationReplayArguments['options']['past_key_values']>;
+};
+
+/** Zero-cache inference boundary; existing callers cannot silently acquire KV. */
+export function replayCapturedFullInvocation({ ...args }: InvocationReplayArguments): CapturedReplayResult {
+  return replayCapturedInvocation({ ...args, cacheControl: undefined });
+}
+
+/** Explicit full-prefix, synthetic-cache boundary for recorded continuation. */
+export function replayCapturedFullInvocationWithOwnedCache({ cacheControl, ...args }: InvocationReplayArguments & {
+  cacheControl: OwnedReplayCacheControl;
+}): CapturedReplayResult {
+  return replayCapturedInvocation({ ...args, cacheControl });
+}
+
+/** Native inference replacement only; no output is released before all gates. */
+function replayCapturedInvocation({ invocation, options, runtime, modelConfig, parameters, cacheControl }: InvocationReplayArguments & {
+  cacheControl: OwnedReplayCacheControl | undefined;
+}): CapturedReplayResult {
   const checked = invocationSchema.parse(invocation);
   verifyInvocationEvidence({ invocation: checked });
   const label = `${checked.scenario}/call-${checked.callOrdinal}`;
@@ -143,10 +168,22 @@ export function replayCapturedFullInvocation({ invocation, options, runtime, mod
   }
   exact({ label: `${label}/sampling`, actual: [options.max_new_tokens, options.temperature, options.top_p, options.do_sample, options.return_dict_in_generate],
     expected: [checked.settings.kwargs.maxNewTokens.value, checked.settings.kwargs.temperature.value, checked.settings.kwargs.topP.value, checked.settings.kwargs.doSample.value, checked.settings.kwargs.returnDictInGenerate.value] });
-  // This initial lane has no observed past-token use. KV-bearing cases need a
-  // separately identified control; never invent captured cache contents here.
-  exact({ label: `${label}/past-token-count`, actual: checked.settings.budget.pastTokenCount, expected: 0 });
-  if (options.past_key_values !== null && options.past_key_values !== undefined) throw new Error(`Captured Full has no KV control: ${label}`);
+  let pastTokenCount = 0;
+  if (cacheControl === undefined) {
+    exact({ label: `${label}/past-token-count`, actual: checked.settings.budget.pastTokenCount, expected: 0 });
+    if (options.past_key_values !== null && options.past_key_values !== undefined) throw new Error(`Captured Full has no KV control: ${label}`);
+  } else {
+    if (options.past_key_values !== cacheControl.pastKeyValues || !(options.past_key_values instanceof runtime.DynamicCache)) throw new Error(`Captured Full causal mismatch: ${label}/owned cache identity`);
+    const previous = cacheControl.previousSequence;
+    if (!(previous instanceof runtime.Tensor) || previous.type !== 'int64' || previous.location !== 'cpu'
+      || previous.dims.length !== 2 || previous.dims[0] !== 1 || previous.data.length !== previous.dims[1]
+      || previous.data.length < 2) throw new Error(`Captured Full causal mismatch: ${label}/previous sequence control`);
+    if (!(options.input_ids instanceof runtime.Tensor) || options.input_ids.data.length <= previous.data.length) throw new Error(`Captured Full causal mismatch: ${label}/owned full-prefix input`);
+    exact({ label: `${label}/previous returned sequence prefix`, actual: Array.from(options.input_ids.data, String).slice(0, previous.data.length), expected: Array.from(previous.data, String) });
+    pastTokenCount = options.past_key_values.get_seq_length();
+    exact({ label: `${label}/owned cache length`, actual: pastTokenCount, expected: previous.data.length - 1 });
+    exact({ label: `${label}/recorded past-token-count`, actual: checked.settings.budget.pastTokenCount, expected: pastTokenCount });
+  }
   const requested = z.object({ maxCompletionTokens: z.number().int().positive(), temperature: z.number(), topP: z.number() }).parse(parameters);
   exact({ label: `${label}/requested parameters`, actual: checked.settings.requested, expected: {
     maxCompletionTokens: { status: 'value', value: requested.maxCompletionTokens }, temperature: { status: 'value', value: requested.temperature }, topP: { status: 'value', value: requested.topP },
@@ -157,7 +194,9 @@ export function replayCapturedFullInvocation({ invocation, options, runtime, mod
   if (contextLimit === undefined || !(options.input_ids instanceof runtime.Tensor)) throw new Error('Missing actual replay context');
   const promptTokenCount = options.input_ids.dims.at(-1)!;
   exact({ label: `${label}/independent budget`, actual: checked.settings.budget, expected: {
-    source: 'explicit', pastTokenCount: 0, maxNewTokens: Math.min(requested.maxCompletionTokens, contextLimit - promptTokenCount), contextLimit, promptTokenCount, usedContextTokenCount: promptTokenCount,
+    // Actual full input already contains the previous sequence. Adding cache
+    // length again would double-count context; it is not a suffix-only input.
+    source: 'explicit', pastTokenCount, maxNewTokens: Math.min(requested.maxCompletionTokens, contextLimit - promptTokenCount), contextLimit, promptTokenCount, usedContextTokenCount: promptTokenCount,
   } });
   exact({ label: `${label}/sampling derivation`, actual: [options.max_new_tokens, options.temperature, options.top_p, options.do_sample], expected: [checked.settings.budget.maxNewTokens, requested.temperature, requested.topP, requested.temperature > 0] });
   const first = checked.stream[0];
@@ -246,22 +285,68 @@ export function verifyCapturedGapInputs({ events, expected }: {
   }
 }
 
+type ReplayOutputGap = {
+  callOrdinal: number;
+  scenario: z.infer<typeof captureScenarioSchema>;
+  requestInput: unknown;
+  expectedEventsBeforeGap: readonly unknown[];
+  verifyInput: ({ options, runtime, model, tokenizer }: Parameters<ProviderReplayGenerate>[0]) => void;
+};
+
+/** Reviewed current public contracts are not mutations of historical capture. */
+export type ReviewedProviderReplayContract = {
+  correctedEvents: readonly {
+    scenario: z.infer<typeof captureScenarioSchema>;
+    reason: string;
+    expectedEvents: readonly unknown[];
+  }[];
+  invalidatedOutputs: readonly (ReplayOutputGap & { reason: string })[];
+};
+
+function validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps }: {
+  evidence: CapturedFullReplayEvidence;
+  reviewedPublicContract: ReviewedProviderReplayContract | undefined;
+  originalGaps: readonly ReplayOutputGap[];
+}) {
+  const correctedEvents = new Map<string, readonly unknown[]>();
+  const invalidated = reviewedPublicContract?.invalidatedOutputs ?? [];
+  const gapOrdinals = new Set(originalGaps.map(gap => gap.callOrdinal));
+  const gapScenarios = new Set(originalGaps.map(gap => gap.scenario));
+  for (const gap of invalidated) {
+    if (gap.reason.trim().length === 0) throw new Error('Missing reviewed output-invalidation reason');
+    if (gapOrdinals.has(gap.callOrdinal) || gapScenarios.has(gap.scenario)) throw new Error('Duplicate reviewed output gap');
+    const recorded = evidence.invocations.filter(invocation => invocation.callOrdinal === gap.callOrdinal && invocation.scenario === gap.scenario);
+    if (recorded.length !== 1 || evidence.unavailableRecordedCalls?.includes(gap.callOrdinal)) throw new Error('Invalidated output must identify one originally replayable native invocation');
+    const request = evidence.requests.find(candidate => candidate.scenario === gap.scenario);
+    if (request === undefined || isDeepStrictEqual(jsonProjection({ value: gap.requestInput }), request.input)) {
+      throw new Error('Output invalidation requires a changed public input, not a replay waiver');
+    }
+    gapOrdinals.add(gap.callOrdinal); gapScenarios.add(gap.scenario);
+  }
+  for (const correction of reviewedPublicContract?.correctedEvents ?? []) {
+    if (correction.reason.trim().length === 0) throw new Error('Missing reviewed public-contract reason');
+    if (correctedEvents.has(correction.scenario) || gapScenarios.has(correction.scenario)) throw new Error('Duplicate or gap-owned public-contract correction');
+    if (evidence.requests.filter(request => request.scenario === correction.scenario).length !== 1) throw new Error('Public-contract correction must identify one recorded request');
+    // Detach model-local expected data before Production can run. No function
+    // transforms current callbacks or silently normalizes historical evidence.
+    correctedEvents.set(correction.scenario, z.array(z.json()).parse(correction.expectedEvents));
+  }
+  return { correctedEvents, gaps: [...originalGaps, ...invalidated].sort((left, right) => left.callOrdinal - right.callOrdinal) };
+}
+
 /** One real Full owner and Load preserve cross-request causality. */
-export async function verifyCapturedFullReplay({ evidence: source, artifactPaths, imagePlatform, unavailableOutputs, completeResult, expectedLoadReceipt }: {
+export async function verifyCapturedFullReplay({ evidence: source, artifactPaths, imagePlatform, unavailableOutputs: originalGaps, completeResult, expectedLoadReceipt, reviewedPublicContract }: {
   evidence: unknown; artifactPaths: readonly string[];
   imagePlatform: Parameters<typeof createProviderReplayTestRuntime>[0]['imagePlatform'];
-  unavailableOutputs: readonly {
-    callOrdinal: number;
-    scenario: z.infer<typeof captureScenarioSchema>;
-    requestInput: unknown;
-    expectedEventsBeforeGap: readonly unknown[];
-    verifyInput: ({ options, runtime, model, tokenizer }: Parameters<ProviderReplayGenerate>[0]) => void;
-  }[];
+  unavailableOutputs: readonly ReplayOutputGap[];
   completeResult: (({ options, runtime, model, tokenizer, callOrdinal, result }: Parameters<ProviderReplayGenerate>[0] & { callOrdinal: number; result: ReturnType<typeof replayCapturedFullInvocation> }) => Awaited<ReturnType<ProviderReplayGenerate>>) | undefined;
   expectedLoadReceipt: z.infer<typeof productionLoadReceiptSchema> | undefined;
+  reviewedPublicContract: ReviewedProviderReplayContract | undefined;
 }) {
   const evidence = parseCapturedFullReplay({ value: source });
-  expect(unavailableOutputs.filter(item => evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)).map(item => item.callOrdinal)).toEqual(evidence.unavailableRecordedCalls ?? []);
+  expect(originalGaps.filter(item => evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)).map(item => item.callOrdinal)).toEqual(evidence.unavailableRecordedCalls ?? []);
+  const { correctedEvents, gaps: unavailableOutputs } = validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps });
+  const usedCorrections: string[] = [];
   const metadata = readModelFixture({ modelId: evidence.modelId });
   expect(metadata.summary.revision).toBe(evidence.metadataRevision);
   expect(evidence.metadata.map(resource => resource.path).sort(), 'complete source metadata path set').toEqual([...metadata.files.keys()].sort());
@@ -364,10 +449,14 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       const recorded = evidence.requests.find(item => item.scenario === request.scenario)!;
       expect(request.trace.settled?.outcome, `${request.scenario}/${JSON.stringify(request.trace.settled?.outcome)}`).toEqual({ status: 'fulfilled' });
       expect(jsonProjection({ value: request.input }), `${request.scenario}/Provider input`).toEqual(recorded.input);
-      expect(providerEvents({ events: request.trace.settled!.events }), `${request.scenario}/settled callbacks`).toEqual(recorded.events);
+      const corrected = correctedEvents.get(request.scenario);
+      if (corrected !== undefined) usedCorrections.push(request.scenario);
+      expect(providerEvents({ events: request.trace.settled!.events }), `${request.scenario}/settled callbacks`).toEqual(corrected ?? recorded.events);
       expect(request.trace.completeness, request.scenario).toBe('complete');
       expect(request.trace.lateEvents, request.scenario).toEqual([]);
     }
+    expect(usedCorrections.sort(), 'every reviewed public contract actually settled').toEqual([...correctedEvents.keys()].sort());
+    expect(provider.requests.filter(request => request.trace.settled?.outcome.status === 'fulfilled')).toHaveLength(provider.requests.length - unavailableOutputs.length);
     const expectedCallCount = new Set([...evidence.invocations.map(item => item.callOrdinal), ...unavailableOutputs.map(item => item.callOrdinal)]).size;
     expect(callOrdinal).toBe(expectedCallCount);
     expect(verifiedGaps, gapFailures.join('\n')).toEqual(unavailableOutputs.map(item => item.callOrdinal));
@@ -487,4 +576,5 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
 }
 
 export const TEST_ONLY = {
+  validateReviewedProviderContract,
 };

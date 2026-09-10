@@ -14,12 +14,34 @@ import { createProductionRuntimeModuleRequester, startProductionWorkerRuntime } 
 import type { createProviderReplayTestImagePlatform } from './provider-replay-test-image-platform';
 
 type Runtime = typeof import('@huggingface/transformers');
+export type ProviderReplayGenerationOptions = Parameters<PreTrainedModel['generate']>[0];
 export type ProviderReplayGenerate = ({ options, model, tokenizer, runtime }: {
-  options: Parameters<PreTrainedModel['generate']>[0],
+  options: ProviderReplayGenerationOptions,
   model: PreTrainedModel,
   tokenizer: PreTrainedTokenizer,
   runtime: Runtime,
 }) => ReturnType<PreTrainedModel['generate']>;
+
+export interface ProviderReplayTestRuntime {
+  provider: InstanceType<typeof import('@/features/transformers-js/provider-hosted')['TransformersJsProvider']>;
+  service: typeof import('@/features/transformers-js/index-hosted')['transformersJsService'];
+  runtime: Runtime;
+  observations: {
+    fs: ReturnType<typeof createMemoryFiles>;
+    fetchCalls: string[];
+    runtimeAssetFetchCalls: string[];
+    localImageFetchCalls: string[];
+    forbiddenTransport: string[];
+    ortCalls: unknown[][];
+    inferenceCalls: ProviderReplayGenerationOptions[];
+    processors: Array<Awaited<ReturnType<Runtime['AutoProcessor']['from_pretrained']>>>;
+    workers: ProviderReplayTestWorker[];
+    platform: ReturnType<typeof installProductionRuntimeStartupPlatform>;
+    cleanupErrors: unknown[];
+    expectedRuntimeAssetUrl: string;
+  };
+  close(): Promise<void>;
+}
 
 /**
  * Actual hosted Provider/service/client/Comlink/entry/tokenizer/streamer. The
@@ -38,7 +60,7 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     platform: ReturnType<typeof createProviderReplayTestImagePlatform>,
     allowedDataUrls: readonly string[],
   } | undefined,
-}) {
+}): Promise<ProviderReplayTestRuntime> {
   const allowedImageUrls = new Set<string>();
   if (imagePlatform !== undefined) {
     for (const url of imagePlatform.allowedDataUrls) {
@@ -198,7 +220,7 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
       return processor;
     });
     restorations.push(() => processorSpy.mockRestore());
-    const inferenceCalls: Parameters<PreTrainedModel['generate']>[0][] = [];
+    const inferenceCalls: ProviderReplayGenerationOptions[] = [];
     for (const autoClass of [runtime.AutoModelForCausalLM, runtime.AutoModelForImageTextToText]) {
       const original = autoClass.from_pretrained.bind(autoClass);
       const modelSpy = vi.spyOn(autoClass, 'from_pretrained').mockImplementation(async (...args) => {

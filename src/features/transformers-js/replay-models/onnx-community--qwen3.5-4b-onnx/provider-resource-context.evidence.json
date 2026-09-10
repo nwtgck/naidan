@@ -1,0 +1,93 @@
+{
+  "format": "provider-resource-context-v1",
+  "modelId": "onnx-community/Qwen3.5-4B-ONNX",
+  "metadataRevision": "74d8caba2117fd5f41d655e9cc27eda1338662b3",
+  "observedCacheRevision": "74d8caba2117fd5f41d655e9cc27eda1338662b3",
+  "loadReceipt": {
+    "format": "production-offline-load-receipt-v1",
+    "modelId": "onnx-community/Qwen3.5-4B-ONNX",
+    "loaderRevisionOption": {
+      "status": "provided",
+      "value": "74d8caba2117fd5f41d655e9cc27eda1338662b3"
+    },
+    "autoClass": "AutoModelForImageTextToText",
+    "processor": "qwen3_5-processor",
+    "candidate": {
+      "device": "webgpu",
+      "dtype": "q4f16"
+    },
+    "plannedRequiredPaths": [
+      "config.json",
+      "onnx/decoder_model_merged_q4f16.onnx",
+      "onnx/decoder_model_merged_q4f16.onnx_data",
+      "onnx/decoder_model_merged_q4f16.onnx_data_1",
+      "onnx/embed_tokens_q4f16.onnx",
+      "onnx/embed_tokens_q4f16.onnx_data",
+      "onnx/vision_encoder_q4f16.onnx",
+      "onnx/vision_encoder_q4f16.onnx_data",
+      "preprocessor_config.json",
+      "tokenizer.json",
+      "tokenizer_config.json"
+    ],
+    "cacheLookup": {
+      "source": "read-only-opfs-scoped-match",
+      "revision": "74d8caba2117fd5f41d655e9cc27eda1338662b3",
+      "hitPaths": [
+        "config.json",
+        "onnx/decoder_model_merged_q4f16.onnx",
+        "onnx/decoder_model_merged_q4f16.onnx_data",
+        "onnx/decoder_model_merged_q4f16.onnx_data_1",
+        "onnx/embed_tokens_q4f16.onnx",
+        "onnx/embed_tokens_q4f16.onnx_data",
+        "onnx/vision_encoder_q4f16.onnx",
+        "onnx/vision_encoder_q4f16.onnx_data",
+        "preprocessor_config.json",
+        "tokenizer.json",
+        "tokenizer_config.json"
+      ]
+    },
+    "completion": "model-session-and-tokenizer-processor-ready",
+    "resourceHealth": "healthy-after-close",
+    "accessBoundary": "production-offline-read-only",
+    "limitations": {
+      "wholeFileProvenance": "not-verified",
+      "allPlannedBodiesConsumed": "not-certified"
+    }
+  },
+  "localMetadataPaths": [
+    "config.json",
+    "preprocessor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "metadata": [
+    {
+      "path": "config.json",
+      "sha256": "c6f9834460177e3821e035900320fa24bd11ad1c9f14bfe2e78e4398e38c4937"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "sha256": "2de621ec071dd61438efdd6d0183bd3d612e98d05ac10d19ed75f1fef9299bc9"
+    },
+    {
+      "path": "generation_config.json",
+      "sha256": "dc0cbe66543f310896469b7b1448af792f403293a1080baaf04d586c57b23e48"
+    },
+    {
+      "path": "processor_config.json",
+      "sha256": "14932921ca485d458a04dafd8069fbb0a4505622a48208d19ed247115801385b"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "sha256": "6a970fd06f30e6943b3e2c14d5d3b42d49b06cf99b99103d56689bef462d90f8"
+    },
+    {
+      "path": "chat_template.jinja",
+      "sha256": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715"
+    },
+    {
+      "path": "tokenizer.json",
+      "sha256": "89da80cc6689bef4d90cc1028249436975ffb0814618f1d93c65310e05801a9b"
+    }
+  ]
+}

@@ -7,7 +7,8 @@ import { getProductionTransformersArtifact } from '@/features/transformers-js/ru
 
 // Shared execution/assertion mechanics only. Model names, expected session
 // inventories, processor classes and incompatibilities live in each model test.
-const active: Array<{ harness: Awaited<ReturnType<typeof rawRuntime>>, expectedUnknown: string[] }> = [];
+export type RawReplaySession = { harness: Awaited<ReturnType<typeof rawRuntime>>, expectedUnknown: string[] };
+const active: RawReplaySession[] = [];
 
 export function installRawReplay({ evidence }: { evidence: {
   modelId: string, revision: string, files: Record<string, { sha256: string, byteLength: number }>,
@@ -45,7 +46,7 @@ export async function archiveFor({ modelId }: { modelId: string }) {
   return readModelFixture({ modelId });
 }
 
-export async function start({ archive, bodyPaths }: { archive: RawModel, bodyPaths: string[] }) {
+export async function start({ archive, bodyPaths }: { archive: RawModel, bodyPaths: string[] }): Promise<RawReplaySession> {
   const harness = await rawRuntime({ archive, bodyPaths });
   const tracked = { harness, expectedUnknown: [] as string[] };
   active.push(tracked);

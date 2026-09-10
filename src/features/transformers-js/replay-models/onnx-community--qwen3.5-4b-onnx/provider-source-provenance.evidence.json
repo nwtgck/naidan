@@ -1,0 +1,211 @@
+{
+  "format": "provider-source-provenance-v1",
+  "sourceDigests": {
+    "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+    "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+    "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+  },
+  "attributions": [
+    {
+      "caseId": "first-turn",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "continuity",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "independent-next-input",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "system-user",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "supplied-history",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "reasoning-none",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "reasoning-low",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "reasoning-medium",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "reasoning-high",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "natural-tool-minimal",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "structured-tool-history",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "image",
+      "sourceDigests": {
+        "native": "659192ffd3752d3158541e8e8f65bdef1d80caeb06cf5ba12f61de9250fde710",
+        "provider": "fedb7118d638211b0acfac33eaa37129fff0f8e9fa461db292384e2eff4bbfb6",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    }
+  ],
+  "requestOrder": [
+    "first-turn",
+    "continuity",
+    "independent-next-input",
+    "system-user",
+    "supplied-history",
+    "reasoning-none",
+    "reasoning-low",
+    "reasoning-medium",
+    "reasoning-high",
+    "natural-tool-minimal",
+    "natural-tool-representative",
+    "structured-tool-history",
+    "image"
+  ],
+  "invocations": [
+    {
+      "caseId": "first-turn",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 1
+    },
+    {
+      "caseId": "continuity",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 2
+    },
+    {
+      "caseId": "independent-next-input",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 3
+    },
+    {
+      "caseId": "system-user",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 4
+    },
+    {
+      "caseId": "supplied-history",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 5
+    },
+    {
+      "caseId": "reasoning-none",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 6
+    },
+    {
+      "caseId": "reasoning-low",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 7
+    },
+    {
+      "caseId": "reasoning-medium",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 8
+    },
+    {
+      "caseId": "reasoning-high",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 9
+    },
+    {
+      "caseId": "natural-tool-minimal",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 10
+    },
+    {
+      "caseId": "natural-tool-minimal",
+      "localOrdinal": 2,
+      "sourceCallOrdinal": 11
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 12
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "localOrdinal": 2,
+      "sourceCallOrdinal": 13
+    },
+    {
+      "caseId": "structured-tool-history",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 14
+    },
+    {
+      "caseId": "image",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 15
+    }
+  ],
+  "inputGaps": [],
+  "optionalFields": {
+    "unavailableRecordedCalls": false,
+    "nativeInputGaps": false
+  }
+}

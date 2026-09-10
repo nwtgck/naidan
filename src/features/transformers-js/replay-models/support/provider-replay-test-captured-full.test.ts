@@ -4,9 +4,51 @@ import { createHash } from 'node:crypto';
 import { providerReplayCatalog } from '@/features/transformers-js/replay-models/huggingfacetb--smollm2-135m-instruct/provider-evidence-catalog';
 import { assembleProviderSequenceEvidence } from './provider-replay-evidence';
 const source = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
-import { parseCapturedFullReplay, replayCapturedFullInvocation, verifyCapturedFullReplay, verifyCapturedGapInputs, verifyCapturedProviderPrefix } from './provider-replay-test-captured-full';
+import { parseCapturedFullReplay, replayCapturedFullInvocation, verifyCapturedFullReplay, verifyCapturedGapInputs, verifyCapturedProviderPrefix, TEST_ONLY, type ReviewedProviderReplayContract } from './provider-replay-test-captured-full';
 import type { ProductionProviderTraceEvent } from '@/features/transformers-js/model-support-investigation/logic/production-provider-trace';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from './provider-replay-test-runtime';
+
+describe('reviewed public contracts remain separate from immutable capture', () => {
+  const evidence = parseCapturedFullReplay({ value: source });
+  const correction = { scenario: 'first-turn' as const, reason: 'Independently reviewed public delivery contract', expectedEvents: [{ kind: 'assistant-start' }] };
+  const invalidated = { callOrdinal: 1, scenario: 'first-turn' as const, reason: 'Changed current input has no applicable recorded output', requestInput: {}, expectedEventsBeforeGap: [], verifyInput: vi.fn() };
+  it('detaches explicit corrected events without modifying the captured source', () => {
+    const before = structuredClone(evidence);
+    const expectedEvents = [{ kind: 'assistant-start' }];
+    const result = TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      correctedEvents: [{ ...correction, expectedEvents }], invalidatedOutputs: [],
+    } });
+    expectedEvents.push({ kind: 'mutation' });
+    expect(result.correctedEvents.get('first-turn')).toEqual([{ kind: 'assistant-start' }]);
+    expect(result.gaps).toEqual([]);
+    expect(evidence).toEqual(before);
+  });
+  it.each([
+    { name: 'unknown request', contract: { correctedEvents: [{ ...correction, scenario: 'unknown' as never }], invalidatedOutputs: [] }, error: 'one recorded request' },
+    { name: 'duplicate correction', contract: { correctedEvents: [correction, correction], invalidatedOutputs: [] }, error: 'Duplicate' },
+    { name: 'missing correction rationale', contract: { correctedEvents: [{ ...correction, reason: ' ' }], invalidatedOutputs: [] }, error: 'reason' },
+    { name: 'gap-owned correction', contract: { correctedEvents: [correction], invalidatedOutputs: [invalidated] }, error: 'gap-owned' },
+    { name: 'duplicate invalidation', contract: { correctedEvents: [], invalidatedOutputs: [invalidated, invalidated] }, error: 'Duplicate' },
+    { name: 'unknown native output', contract: { correctedEvents: [], invalidatedOutputs: [{ ...invalidated, callOrdinal: 100 }] }, error: 'originally replayable' },
+    { name: 'native output owned by another request', contract: { correctedEvents: [], invalidatedOutputs: [{ ...invalidated, scenario: 'system-user' as const }] }, error: 'originally replayable' },
+    { name: 'missing invalidation rationale', contract: { correctedEvents: [], invalidatedOutputs: [{ ...invalidated, reason: '' }] }, error: 'reason' },
+  ] satisfies Array<{ name: string; contract: ReviewedProviderReplayContract; error: string }>)('rejects $name', ({ contract, error }) => {
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: contract })).toThrow(error);
+  });
+  it('distinguishes a newly inapplicable captured output from an originally missing output', () => {
+    const contract = { correctedEvents: [], invalidatedOutputs: [invalidated] };
+    const result = TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: contract });
+    expect(result.gaps).toEqual([invalidated]);
+    expect(evidence.unavailableRecordedCalls).toBeUndefined();
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence: { ...evidence, unavailableRecordedCalls: [1] }, originalGaps: [], reviewedPublicContract: contract })).toThrow('originally replayable');
+  });
+  it('rejects unchanged public input as a waiver for still-applicable recorded output', () => {
+    const original = evidence.requests.find(request => request.scenario === 'first-turn')!;
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      correctedEvents: [], invalidatedOutputs: [{ ...invalidated, requestInput: structuredClone(original.input) }],
+    } })).toThrow('changed public input');
+  });
+});
 
 describe('captured Full native inference gate', () => {
   it('rejects missing captured image input or settings even after direct input verification', () => {
@@ -49,7 +91,7 @@ describe('captured Full native inference gate', () => {
     expect(() => verifyCapturedProviderPrefix({ events: [], expected: imageStart })).toThrow('all callbacks before evidence gap');
   });
   it('rejects a missing metadata row before starting the native runtime', async () => {
-    await expect(verifyCapturedFullReplay({ evidence: { ...source, metadata: source.metadata.slice(1) },
+    await expect(verifyCapturedFullReplay({ reviewedPublicContract: undefined, evidence: { ...source, metadata: source.metadata.slice(1) },
       artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined,
     })).rejects.toThrow('complete source metadata path set');
   });

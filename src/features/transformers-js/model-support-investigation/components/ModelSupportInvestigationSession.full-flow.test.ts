@@ -392,9 +392,17 @@ describe('complete Full collection through Session and actual Worker transports'
       });
       vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
       vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+      // Vue rejects events older than their mounted listener. Move only the
+      // export clock forward; leave collection deadlines on the real clock.
+      // UTC noon also keeps waitFor's small clock advances away from midnight.
+      const exportAnchor = new Date();
+      exportAnchor.setUTCDate(exportAnchor.getUTCDate() + 1);
+      exportAnchor.setUTCHours(12, 0, 0, 0);
+      const exportTimes = [exportAnchor.getTime(), exportAnchor.getTime() + 86_400_000];
+      const expectedExportDates = exportTimes.map(time => new Date(time).toISOString().slice(0, 10));
       vi.useFakeTimers({ toFake: ['Date'] });
       for (let ordinal = 1; ordinal <= 2; ordinal++) {
-        vi.setSystemTime(new Date(`2026-09-${ordinal === 1 ? '10' : '11'}T12:00:00.000Z`));
+        vi.setSystemTime(exportTimes[ordinal - 1]!);
         await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
         await vi.waitFor(() => expect(exported, wrapper?.find('[data-testid="model-support-current-operation"]').text()).toHaveLength(ordinal), { timeout: 30_000 });
       }
@@ -445,7 +453,7 @@ describe('complete Full collection through Session and actual Worker transports'
           }
         }
       }
-      expect(indexes.map(index => index.generatedAt.slice(0, 10))).toEqual(['2026-09-10', '2026-09-11']);
+      expect(indexes.map(index => index.generatedAt.slice(0, 10))).toEqual(expectedExportDates);
       expect(indexes[1]!.targets).toEqual(indexes[0]!.targets);
       expect(indexes[0]!.targets.map(target => target.status)).toEqual([expectedFirst.status, 'passed']);
       expect(indexes[0]!.targets.map(target => target.runId)).toEqual(snapshot.runs.map(([, run]) => run.runId));

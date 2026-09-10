@@ -1,7 +1,8 @@
 // @vitest-environment node
+import { captureProviderChat, type ProviderChatCapture } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
 import { providerReplayCatalog } from './provider-evidence-catalog';
 import { assembleProviderSequenceEvidence } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
-import { verifyProviderRequests } from '@/features/transformers-js/replay-models/support/provider-replay-request';
+import { createProviderRequestReplay } from '@/features/transformers-js/replay-models/support/provider-replay-request';
 import { verifyCapturedFullReplay } from '@/features/transformers-js/replay-models/support/provider-replay-test-captured-full';
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
@@ -103,8 +104,26 @@ const budgetContinuitySource = z.object({
 }).strict().parse(budgetContinuityJson);
 const budgetContinuity = parseProviderReplayTextEvidence({ value: budgetContinuitySource.capture });
 
+// Input-only captures retain typed values independently of native disposal.
+function captureGemmaNativeInput({ options, runtime }: Parameters<ProviderReplayGenerate>[0]) {
+  const tensor = ({ value }: { value: unknown }) => value instanceof runtime.Tensor
+    ? { isTensor: true as const, type: value.type, location: value.location, dims: [...value.dims], data: value.data.slice() }
+    : { isTensor: false as const };
+  return {
+    tensors: {
+      input_ids: tensor({ value: options.input_ids }), attention_mask: tensor({ value: options.attention_mask }),
+      pixel_values: tensor({ value: options.pixel_values }), image_position_ids: tensor({ value: options.image_position_ids }),
+    },
+    optionKeys: Object.keys(options), softTokens: structuredClone(options.num_soft_tokens_per_image),
+    settings: { maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample },
+    pastIsNull: options.past_key_values === null, returnDict: options.return_dict_in_generate,
+    isTextStreamer: options.streamer instanceof runtime.TextStreamer, stoppingCriteriaType: typeof options.stopping_criteria,
+  };
+}
+
 async function createGemmaInputReplay() {
   const inputs: number[][] = [];
+  const nativeInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
   const harness = await createProviderReplayTestRuntime({
     imagePlatform: undefined,
     modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture",
@@ -116,24 +135,31 @@ async function createGemmaInputReplay() {
       'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
       'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
     ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
-    generate: async ({ options, runtime }) => {
-      if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor)) {
-        throw new Error('Expected actual Gemma input and mask Tensors');
-      }
-      expect(options.input_ids.type).toBe('int64');
-      expect(options.input_ids.location).toBe('cpu');
-      expect(options.input_ids.dims).toEqual([1, options.input_ids.data.length]);
-      expect(options.attention_mask.type).toBe('int64');
-      expect(options.attention_mask.location).toBe('cpu');
-      expect(options.attention_mask.dims).toEqual(options.input_ids.dims);
-      expect(Array.from(options.attention_mask.data, BigInt)).toEqual(Array.from(options.input_ids.data, () => 1n));
-      inputs.push(Array.from(options.input_ids.data, Number));
+    generate: async context => {
+      const input = captureGemmaNativeInput(context);
+      nativeInputs.push(input);
+      if (input.tensors.input_ids.isTensor) inputs.push(Array.from(input.tensors.input_ids.data, Number));
       // End at the native inference boundary: never supply tokens captured for
       // another input and never invent a successful model/tool response.
       throw new Error(INPUT_BOUNDARY);
     },
   });
-  return { harness, inputs };
+  return { harness, inputs, verifyNativeInput() {
+    expect(nativeInputs).toHaveLength(1);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    const native = nativeInputs[0];
+    expect(native?.tensors.input_ids.isTensor).toBe(true);
+    expect(native?.tensors.attention_mask.isTensor).toBe(true);
+    if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual Gemma input and mask Tensors');
+    const { input_ids: input, attention_mask: mask } = native.tensors;
+    expect(input.type).toBe('int64');
+    expect(input.location).toBe('cpu');
+    expect(input.dims).toEqual([1, input.data.length]);
+    expect(mask.type).toBe('int64');
+    expect(mask.location).toBe('cpu');
+    expect(mask.dims).toEqual(input.dims);
+    expect(Array.from(mask.data, BigInt)).toEqual(Array.from(input.data, () => 1n));
+  } };
 }
 
 const imageEvidence = z.object({
@@ -168,11 +194,11 @@ const IMAGE_INPUT_BOUNDARY = 'Gemma real image processor input verified; no nati
 
 // Both cases exercise the same image-input contract. Only the explicit image
 // bytes and independently expected pixels change; no inference tokens are used.
-async function verifyGemmaImageInput({ imageUrl, expectedRgba, expectedPixels }: {
+async function createGemmaImageInputControl({ imageUrl, expectedRgba, expectedPixels }: {
   imageUrl: string, expectedRgba: Uint8ClampedArray, expectedPixels: Float32Array,
 }) {
   const platform = createProviderReplayTestImagePlatform();
-  let verifiedInputs = 0;
+  const nativeInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
   const harness = await createProviderReplayTestRuntime({
     modelId: imageEvidence.modelId, expectedRevision: imageEvidence.revision, cacheRevision: imageEvidence.revision, metadataCache: "all-fixture",
     imagePlatform: { platform, allowedDataUrls: [imageUrl] },
@@ -182,60 +208,47 @@ async function verifyGemmaImageInput({ imageUrl, expectedRgba, expectedPixels }:
       'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
       'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
     ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: imageEvidence.modelId, revision: imageEvidence.revision, path }) })),
-    generate: async ({ options, runtime }) => {
-      const tensors = z.object({
-        input_ids: z.instanceof(runtime.Tensor), attention_mask: z.instanceof(runtime.Tensor),
-        pixel_values: z.instanceof(runtime.Tensor), image_position_ids: z.instanceof(runtime.Tensor),
-        num_soft_tokens_per_image: z.tuple([z.literal(256)]),
-      }).parse(options);
-      expect(Object.keys(options).sort()).toEqual([
-        ...imageEvidence.inputKeys, 'do_sample', 'max_new_tokens', 'past_key_values',
-        'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-      ].sort());
-      for (const fact of imageEvidence.inputTensors) {
-        const tensor = tensors[fact.name];
-        expect({ name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }).toEqual(fact);
-      }
-      expect(Array.from(tensors.input_ids.data, Number)).toEqual(imageEvidence.inputTokenIds);
-      expect(tensors.attention_mask.data).toEqual(new BigInt64Array(279).fill(1n));
-      expect(tensors.pixel_values.data).toEqual(expectedPixels);
-
-      // These values are independently derived from the fixed 1x1 geometry:
-      // 768/16 = 48 patches per side, 2304 real patches, 216 padded patches.
-      // The original browser capture recorded shapes, not these tensor values.
-      const expectedPositions = new BigInt64Array(2520 * 2).fill(-1n);
-      for (let patch = 0; patch < 2304; ++patch) {
-        expectedPositions[patch * 2] = BigInt(patch % 48);
-        expectedPositions[patch * 2 + 1] = BigInt(Math.floor(patch / 48));
-      }
-      expect(tensors.image_position_ids.data).toEqual(expectedPositions);
-      expect({
-        maxNewTokens: options.max_new_tokens, temperature: options.temperature,
-        topP: options.top_p, doSample: options.do_sample,
-      }).toEqual(imageEvidence.generationSettings);
-      expect(options.past_key_values).toBeNull();
-      expect(options.return_dict_in_generate).toBe(true);
-      ++verifiedInputs;
+    generate: async context => {
+      nativeInputs.push(captureGemmaNativeInput(context));
       // A browser pixel digest was not captured. Do not present independently
       // derived values as recorded bytes or release the original token "The"
       // merely because dimensions and text tokens happen to match.
       throw new Error(IMAGE_INPUT_BOUNDARY);
     },
   });
-  try {
-    const chunks: string[] = [];
-    await expect(harness.provider.chat({
-      model: imageEvidence.modelId, messages: [{ role: 'user', content: [
-        imageEvidence.messages[0].content[0], { type: 'image_url', image_url: { url: imageUrl } },
-      ] }], tools: [],
-      parameters: {
-        temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined,
-        frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined },
-      },
-      onChunk: ({ chunk }) => chunks.push(chunk),
-    })).rejects.toThrow(IMAGE_INPUT_BOUNDARY);
-    expect(verifiedInputs).toBe(1);
-    expect(chunks).toEqual([]);
+  return { harness, verifyNativeInput() {
+    expect(nativeInputs).toHaveLength(1);
+    const native = nativeInputs[0];
+    if (!native) throw new Error('Expected actual Gemma image inference');
+    const { input_ids, attention_mask, pixel_values, image_position_ids } = native.tensors;
+    for (const tensor of Object.values(native.tensors)) expect(tensor.isTensor).toBe(true);
+    if (!input_ids.isTensor || !attention_mask.isTensor || !pixel_values.isTensor || !image_position_ids.isTensor) throw new Error('Expected actual Gemma image Tensors');
+    const tensors = { input_ids, attention_mask, pixel_values, image_position_ids };
+    expect(native.softTokens).toEqual([256]);
+    expect(native.optionKeys.sort()).toEqual([
+      ...imageEvidence.inputKeys, 'do_sample', 'max_new_tokens', 'past_key_values',
+      'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+    ].sort());
+    for (const fact of imageEvidence.inputTensors) {
+      const tensor = tensors[fact.name];
+      expect({ name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }).toEqual(fact);
+    }
+    expect(Array.from(tensors.input_ids.data, Number)).toEqual(imageEvidence.inputTokenIds);
+    expect(tensors.attention_mask.data).toEqual(new BigInt64Array(279).fill(1n));
+    expect(tensors.pixel_values.data).toEqual(expectedPixels);
+
+    // These values are independently derived from the fixed 1x1 geometry:
+    // 768/16 = 48 patches per side, 2304 real patches, 216 padded patches.
+    // The original browser capture recorded shapes, not these tensor values.
+    const expectedPositions = new BigInt64Array(2520 * 2).fill(-1n);
+    for (let patch = 0; patch < 2304; ++patch) {
+      expectedPositions[patch * 2] = BigInt(patch % 48);
+      expectedPositions[patch * 2 + 1] = BigInt(Math.floor(patch / 48));
+    }
+    expect(tensors.image_position_ids.data).toEqual(expectedPositions);
+    expect(native.settings).toEqual(imageEvidence.generationSettings);
+    expect(native.pastIsNull).toBe(true);
+    expect(native.returnDict).toBe(true);
     expect(harness.observations.processors).toHaveLength(1);
     expect(harness.observations.inferenceCalls).toHaveLength(1);
     expect(platform.observations.decodes).toEqual([{
@@ -249,26 +262,46 @@ async function verifyGemmaImageInput({ imageUrl, expectedRgba, expectedPixels }:
     expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
     expect(harness.observations.forbiddenTransport).toEqual([]);
     expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } finally {
-    await harness.close();
-  }
+  } };
 }
 
 describe('Gemma4 E2B Provider / basic', () => {
   it.each(inputEvidence.cases.filter(scenario => scenario.tools.length === 0))('$caseId reaches the exact recorded input through the public Provider', async scenario => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const replay = await createGemmaInputReplay();
     try {
-      const chunks: string[] = [];
-      await expect(replay.harness.provider.chat({
-        model: inputEvidence.modelId, messages: scenario.messages, tools: [],
-        parameters: {
-          temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined,
-          frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined },
+      capture = captureProviderChat({
+        provider: replay.harness.provider,
+        request: {
+          model: inputEvidence.modelId,
+          messages: scenario.messages,
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
         },
-        onChunk: ({ chunk }) => {
-          chunks.push(chunk);
-        },
-      })).rejects.toThrow(INPUT_BOUNDARY);
+      });
+      captures.push(capture);
+      await expect(capture.completion).rejects.toThrow(INPUT_BOUNDARY);
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'rejected' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.toolCalls).toEqual([]);
+      expect(observed.toolResults).toEqual([]);
+      expect(observed.toolEvents).toEqual([]);
+      expect(observed.lateEvents).toEqual([]);
+      const chunks = observed.chunks;
+      replay.verifyNativeInput();
       expect(replay.inputs).toEqual([scenario.inputTokenIds]);
       expect(chunks).toEqual([]);
       expect(replay.harness.observations.processors).toHaveLength(1);
@@ -281,9 +314,12 @@ describe('Gemma4 E2B Provider / basic', () => {
       expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
     } finally {
       await replay.harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('delivers the recorded first-turn prefix through the actual processor and streamer before Provider settlement', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     expect(generationEvidence.identity).toEqual({
       modelId: 'hf.co/onnx-community/gemma-4-E2B-it-ONNX',
       resolvedRevision: inputEvidence.revision,
@@ -312,17 +348,34 @@ describe('Gemma4 E2B Provider / basic', () => {
       },
     });
     try {
-      const chunks: string[] = [];
-      await harness.provider.chat({
-        model: generationEvidence.identity.modelId, messages: generationEvidence.scenario.messages, tools: [],
-        parameters: {
-          ...generationEvidence.scenario.lmParameters,
-          presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined },
-        },
-        onChunk: ({ chunk }) => {
-          chunks.push(chunk);
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: generationEvidence.identity.modelId,
+          messages: generationEvidence.scenario.messages,
+          tools: [],
+          parameters: {
+            ...generationEvidence.scenario.lmParameters,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
         },
       });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.toolCalls).toEqual([]);
+      expect(observed.toolResults).toEqual([]);
+      expect(observed.toolEvents).toEqual([]);
+      expect(observed.lateEvents).toEqual([]);
+      const chunks = observed.chunks;
       const settledChunks = [...chunks];
       expect(releasedTokenCount).toBe(16);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -338,21 +391,136 @@ describe('Gemma4 E2B Provider / basic', () => {
       ]);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["first-turn"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["first-turn"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "first-turn", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+          ],
+          tools: [],
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual(["Please provide the **context** or **purpose** of the \"template probe user"]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
 });
 
 describe('Gemma4 E2B Provider / system', () => {
   it('system: preserves instructions and delivers the recorded callbacks', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["system-user"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["system-user"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "system-user", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "system",
+              content: "Template probe system instruction.",
+            },
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+          ],
+          tools: [],
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual(["Please"]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
 });
 
 describe('Gemma4 E2B Provider / history', () => {
   it('preserves the recorded turn delimiter and visible text in supplied-history continuation', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     expect(continuity.identity).toEqual(generationEvidence.identity);
     expect(continuity.scenario.messages).toEqual([
       { role: 'user', content: 'Template probe user message.' },
@@ -384,15 +552,34 @@ describe('Gemma4 E2B Provider / history', () => {
       },
     });
     try {
-      const chunks: string[] = [];
-      await harness.provider.chat({
-        model: continuity.identity.modelId, messages: continuity.scenario.messages, tools: [],
-        parameters: {
-          ...continuity.scenario.lmParameters, presencePenalty: undefined, frequencyPenalty: undefined,
-          stop: undefined, reasoning: { effort: undefined },
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: continuity.identity.modelId,
+          messages: continuity.scenario.messages,
+          tools: [],
+          parameters: {
+            ...continuity.scenario.lmParameters,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
         },
-        onChunk: ({ chunk }) => chunks.push(chunk),
       });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.toolCalls).toEqual([]);
+      expect(observed.toolResults).toEqual([]);
+      expect(observed.toolEvents).toEqual([]);
+      expect(observed.lateEvents).toEqual([]);
+      const chunks = observed.chunks;
       const settledChunks = [...chunks];
       expect(releasedTokenCount).toBe(12);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -405,9 +592,12 @@ describe('Gemma4 E2B Provider / history', () => {
       expect(settledChunks).toEqual(['**What ', 'kind ', 'of ', 'template ', 'are ', 'you ', 'looking ', 'for?**']);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('preserves the separate 16-token continuation capture without inferring why native generation stopped', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     expect(budgetContinuity.identity).toEqual({
       modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
       resolvedRevision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
@@ -451,12 +641,34 @@ describe('Gemma4 E2B Provider / history', () => {
       },
     });
     try {
-      const chunks: string[] = [];
-      await harness.provider.chat({
-        model: budgetContinuity.identity.modelId, messages: budgetContinuity.scenario.messages, tools: [],
-        parameters: { ...budgetContinuity.scenario.lmParameters, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: ({ chunk }) => chunks.push(chunk),
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: budgetContinuity.identity.modelId,
+          messages: budgetContinuity.scenario.messages,
+          tools: [],
+          parameters: {
+            ...budgetContinuity.scenario.lmParameters,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
       });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.toolCalls).toEqual([]);
+      expect(observed.toolResults).toEqual([]);
+      expect(observed.toolEvents).toEqual([]);
+      expect(observed.lateEvents).toEqual([]);
+      const chunks = observed.chunks;
       const settledChunks = [...chunks];
       expect(releasedTokenCount).toBe(16);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -469,16 +681,87 @@ describe('Gemma4 E2B Provider / history', () => {
       expect(settledChunks).toEqual(budgetContinuitySource.originalStreamChunks);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["supplied-history"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["supplied-history"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "supplied-history", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe first user message.",
+            },
+            {
+              role: "assistant",
+              content: "Template probe assistant response.",
+            },
+            {
+              role: "user",
+              content: "Template probe second user message.",
+            },
+          ],
+          tools: [],
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual(["Please"]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
 });
 
 describe('Gemma4 E2B Provider / independent', () => {
   it('keeps an independent next input free of prior text in the same null-KV loaded runtime', async () => {
-    const nextMessages: ChatMessage[] = [{ role: 'user', content: 'A separate synthetic Gemma conversation.' }];
+    const captures: ProviderChatCapture[] = [];
+    let firstCapture: ProviderChatCapture | undefined;
+    let secondCapture: ProviderChatCapture | undefined;
+    const nextMessages: ChatMessage[] = [
+      {
+        role: 'user',
+        content: 'A separate synthetic Gemma conversation.',
+      },
+    ];
     const nextPrompt = `\
 <bos><|turn>user
 A separate synthetic Gemma conversation.<turn|>
@@ -487,6 +770,7 @@ A separate synthetic Gemma conversation.<turn|>
     const stop = 'Independent Gemma next input verified; no second output supplied';
     const contexts: Parameters<ProviderReplayGenerate>[0][] = [];
     let firstReleased = 0;
+    const stoppedInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
     const invocations: ProviderReplayGenerate[] = [
       async context => {
         contexts.push(context);
@@ -498,32 +782,7 @@ A separate synthetic Gemma conversation.<turn|>
       },
       async context => {
         contexts.push(context);
-        const { options, tokenizer, runtime } = context;
-        expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf');
-        const processor = harness.observations.processors[0];
-        if (!processor) throw new Error('Expected actual loaded Gemma processor');
-        expect(tokenizer).toBe(processor.tokenizer);
-        expect(processor.apply_chat_template(nextMessages, { add_generation_prompt: true })).toBe(nextPrompt);
-        const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
-        if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor)) throw new Error('Expected actual next-input tensors');
-        expect(options.input_ids.type).toBe('int64');
-        expect(options.input_ids.location).toBe('cpu');
-        expect(options.input_ids.dims).toEqual([1, ids.length]);
-        expect(Array.from(options.input_ids.data, Number)).toEqual(ids);
-        expect(options.attention_mask.type).toBe('int64');
-        expect(options.attention_mask.location).toBe('cpu');
-        expect(options.attention_mask.dims).toEqual([1, ids.length]);
-        expect(Array.from(options.attention_mask.data, BigInt)).toEqual(ids.map(() => 1n));
-        expect(Object.keys(options).sort()).toEqual([
-          'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
-          'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-        ].sort());
-        expect({ maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample })
-          .toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
-        expect(options.return_dict_in_generate).toBe(true);
-        expect(options.streamer).toBeInstanceOf(runtime.TextStreamer);
-        expect(typeof options.stopping_criteria).toBe('function');
-        expect(options.past_key_values).toBeNull();
+        stoppedInputs.push(captureGemmaNativeInput(context));
         // No captured response exists for this changed input. This tests input
         // isolation with null KV, not native KV invalidation or generation.
         throw new Error(stop);
@@ -544,21 +803,98 @@ A separate synthetic Gemma conversation.<turn|>
       },
     });
     try {
-      const firstChunks: string[] = [];
-      await harness.provider.chat({
-        model: generationEvidence.identity.modelId, messages: generationEvidence.scenario.messages, tools: [],
-        parameters: { ...generationEvidence.scenario.lmParameters, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: ({ chunk }) => firstChunks.push(chunk),
+      firstCapture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: generationEvidence.identity.modelId,
+          messages: generationEvidence.scenario.messages,
+          tools: [],
+          parameters: {
+            ...generationEvidence.scenario.lmParameters,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
       });
+      captures.push(firstCapture);
+      await firstCapture.completion;
+      const firstObserved = firstCapture.snapshot();
+      expect(firstObserved.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(firstObserved.preStartChunks).toEqual([]);
+      expect(firstObserved.responses).toHaveLength(1);
+      expect(firstObserved.toolCalls).toEqual([]);
+      expect(firstObserved.toolResults).toEqual([]);
+      expect(firstObserved.toolEvents).toEqual([]);
+      expect(firstObserved.lateEvents).toEqual([]);
+      expect(firstObserved.chunks.join('')).toBe(generationEvidence.expectedProviderSemantic.visibleContent);
       const ortCountAfterFirst = harness.observations.ortCalls.length;
       expect(harness.observations.processors).toHaveLength(1);
       const processorAfterFirst = harness.observations.processors[0];
-      const secondChunks: string[] = [];
-      await expect(harness.provider.chat({
-        model: generationEvidence.identity.modelId, messages: nextMessages, tools: [],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: ({ chunk }) => secondChunks.push(chunk),
-      })).rejects.toThrow(stop);
+      secondCapture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: generationEvidence.identity.modelId,
+          messages: nextMessages,
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
+      });
+      captures.push(secondCapture);
+      await expect(secondCapture.completion).rejects.toThrow(stop);
+      const tokenizer = contexts[1]!.tokenizer;
+      expect(stoppedInputs).toHaveLength(1);
+      const native = stoppedInputs[0];
+      expect(native?.tensors.input_ids.isTensor).toBe(true);
+      expect(native?.tensors.attention_mask.isTensor).toBe(true);
+      if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual next-input tensors');
+      const { input_ids: input, attention_mask: mask } = native.tensors;
+      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf');
+      const processor = harness.observations.processors[0];
+      if (!processor) throw new Error('Expected actual loaded Gemma processor');
+      expect(tokenizer).toBe(processor.tokenizer);
+      expect(processor.apply_chat_template(nextMessages, { add_generation_prompt: true })).toBe(nextPrompt);
+      const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
+      expect(input.type).toBe('int64');
+      expect(input.location).toBe('cpu');
+      expect(input.dims).toEqual([1, ids.length]);
+      expect(Array.from(input.data, Number)).toEqual(ids);
+      expect(mask.type).toBe('int64');
+      expect(mask.location).toBe('cpu');
+      expect(mask.dims).toEqual([1, ids.length]);
+      expect(Array.from(mask.data, BigInt)).toEqual(ids.map(() => 1n));
+      expect(native.optionKeys.sort()).toEqual([
+        'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
+        'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+      ].sort());
+      expect(native.settings)
+        .toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
+      expect(native.returnDict).toBe(true);
+      expect(native.isTextStreamer).toBe(true);
+      expect(native.stoppingCriteriaType).toBe('function');
+      expect(native.pastIsNull).toBe(true);
+      const secondObserved = secondCapture.snapshot();
+      expect(secondObserved.settlement).toMatchObject({ status: 'rejected' });
+      expect(secondObserved.preStartChunks).toEqual([]);
+      expect(secondObserved.responses).toHaveLength(1);
+      expect(secondObserved.toolCalls).toEqual([]);
+      expect(secondObserved.toolResults).toEqual([]);
+      expect(secondObserved.toolEvents).toEqual([]);
+      expect(secondObserved.lateEvents).toEqual([]);
+      const secondChunks = secondObserved.chunks;
       expect(firstReleased).toBe(16);
       expect(secondChunks).toEqual([]);
       expect(contexts).toHaveLength(2);
@@ -579,10 +915,157 @@ A separate synthetic Gemma conversation.<turn|>
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["first-turn","continuity","independent-next-input"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["first-turn","continuity","independent-next-input"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const firstSignal = new AbortController().signal;
+      const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
+      const firstCapture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+          ],
+          tools: [],
+          parameters: firstParameters,
+          signal: firstSignal,
+        },
+      });
+      captures.push(firstCapture);
+      await firstCapture.completion;
+      replay.endNativeRequest();
+      const firstObserved = firstCapture.snapshot();
+      expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
+      const { responses: firstResponses, preStartChunks: firstEarlyChunks, toolCalls: firstToolCalls, toolResults: firstToolResults, toolEvents: firstToolEvents } = firstObserved;
+      const firstOrder = firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(firstResponses.map(chunks => chunks.join(''))).toEqual(["Please provide the **context** or **purpose** of the \"template probe user"]);
+      expect(firstEarlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(firstOrder).toEqual(["assistant-start", "settled"]);
+      expect(firstToolEvents).toEqual([]);
+      expect(firstToolCalls).toEqual([]);
+      expect(firstToolResults).toEqual([]);
+      const nextSignal = new AbortController().signal;
+      const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
+      const nextCapture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+            {
+              role: "assistant",
+              content: firstResponses[0]!.join(''),
+            },
+            {
+              role: "user",
+              content: "Continue the synthetic conversation with a short response.",
+            },
+          ],
+          tools: [],
+          parameters: nextParameters,
+          signal: nextSignal,
+        },
+      });
+      captures.push(nextCapture);
+      await nextCapture.completion;
+      replay.endNativeRequest();
+      const nextObserved = nextCapture.snapshot();
+      expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
+      const { responses: nextResponses, preStartChunks: nextEarlyChunks, toolCalls: nextToolCalls, toolResults: nextToolResults, toolEvents: nextToolEvents } = nextObserved;
+      const nextOrder = nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(nextResponses.map(chunks => chunks.join(''))).toEqual(["Please provide the **previous part of the conversation** or the **topic** you"]);
+      expect(nextEarlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(nextOrder).toEqual(["assistant-start", "settled"]);
+      expect(nextToolEvents).toEqual([]);
+      expect(nextToolCalls).toEqual([]);
+      expect(nextToolResults).toEqual([]);
+      const independentSignal = new AbortController().signal;
+      const independentParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "independent-next-input", parameters: independentParameters });
+      const independentCapture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "A separate synthetic capture conversation.",
+            },
+          ],
+          tools: [],
+          parameters: independentParameters,
+          signal: independentSignal,
+        },
+      });
+      captures.push(independentCapture);
+      await independentCapture.completion;
+      replay.endNativeRequest();
+      const independentObserved = independentCapture.snapshot();
+      expect(independentObserved.settlement).toEqual({ status: 'fulfilled' });
+      const { responses: independentResponses, preStartChunks: independentEarlyChunks, toolCalls: independentToolCalls, toolResults: independentToolResults, toolEvents: independentToolEvents } = independentObserved;
+      const independentOrder = independentObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(independentResponses.map(chunks => chunks.join(''))).toEqual(["Please"]);
+      expect(independentEarlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(independentOrder).toEqual(["assistant-start", "settled"]);
+      expect(independentToolEvents).toEqual([]);
+      expect(independentToolCalls).toEqual([]);
+      expect(independentToolResults).toEqual([]);
+      replay.assertComplete({ requests: 3, nativeCalls: 3 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
 });
 
@@ -602,8 +1085,15 @@ Template probe user message.<turn|>
 <|turn>model
 ` },
   ])('passes explicit $effort to the exact native Gemma thinking input without claiming generated reasoning quality', async ({ effort, enableThinking, expectedPrompt }) => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const replay = await createGemmaInputReplay();
-    const messages = [{ role: 'user', content: 'Template probe user message.' }];
+    const messages = [
+      {
+        role: 'user',
+        content: 'Template probe user message.',
+      },
+    ];
     try {
       await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
       const processor = replay.harness.observations.processors[0]!;
@@ -613,36 +1103,282 @@ Template probe user message.<turn|>
       const nativeOptions = { add_generation_prompt: true, enable_thinking: enableThinking };
       expect(processor.apply_chat_template(messages, nativeOptions)).toBe(expectedPrompt);
       const expectedIds = tokenizer.encode(expectedPrompt, { add_special_tokens: false });
-      await expect(replay.harness.provider.chat({ model: inputEvidence.modelId, messages, tools: [],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort } },
-        onChunk: () => {
-          throw new Error('Input-only reasoning control must not release output');
+      capture = captureProviderChat({
+        provider: replay.harness.provider,
+        request: {
+          model: inputEvidence.modelId,
+          messages,
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort,
+            },
+          },
         },
-      })).rejects.toThrow(INPUT_BOUNDARY);
+      });
+      captures.push(capture);
+      await expect(capture.completion).rejects.toThrow(INPUT_BOUNDARY);
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'rejected' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.toolCalls).toEqual([]);
+      expect(observed.toolResults).toEqual([]);
+      expect(observed.toolEvents).toEqual([]);
+      expect(observed.lateEvents).toEqual([]);
+      const chunks = observed.chunks;
+      expect(chunks, 'Input-only reasoning control must not release output').toEqual([]);
+      replay.verifyNativeInput();
       expect(replay.inputs).toEqual([expectedIds]);
       expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
       expect(replay.harness.observations.forbiddenTransport).toEqual([]);
       expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       await replay.harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      expect(capture?.snapshot().chunks, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["reasoning-none"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["reasoning-none"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "none",
+        },
+      };
+      replay.beginNativeRequest({ caseId: "reasoning-none", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+          ],
+          tools: [],
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual(["Please"]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["reasoning-low"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["reasoning-low"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "low",
+        },
+      };
+      replay.beginNativeRequest({ caseId: "reasoning-low", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+          ],
+          tools: [],
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["reasoning-medium"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["reasoning-medium"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "medium",
+        },
+      };
+      replay.beginNativeRequest({ caseId: "reasoning-medium", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+          ],
+          tools: [],
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["reasoning-high"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["reasoning-high"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "high",
+        },
+      };
+      replay.beginNativeRequest({ caseId: "reasoning-high", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+          ],
+          tools: [],
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
 });
 
 describe('Gemma4 E2B Provider / tools', () => {
   it('preserves a public tool definition in the native Gemma input instead of silently dropping it', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const scenario = inputEvidence.cases.find(candidate => candidate.tools.length === 1);
     if (!scenario) throw new Error('Missing selected original Gemma tools-generation observation');
     const execute = vi.fn<Tool['execute']>(async () => {
@@ -654,16 +1390,34 @@ describe('Gemma4 E2B Provider / tools', () => {
     };
     const replay = await createGemmaInputReplay();
     try {
-      await expect(replay.harness.provider.chat({
-        model: inputEvidence.modelId, messages: scenario.messages, tools: [tool],
-        parameters: {
-          temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined,
-          frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined },
+      capture = captureProviderChat({
+        provider: replay.harness.provider,
+        request: {
+          model: inputEvidence.modelId,
+          messages: scenario.messages,
+          tools: [tool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
         },
-        onChunk: () => {
-          throw new Error('Input-only test must not emit generated content');
-        },
-      })).rejects.toThrow(INPUT_BOUNDARY);
+      });
+      captures.push(capture);
+      await expect(capture.completion).rejects.toThrow(INPUT_BOUNDARY);
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'rejected' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.lateEvents).toEqual([]);
+      const chunks = observed.chunks;
+      expect(chunks, 'Input-only test must not emit generated content').toEqual([]);
       expect(execute).not.toHaveBeenCalled();
       expect(replay.harness.observations.processors).toHaveLength(1);
       const processor = replay.harness.observations.processors[0];
@@ -687,12 +1441,17 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
       // This RED is an input contract, independent of callback settlement and
       // natural tool choice. No captured output is released to cross the gap.
+      replay.verifyNativeInput();
       expect(replay.inputs).toEqual([scenario.inputTokenIds]);
     } finally {
       await replay.harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      expect(capture?.snapshot().chunks, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('retains structured tool-call and result association instead of flattening them into ordinary conversation text', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const scenario = toolInputEvidence;
     expect(scenario.modelId).toBe(inputEvidence.modelId);
     expect(scenario.revision).toBe(inputEvidence.revision);
@@ -773,18 +1532,37 @@ describe('Gemma4 E2B Provider / tools', () => {
       const mappedIds = z.object({ input_ids: z.instanceof(replay.harness.runtime.Tensor) }).parse(mappedInputs).input_ids;
       const expectedIds = Array.from(mappedIds.data, Number);
 
-      const onToolCall = vi.fn();
-      const onToolResult = vi.fn();
-      const chunks: string[] = [];
-      await expect(replay.harness.provider.chat({
-        model: scenario.modelId, messages: publicMessages, tools: [publicTool],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: ({ chunk }) => chunks.push(chunk), onToolCall, onToolResult,
-      })).rejects.toThrow(INPUT_BOUNDARY);
+      capture = captureProviderChat({
+        provider: replay.harness.provider,
+        request: {
+          model: scenario.modelId,
+          messages: publicMessages,
+          tools: [publicTool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
+      });
+      captures.push(capture);
+      await expect(capture.completion).rejects.toThrow(INPUT_BOUNDARY);
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'rejected' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.lateEvents).toEqual([]);
+      const chunks = observed.chunks;
       expect(chunks).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
-      expect(onToolCall).not.toHaveBeenCalled();
-      expect(onToolResult).not.toHaveBeenCalled();
+      expect(capture?.snapshot().toolCalls).toEqual([]);
+      expect(capture?.snapshot().toolResults).toEqual([]);
       expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
       expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
       expect(replay.harness.observations.forbiddenTransport).toEqual([]);
@@ -793,23 +1571,30 @@ describe('Gemma4 E2B Provider / tools', () => {
       // Native role/ID/call delimiters are material here: replacing them with
       // plain assistant/user summaries is not merely a strict-schema difference.
       // Compare only after control and safety checks; no generated token is used.
+      replay.verifyNativeInput();
       expect(replay.inputs).toEqual([expectedIds]);
     } finally {
       await replay.harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('executes a native-format synthetic tool call once and supplies its structured result to the next real processor input', async () => {
-    const messages = [{ role: 'user', content: 'Use the synthetic weather tool for Tokyo.' }];
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
+    const executedArgs: unknown[] = [];
+    const messages = [
+      {
+        role: 'user',
+        content: 'Use the synthetic weather tool for Tokyo.',
+      },
+    ];
     const execute = vi.fn<Tool['execute']>(async ({ args }) => {
-      expect(args).toEqual({ city: 'Tokyo' });
+      executedArgs.push(structuredClone(args));
       return { status: 'success', content: 'Synthetic weather result: clear.' };
     });
     const tool: Tool = { name: 'lookup_weather', description: 'Return deterministic weather fixture data.', parametersSchema: z.object({ city: z.string() }), execute };
     const definition = { type: 'function', function: { name: tool.name, description: tool.description,
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false } } };
-    const onToolCall = vi.fn();
-    const onToolResult = vi.fn();
-    const chunks: string[] = [];
     let turns = 0;
     const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
       const { tokenizer, options, runtime } = context;
@@ -820,8 +1605,8 @@ describe('Gemma4 E2B Provider / tools', () => {
       } else {
         expect(turns).toBe(2);
         expect(execute).toHaveBeenCalledOnce();
-        expect(onToolCall).toHaveBeenCalledOnce();
-        const id = z.string().parse(onToolCall.mock.calls[0]![0].id);
+        expect(capture?.snapshot().toolCalls).toHaveLength(1);
+        const id = z.string().parse(capture?.snapshot().toolCalls[0]?.id);
         nativeMessages = [...messages, { role: 'assistant', content: '', tool_calls: [{ id, type: 'function', function: { name: tool.name, arguments: { city: 'Tokyo' } } }] },
           { role: 'tool', tool_call_id: id, content: 'Synthetic weather result: clear.' }];
       }
@@ -834,12 +1619,37 @@ describe('Gemma4 E2B Provider / tools', () => {
         : 'Synthetic final answer.<turn|>' });
     } });
     try {
-      await harness.provider.chat({ model: inputEvidence.modelId, messages, tools: [tool],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: ({ chunk }) => chunks.push(chunk), onToolCall, onToolResult });
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: inputEvidence.modelId,
+          messages,
+          tools: [tool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(2);
+      expect(observed.lateEvents).toEqual([]);
+      const chunks = observed.chunks;
       expect(turns).toBe(2);
       expect(execute).toHaveBeenCalledOnce();
-      expect(onToolResult).toHaveBeenCalledWith(expect.objectContaining({ result: { status: 'success', content: 'Synthetic weather result: clear.' } }));
+      expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
+      expect(capture?.snapshot().toolResults).toContainEqual(expect.objectContaining({ result: { status: 'success', content: 'Synthetic weather result: clear.' } }));
       expect(chunks.join('')).toBe('Synthetic final answer.');
       expect(harness.observations.workers).toHaveLength(1);
       expect(harness.observations.inferenceCalls).toHaveLength(2);
@@ -848,24 +1658,55 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('rejects an unfinished second native tool call without executing the earlier complete call', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
     const tool: Tool = { name: 'lookup_weather', description: 'Synthetic weather tool.', parametersSchema: z.object({ city: z.string() }), execute };
     const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({ context,
       text: '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_call>call:lookup_weather{city:' }) });
     try {
-      const onToolCall = vi.fn();
-      await expect(harness.provider.chat({ model: inputEvidence.modelId, messages: [{ role: 'user', content: 'Use the synthetic tool.' }], tools: [tool],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: vi.fn(), onToolCall })).rejects.toThrow(/Gemma.*tool.*protocol/i);
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: inputEvidence.modelId,
+          messages: [
+            {
+              role: 'user',
+              content: 'Use the synthetic tool.',
+            },
+          ],
+          tools: [tool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
+      });
+      captures.push(capture);
+      await expect(capture.completion).rejects.toThrow(/Gemma.*tool.*protocol/i);
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'rejected' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.lateEvents).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
-      expect(onToolCall).not.toHaveBeenCalled();
+      expect(capture?.snapshot().toolCalls).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it.each([
@@ -873,6 +1714,8 @@ describe('Gemma4 E2B Provider / tools', () => {
     { label: 'an unsafe bare argument key accepted by the registered tool schema', payload: 'params:{unsafe:key:1}' },
     { label: 'an unbalanced native quote delimiter', payload: 'value:<|"|>first<|"|>second<|"|>' },
   ])('rejects $label before publishing or executing any call', async ({ payload }) => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
     const tool: Tool = { name: 'capture_value', description: 'Accept a synthetic value.',
       parametersSchema: z.object({ value: z.null().optional(), params: z.object({}).catchall(z.number()).optional() }), execute };
@@ -882,19 +1725,49 @@ describe('Gemma4 E2B Provider / tools', () => {
     const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({ context,
       text: `<|tool_call>call:capture_value{}<tool_call|><|tool_call>call:capture_value{${payload}}<tool_call|>` }) });
     try {
-      const onToolCall = vi.fn();
-      await expect(harness.provider.chat({ model: inputEvidence.modelId, messages: [{ role: 'user', content: 'Use the synthetic tool.' }], tools: [tool],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: vi.fn(), onToolCall })).rejects.toThrow(/Gemma.*(?:tool.*protocol|template)/i);
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: inputEvidence.modelId,
+          messages: [
+            {
+              role: 'user',
+              content: 'Use the synthetic tool.',
+            },
+          ],
+          tools: [tool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
+      });
+      captures.push(capture);
+      await expect(capture.completion).rejects.toThrow(/Gemma.*(?:tool.*protocol|template)/i);
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'rejected' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(1);
+      expect(observed.lateEvents).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
-      expect(onToolCall).not.toHaveBeenCalled();
+      expect(capture?.snapshot().toolCalls).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('reports an unknown native tool name without executing a registered tool and continues with the actual error result input', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
     const tool: Tool = { name: 'registered_tool', description: 'Registered synthetic tool.', parametersSchema: z.object({ value: z.number() }), execute };
     let turns = 0;
@@ -910,76 +1783,551 @@ describe('Gemma4 E2B Provider / tools', () => {
         ? '<|tool_call>call:unknown_tool{value:1}<tool_call|>' : 'Synthetic unavailable tool answer.<turn|>' });
     } });
     try {
-      const onToolResult = vi.fn();
-      await harness.provider.chat({ model: inputEvidence.modelId, messages: [{ role: 'user', content: 'Use the synthetic tool.' }], tools: [tool],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: vi.fn(), onToolResult });
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: inputEvidence.modelId,
+          messages: [
+            {
+              role: 'user',
+              content: 'Use the synthetic tool.',
+            },
+          ],
+          tools: [tool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.responses).toHaveLength(2);
+      expect(observed.lateEvents).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
-      expect(onToolResult).toHaveBeenCalledWith(expect.objectContaining({ result: { status: 'error', code: 'other', message: 'Tool "unknown_tool" not found.' } }));
+      expect(capture?.snapshot().toolResults).toContainEqual(expect.objectContaining({ result: { status: 'error', code: 'other', message: 'Tool "unknown_tool" not found.' } }));
       expect(harness.observations.inferenceCalls).toHaveLength(2);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('rejects a lossy tool result after its one actual execution and before the next native inference', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Synthetic result<|"|>delimiter' }));
     const tool: Tool = { name: 'capture_value', description: 'Synthetic tool result.', parametersSchema: z.object({ value: z.number() }), execute };
     const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({ context,
       text: '<|tool_call>call:capture_value{value:1}<tool_call|>' }) });
     try {
-      const onToolResult = vi.fn();
-      await expect(harness.provider.chat({ model: inputEvidence.modelId, messages: [{ role: 'user', content: 'Use the synthetic tool.' }], tools: [tool],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: vi.fn(), onToolResult })).rejects.toThrow('quote delimiter');
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: inputEvidence.modelId,
+          messages: [
+            {
+              role: 'user',
+              content: 'Use the synthetic tool.',
+            },
+          ],
+          tools: [tool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
+      });
+      captures.push(capture);
+      await expect(capture.completion).rejects.toThrow('quote delimiter');
+      const observed = capture.snapshot();
+      expect(observed.settlement).toMatchObject({ status: 'rejected' });
+      expect(observed.preStartChunks).toEqual([]);
+      // The Provider starts its second response before prompt preparation
+      // rejects the result; this does not imply a second native inference.
+      expect(observed.responses).toEqual([[], []]);
+      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind))
+        .toEqual(['assistant-start', 'tool-call', 'tool-result', 'assistant-start', 'settled']);
+      expect(observed.lateEvents).toEqual([]);
       expect(execute).toHaveBeenCalledOnce();
-      expect(onToolResult).toHaveBeenCalledOnce();
+      expect(capture?.snapshot().toolResults).toHaveLength(1);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["natural-tool-minimal"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["natural-tool-minimal"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const executedSignals: Array<AbortSignal | undefined> = [];
+      const executedArgs: unknown[] = [];
+      const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
+        executedArgs.push(structuredClone(args));
+        executedSignals.push(signal);
+        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+      });
+      const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.", parametersSchema: z.object({ city: z.string() }), execute: execute }];
+      replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Use the weather tool for Tokyo.",
+            },
+          ],
+          tools: tools,
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual(["", "The weather in Tokyo is clear with a temperature of 20°C."]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "tool-call", "tool-result", "assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
+      expect(execute).toHaveBeenCalledOnce();
+      expect(executedSignals).toHaveLength(1);
+      expect(executedSignals[0]).toBe(signal);
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
+      expect(toolResults).toEqual([{  id: toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);
+      replay.assertComplete({ requests: 1, nativeCalls: 2 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["natural-tool-representative"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["natural-tool-representative"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const executedSignals: Array<AbortSignal | undefined> = [];
+      const executedArgs: unknown[] = [];
+      const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
+        executedArgs.push(structuredClone(args));
+        executedSignals.push(signal);
+        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+      });
+      const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.", parametersSchema: z.object({ city: z.string() }), execute: execute }];
+      replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.",
+            },
+          ],
+          tools: tools,
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual(["", "The weather in Tokyo is clear with a temperature of 20°C."]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "tool-call", "tool-result", "assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
+      expect(execute).toHaveBeenCalledOnce();
+      expect(executedSignals).toHaveLength(1);
+      expect(executedSignals[0]).toBe(signal);
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
+      expect(toolResults).toEqual([{  id: toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);
+      replay.assertComplete({ requests: 1, nativeCalls: 2 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
   it('tools: preserves structured caller history and the recorded response', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["structured-tool-history"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["structured-tool-history"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const executedSignals: Array<AbortSignal | undefined> = [];
+      const executedArgs: unknown[] = [];
+      const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
+        executedArgs.push(structuredClone(args));
+        executedSignals.push(signal);
+        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+      });
+      const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.", parametersSchema: z.object({ city: z.string() }), execute: execute }];
+      replay.beginNativeRequest({ caseId: "structured-tool-history", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Use the weather tool for Tokyo.",
+            },
+            {
+              role: "assistant",
+              content: "",
+              tool_calls: [
+                {
+                  id: toToolCallId({ raw: "call_model_support_probe_1" }),
+                  type: "function",
+                  function: {
+                    name: "lookup_weather",
+                    arguments: "{\"city\":\"Tokyo\"}",
+                  },
+                },
+              ],
+            },
+            {
+              role: "tool",
+              content: "{\"temperatureC\":20,\"condition\":\"clear\"}",
+              tool_call_id: toToolCallId({ raw: "call_model_support_probe_1" }),
+            },
+          ],
+          tools: tools,
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual(["The weather in Tokyo is clear with a temperature of 20°C."]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      expect(execute).not.toHaveBeenCalled();
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
 });
 
 describe('Gemma4 E2B Provider / images', () => {
   it('matches the captured token/shape facts and independently derived black pixels through actual RawImage and processor', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     const imageUrl = imageEvidence.messages[0].content[1].image_url.url;
     const bytes = Buffer.from(imageUrl.split(',')[1]!, 'base64');
     expect(bytes.length).toBe(imageEvidence.image.byteLength);
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(imageEvidence.image.sha256);
     // The legacy fixture name said "transparent", but its actual pixel is opaque black.
-    await verifyGemmaImageInput({
-      imageUrl, expectedRgba: Uint8ClampedArray.of(0, 0, 0, 255), expectedPixels: new Float32Array(2520 * 768),
-    });
+    {
+      const control = await createGemmaImageInputControl({
+        imageUrl, expectedRgba: Uint8ClampedArray.of(0, 0, 0, 255), expectedPixels: new Float32Array(2520 * 768),
+      });
+      try {
+        capture = captureProviderChat({
+          provider: control.harness.provider,
+          request: {
+            model: "onnx-community/gemma-4-E2B-it-ONNX",
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: "text",
+                    text: "Describe the single synthetic image in one short phrase.",
+                  },
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: imageUrl,
+                    },
+                  },
+                ],
+              },
+            ],
+            tools: [],
+            parameters: {
+              temperature: 0,
+              topP: 1,
+              maxCompletionTokens: 1,
+              presencePenalty: undefined,
+              frequencyPenalty: undefined,
+              stop: undefined,
+              reasoning: {
+                effort: undefined,
+              },
+            },
+          },
+        });
+        captures.push(capture);
+        await expect(capture.completion).rejects.toThrow(IMAGE_INPUT_BOUNDARY);
+        const observed = capture.snapshot();
+        expect(observed.settlement).toMatchObject({ status: 'rejected' });
+        expect(observed.preStartChunks).toEqual([]);
+        expect(observed.responses).toHaveLength(1);
+        expect(observed.toolCalls).toEqual([]);
+        expect(observed.toolResults).toEqual([]);
+        expect(observed.toolEvents).toEqual([]);
+        expect(observed.lateEvents).toEqual([]);
+        const chunks = observed.chunks;
+        expect(chunks.join('')).toBe('');
+        expect(chunks).toEqual([]);
+        expect(capture?.snapshot().toolCalls).toEqual([]);
+        expect(capture?.snapshot().toolResults).toEqual([]);
+        expect(capture?.snapshot().toolEvents).toEqual([]);
+        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        control.verifyNativeInput();
+      } finally {
+        await control.harness.close();
+        expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+
+      }
+    }
   }, 30_000);
   it('changes every real pixel for a synthetic white image while retaining zero padding and the same geometry', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let capture: ProviderChatCapture | undefined;
     // Independently encoded 1x1 grayscale-alpha white PNG, not browser Evidence.
     // All 2304 real patches rescale 255 to 1; 216 padding patches remain zero.
     const expectedPixels = new Float32Array(2520 * 768);
     expectedPixels.fill(1, 0, 2304 * 768);
-    await verifyGemmaImageInput({
-      imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
-      expectedRgba: Uint8ClampedArray.of(255, 255, 255, 255), expectedPixels,
-    });
+    {
+      const control = await createGemmaImageInputControl({
+        imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
+        expectedRgba: Uint8ClampedArray.of(255, 255, 255, 255), expectedPixels,
+      });
+      try {
+        capture = captureProviderChat({
+          provider: control.harness.provider,
+          request: {
+            model: "onnx-community/gemma-4-E2B-it-ONNX",
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: "text",
+                    text: "Describe the single synthetic image in one short phrase.",
+                  },
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
+                    },
+                  },
+                ],
+              },
+            ],
+            tools: [],
+            parameters: {
+              temperature: 0,
+              topP: 1,
+              maxCompletionTokens: 1,
+              presencePenalty: undefined,
+              frequencyPenalty: undefined,
+              stop: undefined,
+              reasoning: {
+                effort: undefined,
+              },
+            },
+          },
+        });
+        captures.push(capture);
+        await expect(capture.completion).rejects.toThrow(IMAGE_INPUT_BOUNDARY);
+        const observed = capture.snapshot();
+        expect(observed.settlement).toMatchObject({ status: 'rejected' });
+        expect(observed.preStartChunks).toEqual([]);
+        expect(observed.responses).toHaveLength(1);
+        expect(observed.toolCalls).toEqual([]);
+        expect(observed.toolResults).toEqual([]);
+        expect(observed.toolEvents).toEqual([]);
+        expect(observed.lateEvents).toEqual([]);
+        const chunks = observed.chunks;
+        expect(chunks.join('')).toBe('');
+        expect(chunks).toEqual([]);
+        expect(capture?.snapshot().toolCalls).toEqual([]);
+        expect(capture?.snapshot().toolResults).toEqual([]);
+        expect(capture?.snapshot().toolEvents).toEqual([]);
+        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        control.verifyNativeInput();
+      } finally {
+        await control.harness.close();
+        expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+
+      }
+    }
   }, 30_000);
   it('images: preserves recorded pixels and processor tensors before delivering recorded callbacks', async () => {
     const platform = createProviderReplayTestImagePlatform();
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["image"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: { platform, allowedDataUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='] } });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["image"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: {
+        platform,
+        allowedDataUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='],
+      },
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const signal = new AbortController().signal;
+      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "image", parameters: parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Describe the single synthetic image in one short phrase.",
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                  },
+                },
+              ],
+            },
+          ],
+          tools: [],
+          parameters: parameters,
+          signal: signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(responses.map(chunks => chunks.join(''))).toEqual(["The"]);
+      expect(earlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(order).toEqual(["assistant-start", "settled"]);
+      expect(toolEvents).toEqual([]);
+      expect(toolCalls).toEqual([]);
+      expect(toolResults).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
 });
 
 describe('Gemma4 E2B Provider / sequences', () => {
   it('uses only the settled first callback text for a second request in the same loaded runtime', async () => {
+    const captures: ProviderChatCapture[] = [];
+    let firstCapture: ProviderChatCapture | undefined;
+    let secondCapture: ProviderChatCapture | undefined;
     expect(continuity.identity).toEqual(generationEvidence.identity);
     expect(continuity.identity.investigationRunId).toBe('e5891b08-6053-4092-87e5-47038836e431');
     expect(continuity.identity).not.toEqual(budgetContinuity.identity);
@@ -1032,38 +2380,86 @@ describe('Gemma4 E2B Provider / sequences', () => {
       },
     });
     try {
-      const firstChunks: string[] = [];
-      await harness.provider.chat({
-        model: generationEvidence.identity.modelId, messages: generationEvidence.scenario.messages, tools: [],
-        parameters: { ...generationEvidence.scenario.lmParameters, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: ({ chunk }) => firstChunks.push(chunk),
+      firstCapture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: generationEvidence.identity.modelId,
+          messages: generationEvidence.scenario.messages,
+          tools: [],
+          parameters: {
+            ...generationEvidence.scenario.lmParameters,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
+            },
+          },
+        },
       });
+      captures.push(firstCapture);
+      await firstCapture.completion;
+      const firstObserved = firstCapture.snapshot();
+      expect(firstObserved.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(firstObserved.preStartChunks).toEqual([]);
+      expect(firstObserved.responses).toHaveLength(1);
+      expect(firstObserved.toolCalls).toEqual([]);
+      expect(firstObserved.toolResults).toEqual([]);
+      expect(firstObserved.toolEvents).toEqual([]);
+      expect(firstObserved.lateEvents).toEqual([]);
+      const firstChunks = firstObserved.chunks;
       // Immutable at settlement: late first callbacks cannot rewrite the next
       // request. There is no timer, callback drain, or artificial callback ACK.
       const firstTextAtSettlement = firstChunks.join('');
-      const secondMessages: ChatMessage[] = [
-        ...generationEvidence.scenario.messages,
-        { role: 'assistant', content: firstTextAtSettlement },
-        { role: 'user', content: 'Continue with one short sentence.' },
-      ];
       const ortCountAfterFirst = harness.observations.ortCalls.length;
       expect(harness.observations.processors).toHaveLength(1);
       const processorAfterFirst = harness.observations.processors[0];
-      const secondChunks: string[] = [];
       let secondOutcome: { status: 'fulfilled' } | { status: 'rejected', error: unknown };
       try {
-        await harness.provider.chat({
-          model: generationEvidence.identity.modelId, messages: secondMessages, tools: [],
-          parameters: { ...continuity.scenario.lmParameters, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-          onChunk: ({ chunk }) => secondChunks.push(chunk),
+        secondCapture = captureProviderChat({
+          provider: harness.provider,
+          request: {
+            model: generationEvidence.identity.modelId,
+            messages: [
+              ...generationEvidence.scenario.messages,
+              {
+                role: 'assistant',
+                content: firstTextAtSettlement,
+              },
+              {
+                role: 'user',
+                content: 'Continue with one short sentence.',
+              },
+            ],
+            tools: [],
+            parameters: {
+              ...continuity.scenario.lmParameters,
+              presencePenalty: undefined,
+              frequencyPenalty: undefined,
+              stop: undefined,
+              reasoning: {
+                effort: undefined,
+              },
+            },
+          },
         });
+        captures.push(secondCapture);
+        await secondCapture.completion;
         secondOutcome = { status: 'fulfilled' };
       } catch (error) {
         secondOutcome = { status: 'rejected', error };
       }
-      // Direct await, as for turn one; wrapping the promise in another .then
-      // would give late callbacks an extra reaction before this snapshot.
-      const secondTextAtSettlement = secondChunks.join('');
+      // The collector's completion and detached snapshot own settlement;
+      // cleanup below separately checks for later delivered callbacks.
+      const secondObserved = secondCapture?.snapshot();
+      expect(secondObserved?.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(secondObserved?.preStartChunks).toEqual([]);
+      expect(secondObserved?.responses).toHaveLength(1);
+      expect(secondObserved?.toolCalls).toEqual([]);
+      expect(secondObserved?.toolResults).toEqual([]);
+      expect(secondObserved?.toolEvents).toEqual([]);
+      expect(secondObserved?.lateEvents).toEqual([]);
+      const secondTextAtSettlement = secondObserved?.chunks.join('');
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
       expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
@@ -1091,10 +2487,115 @@ describe('Gemma4 E2B Provider / sequences', () => {
       });
     } finally {
       await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
-    await verifyProviderRequests({ catalog: providerReplayCatalog, caseIds: ["first-turn","continuity"], artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ["first-turn","continuity"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      imagePlatform: undefined,
+    });
+    const captures: ProviderChatCapture[] = [];
+    try {
+      const firstSignal = new AbortController().signal;
+      const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
+      const firstCapture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+          ],
+          tools: [],
+          parameters: firstParameters,
+          signal: firstSignal,
+        },
+      });
+      captures.push(firstCapture);
+      await firstCapture.completion;
+      replay.endNativeRequest();
+      const firstObserved = firstCapture.snapshot();
+      expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
+      const { responses: firstResponses, preStartChunks: firstEarlyChunks, toolCalls: firstToolCalls, toolResults: firstToolResults, toolEvents: firstToolEvents } = firstObserved;
+      const firstOrder = firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(firstResponses.map(chunks => chunks.join(''))).toEqual(["Please provide the **context** or **purpose** of the \"template probe user"]);
+      expect(firstEarlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(firstOrder).toEqual(["assistant-start", "settled"]);
+      expect(firstToolEvents).toEqual([]);
+      expect(firstToolCalls).toEqual([]);
+      expect(firstToolResults).toEqual([]);
+      const nextSignal = new AbortController().signal;
+      const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
+      const nextCapture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [
+            {
+              role: "user",
+              content: "Template probe user message.",
+            },
+            {
+              role: "assistant",
+              content: firstResponses[0]!.join(''),
+            },
+            {
+              role: "user",
+              content: "Continue the synthetic conversation with a short response.",
+            },
+          ],
+          tools: [],
+          parameters: nextParameters,
+          signal: nextSignal,
+        },
+      });
+      captures.push(nextCapture);
+      await nextCapture.completion;
+      replay.endNativeRequest();
+      const nextObserved = nextCapture.snapshot();
+      expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
+      const { responses: nextResponses, preStartChunks: nextEarlyChunks, toolCalls: nextToolCalls, toolResults: nextToolResults, toolEvents: nextToolEvents } = nextObserved;
+      const nextOrder = nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(nextResponses.map(chunks => chunks.join(''))).toEqual(["Please provide the **previous part of the conversation** or the **topic** you"]);
+      expect(nextEarlyChunks).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+      expect(nextOrder).toEqual(["assistant-start", "settled"]);
+      expect(nextToolEvents).toEqual([]);
+      expect(nextToolCalls).toEqual([]);
+      expect(nextToolResults).toEqual([]);
+      replay.assertComplete({ requests: 2, nativeCalls: 2 });
+    } finally {
+      await replay.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
   }, 30_000);
   it('preserves thirteen requests including natural tools and actual image processor tensors in one Load', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
@@ -1103,6 +2604,7 @@ describe('Gemma4 E2B Provider / sequences', () => {
     expect(fullEvidenceJson.observedCacheRevision).toBe('9f4bef82ea6e296bc69f8a2f5939f73af81b07a6');
     const platform = createProviderReplayTestImagePlatform();
     await verifyCapturedFullReplay({ unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson,
+      reviewedPublicContract: undefined,
       imagePlatform: { platform, allowedDataUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='] },
       artifactPaths: ['onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data', 'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data', 'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data', 'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data'],
     });

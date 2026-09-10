@@ -2,6 +2,7 @@
 import type { PreTrainedTokenizer } from '@huggingface/transformers';
 import type { ChatMessage, ToolCall } from '@/01-models/types';
 import type { WorkerToolDefinition } from './types';
+import { z } from 'zod';
 import { ToolCallStreamParser } from './tool-call-parser';
 import {
   DELIMITED_PYTHONIC_TOOL_CALL_CLOSE,
@@ -21,6 +22,12 @@ interface StandardToolCallStreamParser {
 }
 
 const detectedProtocolByTokenizer = new WeakMap<object, StandardToolCallProtocol>();
+export type StandardToolHandling = {
+  outputProtocol: StandardToolCallProtocol;
+  historyEncoding: 'native-template' | 'verified-content';
+  preservedDelimiterIds: readonly number[];
+};
+const handlingByTokenizer = new WeakMap<object, StandardToolHandling>();
 const PROBE_TOOL_NAME = '__naidan_tool_protocol_probe__';
 const PROBE_ARGUMENT_NAME = 'value';
 const PROBE_ARGUMENT_VALUE = '__naidan_tool_protocol_probe_value__';
@@ -138,6 +145,138 @@ function rendersDelimitedPythonicProbe({ rendered }: { rendered: string }): bool
   ) return false;
 
   return rendered.indexOf(PROBE_RESULT_VALUE, endIndex + DELIMITED_PYTHONIC_TOOL_CALL_CLOSE.length) !== -1;
+}
+
+/** A content route is admitted only for the observed ChatML framing contract.
+ * Vocabulary alone does not establish a tool protocol or a history transport.
+ */
+export function resolveStandardToolHandling({ tokenizer, debugLog }: {
+  tokenizer: PreTrainedTokenizer;
+  debugLog: ({ event, details }: { event: string; details: Record<string, unknown> }) => void;
+}): StandardToolHandling {
+  const cached = handlingByTokenizer.get(tokenizer);
+  if (cached !== undefined) return cached;
+  const outputProtocol = detectStandardToolCallProtocol({ tokenizer, debugLog });
+  let handling: StandardToolHandling = { outputProtocol, historyEncoding: 'native-template', preservedDelimiterIds: [] };
+  switch (outputProtocol) {
+  case 'delimited-pythonic': {
+    try {
+      const ids = readAtomicDelimiterIds({ tokenizer });
+      if (ids.some(id => tokenizer.all_special_ids.includes(id))) handling = { ...handling, preservedDelimiterIds: ids };
+    } catch (error) {
+      debugLog({ event: 'standard tool delimiter token observation unavailable', details: { error: error instanceof Error ? error.message : String(error) } });
+    }
+    break;
+  }
+  case 'json-tagged': {
+    try {
+      const ids = readAtomicDelimiterIds({ tokenizer });
+      if (!ids.every(id => tokenizer.all_special_ids.includes(id))) throw new Error('Unclassified content route lacks special delimiter tokens');
+      const render = ({ messages }: { messages: Parameters<PreTrainedTokenizer['apply_chat_template']>[0] }) => {
+        const result = tokenizer.apply_chat_template(messages, { tools: [PROBE_TOOL], add_generation_prompt: true, tokenize: false, return_dict: false });
+        if (typeof result !== 'string') throw new Error('Non-text protocol probe');
+        return result;
+      };
+      const native = render({ messages: PROBE_MESSAGES });
+      const plain = PROBE_MESSAGES.map(({ ...message }) => {
+        if (message.role !== 'assistant') return message;
+        return { role: 'assistant', content: '' };
+      });
+      // A positive JSON/native history render is not replaced by a vocabulary hint.
+      if (native !== render({ messages: plain })) throw new Error('Native structured tool history is not omitted');
+      const placeholder = '__naidan_assistant_content_probe__';
+      const withContent = ({ content }: { content: string }) => plain.map(message => message.role === 'assistant' ? { ...message, content } : message);
+      const probeFrame = `${DELIMITED_PYTHONIC_TOOL_CALL_OPEN}[${PROBE_TOOL_NAME}(${PROBE_ARGUMENT_NAME}="${PROBE_ARGUMENT_VALUE}")]${DELIMITED_PYTHONIC_TOOL_CALL_CLOSE}`;
+      const placeholderRender = render({ messages: withContent({ content: placeholder }) });
+      const suffix = `<|im_start|>assistant\n${placeholder}<|im_end|>\n<|im_start|>tool\n${PROBE_RESULT_VALUE}<|im_end|>\n<|im_start|>assistant\n`;
+      if (!placeholderRender.endsWith(suffix) || placeholderRender.split(placeholder).length !== 2
+        || placeholderRender.replace(placeholder, '') !== native
+        || render({ messages: withContent({ content: probeFrame }) }) !== placeholderRender.replace(placeholder, probeFrame)) {
+        throw new Error('Template cannot preserve the exact assistant/tool content route');
+      }
+      handling = { outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: ids };
+    } catch (error) {
+      debugLog({ event: 'standard tool content route unavailable', details: { error: error instanceof Error ? error.message : String(error) } });
+    }
+    break;
+  }
+  default: { const exhaustive: never = outputProtocol; throw new Error(String(exhaustive)); }
+  }
+  handlingByTokenizer.set(tokenizer, handling);
+  return handling;
+}
+
+function readAtomicDelimiterIds({ tokenizer }: { tokenizer: PreTrainedTokenizer }): number[] {
+  const ids = [DELIMITED_PYTHONIC_TOOL_CALL_OPEN, DELIMITED_PYTHONIC_TOOL_CALL_CLOSE].map(marker => {
+    const encoded = tokenizer.encode(marker, { add_special_tokens: false });
+    if (encoded.length !== 1 || !Number.isSafeInteger(encoded[0]) || encoded[0]! < 0 || encoded[0] === tokenizer.unk_token_id
+      || tokenizer.decode(encoded, { skip_special_tokens: false }) !== marker) throw new Error('Tool delimiter is not an atomic token');
+    return encoded[0]!;
+  });
+  if (new Set(ids).size !== 2) throw new Error('Tool delimiters share a token ID');
+  return ids;
+}
+
+/** Reject unsupported content-history work before the Provider executes tools. */
+export function validateStandardToolCallsForHandling({ toolCalls, handling, assistantContent }: {
+  toolCalls: ToolCall[]; handling: StandardToolHandling; assistantContent: string;
+}): void {
+  switch (handling.historyEncoding) {
+  case 'native-template': return;
+  case 'verified-content':
+    if (toolCalls.length > 1) throw new Error('Content tool history does not support multiple calls');
+    if (toolCalls.length > 0) readContentToolAssistantText({ content: assistantContent });
+    for (const call of toolCalls) serializeContentToolCall({ call });
+    return;
+  default: { const exhaustive: never = handling.historyEncoding; throw new Error(String(exhaustive)); }
+  }
+}
+
+export function formatStandardMessagesForToolHandling({ messages, handling }: {
+  messages: ChatMessage[]; handling: StandardToolHandling;
+}): Array<Record<string, unknown>> {
+  switch (handling.historyEncoding) {
+  case 'native-template': return formatStandardMessagesForToolCallProtocol({ messages, protocol: handling.outputProtocol });
+  case 'verified-content': break;
+  default: { const exhaustive: never = handling.historyEncoding; throw new Error(String(exhaustive)); }
+  }
+  const consumedResults = new Set<number>();
+  const usedIds = new Set<ToolCall['id']>();
+  return messages.map((message, index) => {
+    const { role, content, tool_calls, tool_call_id, ...unhandledMessage } = message;
+    unhandledMessage satisfies Record<PropertyKey, never>;
+    if (role === 'tool' && !consumedResults.has(index)) throw new Error('Unassociated tool result in content history');
+    if (tool_calls === undefined || tool_calls.length === 0) {
+      return { role, content: typeof content === 'string' ? content : '', tool_call_id };
+    }
+    const call = tool_calls[0]!;
+    const result = messages[index + 1];
+    if (role !== 'assistant' || tool_calls.length !== 1 || usedIds.has(call.id)
+      || result?.role !== 'tool' || result.tool_call_id !== call.id || typeof result.content !== 'string') {
+      throw new Error('Content tool history requires one assistant call and its immediately associated result');
+    }
+    usedIds.add(call.id);
+    consumedResults.add(index + 1);
+    const frame = serializeContentToolCall({ call });
+    return { role: 'assistant', content: readContentToolAssistantText({ content }) + frame };
+  });
+}
+
+function readContentToolAssistantText({ content }: { content: unknown }): string {
+  if (typeof content !== 'string' || content.includes('<|')) {
+    throw new Error('Content tool history requires plain assistant text without control-token prefixes');
+  }
+  return content;
+}
+
+function serializeContentToolCall({ call }: { call: ToolCall }): string {
+  const identifier = /^[A-Za-z_$][A-Za-z0-9_$.-]*$/;
+  const args = z.record(z.string(), z.json()).parse(parseToolArgumentsObject({ functionName: call.function.name, argumentsJson: call.function.arguments }));
+  if (!identifier.test(call.function.name) || Object.keys(args).some(key => !identifier.test(key))) throw new Error('Tool content frame requires identifier names');
+  const payload = `[${call.function.name}(${Object.entries(args).map(([key, value]) => `${key}=${JSON.stringify(value).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e')}`).join(', ')})]`;
+  const parsed = parseDelimitedPythonicToolCallPayload({ content: payload });
+  if (JSON.stringify(parsed) !== JSON.stringify([{ name: call.function.name, arguments: args }])) throw new Error('Tool content arguments do not roundtrip');
+  return `${DELIMITED_PYTHONIC_TOOL_CALL_OPEN}${payload}${DELIMITED_PYTHONIC_TOOL_CALL_CLOSE}`;
 }
 
 export function formatStandardMessagesForToolCallProtocol({

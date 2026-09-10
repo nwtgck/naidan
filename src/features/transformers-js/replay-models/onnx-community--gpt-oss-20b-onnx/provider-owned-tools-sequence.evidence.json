@@ -1,0 +1,19 @@
+{
+  "format": "provider-sequence-evidence-v1",
+  "contextSha256": "8d2c0aa1fcc6194b4ac2afeb5131431a76da9f1be670a7b59b297aee5a495456",
+  "provenanceSha256": "0f3bd115daf9e290cef7123aa7baab91574eaa5116b3ce8bda74a5409b92f883",
+  "cases": [
+    {
+      "caseId": "natural-tool-minimal",
+      "sha256": "a3081b5f0bc4bcacbba4b4fd9f30e81fca53f906127fe7602c86795bcc2a69a4"
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "sha256": "e82506d948b92991068acf92db81cfc67e7e2326a25174d6071bcebeb00ee521"
+    },
+    {
+      "caseId": "structured-tool-history",
+      "sha256": "0162fe1f830083e0fb224ccd6465e467ff30d8bdf507008b96e94c5bfa4cb85d"
+    }
+  ]
+}

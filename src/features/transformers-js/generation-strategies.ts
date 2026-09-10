@@ -40,10 +40,12 @@ import {
 } from './reasoning-stream-protocol';
 import {
   createStandardToolCallStreamParser,
-  detectStandardToolCallProtocol,
-  formatStandardMessagesForToolCallProtocol,
-  type StandardToolCallProtocol,
+  resolveStandardToolHandling,
+  formatStandardMessagesForToolHandling,
+  validateStandardToolCallsForHandling,
+  type StandardToolHandling,
 } from './standard-tool-call-protocol';
+import { createToolStreamDecodeView } from './standard-tool-stream-decoder';
 
 type ModelOutput = Record<string, unknown>;
 
@@ -317,12 +319,12 @@ const standardGenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
   }: GenerationStrategyContext) {
-    const toolCallProtocol: StandardToolCallProtocol = tools && tools.length > 0
-      ? detectStandardToolCallProtocol({ tokenizer, debugLog })
-      : 'json-tagged';
-    const formattedMessages = formatStandardMessagesForToolCallProtocol({
+    const toolHandling: StandardToolHandling = tools && tools.length > 0
+      ? resolveStandardToolHandling({ tokenizer, debugLog })
+      : { outputProtocol: 'json-tagged', historyEncoding: 'native-template', preservedDelimiterIds: [] };
+    const formattedMessages = formatStandardMessagesForToolHandling({
       messages,
-      protocol: toolCallProtocol,
+      handling: toolHandling,
     });
 
     const templateOptions: Record<string, unknown> = {
@@ -352,11 +354,17 @@ const standardGenerationStrategy: GenerationStrategy = {
         },
       }),
     });
+    let assistantContent = '';
     const toolCallParser = tools && tools.length > 0
       ? createStandardToolCallStreamParser({
-        protocol: toolCallProtocol,
+        protocol: toolHandling.outputProtocol,
         tools,
-        onText: ({ text }) => onChunk({ chunk: text }),
+        onText: ({ text }) => {
+          // Admit the complete text the Provider will put back into history,
+          // including control-token prefixes split across stream chunks.
+          assistantContent += text;
+          onChunk({ chunk: text });
+        },
       })
       : null;
     const reasoningStream = createReasoningStreamNormalizer({
@@ -369,9 +377,11 @@ const standardGenerationStrategy: GenerationStrategy = {
         }
       },
     });
-    const streamer = new TextStreamer(tokenizer, {
+    const streamTokenizer = toolHandling.preservedDelimiterIds.length === 0 ? tokenizer
+      : createToolStreamDecodeView({ tokenizer, preservedDelimiterIds: toolHandling.preservedDelimiterIds });
+    const streamer = new TextStreamer(streamTokenizer, {
       skip_prompt: true,
-      skip_special_tokens: true,
+      skip_special_tokens: toolHandling.preservedDelimiterIds.length === 0,
       callback_function: (output: string) => {
         onRawChunk({ chunk: output });
         reasoningStream.feed({ output });
@@ -393,6 +403,7 @@ const standardGenerationStrategy: GenerationStrategy = {
     if (toolCallParser) {
       toolCallParser.flush();
       const parsedToolCalls = toolCallParser.drainToolCalls();
+      validateStandardToolCallsForHandling({ toolCalls: parsedToolCalls, handling: toolHandling, assistantContent });
       if (parsedToolCalls.length > 0) onToolCalls({ toolCalls: parsedToolCalls });
     }
     void result;
@@ -676,11 +687,24 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
       },
     });
 
+    // Recognize the known native assistant generation header, not effort or a
+    // bare thinking suffix. Unknown custom prompt formats remain unchanged.
+    // Reuse this exact prompt: another render must not alter native inputs.
+    const reasoningStream = createReasoningStreamNormalizer({
+      protocol: prompt.trimEnd().endsWith(`\
+<|im_start|>assistant
+<think>`)
+        ? detectReasoningStreamProtocol({ renderedGenerationPrompt: prompt, renderedConversationPrompt: undefined })
+        : 'generated-output',
+      onOutput: ({ output }) => onChunk({ chunk: output }),
+    });
     const toolCallParser = new Qwen3_5ToolCallParser({
       onText: ({ text }) => {
         const sanitized = sanitizeQwen3_5VisibleText({ text });
         if (sanitized.length > 0) {
-          onChunk({ chunk: sanitized });
+          // Pure tool syntax is not assistant text and cannot cause an empty
+          // synthetic opener to leak into the public response.
+          reasoningStream.feed({ output: sanitized });
         }
       },
     });
@@ -704,6 +728,7 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     });
 
     toolCallParser.flush();
+    reasoningStream.flush();
     const parsedToolCalls = toolCallParser.drainToolCalls();
     if (parsedToolCalls.length > 0) onToolCalls({ toolCalls: parsedToolCalls });
 

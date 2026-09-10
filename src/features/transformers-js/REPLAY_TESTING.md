@@ -2,10 +2,18 @@
 
 ## Purpose
 
-Use Model Support Investigation evidence to preserve Naidan's Download and
-Provider behavior in browserless regression tests. A model that already works
-with the existing implementation is also worth protecting; a model-specific
-Production change is not a prerequisite for adding tests.
+Use Model Support Investigation evidence both to assess whether Naidan handles
+a model correctly and to preserve verified Download and Provider contracts in
+browserless regression tests. A model that already works with the existing
+implementation is also worth protecting; a model-specific Production change is
+not a prerequisite for adding tests.
+
+Reproducing a recording is not, by itself, a successful model-support check.
+Read the actual public inputs and outputs and assess their meaning against the
+relevant contract: resource availability and Offline Load, thinking and answer
+boundaries, message history, tool execution, or image handling. A recording can
+faithfully reproduce a Naidan defect. Passing that observation-based test must
+not turn the defect into the desired behavior.
 
 A useful outcome of changing shared Production code is that model-specific
 tests, evidence, and expectations remain unchanged and pass. When an intended
@@ -125,15 +133,50 @@ runtime path. Ordinary tests must use repository-owned fixtures, not private
 ZIPs, evidence-path environment variables, or external network access. Loopback
 fixtures may emulate remote services. Incomplete fixtures must fail closed.
 
+Do not fabricate or alter replay data to make the desired assertions pass
+without an explicit user instruction authorizing substitute data. In particular,
+do not invent missing inference results, tokens, stream observations, or cache
+state when a recording cannot support the correct behavior. Keep the original
+observations intact. Any explicitly authorized synthetic data must remain
+identified as synthetic, never as a browser observation.
+
+Synthetic mechanics or input-boundary controls test a different contract; they
+must not supply an unobserved model result or stand in for successful replay of
+that result.
+
 See [original model runtime fixtures](./replay-models/support/model-runtime-fixtures.md)
 for metadata byte preservation, explicit absence, and the synthetic model-body
 boundary used by Download tests.
 
-### 5. Exercise Production against independent expectations
+### 5. Assess behavior and exercise Production against independent expectations
 
 Explain the basis of each expectation. If the implementation violates that
 contract, let the test fail; do not update the expectation merely to obtain a
 pass. Production fixes are a separate scope decision.
+
+For each investigated contract, distinguish these outcomes:
+
+- Correct behavior under the recorded conditions: preserve it as a regression.
+- A reproducible defect: retain the original evidence, state the correct
+  expected behavior, and demonstrate a failing test before an authorized fix.
+- Insufficient or no longer applicable evidence: verify the boundary the data
+  supports and record what additional observation would close the gap. Do not
+  call the model unsupported, or successfully supported, on that basis alone.
+
+After a fix, check whether later inputs or runtime state change. For example,
+correcting a delivered answer can change the history supplied to the next
+request. Recorded native output for the old input must not be released for the
+new input by weakening or rewriting the replay gate. Keep historical conditions
+explicit, and distinguish an input-only control for the corrected path from an
+output replay backed by applicable evidence.
+
+When the correct behavior requires observations that are missing or invalidated
+by a fix, ask the user to collect new investigation data. First prepare the fix
+and the necessary capture path, then identify the affected models, scenarios,
+and required observations so the user can collect them together where possible.
+An input-only test or controlled evidence-limit stop can guard the replay
+boundary meanwhile, but does not prove the missing successful model behavior.
+Report that behavior as unverified until applicable evidence is available.
 
 Distinguish an observed Provider error from an intentional test boundary stop,
 a replay input mismatch, and missing evidence. A generic rejection is not enough
@@ -259,6 +302,66 @@ Model-specific revisions, resource sets, prompts, tokens, settings, outputs,
 and failure expectations must remain independently reviewable. Avoid generating
 the expected result with the same Production implementation being tested.
 
+### Model-local public contracts
+
+Keep the public behavior readable in the model's `it()` body:
+
+- Write the model ID, messages, parameters, tools, and each chat invocation in
+  the model test. The invocation may use `provider.chat()` directly or a thin
+  callback-recording helper such as `captureProviderChat`. Do not reconstruct
+  requests in a shared scenario dispatcher from the same evidence that supplies
+  the expected outcome. Prefer inline short messages and parameters when they
+  are only passed to that request. Keep separate variables when they have a
+  meaningful additional use, such as an independent input check or a stateful
+  conversation; avoid long explicit type annotations when contextual typing
+  already expresses the contract.
+- Record observations in public callbacks and tool implementations, then
+  assert after awaiting the chat. Capture mutable arguments by value when later
+  mutation could change the observation. Do not rely on assertions inside a
+  callback: an uncalled callback would perform no assertion, and callback errors
+  may be handled by Production.
+- Apply the same separation to input-only inference callbacks: capture the
+  native inputs, stop without supplying inference output, then assert the
+  observations and invocation count after the chat rejects at that intentional
+  boundary. Tensor contents must remain observable independently of subsequent
+  mutation or disposal. A boundary stop is control flow, not proof that the
+  input was correct.
+- Assert response text, thinking boundaries, tool arguments and results,
+  relevant ID relationships, counts, and ordering explicitly. For readable
+  text contracts, collecting chunks and comparing `chunks.join('')` is useful;
+  keep separate assistant responses separate. Preserve exact chunk boundaries
+  and cross-callback ordering where those are part of the contract.
+- Check that expected callbacks actually occurred and unexpected callbacks did
+  not occur. An empty observation list must not pass a positive-path test.
+- Show successive `chat()` calls in the same test when state matters. Build
+  conversational history from the preceding actually delivered, settled output;
+  do not hide that dependency in a shared request runner.
+
+Shared mechanics may prepare and dispose the real Provider environment, read
+native evidence, and enforce replay input, state, and call-inventory gates.
+Those gates must reject a mismatch before releasing recorded inference output;
+they are not public callback assertions and must not be deferred until after
+the replay. This requirement does not justify keeping input-only expectations
+inside a `generate` callback that releases no recorded output. Shared code must
+not choose a model's desired public behavior or
+silently normalize its expected result.
+
+A shared chat recorder may call the supplied Provider with the explicit request
+and collect callback observations. It must preserve rejection and expose the
+observations without selecting assertions, interpreting model capabilities, or
+normalizing text. Keep tool implementations and their execution observations in
+the model test; do not replace them with fixture-driven tool behavior. Preserve
+settlement, unexpected-callback, and late-callback checks when moving recording
+boilerplate into the helper. The helper's mechanics tests do not replace the
+model-local assertions.
+
+Whole-investigation ownership tests have a different responsibility: they may
+drive the real collection sequence through shared infrastructure to check Load
+lifetime, native capture, exact event traces, and cleanup. They do not replace
+readable model-local public contract tests. When relying on such a test to
+preserve detailed trace coverage, confirm that it covers the same model, case,
+and execution conditions. A recording from another case is not equivalent.
+
 ## Running and reviewing
 
 From the repository root, run the relevant model tests and changed infrastructure:
@@ -274,6 +377,8 @@ tests outside that directory. Follow the repository's lint and type-check rules.
 
 Review whether:
 
+- Observed behavior has been assessed against the intended contract, rather
+  than automatically accepted as correct because it can be replayed.
 - Existing successful and failing contracts remain protected.
 - Expectation changes have a basis and an identifiable affected model set.
 - Shared data or comparison changes have not silently changed the oracle.

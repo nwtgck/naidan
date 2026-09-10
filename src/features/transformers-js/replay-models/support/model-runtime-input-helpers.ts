@@ -27,7 +27,7 @@ export interface ReplayProcessor {
   apply_chat_template: ReplayTokenizer['apply_chat_template'];
 }
 export type ReplayOptions = { revision: string, local_files_only: true, progress_callback: () => void, device?: 'webgpu', dtype?: 'q4f16' | 'q4' };
-interface ReplayRuntime {
+export interface ReplayRuntime {
   env: Record<string, unknown> & { customCache: ReturnType<typeof createDownloadedModelReadOnlyCache> };
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Native dynamic import keeps the external TJS positional API.
   AutoTokenizer: { from_pretrained(modelId: string, options: ReplayOptions): Promise<ReplayTokenizer> };

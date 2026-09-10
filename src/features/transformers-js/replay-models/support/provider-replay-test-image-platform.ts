@@ -5,6 +5,46 @@ const maxEncodedBytes = 4096;
 const maxCanvasPixels = 4_194_304;
 const pngSignature = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
 
+export interface ProviderReplayImageData {
+  readonly data: Uint8ClampedArray;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface ProviderReplayImageBitmap {
+  readonly width: 1;
+  readonly height: 1;
+  snapshot(): Uint8ClampedArray;
+  close(): void;
+}
+
+/* eslint-disable local-rules-named-args/require-named-args -- These public type boundaries preserve the native Canvas and image APIs' positional arguments, including rejected extra options. */
+export interface ProviderReplayCanvasContext {
+  drawImage(source: unknown, dx: number, dy: number, ...size: number[]): void;
+  putImageData(data: unknown, dx: number, dy: number, ...unsupported: unknown[]): void;
+  getImageData(sx: number, sy: number, width: number, height: number, ...unsupported: unknown[]): ProviderReplayImageData;
+}
+
+export interface ProviderReplayOffscreenCanvas {
+  readonly width: number;
+  readonly height: number;
+  snapshot(): Uint8ClampedArray;
+  getContext(contextId: string, ...unsupported: unknown[]): ProviderReplayCanvasContext;
+}
+
+// Only public capabilities cross the factory boundary. Each invocation still
+// owns its local classes and their private pixels, close state and context.
+export interface ProviderReplayTestImagePlatform {
+  ImageData: new (data: Uint8ClampedArray, width: number, height: number, ...unsupported: unknown[]) => ProviderReplayImageData;
+  OffscreenCanvas: new (width: number, height: number, ...unsupported: unknown[]) => ProviderReplayOffscreenCanvas;
+  createImageBitmap(blob: Blob, ...unsupported: unknown[]): Promise<ProviderReplayImageBitmap>;
+  observations: {
+    decodes: Array<{ bytes: Uint8Array, rgba: Uint8ClampedArray }>;
+    draws: Array<{ sourceWidth: number, sourceHeight: number, targetWidth: number, targetHeight: number }>;
+  };
+}
+/* eslint-enable local-rules-named-args/require-named-args */
+
 function readChunk({ bytes, offset, expectedType }: { bytes: Uint8Array, offset: number, expectedType: string }) {
   if (bytes.byteLength - offset < 12) throw new Error('Truncated PNG chunk');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -81,7 +121,7 @@ function replicatePixel({ pixel, width, height }: { pixel: Uint8ClampedArray, wi
  * outside this helper. Unsupported image content or operations must fail.
  * Returns owned platform values; never installs globals or model expectations.
  */
-export function createProviderReplayTestImagePlatform() {
+export function createProviderReplayTestImagePlatform(): ProviderReplayTestImagePlatform {
   const decodes: Array<{ bytes: Uint8Array, rgba: Uint8ClampedArray }> = [];
   const draws: Array<{ sourceWidth: number, sourceHeight: number, targetWidth: number, targetHeight: number }> = [];
 
