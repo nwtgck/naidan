@@ -106,6 +106,14 @@ describe('complete Full collection through Session and actual Worker transports'
     const workers: Array<ProviderReplayTestWorker & { kind: string }> = [];
     const startupErrors: unknown[] = [];
     const startupStages: string[] = [];
+    const firstPlanningStarted = Promise.withResolvers<void>();
+    const releaseFirstPlanning = Promise.withResolvers<void>();
+    const retainedResults = Promise.withResolvers<void>();
+    // Startup can fail before the test reaches either await. Keep the original
+    // rejection available without creating an unhandled-rejection side channel.
+    void firstPlanningStarted.promise.catch(() => undefined);
+    void retainedResults.promise.catch(() => undefined);
+    let retainedResultNotifications = 0;
     const nativeSelf = self;
     const originalFetch = fetch;
     let activeWorker: ProviderReplayTestWorker | undefined;
@@ -221,6 +229,10 @@ describe('complete Full collection through Session and actual Worker transports'
           expect(options?.type).toBe('module');
           super({ start: async ({ worker }) => {
             startupStages.push('start-' + kind);
+            if (kind === 'planning' && workers.filter(item => item.kind === 'planning').length === 1) {
+              firstPlanningStarted.resolve();
+              await releaseFirstPlanning.promise;
+            }
             activeWorker = worker;
             if (kind !== 'evidence') {
               // This sequential in-process platform reuses its browser image
@@ -265,7 +277,12 @@ describe('complete Full collection through Session and actual Worker transports'
             }
           } });
           this.kind = kind; workers.push(this);
-          this.addEventListener('error', event => startupErrors.push((event as MessageEvent).data));
+          this.addEventListener('error', event => {
+            const error: unknown = (event as MessageEvent).data;
+            startupErrors.push(error);
+            firstPlanningStarted.reject(error);
+            retainedResults.reject(error);
+          });
         }
       });
       vi.resetModules();
@@ -277,17 +294,43 @@ describe('complete Full collection through Session and actual Worker transports'
       const { configurationForPreset } = await import('@/features/transformers-js/model-support-investigation/logic/investigation-config');
       const { default: Session } = await import('./ModelSupportInvestigationSession.vue');
       const view = createInvestigationSessionView({ initialSnapshot: { view: 'setup', batchId: 'full-collection', targets: models.map(model => model.modelId), configuration: configurationForPreset({ preset }) } });
+      const remember = view.remember.bind(view);
+      vi.spyOn(view, 'remember').mockImplementation(input => {
+        // Observe the real post-cleanup retention boundary; do not replace its
+        // serialization, budget checks or tab-memory ownership with a fixture.
+        try {
+          remember(input);
+          if (input.snapshot.view === 'results') {
+            retainedResultNotifications++;
+            retainedResults.resolve();
+          }
+        } catch (error) {
+          retainedResults.reject(error);
+          throw error;
+        }
+      });
       wrapper = mount(Session, { props: { modelId: '', sessionView: view } });
       await wrapper.vm.$nextTick();
       await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await firstPlanningStarted.promise;
+      // A constructed but deliberately unstarted Worker is not completion.
+      expect(retainedResultNotifications).toBe(0);
+      expect(recallInvestigationSession({ seededTarget: first.modelId })).toBeUndefined();
+      expect(workers.map(worker => worker.kind)).toEqual(['planning']);
+      releaseFirstPlanning.resolve();
       const results = () => {
         if (startupErrors.length > 0) throw startupErrors[0];
         const snapshot = recallInvestigationSession({ seededTarget: first.modelId });
         if (snapshot?.view !== 'results') throw new Error('Missing retained Full results: ' + JSON.stringify({ startupStages, operation: wrapper?.find('[data-testid="model-support-current-operation"]').text(), workers: workers.map(worker => ({ kind: worker.kind, terminated: worker.terminated, sent: worker.hostMessages.length, received: worker.workerMessages.length })) }));
         return snapshot;
       };
-      await vi.waitFor(() => expect(results().executions.every(item => item.status !== 'running' && item.status !== 'pending')).toBe(true), { timeout: 60_000 });
+      // Wait for actual lifecycle completion, under this test's existing overall
+      // deadline. A second, polling-only deadline made slow CI indistinguishable
+      // from missing retention while the Worker sequence was still progressing.
+      await retainedResults.promise;
+      expect(retainedResultNotifications).toBe(1);
       const snapshot = results();
+      expect(snapshot.executions.every(item => item.status !== 'running' && item.status !== 'pending')).toBe(true);
       expect(snapshot.executions.map(item => item.status), JSON.stringify({ failures: snapshot.executions.map(item => item.error), unknownHttp: http.unknown, steps: snapshot.runs.map(([, run]) => run.steps.filter(step => step.status === 'failed')) })).toEqual([expectedFirst.status, 'passed']);
       expect(workers.filter(worker => worker.kind === 'planning' || worker.kind === 'production').map(worker => worker.kind)).toEqual(['planning', 'production', 'planning', 'production']);
       expect(workers.filter(worker => worker.kind === 'fresh-metadata')).toHaveLength(preset === 'full' ? 2 : 0);
@@ -467,6 +510,7 @@ describe('complete Full collection through Session and actual Worker transports'
       expect(http.requests.some(request => request.url.startsWith('https://huggingface.co/'))).toBe(preset === 'full');
       expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
+      releaseFirstPlanning.resolve();
       wrapper?.unmount();
       for (const worker of workers) worker.terminate();
       await harness.close();

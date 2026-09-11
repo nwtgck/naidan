@@ -1,6 +1,7 @@
 import { workerProxy } from '@/utils/worker-transport';
 import { createProductionWorkerSession } from './production-worker-session';
 import { generationCaptureLimitsSchema } from './generation-capture';
+import { downloadedModelRevisionSelectionSchema, type DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import {
   generationCaptureReadRequestSchema,
   generationCaptureReadResultSchema,
@@ -40,7 +41,7 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
   const identity = generationCaptureReadRequestSchema.parse({ runId, workerEpoch });
   const limits = generationCaptureLimitsSchema.parse(rawLimits);
   const issuedCalls: GenerationCaptureRequest['context'][] = [];
-  const loadRequests: Array<{ requestedModelId: string; requestedRevision: string | undefined }> = [];
+  const loadRequests: GenerationCaptureClientLifetime['loadRequests'] = [];
   const incompleteReasons = new Set<GenerationCaptureClientLifetime['incompleteReasons'][number]>();
   const core = createWorkerClientCore({ capture: {
     loadReceiptOwner: identity,
@@ -73,7 +74,17 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
         return undefined;
       }
     },
-    recordLoad({ modelId, revision }) {
+    recordLoad({ modelId, revisionSelection }) {
+      const revision = (() => {
+        switch (revisionSelection.kind) {
+        case 'pinned': return revisionSelection.revision;
+        case 'discover-cached': return undefined;
+        default: {
+          const _ex: never = revisionSelection;
+          throw new Error(`Unhandled revision selection: ${_ex}`);
+        }
+        }
+      })();
       if (loadRequests.length >= limits.maxCalls) {
         incompleteReasons.add('load-limit');
       } else if (modelId.length > 256 || (revision !== undefined && revision.length > 128)) {
@@ -81,7 +92,7 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
       } else {
         // These are requested identities, not proof of resolved revision or
         // successful Load. Do not wrap Load settlement just to record them.
-        loadRequests.push({ requestedModelId: modelId, requestedRevision: revision });
+        loadRequests.push({ requestedModelId: modelId, requestedRevision: revision, revisionSelection: { ...revisionSelection } });
       }
     },
   } });
@@ -114,7 +125,7 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
         ...identity,
         session: core.isActive() ? 'active' as const : 'inactive' as const,
         issuedCalls: issuedCalls.map(context => ({ ...context })),
-        loadRequests: loadRequests.map(request => ({ ...request })),
+        loadRequests: loadRequests.map(request => ({ ...request, revisionSelection: request.revisionSelection === undefined ? undefined : { ...request.revisionSelection } })),
         incompleteReasons: [...incompleteReasons],
       };
     },
@@ -125,7 +136,7 @@ function createWorkerClientCore({ capture }: {
   capture: {
     loadReceiptOwner: GenerationCaptureReadRequest,
     createRequest(): GenerationCaptureRequest | undefined,
-    recordLoad({ modelId, revision }: { modelId: string; revision: string | undefined }): void,
+    recordLoad({ modelId, revisionSelection }: { modelId: string; revisionSelection: DownloadedModelRevisionSelection }): void,
   } | undefined,
 }): {
   client: TransformersJsWorkerClient,
@@ -134,7 +145,7 @@ function createWorkerClientCore({ capture }: {
 } {
   if (typeof Worker === 'undefined') {
     const client: TransformersJsWorkerClient = {
-      async loadDownloadedModel({ modelId: _modelId, revision: _revision, progressCallback: _progressCallback }) {
+      async loadDownloadedModel({ modelId: _modelId, revisionSelection: _revisionSelection, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError();
       },
       async unloadModel() {
@@ -168,14 +179,15 @@ function createWorkerClientCore({ capture }: {
 
   const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined });
   const client: TransformersJsWorkerClient = {
-    async loadDownloadedModel({ modelId, revision, progressCallback }: {
+    async loadDownloadedModel({ modelId, revisionSelection: rawSelection, progressCallback }: {
       modelId: string,
-      revision?: string,
+      revisionSelection: DownloadedModelRevisionSelection,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
-      capture?.recordLoad({ modelId, revision });
+      const revisionSelection = downloadedModelRevisionSelectionSchema.parse(rawSelection);
+      capture?.recordLoad({ modelId, revisionSelection });
       return session.run({ operation: ({ remote }) => remote.loadDownloadedModel(
-        modelId, revision,
+        modelId, revisionSelection,
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
         workerProxy({ value: (info: ProgressInfo) => {
           if (session.isActive()) return progressCallback({ info });

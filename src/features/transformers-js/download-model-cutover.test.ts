@@ -25,7 +25,7 @@ vi.mock('@/features/transformers-js/download-verification/logic/run-production-d
 vi.mock('@/features/transformers-js/download-verification/logic/run-cached-revision-acceptance-orchestration', () => ({
   acceptReusableDownloadedProductionRevisionsForDownload: mocks.acceptCachedRevisions,
 }));
-vi.mock('@/features/transformers-js/download-verification/logic/inspect-cached-revisions', () => ({
+vi.mock('@/features/transformers-js/runtime/cached-model-revisions', () => ({
   inspectDownloadVerificationCachedRevisions: mocks.inspectCachedRevisions,
   planDownloadVerificationCachedRevisionLoadCandidates: mocks.planCachedRevisions,
 }));
@@ -96,32 +96,24 @@ describe('user-facing Transformers.js download cutover', () => {
     expect(mocks.acceptCachedRevisions).not.toHaveBeenCalled();
     expect(mocks.workerLoadDownloadedModel).toHaveBeenCalledWith({
       modelId: 'org/model',
-      revision: SHA,
+      revisionSelection: { kind: 'pinned', revision: SHA },
       progressCallback: expect.any(Function),
     });
   });
 
-  it('selects an exact cached revision after a fresh module load without contacting Hugging Face', async () => {
-    mocks.planCachedRevisions.mockReturnValue([{
-      revision: SHA,
-      loaderRevisionOption: SHA,
-      source: 'offline-immutable-fallback',
-    }]);
+  it('delegates cold cached revision discovery to the offline Worker without contacting Hugging Face', async () => {
     const { transformersJsService } = await import('./index-hosted');
 
     await transformersJsService.loadDownloadedModel({ modelId: 'org/model' });
 
-    expect(mocks.inspectCachedRevisions).toHaveBeenCalledWith({
-      modelId: 'org/model',
-      storageRoot: expect.any(Object),
-    });
+    // The actual Worker selection is covered by downloaded-revision-selection.
+    // This service boundary must not preselect a coarse host inventory entry.
+    expect(mocks.inspectCachedRevisions).not.toHaveBeenCalled();
     expect(mocks.resolveRevision).not.toHaveBeenCalled();
-    expect(mocks.planCachedRevisions).toHaveBeenCalledWith(expect.objectContaining({
-      resolvedRevision: undefined,
-    }));
+    expect(mocks.planCachedRevisions).not.toHaveBeenCalled();
     expect(mocks.workerLoadDownloadedModel).toHaveBeenCalledWith({
       modelId: 'org/model',
-      revision: SHA,
+      revisionSelection: { kind: 'discover-cached' },
       progressCallback: expect.any(Function),
     });
   });
@@ -153,7 +145,7 @@ describe('user-facing Transformers.js download cutover', () => {
     expect(mocks.runPreparation).not.toHaveBeenCalled();
     expect(mocks.workerLoadDownloadedModel).toHaveBeenCalledWith({
       modelId: 'org/model',
-      revision: undefined,
+      revisionSelection: { kind: 'pinned', revision: undefined },
       progressCallback: expect.any(Function),
     });
   });
@@ -182,7 +174,7 @@ describe('user-facing Transformers.js download cutover', () => {
     expect(mocks.runPreparation).not.toHaveBeenCalled();
     expect(mocks.workerLoadDownloadedModel).toHaveBeenCalledWith({
       modelId: 'org/model',
-      revision: SHA,
+      revisionSelection: { kind: 'pinned', revision: SHA },
       progressCallback: expect.any(Function),
     });
   });

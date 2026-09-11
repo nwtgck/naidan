@@ -153,7 +153,6 @@ defineExpose({
         <DeveloperDataDeletionPanel :storage-type="props.storageType" />
       </div>
     </section>
-
   </div>
 </template>
 

@@ -3,8 +3,8 @@ import type {
   DownloadVerificationModelArtifactRequestWorker,
 } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
+import { createDedicatedDownloadWorkerSession } from '@/features/transformers-js/download-verification/dedicated-worker-cleanup';
 import { wrapWorkerRemote } from '@/utils/worker-transport';
-import { disposeDedicatedWorkerBestEffort } from '@/features/transformers-js/download-verification/dedicated-worker-cleanup';
 
 export interface DownloadVerificationModelArtifactRequestWorkerClient {
   observeModelArtifactRequests({ modelId, revision, candidate }: {
@@ -27,17 +27,17 @@ export function createDownloadVerificationModelArtifactRequestWorkerClient(): Do
   }
 
   const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module' });
-  const remote = wrapWorkerRemote<DownloadVerificationModelArtifactRequestWorker>({ endpoint: worker });
-  let disposed = false;
+  const session = createDedicatedDownloadWorkerSession({
+    worker,
+    createRemote: () => wrapWorkerRemote<DownloadVerificationModelArtifactRequestWorker>({ endpoint: worker }),
+  });
 
   return {
     async observeModelArtifactRequests({ modelId, revision, candidate }): Promise<DownloadVerificationModelArtifactRequestObservation> {
-      return await remote.observeModelArtifactRequests({ modelId, revision, candidate });
+      return await session.run({ operation: ({ remote }) => remote.observeModelArtifactRequests({ modelId, revision, candidate }) });
     },
     async dispose(): Promise<void> {
-      if (disposed) return;
-      disposed = true;
-      disposeDedicatedWorkerBestEffort({ remote, worker });
+      session.dispose();
     },
   };
 }

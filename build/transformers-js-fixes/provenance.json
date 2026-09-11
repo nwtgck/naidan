@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageName": "@huggingface/transformers",
   "version": "4.2.0",
-  "patchId": "naidan-transformers-js-fixes-v3",
+  "patchId": "naidan-transformers-js-fixes-v4",
   "upstreamHashes": {
     "src/utils/model-loader.js": "37f8e739dac8f8fe07a18e65bdf10f613befcd3f9c93fe4058faba5232a284f7",
     "src/models/session.js": "f17cae95a879be9ab8b2ee3897bbfe37582c1442074cae3e373ecbd18725eae4",
@@ -11,8 +11,9 @@
     "package.json": "9cf12901d934e5a0628c6f163484abade392ab2d3b369d458ed3dfdeaa7f9a39",
     "src/models/modeling_utils.js": "0074443f1129e1eb435c1f42a305e747d2ae151e5041a3aa99586b245b80be03"
   },
-  "transformedWebSha256": "875b33675dcf7b646f7f39d2680d2612040b1eb570f865a537aea1118658b731",
+  "transformedWebSha256": "6b6a707a7163365ac1bbee232e4228b8177dd05b11e825c061167d56d986070f",
   "changes": [
+    "constructSessions: retain ownership of fulfilled and late sessions after sibling failure; request release exactly once without delaying or replacing the original rejection.",
     "getModelDataFiles: replace the async Promise executor with an owned then-chain.",
     "getSession: observe core and external-data rejection together through Promise.all.",
     "PreTrainedModel.from_pretrained: complete optional configuration preparation before session selection and creation.",

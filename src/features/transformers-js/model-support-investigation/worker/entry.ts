@@ -840,10 +840,11 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
       },
       generateToolProtocolProbe: async ({ model, inputTokenIds, forcedTokenIds, inputStrategy }) => {
         const tokenizer = await loadCandidateTokenizer();
+        const templateCase = templateBehavior?.cases.find(item => item.caseId === "tools-generation");
         const probeInput = buildCandidateTextInput({
           tokenizer,
           strategy: inputStrategy,
-          templateCase: templateBehavior?.cases.find(item => item.caseId === "tools-generation"),
+          templateCase,
           observedInputIds: inputTokenIds,
         });
         try {
@@ -894,7 +895,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
               return exhaustive;
             }
             }
-            parserObservation = observeProductionToolParser({ strategy, inputChunks });
+            parserObservation = observeProductionToolParser({ strategy, inputChunks, tools: templateCase?.tools });
           } catch (error) {
             parserObservation = {
               status: "failed" as const,

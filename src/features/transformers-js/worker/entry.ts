@@ -1,5 +1,7 @@
 /* eslint-disable no-restricted-imports -- Dedicated worker entry intentionally imports transformers.js runtime directly. */
 import { generationContinuationOwnerSchema } from './generation-continuation-owner';
+import * as bundledRuntime from '@huggingface/transformers';
+import { z } from 'zod';
 import {
   AutoConfig,
   AutoProcessor,
@@ -66,6 +68,10 @@ import { importProductionRuntimeModule } from '@/features/transformers-js/runtim
 import type { RequestProductionRuntimeModule } from './production-worker-startup';
 import { createHostedTransformersModelFetch } from '@/features/transformers-js/runtime/model-fetch';
 import { createDownloadedModelReadOnlyCache } from '@/features/transformers-js/runtime/downloaded-model-cache';
+import { downloadedModelRevisionSelectionSchema, type DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
+import { downloadedModelResourceUrl } from '@/features/transformers-js/runtime/downloaded-model-resource-url';
+import { requireDownloadedModelConfig } from '@/features/transformers-js/runtime/required-downloaded-config';
+import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/runtime/cached-model-revisions';
 import { createProductionLoadReceiptRecorder, type ProductionLoadReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
 import { createProductionLoadReceiptSlot, type ProductionLoadReceiptOwner } from './load-receipt';
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
@@ -73,6 +79,7 @@ import {
   downloadedModelCandidatePlanError,
   planDownloadedModelCandidates,
   MISSING_DOWNLOADED_MODEL_ARTIFACT_ERROR_NAME,
+  MissingDownloadedModelArtifactError,
 } from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
 import { selectProductionModelResources } from '@/features/transformers-js/runtime/production-resource-selector';
 import { createRequiredDownloadedResourceOperation, disposeRejectedDownloadedRuntime, RequiredDownloadedModelResourceError, RequiredDownloadedResourceCleanupError } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
@@ -377,12 +384,149 @@ async function loadDownloadedProductionTokenizerOrProcessor({
   }
 }
 
+/** Metadata and stat-only planning shared by discovery and the selected Load. */
+async function planProductionRuntimeCandidates({ cleanModelId, revision, candidates, modelCache, progressCallback, onRuntimePhase }: {
+  cleanModelId: string;
+  revision: string | undefined;
+  candidates: ProductionLoadCandidate[];
+  modelCache: ReturnType<typeof createOpfsModelCache>;
+  progressCallback: TransformersJsProgressCallback | undefined;
+  onRuntimePhase: (({ phase }: { phase: 'config' | 'candidate-plan' }) => void) | undefined;
+}) {
+  onRuntimePhase?.({ phase: 'config' });
+  const config = await withDownloadedModelPreparationPhase({
+    phase: 'config',
+    run: async () => {
+      await requireDownloadedModelConfig({
+        modelId: cleanModelId, revision, modelCache, workerLocationUrl: self.location.href,
+      });
+      return AutoConfig.from_pretrained(cleanModelId, {
+        local_files_only: true,
+        progress_callback: info => progressCallback?.({ info }),
+        ...(revision === undefined ? {} : { revision }),
+      });
+    },
+  });
+  const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
+  let autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId, modelType });
+  const entryMetadataPresent = async ({ path }: { path: string }) => {
+    const response = await modelCache.match(downloadedModelResourceUrl({
+      modelId: cleanModelId, revision, repositoryPath: path, workerLocationUrl: self.location.href,
+    }));
+    if (response === undefined) return false;
+    await response.body?.cancel();
+    return true;
+  };
+  const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
+    modelId: cleanModelId,
+    modelType,
+  });
+  onRuntimePhase?.({ phase: 'candidate-plan' });
+  const planCandidates = () => withDownloadedModelPreparationPhase({
+    phase: 'candidate-plan',
+    run: () => planDownloadedModelCandidates({
+      modelId: cleanModelId,
+      revision,
+      candidates,
+      modelCache,
+      getModelFiles: async ({ candidate }) => selectProductionModelResources({ autoClass, config, candidate }).paths,
+      getRuntimeFiles: async () => {
+        // The registry memoizes revisionless presence probes. Do not seed a
+        // negative result from an incomplete namespace and poison a later
+        // complete one in this same Worker. Missing entry metadata remains a
+        // required path, never an empty (apparently complete) runtime plan.
+        const tokenizerPaths = await entryMetadataPresent({ path: 'tokenizer_config.json' })
+          ? ['tokenizer_config.json', ...await ModelRegistry.get_tokenizer_files(cleanModelId)]
+          : ['tokenizer_config.json'];
+        switch (runtimeArtifactLoader) {
+        case 'tokenizer':
+          return tokenizerPaths;
+        case 'gemma4-processor':
+        case 'qwen3_5-processor': {
+          const preprocessor = await modelCache.match(downloadedModelResourceUrl({
+            modelId: cleanModelId, revision, repositoryPath: 'preprocessor_config.json', workerLocationUrl: self.location.href,
+          }));
+          const processorPaths = ['preprocessor_config.json'];
+          if (preprocessor !== undefined) {
+            // AutoProcessor selects its concrete class from this metadata, not
+            // from the model id. Parse the current namespace independently.
+            const metadata = z.object({ processor_class: z.unknown().optional() }).passthrough().parse(await preprocessor.json());
+            const processorClass: unknown = typeof metadata.processor_class === 'string'
+              ? Reflect.get(bundledRuntime, metadata.processor_class) : undefined;
+            if (typeof processorClass === 'function'
+              && processorClass.prototype instanceof bundledRuntime.Processor
+              && Reflect.get(processorClass, 'uses_processor_config') === true) {
+              processorPaths.push('processor_config.json');
+            }
+            // Do not infer required chat templates from a class flag: native
+            // overrides can explicitly load that file as optional (Gemma 4).
+          }
+          return [...tokenizerPaths, ...processorPaths];
+        }
+        default: {
+          const _ex: never = runtimeArtifactLoader;
+          throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
+        }
+        }
+      },
+      workerLocationUrl: self.location.href,
+    }),
+  });
+  let candidatePlan = await planCandidates();
+  // Prefer a complete multimodal route before native loading begins. Old
+  // language-only caches remain usable for text without fetching missing
+  // vision files. Never downgrade after a native/resource failure.
+  if (supportsQwen3_5MultimodalRoute({ modelType })
+    && candidatePlan.every(entry => entry.status === 'checked' && !entry.complete)) {
+    autoClass = 'AutoModelForCausalLM';
+    candidatePlan = await planCandidates();
+  }
+  return { candidatePlan, autoClass, modelType };
+}
+
+async function selectDownloadedModelRevision({ modelId, selection, candidates }: {
+  modelId: string;
+  selection: DownloadedModelRevisionSelection;
+  candidates: ProductionLoadCandidate[];
+}): Promise<string | undefined> {
+  const parsed = downloadedModelRevisionSelectionSchema.parse(selection);
+  switch (parsed.kind) {
+  case 'pinned': return parsed.revision;
+  case 'discover-cached': break;
+  default: { const exhaustive: never = parsed; throw new Error('Unknown revision selection: ' + exhaustive); }
+  }
+  const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
+  const storageRoot = await navigator.storage.getDirectory();
+  const inventory = await inspectDownloadVerificationCachedRevisions({ modelId, storageRoot });
+  const namespaces = planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: undefined });
+  for (const namespace of namespaces) {
+    const revision = namespace.loaderRevisionOption;
+    const modelCache = createDownloadedModelReadOnlyCache({ modelId: cleanModelId, revision });
+    // Absence proves incompleteness. A body/JSON/I/O failure is different and
+    // propagates; no catch may turn failed inspection into namespace fallback.
+    const config = await modelCache.match(downloadedModelResourceUrl({
+      modelId: cleanModelId, revision, repositoryPath: 'config.json', workerLocationUrl: self.location.href,
+    }));
+    if (config === undefined) continue;
+    await config.body?.cancel();
+    const { candidatePlan } = await withDownloadedModelAccessMode({ modelCache, run: () => planProductionRuntimeCandidates({
+      cleanModelId, revision, candidates, modelCache, progressCallback: undefined, onRuntimePhase: undefined,
+    }) });
+    if (candidatePlan.some(entry => entry.status === 'checked' && entry.complete)) return revision;
+    if (!candidatePlan.some(entry => entry.status === 'checked')) {
+      throw downloadedModelCandidatePlanError({ modelId: cleanModelId, revision, entries: candidatePlan });
+    }
+  }
+  throw new MissingDownloadedModelArtifactError({
+    message: 'Downloaded model is incomplete; no locally complete namespace was planned for ' + cleanModelId,
+  });
+}
 
 async function loadProductionRuntime({
   loadIdentitySource,
   loadReceiptOwner,
   modelId,
-  revision,
+  revisionSelection,
   candidates,
   progressCallback,
   runtimePreparationProgressCallback = progressCallback,
@@ -396,7 +540,7 @@ async function loadProductionRuntime({
   loadIdentitySource: 'ordinary' | 'non-ordinary',
   loadReceiptOwner: ProductionLoadReceiptOwner | undefined,
   modelId: string,
-  revision: string | undefined,
+  revisionSelection: DownloadedModelRevisionSelection,
   candidates: ProductionLoadCandidate[],
   progressCallback: TransformersJsProgressCallback,
   runtimePreparationProgressCallback?: TransformersJsProgressCallback,
@@ -413,12 +557,13 @@ async function loadProductionRuntime({
 }): Promise<ProductionLoadRoute> {
   invalidateGenerationState();
   const receiptOperation = productionLoadReceipt.begin({ owner: loadReceiptOwner });
-  const receiptRecorder = createProductionLoadReceiptRecorder({ modelId, revision });
   let loadIdentityOperation: ReturnType<typeof productionLoadIdentity.beginLoad> | undefined;
-  recordGenerationCapture({ record: () => {
-    loadIdentityOperation = productionLoadIdentity.beginLoad({ source: loadIdentitySource, modelId, revision });
-  } });
   try {
+    const revision = await selectDownloadedModelRevision({ modelId, selection: revisionSelection, candidates });
+    const receiptRecorder = createProductionLoadReceiptRecorder({ modelId, revision });
+    recordGenerationCapture({ record: () => {
+      loadIdentityOperation = productionLoadIdentity.beginLoad({ source: loadIdentitySource, modelId, revision });
+    } });
     const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
     assertGemma4RuntimeSupport({ modelId: cleanModelId });
     const rawProgressCallback: TransformersProgressCallback = info => progressCallback({ info });
@@ -432,56 +577,10 @@ async function loadProductionRuntime({
       modelCache: runtimeModelCache,
       cacheOnlyFetch,
       run: async () => {
-        onRuntimePhase?.({ phase: 'config' });
-        const config = await withDownloadedModelPreparationPhase({
-          phase: 'config',
-          run: () => AutoConfig.from_pretrained(cleanModelId, {
-            local_files_only: true,
-            progress_callback: info => runtimePreparationProgressCallback({ info }),
-            ...(revision === undefined ? {} : { revision }),
-          }),
+        const { candidatePlan, autoClass, modelType } = await planProductionRuntimeCandidates({
+          cleanModelId, revision, candidates, modelCache: runtimeModelCache,
+          progressCallback: runtimePreparationProgressCallback, onRuntimePhase,
         });
-        const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
-        let autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId, modelType });
-        const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
-          modelId: cleanModelId,
-          modelType,
-        });
-        onRuntimePhase?.({ phase: 'candidate-plan' });
-        const planCandidates = () => withDownloadedModelPreparationPhase({
-          phase: 'candidate-plan',
-          run: () => planDownloadedModelCandidates({
-            modelId: cleanModelId,
-            revision,
-            candidates,
-            modelCache: runtimeModelCache,
-            getModelFiles: async ({ candidate }) => selectProductionModelResources({ autoClass, config, candidate }).paths,
-            getRuntimeFiles: async () => {
-              const tokenizerPaths = await ModelRegistry.get_tokenizer_files(cleanModelId);
-              switch (runtimeArtifactLoader) {
-              case 'tokenizer':
-                return tokenizerPaths;
-              case 'gemma4-processor':
-              case 'qwen3_5-processor':
-                return [...tokenizerPaths, ...await ModelRegistry.get_processor_files(cleanModelId)];
-              default: {
-                const _ex: never = runtimeArtifactLoader;
-                throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
-              }
-              }
-            },
-            workerLocationUrl: self.location.href,
-          }),
-        });
-        let candidatePlan = await planCandidates();
-        // Prefer a complete multimodal route before native loading begins. Old
-        // language-only caches remain usable for text without fetching missing
-        // vision files. Never downgrade after a native/resource failure.
-        if (supportsQwen3_5MultimodalRoute({ modelType })
-          && candidatePlan.every(entry => entry.status === 'checked' && !entry.complete)) {
-          autoClass = 'AutoModelForCausalLM';
-          candidatePlan = await planCandidates();
-        }
         const completeCandidates = candidatePlan
           .filter(entry => entry.status === 'checked')
           .filter(entry => entry.complete);
@@ -915,7 +1014,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
    * perform any model download. Missing/incomplete artifacts must fail here.
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  async loadDownloadedModel(modelId: string, revision: string | undefined, progressCallback: (x: ProgressInfo) => void, loadReceiptOwner?: ProductionLoadReceiptOwner): Promise<ModelLoadResult> {
+  async loadDownloadedModel(modelId: string, revisionSelection: DownloadedModelRevisionSelection, progressCallback: (x: ProgressInfo) => void, loadReceiptOwner?: ProductionLoadReceiptOwner): Promise<ModelLoadResult> {
     console.log('[transformersJsWorker] Starting loadDownloadedModel:', modelId);
 
     await this.unloadModel();
@@ -927,7 +1026,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         loadIdentitySource: 'ordinary',
         loadReceiptOwner,
         modelId,
-        revision,
+        revisionSelection,
         candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
         progressCallback: ({ info }) => progressCallback(info),
         serializeError: ({ error }) => {
@@ -968,7 +1067,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       loadIdentitySource: 'non-ordinary',
       loadReceiptOwner: undefined,
       modelId,
-      revision,
+      revisionSelection: { kind: 'pinned', revision: revision },
       candidates: [candidate],
       progressCallback: ({ info }) => progressCallback(info),
       onRuntimePhase: ({ phase }) => progressCallback({ status: `cache-acceptance-${phase}` }),
@@ -1001,7 +1100,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         loadIdentitySource: 'non-ordinary',
         loadReceiptOwner: undefined,
         modelId,
-        revision,
+        revisionSelection: { kind: 'pinned', revision: revision },
         candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
         progressCallback: ({ info }) => progressCallback(info),
         onRuntimePhase: ({ phase }) => progressCallback({ status: `cache-acceptance-${phase}` }),
@@ -1171,7 +1270,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           loadIdentitySource: 'non-ordinary',
           loadReceiptOwner: undefined,
           modelId: scenario.modelId,
-          revision: scenario.loadRevision,
+          revisionSelection: { kind: 'pinned', revision: scenario.loadRevision },
           candidates: scenario.candidates,
           progressCallback: reportLoadProgress,
           runtimePreparationProgressCallback: () => undefined,

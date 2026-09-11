@@ -12,7 +12,7 @@ describe('standalone Production client boundary', () => {
 
   it('preserves ordinary unavailable Load and harmless disposal', async () => {
     const client = createTransformersJsWorkerClient();
-    await expect(client.loadDownloadedModel({ modelId: 'org/model', progressCallback: vi.fn() })).rejects.toThrow('Transformers.js is not available in standalone mode');
+    await expect(client.loadDownloadedModel({ revisionSelection: { kind: 'pinned', revision: undefined }, modelId: 'org/model', progressCallback: vi.fn() })).rejects.toThrow('Transformers.js is not available in standalone mode');
     await client.dispose();
   });
 });

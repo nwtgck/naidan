@@ -1,4 +1,4 @@
-import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/runtime/cached-model-revisions';
 import { acceptReusableDownloadedProductionRevisionsForDownload, type DownloadVerificationCachedRevisionAcceptanceResult } from '@/features/transformers-js/download-verification/logic/run-cached-revision-acceptance-orchestration';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 import { awaitWithAbort } from './await-with-abort';

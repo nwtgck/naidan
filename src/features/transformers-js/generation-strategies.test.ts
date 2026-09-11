@@ -3,6 +3,7 @@ import type { ChatMessage, LmParameters } from "@/01-models/types";
 import { toToolCallId } from '@/01-models/ids';
 import type { GenerationCaptureCall } from "./worker/generation-capture";
 import * as standardToolProtocol from './standard-tool-call-protocol';
+import type { WorkerToolJsonObject } from './types';
 
 vi.mock("@huggingface/transformers", () => ({
   TextStreamer: class {
@@ -224,6 +225,71 @@ literal <think>
     expect(processor).toHaveBeenCalledOnce();
     expect(processor.mock.calls[0]?.[0]).toBe(openPrompt);
     expect(generate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ ...prepared, past_key_values: null }));
+  });
+});
+
+describe('schema-bound Qwen XML arguments, not captured model output', () => {
+  it.each<{ name: string; schema: WorkerToolJsonObject; value: string; expected: unknown }>([
+    { name: 'JSON-looking string', schema: { type: 'string' }, value: '{"city":"Tokyo"}', expected: '{"city":"Tokyo"}' },
+    { name: 'array-looking string', schema: { type: 'string' }, value: '[1,2]', expected: '[1,2]' },
+    { name: 'boolean-looking string', schema: { type: 'string' }, value: 'true', expected: 'true' },
+    { name: 'object', schema: { type: 'object' }, value: '{"city":"Tokyo"}', expected: { city: 'Tokyo' } },
+    { name: 'array', schema: { type: 'array' }, value: '[1,2]', expected: [1, 2] },
+  ])('$name', async ({ schema, value, expected }) => {
+    const chunks: string[] = [];
+    const calls: Array<{ function: { arguments: string } }> = [];
+    const generate = vi.fn(async ({ streamer }: { streamer: { emit(text: string): void } }) => {
+      streamer.emit(`<tool_call><function=write_file><parameter=content>${value}</parameter></function></tool_call>`);
+      return { past_key_values: null, sequences: [] };
+    });
+    const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
+    const operation = selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      model: { generate, sessions: {} } as never,
+      tokenizer: { apply_chat_template: () => 'Explicit synthetic prompt.' } as never,
+      messages: [{ role: 'user', content: 'Use the supplied tool.' }],
+      onChunk: ({ chunk }) => {
+        chunks.push(chunk);
+      }, onRawChunk: vi.fn(),
+      onToolCalls: ({ toolCalls }) => {
+        calls.push(...toolCalls);
+      },
+      params: explicitParameters,
+      tools: [{ type: 'function', function: { name: 'write_file', description: 'A synthetic schema control.', parameters: { type: 'object', properties: { content: schema } } } }],
+      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
+        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+    });
+    await operation;
+    expect(generate).toHaveBeenCalledOnce();
+    expect(chunks).toEqual([]);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]!.function.arguments)).toEqual({ content: expected });
+  });
+
+  it('rejects ambiguous string-or-object XML before publishing a tool call', async () => {
+    const calls: unknown[] = [];
+    const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
+    const generate = vi.fn(async ({ streamer }: { streamer: { emit(text: string): void } }) => {
+      streamer.emit('<tool_call><function=write_file><parameter=content>{"city":"Tokyo"}</parameter></function></tool_call>');
+      return { past_key_values: null, sequences: [] };
+    });
+    await expect(selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      model: { generate, sessions: {} } as never,
+      tokenizer: { apply_chat_template: () => 'Explicit synthetic prompt.' } as never,
+      messages: [{ role: 'user', content: 'Use the supplied tool.' }],
+      onChunk: () => {}, onRawChunk: () => {}, onToolCalls: ({ toolCalls }) => {
+        calls.push(...toolCalls);
+      },
+      params: explicitParameters,
+      tools: [{ type: 'function', function: { name: 'write_file', description: 'Synthetic ambiguous schema.', parameters: {
+        type: 'object', properties: { content: { anyOf: [{ type: 'string' }, { type: 'object' }] } },
+      } } }],
+      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
+        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+    })).rejects.toThrow('Ambiguous Qwen XML parameter type');
+    expect(calls).toEqual([]);
+    expect(generate).toHaveBeenCalledOnce();
   });
 });
 

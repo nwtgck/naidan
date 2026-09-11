@@ -301,6 +301,14 @@ export type ReviewedProviderReplayContract = {
     expectedEvents: readonly unknown[];
   }[];
   invalidatedOutputs: readonly (ReplayOutputGap & { reason: string })[];
+  // Absent preserves the exact historical decoder callbacks. These are not
+  // replacement native tokens or permission to change any inference input.
+  correctedFinalizedStreams?: readonly {
+    callOrdinal: number;
+    scenario: z.infer<typeof captureScenarioSchema>;
+    reason: string;
+    expectedFinalized: readonly { text: string; streamEnd: boolean }[];
+  }[];
 };
 
 function validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps }: {
@@ -309,6 +317,7 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
   originalGaps: readonly ReplayOutputGap[];
 }) {
   const correctedEvents = new Map<string, readonly unknown[]>();
+  const correctedFinalizedStreams = new Map<number, { text: string; streamEnd: boolean }[]>();
   const invalidated = reviewedPublicContract?.invalidatedOutputs ?? [];
   const gapOrdinals = new Set(originalGaps.map(gap => gap.callOrdinal));
   const gapScenarios = new Set(originalGaps.map(gap => gap.scenario));
@@ -331,7 +340,18 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
     // transforms current callbacks or silently normalizes historical evidence.
     correctedEvents.set(correction.scenario, z.array(z.json()).parse(correction.expectedEvents));
   }
-  return { correctedEvents, gaps: [...originalGaps, ...invalidated].sort((left, right) => left.callOrdinal - right.callOrdinal) };
+  for (const correction of reviewedPublicContract?.correctedFinalizedStreams ?? []) {
+    if (correction.reason.trim().length === 0) throw new Error('Missing reviewed finalized-stream reason');
+    if (correctedFinalizedStreams.has(correction.callOrdinal) || gapOrdinals.has(correction.callOrdinal)) throw new Error('Duplicate or gap-owned finalized-stream correction');
+    if (evidence.invocations.filter(invocation => invocation.callOrdinal === correction.callOrdinal && invocation.scenario === correction.scenario).length !== 1
+      || evidence.unavailableRecordedCalls?.includes(correction.callOrdinal)) throw new Error('Finalized-stream correction must identify one replayable native invocation');
+    correctedFinalizedStreams.set(correction.callOrdinal, z.array(z.object({ text: z.string(), streamEnd: z.boolean() }).strict()).parse(correction.expectedFinalized));
+  }
+  return { correctedEvents, correctedFinalizedStreams, gaps: [...originalGaps, ...invalidated].sort((left, right) => left.callOrdinal - right.callOrdinal) };
+}
+
+function verifyFinalizedCorrectionsUsed({ expected, used }: { expected: readonly number[]; used: readonly number[] }) {
+  exact({ label: 'every reviewed finalized stream must be used exactly once', actual: [...used].sort((a, b) => a - b), expected: [...expected].sort((a, b) => a - b) });
 }
 
 /** One real Full owner and Load preserve cross-request causality. */
@@ -345,8 +365,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
 }) {
   const evidence = parseCapturedFullReplay({ value: source });
   expect(originalGaps.filter(item => evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)).map(item => item.callOrdinal)).toEqual(evidence.unavailableRecordedCalls ?? []);
-  const { correctedEvents, gaps: unavailableOutputs } = validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps });
+  const { correctedEvents, correctedFinalizedStreams, gaps: unavailableOutputs } = validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps });
   const usedCorrections: string[] = [];
+  const usedFinalizedCorrections: number[] = [];
   const metadata = readModelFixture({ modelId: evidence.modelId });
   expect(metadata.summary.revision).toBe(evidence.metadataRevision);
   expect(evidence.metadata.map(resource => resource.path).sort(), 'complete source metadata path set').toEqual([...metadata.files.keys()].sort());
@@ -532,7 +553,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
           default: { const exhaustive: never = detail; throw new Error(String(exhaustive)); }
           }
         });
-      expect(finalized, `${label}/actual finalized stream`).toEqual(invocation.finalized);
+      const correctedFinalized = correctedFinalizedStreams.get(invocation.callOrdinal);
+      if (correctedFinalized !== undefined) usedFinalizedCorrections.push(invocation.callOrdinal);
+      expect(finalized, `${label}/actual finalized stream`).toEqual(correctedFinalized ?? invocation.finalized);
       const pre = events.filter(event => event.kind === 'inputs').find(event => event.phase === 'pre-budget');
       if (pre === undefined) throw new Error(`Missing pre-budget inputs: ${label}`);
       for (const input of invocation.preInputs) {
@@ -563,6 +586,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     case 'unavailable': throw new Error('Missing observed Worker lifetime');
     default: { const exhaustive: never = epoch.lifetime; throw new Error(String(exhaustive)); }
     }
+    verifyFinalizedCorrectionsUsed({ expected: [...correctedFinalizedStreams.keys()], used: usedFinalizedCorrections });
     expect(harness.observations.forbiddenTransport).toEqual([]);
     expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   } finally {
@@ -577,4 +601,5 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
 
 export const TEST_ONLY = {
   validateReviewedProviderContract,
+  verifyFinalizedCorrectionsUsed,
 };

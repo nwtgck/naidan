@@ -1,4 +1,4 @@
-import type { DownloadVerificationCachedRevisionInventory } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+import type { DownloadVerificationCachedRevisionInventory } from '@/features/transformers-js/runtime/cached-model-revisions';
 import type { DownloadVerificationCachedRevisionAcceptanceResult } from '@/features/transformers-js/download-verification/logic/run-cached-revision-acceptance-orchestration';
 import type { DownloadVerificationProductionDownloadPreparationRun } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';

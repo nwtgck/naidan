@@ -3,6 +3,66 @@
 // backslashes and newlines, including the final newline in the deletion below.
 export default [
   {
+    before: String.raw`async function constructSessions(pretrained_model_name_or_path, names, options, cache_sessions = void 0) {
+  return Object.fromEntries(
+    await Promise.all(
+      Object.keys(names).map(async (name) => {
+        const cache_config = cache_sessions?.[name] ?? false;
+        const { buffer_or_path, session_options, session_config } = await getSession(
+          pretrained_model_name_or_path,
+          names[name],
+          options,
+          cache_config,
+          name
+        );
+        const session = await createInferenceSession(buffer_or_path, session_options, session_config);
+        return [name, session];
+      })
+    )
+  );
+}`,
+    after: String.raw`async function constructSessions(pretrained_model_name_or_path, names, options, cache_sessions = void 0) {
+  // Naidan fix: own partial and late sessions until the complete model accepts them.
+  const owned = new Set();
+  const released = new Set();
+  let failed = false;
+  const release = (session) => {
+    owned.delete(session);
+    if (released.has(session)) return;
+    released.add(session);
+    try {
+      // Naidan fix: request cleanup without delaying or replacing the original failure.
+      Promise.resolve(session.release()).catch(() => {});
+    } catch {
+    }
+  };
+  try {
+    return Object.fromEntries(
+      await Promise.all(
+        Object.keys(names).map(async (name) => {
+          const cache_config = cache_sessions?.[name] ?? false;
+          const { buffer_or_path, session_options, session_config } = await getSession(
+            pretrained_model_name_or_path,
+            names[name],
+            options,
+            cache_config,
+            name
+          );
+          const session = await createInferenceSession(buffer_or_path, session_options, session_config);
+          owned.add(session);
+          if (failed) release(session);
+          return [name, session];
+        })
+      )
+    );
+  } catch (error) {
+    failed = true;
+    for (const session of owned) release(session);
+    throw error;
+  }
+}`,
+  },
+  {
     before: String.raw`        new Promise(async (resolve, reject) => {
           const data = await getModelFile(
             pretrained_model_name_or_path,

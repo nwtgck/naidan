@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
-import type { DownloadVerificationCachedRevisionInventory } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+import type { DownloadVerificationCachedRevisionInventory } from '@/features/transformers-js/runtime/cached-model-revisions';
 
 const REVISION = '1'.repeat(40);
 

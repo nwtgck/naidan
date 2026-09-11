@@ -11,6 +11,7 @@ import type { WorkerServerApi } from '@/utils/worker-transport';
 import type { ITransformersJsDownloadWorker, ITransformersJsWorker, TransformersJsProgressCallback, TransformersJsWorkerClient } from '@/features/transformers-js/types';
 import type { DownloadVerificationModelArtifactRequestWorker } from '@/features/transformers-js/download-verification/types';
 import type { FreshMetadataWorker, FreshMetadataSummary } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
+import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 
 // Only module resolution is replaced: each entry receives a fresh instance of
 // the production-plugin artifact, including real AutoClass and resource loading.
@@ -44,7 +45,7 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   const downloadCapabilityCalls: Array<'metadata' | 'observer' | 'model-prefetch'> = [];
   const revisionAcceptanceCalls: Array<{ modelId: string, revision: string | undefined }> = [];
   const serviceApiRequests: Array<{ operation: number, url: string }> = [];
-  const serviceLoadCalls: Array<{ modelId: string, revision: string | undefined }> = [];
+  const serviceLoadCalls: Array<{ modelId: string, revisionSelection: DownloadedModelRevisionSelection }> = [];
   const serviceClientEvents: Array<{ service: number, event: 'created' | 'disposed' }> = [];
   function assertSessionOracle() {
     if (sessionErrors.length > 0) throw new Error(`Synthetic ORT oracle rejected an input: ${sessionErrors.join('; ')}`);
@@ -269,7 +270,7 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
         let api: LoadApi | undefined;
         let lifecycle: 'active' | 'disposed' = 'active';
         const client: TransformersJsWorkerClient = {
-          async loadDownloadedModel({ modelId: id, revision: loadRevision, progressCallback }) {
+          async loadDownloadedModel({ modelId: id, revisionSelection, progressCallback }) {
             switch (lifecycle) {
             case 'active': break;
             case 'disposed': throw new Error('Service used a disposed fixture client');
@@ -279,10 +280,12 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
             }
             }
             if (api) throw new Error('Fixture service client must unload before another load');
-            serviceLoadCalls.push({ modelId: id, revision: loadRevision });
+            // Requested selection is not the accepted native namespace. The
+            // independent session oracle below verifies the latter exactly.
+            serviceLoadCalls.push({ modelId: id, revisionSelection: structuredClone(revisionSelection) });
             api = await boot({ kind: 'load' }) as LoadApi;
             activeLoads.push(api);
-            return api.loadDownloadedModel(id, loadRevision, info => progressCallback({ info }));
+            return api.loadDownloadedModel(id, revisionSelection, info => progressCallback({ info }));
           },
           async unloadModel() {
             await api?.unloadModel();
@@ -416,7 +419,7 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
       const api = await boot({ kind: 'load' }) as LoadApi;
       activeLoads.push(api);
       try {
-        return await api.loadDownloadedModel(modelId, revision, info => progressCallback?.({ info }));
+        return await api.loadDownloadedModel(modelId, { kind: 'pinned', revision }, info => progressCallback?.({ info }));
       } finally {
         assertSessionOracle();
       }

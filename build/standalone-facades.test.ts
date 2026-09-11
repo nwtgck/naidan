@@ -35,7 +35,4 @@ describe('standalone facades', () => {
     });
     expect((alias?.find as RegExp).test(`${facadePath}/components/ModelSupportInvestigationModal.vue`)).toBe(false);
   });
-
-
-
 });

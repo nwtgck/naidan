@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   inspectDownloadVerificationCachedRevisions,
   planDownloadVerificationCachedRevisionLoadCandidates,
-} from './inspect-cached-revisions';
+} from '@/features/transformers-js/runtime/cached-model-revisions';
 
 type FakeEntry = FakeDirectory | FakeFile;
 interface FakeDirectory { kind: 'directory'; entries: Record<string, FakeEntry> }

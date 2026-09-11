@@ -12,6 +12,33 @@ describe('reviewed public contracts remain separate from immutable capture', () 
   const evidence = parseCapturedFullReplay({ value: source });
   const correction = { scenario: 'first-turn' as const, reason: 'Independently reviewed public delivery contract', expectedEvents: [{ kind: 'assistant-start' }] };
   const invalidated = { callOrdinal: 1, scenario: 'first-turn' as const, reason: 'Changed current input has no applicable recorded output', requestInput: {}, expectedEventsBeforeGap: [], verifyInput: vi.fn() };
+  const finalizedCorrection = { callOrdinal: 1, scenario: 'first-turn' as const, reason: 'Synthetic decoder-contract control, not replacement native output', expectedFinalized: [{ text: 'literal', streamEnd: true }] };
+  it('detaches an explicit finalized-stream correction and leaves all recorded native facts unchanged', () => {
+    const before = structuredClone(evidence);
+    const expectedFinalized = [{ text: 'literal', streamEnd: true }];
+    const result = TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      correctedEvents: [], invalidatedOutputs: [], correctedFinalizedStreams: [{ ...finalizedCorrection, expectedFinalized }],
+    } });
+    expectedFinalized[0]!.text = 'mutated';
+    expect(result.correctedFinalizedStreams.get(1)).toEqual([{ text: 'literal', streamEnd: true }]);
+    expect(evidence).toEqual(before);
+    expect(TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: undefined }).correctedFinalizedStreams.size).toBe(0);
+  });
+  it.each([
+    { name: 'duplicate finalized correction', corrections: [finalizedCorrection, finalizedCorrection], error: 'Duplicate' },
+    { name: 'unknown finalized invocation', corrections: [{ ...finalizedCorrection, callOrdinal: 999 }], error: 'one replayable' },
+    { name: 'wrong finalized scenario', corrections: [{ ...finalizedCorrection, scenario: 'system-user' as const }], error: 'one replayable' },
+    { name: 'missing finalized rationale', corrections: [{ ...finalizedCorrection, reason: '' }], error: 'reason' },
+  ])('rejects $name', ({ corrections, error }) => {
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      correctedEvents: [], invalidatedOutputs: [], correctedFinalizedStreams: corrections,
+    } })).toThrow(error);
+  });
+  it('rejects missing or repeated use of a reviewed finalized stream', () => {
+    expect(() => TEST_ONLY.verifyFinalizedCorrectionsUsed({ expected: [1], used: [] })).toThrow('used exactly once');
+    expect(() => TEST_ONLY.verifyFinalizedCorrectionsUsed({ expected: [1], used: [1, 1] })).toThrow('used exactly once');
+    TEST_ONLY.verifyFinalizedCorrectionsUsed({ expected: [1], used: [1] });
+  });
   it('detaches explicit corrected events without modifying the captured source', () => {
     const before = structuredClone(evidence);
     const expectedEvents = [{ kind: 'assistant-start' }];

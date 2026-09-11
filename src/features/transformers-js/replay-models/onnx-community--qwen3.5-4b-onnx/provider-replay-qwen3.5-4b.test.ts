@@ -22,6 +22,7 @@ import correctedSequence from './provider-corrected-continuity-sequence.evidence
 
 const modelId = 'onnx-community/Qwen3.5-4B-ONNX';
 const revision = '74d8caba2117fd5f41d655e9cc27eda1338662b3';
+
 // Synthetic input, not a captured native generation invocation. The original
 // investigation had no accepted cached Qwen4 model and no generation evidence.
 const messages = [{ role: 'user' as const, content: 'Template probe user message.' }];
@@ -556,6 +557,99 @@ describe('Qwen3.5 4B Provider / history', () => {
   }, 30_000);
 });
 
+describe('Qwen3.5-4B source-derived history/cache control, not recorded KV', () => {
+  it('discards owned state when the original template removes prior thinking and supplies the exact fresh next input', async () => {
+    const inputs: ReturnType<typeof captureQwen4NativeInput>[] = [];
+    const captures: ProviderChatCapture[] = [];
+    let ownedSequence: bigint[] = [];
+    let consumedTokenCount = 0;
+    let cacheLengthReads = 0;
+    const harness = await createQwen4Replay({ generate: async context => {
+      const { options, tokenizer, runtime } = context;
+      inputs.push(captureQwen4NativeInput(context));
+      if (inputs.length !== 1) throw new Error('Fresh Qwen history input observed; no continuation output supplied');
+      if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
+      const generated = tokenizer.encode(`\
+Reason</think>
+
+Answer<|im_end|>`, { add_special_tokens: false });
+      const prompt = Array.from(options.input_ids.data, BigInt);
+      options.streamer.put([prompt]);
+      for (const token of generated) options.streamer.put([[BigInt(token)]]);
+      options.streamer.end();
+      ownedSequence = [...prompt, ...generated.map(BigInt)];
+      // Explicit synthetic cache metadata: the last sampled token is not yet
+      // consumed. This exercises ownership/prefix logic, not GPU KV contents.
+      consumedTokenCount = ownedSequence.length - 1;
+      const cache = new runtime.DynamicCache();
+      vi.spyOn(cache, 'get_seq_length').mockImplementation(() => {
+        cacheLengthReads++;
+        return consumedTokenCount;
+      });
+      return { sequences: new runtime.Tensor('int64', BigInt64Array.from(ownedSequence), [1, ownedSequence.length]), past_key_values: cache };
+    } });
+    try {
+      const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+        frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'high' as const } };
+      const first = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/Qwen3.5-4B-ONNX',
+        messages: [{ role: 'system', content: 'Keep the system instruction.' }, { role: 'user', content: 'First synthetic request.' }],
+        parameters, tools: [], signal: new AbortController().signal,
+      } });
+      captures.push(first);
+      await first.completion;
+      const observed = first.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.responses.map(chunks => chunks.join(''))).toEqual([`\
+<think>Reason</think>
+
+Answer`]);
+      expect(cacheLengthReads, 'the first generation must actually retain the supplied owned cache').toBe(1);
+      const history: ChatMessage[] = [
+        { role: 'system', content: 'Keep the system instruction.' },
+        { role: 'user', content: 'First synthetic request.' },
+        { role: 'assistant', content: observed.responses[0]!.join('') },
+        { role: 'user', content: 'Continue.' },
+      ];
+      const next = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/Qwen3.5-4B-ONNX', messages: history,
+        parameters, tools: [], signal: new AbortController().signal,
+      } });
+      captures.push(next);
+      await expect(next.completion).rejects.toThrow('Fresh Qwen history input observed; no continuation output supplied');
+      expect(inputs).toHaveLength(2);
+      expect(harness.observations.inferenceCalls).toHaveLength(2);
+      expect(cacheLengthReads, 'the next eligible conversation must inspect the retained state before rejecting its prefix').toBe(2);
+      expect(inputs.map(input => input.pastIsNull)).toEqual([true, true]);
+      const actual = inputs[1]!;
+      if (!actual.input.isTensor) throw new Error('Expected the detached actual next-input tensor');
+      const freshIds = actual.tokenizer.encode(`\
+<|im_start|>system
+Keep the system instruction.<|im_end|>
+<|im_start|>user
+First synthetic request.<|im_end|>
+<|im_start|>assistant
+Answer<|im_end|>
+<|im_start|>user
+Continue.<|im_end|>
+<|im_start|>assistant
+<think>
+`, { add_special_tokens: false });
+      expect(Array.from(actual.input.data, Number)).toEqual(freshIds);
+      expect(consumedTokenCount).toBe(ownedSequence.length - 1);
+      expect(consumedTokenCount).toBeLessThan(freshIds.length);
+      expect(ownedSequence.slice(0, consumedTokenCount)).not.toEqual(freshIds.slice(0, consumedTokenCount).map(BigInt));
+      expect(history[2]!.content, 'Naidan must not rewrite the delivered thinking to manufacture cache compatibility').toBe(observed.responses[0]!.join(''));
+      expect(next.snapshot().responses).toEqual([[]]);
+      expect(captures.flatMap(capture => capture.snapshot().toolCalls)).toEqual([]);
+      expect(captures.flatMap(capture => capture.snapshot().preStartChunks)).toEqual([]);
+    } finally {
+      await harness.close();
+      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+    }
+  }, 30_000);
+});
+
 describe('Qwen3.5 4B Provider / reasoning', () => {
   it('independently preserves native default thinking and explicit disabled-thinking input', async () => {
     const generate = vi.fn<ProviderReplayGenerate>(async () => {
@@ -983,6 +1077,107 @@ describe('Qwen3.5 4B Provider / tools', () => {
       await replay.close();
     }
     for (const capture of captures) expect(capture.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
+  }, 30_000);
+});
+
+describe('Qwen3.5-4B source-derived XML type controls, not recorded inference', () => {
+  it.each([
+    { name: 'scalar overflow', schema: z.number().nullable(), raw: '1e999' },
+    { name: 'nested overflow', schema: z.object({ value: z.number().nullable() }), raw: '{"value":1e999}' },
+  ])('rejects $name through authoritative Provider validation without executing a null substitute', async ({ schema, raw }) => {
+    const executions: unknown[] = [];
+    let nativeCalls = 0;
+    const harness = await createQwen4Replay({ generate: async ({ options, tokenizer, runtime }) => {
+      nativeCalls++;
+      if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
+      if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
+      const text = nativeCalls === 1
+        ? `<tool_call><function=probe><parameter=value>${raw}</parameter></function></tool_call>`
+        : 'Synthetic completion after rejected arguments.';
+      const ids = tokenizer.encode(text, { add_special_tokens: false });
+      const input = Array.from(options.input_ids.data, BigInt);
+      options.streamer.put([input]);
+      for (const id of ids) options.streamer.put([[BigInt(id)]]);
+      options.streamer.end();
+      return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt)]), [1, input.length + ids.length]), past_key_values: null };
+    } });
+    let capture: ProviderChatCapture | undefined;
+    try {
+      capture = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/Qwen3.5-4B-ONNX', messages: [{ role: 'user', content: 'Synthetic overflow control.' }],
+        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+          frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'none' } },
+        tools: [{ name: 'probe', description: 'Must reject invalid numeric arguments.', parametersSchema: z.object({ value: schema }),
+          execute: async ({ args }) => {
+            executions.push(structuredClone(args)); return { status: 'success', content: 'Must not execute.' };
+          } }],
+      } });
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.toolCalls).toHaveLength(1);
+      expect(observed.toolResults).toHaveLength(1);
+      expect(observed.toolResults[0]?.result).toMatchObject({ status: 'error', code: 'invalid_arguments' });
+      expect(executions).toEqual([]);
+      expect(nativeCalls).toBe(2);
+      expect(observed.responses.map(response => response.join(''))).toEqual(['', 'Synthetic completion after rejected arguments.']);
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.lateEvents).toEqual([]);
+    } finally {
+      await harness.close();
+      expect(capture?.snapshot().lateEvents).toEqual([]);
+      expect(executions).toEqual([]);
+    }
+  }, 30_000);
+
+  it.each([
+    { name: 'JSON-looking string', schema: z.string(), expected: '{"city":"Tokyo"}' },
+    { name: 'object', schema: z.object({ city: z.string() }), expected: { city: 'Tokyo' } },
+  ])('passes the $name through Provider schema serialization and actual tool execution', async ({ schema, expected }) => {
+    const executions: unknown[] = [];
+    let nativeCalls = 0;
+    const harness = await createQwen4Replay({ generate: async ({ options, tokenizer, runtime }) => {
+      nativeCalls++;
+      if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
+      if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
+      const text = nativeCalls === 1
+        ? '<tool_call><function=write_file><parameter=content>{"city":"Tokyo"}</parameter></function></tool_call>'
+        : 'Synthetic completion.';
+      const ids = tokenizer.encode(text, { add_special_tokens: false });
+      const input = Array.from(options.input_ids.data, BigInt);
+      options.streamer.put([input]);
+      for (const id of ids) options.streamer.put([[BigInt(id)]]);
+      options.streamer.end();
+      return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt)]), [1, input.length + ids.length]), past_key_values: null };
+    } });
+    let capture: ProviderChatCapture | undefined;
+    try {
+      capture = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/Qwen3.5-4B-ONNX',
+        messages: [{ role: 'user', content: 'Use the synthetic write_file tool.' }],
+        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+          frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'none' } },
+        tools: [{ name: 'write_file', description: 'Synthetic XML schema control.', parametersSchema: z.object({ content: schema }),
+          execute: async ({ args }) => {
+            executions.push(structuredClone(args));
+            return { status: 'success', content: 'Synthetic tool result.' };
+          } }],
+      } });
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(executions).toEqual([{ content: expected }]);
+      expect(observed.toolCalls).toHaveLength(1);
+      expect(observed.toolResults).toHaveLength(1);
+      expect(observed.responses.map(response => response.join(''))).toEqual(['', 'Synthetic completion.']);
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.lateEvents).toEqual([]);
+      expect(nativeCalls).toBe(2);
+      expect(harness.observations.inferenceCalls).toHaveLength(2);
+    } finally {
+      await harness.close();
+      expect(capture?.snapshot().lateEvents).toEqual([]);
+    }
   }, 30_000);
 });
 

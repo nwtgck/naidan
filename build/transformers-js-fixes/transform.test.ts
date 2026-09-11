@@ -74,7 +74,7 @@ it('retains exact upstream originals and maps the bounded web edits to the origi
   expect(original).toContain(sections.modelPreparation);
   expect(original).toContain(sections.optionalConfigs);
   expect(transformed.originalSha256).toBe('25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff');
-  expect(transformed.transformedSha256).toBe('875b33675dcf7b646f7f39d2680d2612040b1eb570f865a537aea1118658b731');
+  expect(transformed.transformedSha256).toBe('6b6a707a7163365ac1bbee232e4228b8177dd05b11e825c061167d56d986070f');
   const jinjaOriginal = originalSection({
     startMarker: 'var TOKEN_TYPES = Object.freeze({', endMarker: '\n// src/utils/hub/FileResponse.js',
     expectedSha256: TRANSFORMERS_JS_FIXES_PROVENANCE.bundledJinja.sectionSha256,

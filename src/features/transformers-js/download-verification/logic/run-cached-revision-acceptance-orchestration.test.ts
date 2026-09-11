@@ -9,7 +9,7 @@ import type {
   DownloadVerificationCachedRevision,
   DownloadVerificationCachedRevisionInventory,
   DownloadVerificationCachedRevisionLoadCandidate,
-} from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+} from '@/features/transformers-js/runtime/cached-model-revisions';
 import type { DownloadVerificationRevisionAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
 
 vi.mock('@/features/transformers-js/download-verification/logic/accept-downloaded-production-revision', () => ({

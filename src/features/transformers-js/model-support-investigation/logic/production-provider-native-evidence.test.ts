@@ -49,6 +49,18 @@ function collectionFixture({ capture }: { capture: Native }): ProductionProvider
     collection: { status: 'returned', result: { status: 'captured', capture } },
   }] };
 }
+it('refuses nested revision-selection accessors without executing them during evidence admission', async () => {
+  const native = collectionFixture({ capture: nativeFixture() });
+  const lifetime = native.epochs[0]!.lifetime;
+  if (lifetime.status !== 'observed') throw new Error('Expected the test lifetime');
+  const getter = vi.fn(() => 'discover-cached');
+  lifetime.value.loadRequests[0]!.revisionSelection = Object.defineProperty({ kind: 'discover-cached' as const }, 'kind', { enumerable: true, get: getter });
+  await expect(createProductionProviderNativeEvidence({
+    maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native, provider: providerFixture(),
+  })).rejects.toThrow(/^Invalid native capture evidence$/u);
+  expect(getter).not.toHaveBeenCalled();
+});
+
 function completedSummary(): ProductionProviderInvestigationResult['summary'] {
   return {
     format: 'production-provider-investigation-v1', policy: createProductionProviderCapturePolicy({ plan: 'first-only' }),

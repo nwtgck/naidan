@@ -56,6 +56,35 @@ inside `from_pretrained()`.
   candidate.
 - Candidate fallback must never initiate a download.
 
+## Model-visible history and KV cache fidelity
+
+- Preserve the model-visible representation of messages across live generation,
+  tool continuation, stored-history reconstruction, and subsequent requests.
+  Equivalent meaning or identical UI rendering does not establish identical
+  tokenizer input or compatibility with an existing KV cache.
+- Do not normalize inline `<think>` content into a `thinking` or
+  `reasoning_content` property, or perform the reverse conversion, merely to
+  unify representations. Handle equivalent visual presentation in the UI without
+  rewriting the underlying model-visible history.
+- Apply the same rule to system prompts, default instructions, role boundaries,
+  whitespace, special tokens, tool declarations, tool-call IDs and arguments,
+  and tool-result serialization. In particular, retain assistant tool-call
+  content already supplied to the model during the live tool loop.
+- A required model-native protocol adapter must be justified against the actual
+  tokenizer/template and the live and reconstructed input paths. Do not assume
+  that introducing a native-looking field preserves those inputs. Verify the
+  relevant token sequences with independent expectations before reusing cached
+  state; do not rewrite recorded evidence to make a changed input appear equal.
+  With that justification, the model-specific adapter may translate native
+  framing into the existing Provider output contract and map it back on input.
+  This does not authorize changes to shared stored messages or the common chat
+  API, or moving model-native special-token interpretation into common UI.
+- Reuse KV state only when its ownership, model/runtime configuration, and
+  cached token prefix agree with the actual next input. Matching message counts,
+  visible text, or token lengths alone is insufficient. If a legitimate input
+  change invalidates that agreement, discard the incompatible cache and process
+  the correct input instead of forcing reuse or changing the user's request.
+
 ## OPFS state
 
 - Per-file `.complete` markers are the permitted crash-safety mechanism because

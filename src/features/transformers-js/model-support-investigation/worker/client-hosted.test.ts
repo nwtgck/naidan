@@ -869,7 +869,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       { runId: 'coordinator-attempt', modelId: 'org/model', externalNetworkPolicy: 'deny', executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
       expect.any(Function), expect.any(Function), expect.any(Function),
     );
-    expect(production.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/model', undefined, expect.any(Function), { runId: 'run-1', workerEpoch: 1 });
+    expect(production.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/model', { kind: 'discover-cached' }, expect.any(Function), { runId: 'run-1', workerEpoch: 1 });
     expect(production.generateText).toHaveBeenCalledTimes(13);
     expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
     expect(planningRemote.runCandidateAttempt).not.toHaveBeenCalled();
@@ -1609,7 +1609,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     } });
     // Planning provenance is evidence, not authority to silently change the
     // ordinary Provider's requested Load revision or preferred candidate.
-    expect(production.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/model', undefined, expect.any(Function), { runId: 'run-1', workerEpoch: 1 });
+    expect(production.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/model', { kind: 'discover-cached' }, expect.any(Function), { runId: 'run-1', workerEpoch: 1 });
     expect(production.generateText).toHaveBeenCalledTimes(13);
     expect(planningRemote.inspectDownloadedTemplateBehavior).not.toHaveBeenCalled();
     expect(planningRemote.runCandidateAttempt).not.toHaveBeenCalled();

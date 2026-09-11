@@ -239,7 +239,7 @@ describe('Qwen3.5 4B Download replay', () => {
 
         const loadBoundary = h.sessions.length;
         await expect(h.coldServiceLoad()).resolves.toMatchObject({ status: 'ready', activeModelId: modelId, device: 'webgpu', error: undefined });
-        expect(h.serviceLoadCalls).toEqual([{ modelId, revision }]);
+        expect(h.serviceLoadCalls).toEqual([{ modelId, revisionSelection: { kind: 'discover-cached' } }]);
         expect(h.sessions.slice(loadBoundary).sort((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
         expect(h.revisionAcceptanceCalls).toEqual([{ modelId, revision }]);
         expect(h.serviceApiRequests).toHaveLength(2);
@@ -329,11 +329,11 @@ describe('Qwen3.5 4B Download replay', () => {
         const failure = await h.freshLoad({ progressCallback: undefined }).then(() => undefined, (error: unknown) => error);
         expect(failure).toBeInstanceOf(Error);
         if (!(failure instanceof Error)) throw new Error('Missing required metadata must not produce an accepted model');
-        // The upstream processor registry returns no paths when its presence probe
-        // misses preprocessor_config. AutoProcessor still requires it after sessions.
-        expect(failure.message).toContain('file was not found locally');
-        expect(failure.message).not.toContain('Downloaded model is incomplete');
-        expect(h.sessions.slice(sessionBoundary).sort((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
+        // AutoProcessor requires this entry even when its registry presence probe
+        // returns no paths. Reject the incomplete plan before creating sessions.
+        expect(failure.name).toBe('MissingDownloadedModelArtifact');
+        expect(failure.message).toContain('Downloaded model is incomplete');
+        expect(h.sessions.slice(sessionBoundary)).toEqual([]);
         expect(failure.message).toContain(missingPath);
         expect(h.sessionErrors).toEqual([]);
         expect([...h.fs.files].map(([path, bytes]) => [path, digest({ bytes })])).toEqual(before);

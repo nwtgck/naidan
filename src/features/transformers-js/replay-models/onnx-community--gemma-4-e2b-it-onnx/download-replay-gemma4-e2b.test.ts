@@ -246,7 +246,7 @@ describe('Gemma 4 E2B Download replay', () => {
 
         const loadBoundary = h.sessions.length;
         await expect(h.coldServiceLoad()).resolves.toMatchObject({ status: 'ready', activeModelId: modelId, device: 'webgpu', error: undefined });
-        expect(h.serviceLoadCalls).toEqual([{ modelId, revision }]);
+        expect(h.serviceLoadCalls).toEqual([{ modelId, revisionSelection: { kind: 'discover-cached' } }]);
         expect(h.sessions.slice(loadBoundary).sort((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
         expect(h.revisionAcceptanceCalls).toEqual([{ modelId, revision }]);
         expect(h.serviceApiRequests).toHaveLength(2);
@@ -387,12 +387,13 @@ describe('Gemma 4 E2B Download replay', () => {
         expect(result.selectedCandidate).toBeUndefined();
         expect(result.attempts).toHaveLength(1);
         expect(result.attempts[0]?.acceptance?.status).toBe('failed');
-        expect(result.error?.name).toBe('DownloadedModelPreparationError');
+        expect(result.error?.name).toBe('MissingDownloadedModelArtifact');
         expect(result.error?.message).toContain('processor_config.json');
-        expect(acceptancePhases.filter(phase => phase === 'cache-acceptance-tokenizer-processor')).toHaveLength(1);
+        expect(acceptancePhases.filter(phase => phase === 'cache-acceptance-candidate-plan')).toHaveLength(1);
+        expect(acceptancePhases).not.toContain('cache-acceptance-tokenizer-processor');
         expect(acceptancePhases).not.toContain('cache-acceptance-ready');
         expect(subsequentGets).toEqual([]);
-        expect(h.sessions.slice(sessionBoundary).sort((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
+        expect(h.sessions.slice(sessionBoundary)).toEqual([]);
         expect(h.downloadCapabilityCalls.slice(capabilityBoundary)).toEqual(['observer', 'model-prefetch']);
         expect([...h.fs.files].map(([path, bytes]) => [path, digest({ bytes })])).toEqual(before);
         expect(h.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual(mutationsBefore);
@@ -430,11 +431,11 @@ describe('Gemma 4 E2B Download replay', () => {
         const failure = await h.freshLoad({ progressCallback: undefined }).then(() => undefined, (error: unknown) => error);
         expect(failure).toBeInstanceOf(Error);
         if (!(failure instanceof Error)) throw new Error('Missing required metadata must not produce an accepted model');
-        // Gemma4Processor requires processor_config with fatal=true. The registry
-        // plans preprocessor_config only, so this failure follows model sessions.
-        expect(failure.message).toContain('file was not found locally');
-        expect(failure.message).not.toContain('Downloaded model is incomplete');
-        expect(h.sessions.slice(sessionBoundary).sort((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
+        // The concrete Gemma4Processor requires this config. Current planning
+        // rejects its absence before creating any native model session.
+        expect(failure.name).toBe('MissingDownloadedModelArtifact');
+        expect(failure.message).toContain('Downloaded model is incomplete');
+        expect(h.sessions.slice(sessionBoundary)).toEqual([]);
         expect(failure.message).toContain(missingPath);
         expect(h.sessionErrors).toEqual([]);
         expect([...h.fs.files].map(([path, bytes]) => [path, digest({ bytes })])).toEqual(before);

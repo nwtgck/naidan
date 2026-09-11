@@ -87,7 +87,7 @@ describe('Production startup through real Comlink transport', () => {
     }, worker.endpoint);
     worker.publishReady();
     await expect(client.loadDownloadedModel({
-      modelId: 'public/model', revision: 'exact', progressCallback: vi.fn(),
+      modelId: 'public/model', revisionSelection: { kind: 'pinned', revision: 'exact' }, progressCallback: vi.fn(),
     })).rejects.toMatchObject({
       name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed',
       cause: { name: 'RequiredDownloadedResourceCleanupError' },
@@ -128,7 +128,7 @@ describe('Production startup through real Comlink transport', () => {
     vi.stubGlobal('Worker', TransportWorker);
     const client = createTransformersJsWorkerClient();
     clients.push(client);
-    const result = client.loadDownloadedModel({ modelId: 'public/model', progressCallback: vi.fn() });
+    const result = client.loadDownloadedModel({ revisionSelection: { kind: 'pinned', revision: undefined }, modelId: 'public/model', progressCallback: vi.fn() });
     void result.catch(() => undefined);
     const worker = currentWorker();
     expect(worker.sent).toHaveLength(0);

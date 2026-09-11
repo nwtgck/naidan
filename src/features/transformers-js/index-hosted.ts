@@ -3,7 +3,7 @@ import { exactObject } from '@/utils/exact-object';
 import { isOpfsStagingFileName } from './runtime/opfs-staging-file';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
-import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import { resolvePublicHuggingFaceRevision } from '@/features/transformers-js/download-verification/logic/resolve-public-hugging-face-revision';
 import { runProductionDownloadPreparation } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
@@ -445,9 +445,9 @@ export function createTransformersJsService({ createWorkerClient }: {
   }
 
 
-  async function selectDownloadedModelLoadRevision({ modelId }: { modelId: string }): Promise<string | undefined> {
+  function selectDownloadedModelLoadRevision({ modelId }: { modelId: string }): DownloadedModelRevisionSelection {
     const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
-    if (normalizedModelId.startsWith('user/')) return undefined;
+    if (normalizedModelId.startsWith('user/') || normalizedModelId.startsWith('local/')) return { kind: 'pinned', revision: undefined };
 
     if (downloadedModelRevisionHints.has(normalizedModelId)) {
       const hintedRevision = downloadedModelRevisionHints.get(normalizedModelId);
@@ -455,26 +455,15 @@ export function createTransformersJsService({ createWorkerClient }: {
       // cache-only Load. Keeping it indefinitely would pin this session to an old
       // immutable revision even after Hugging Face main advances.
       downloadedModelRevisionHints.delete(normalizedModelId);
-      return hintedRevision;
-    }
-
-    let inventory: Awaited<ReturnType<typeof inspectDownloadVerificationCachedRevisions>>;
-    try {
-      const storageRoot = await navigator.storage.getDirectory();
-      inventory = await inspectDownloadVerificationCachedRevisions({ modelId, storageRoot });
-    } catch (error) {
-      console.warn('[transformersJsService] Could not inspect cached revisions before loading downloaded artifacts; delegating cache resolution to the Production worker.', error);
-      return undefined;
+      return { kind: 'pinned', revision: hintedRevision };
     }
 
     // Loading is deliberately offline-only. The exact repository revision is
     // resolved by Explicit Download; a later Load must select solely from OPFS
     // and remain usable when Hugging Face is unavailable or `main` has advanced.
-    const candidates = planDownloadVerificationCachedRevisionLoadCandidates({
-      inventory,
-      resolvedRevision: undefined,
-    });
-    return candidates[0]?.loaderRevisionOption;
+    // The Worker owns both inventory and actual resource completeness planning.
+    // A coarse host inventory cannot certify a namespace or hide I/O failures.
+    return { kind: 'discover-cached' };
   }
 
   function productionDownloadPreparationError({ run }: {
@@ -876,14 +865,11 @@ export function createTransformersJsService({ createWorkerClient }: {
         const loadStartedAt = performance.now();
         const remote = await getClient();
         ensureOpen();
-        const loadRevision = await selectDownloadedModelLoadRevision({ modelId });
-        ensureOpen();
-        // 1. Check cache FIRST before changing status to avoid UI flicker
-        const cached = await this.listCachedModels();
-        ensureOpen();
-        const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
-        const isLocal = modelId.startsWith('user/');
-        isLoadingFromCache = isLocal || cached.some(m => (m.id === modelId || m.id === hfId) && m.isComplete);
+        const loadRevision = selectDownloadedModelLoadRevision({ modelId });
+        // Every ordinary Load is read-only. Let the Worker's authoritative
+        // inspection fail normally; a best-effort UI listing must not consume
+        // and swallow a native storage failure before that inspection begins.
+        isLoadingFromCache = true;
 
         // 2. Now set loading state
         loadingModelId = modelId;
@@ -943,7 +929,7 @@ export function createTransformersJsService({ createWorkerClient }: {
           },
         });
 
-        const result = await remote.loadDownloadedModel({ modelId, revision: loadRevision, progressCallback: progress_callback });
+        const result = await remote.loadDownloadedModel({ modelId, revisionSelection: loadRevision, progressCallback: progress_callback });
         ensureOpen();
         debugLog({
           event: 'worker loadDownloadedModel complete',

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { completeDownloadVerificationRuntimeEvidence } from './complete-download-verification-runtime-evidence';
 import { reuseDownloadedProductionRevision } from './reuse-downloaded-production-revision';
 import type { DownloadVerificationEvidenceInput } from '@/features/transformers-js/download-verification/evidence/types';
-import type { DownloadVerificationCachedRevisionInventory } from './inspect-cached-revisions';
+import type { DownloadVerificationCachedRevisionInventory } from '@/features/transformers-js/runtime/cached-model-revisions';
 import type { ModelLoadResult } from '@/features/transformers-js/types';
 import type { TransformersJsProgressCallback } from '@/features/transformers-js/types';
 import { withCacheAcceptanceDeadline } from '@/features/transformers-js/model-support-investigation/logic/cache-acceptance-deadline';

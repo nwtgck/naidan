@@ -2,6 +2,7 @@
 import type { RawImage as TransformersRawImage, PreTrainedTokenizer } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import { z } from 'zod';
+import { splitAssistantThinking } from '@/logic/assistant-thinking';
 
 export type Gemma4TemplateContentPart =
   | { type: 'text', text: string }
@@ -12,6 +13,7 @@ export interface Gemma4TemplateMessage {
   content: string | Gemma4TemplateContentPart[],
   tool_calls?: Array<Omit<ToolCall, 'function'> & { function: Omit<ToolCall['function'], 'arguments'> & { arguments: Record<string, unknown> } }>,
   tool_call_id?: ChatMessage['tool_call_id'],
+  reasoning_content?: string,
 }
 
 export interface Gemma4ProcessorLike {
@@ -98,10 +100,30 @@ export async function buildGemma4TemplateInput({
       })) }),
     };
 
+    const assistantText = normalizedRole === 'assistant' && Array.isArray(content) && content.every(part => part.type === 'text')
+      ? content.map(part => part.text).join('')
+      : undefined;
+    if (assistantText !== undefined) {
+      const thinking = splitAssistantThinking({ content: assistantText });
+      // Preserve ordinary array boundaries: the original template trims each
+      // text part independently. A thinking-only array must become empty
+      // content, not a truthy empty text part that changes tool-turn framing.
+      if (thinking.thinking !== undefined) {
+        templateMessages.push({ role: normalizedRole, content: thinking.content, reasoning_content: thinking.thinking, ...toolFields });
+        continue;
+      }
+    }
     if (typeof content === 'string') {
+      // Gemma's original template consumes reasoning_content only in the live
+      // tool turn and strips historical thought elsewhere. Use the existing
+      // inline-think meaning policy; do not add fields to persisted messages.
+      const thinking = normalizedRole === 'assistant'
+        ? splitAssistantThinking({ content })
+        : { content, thinking: undefined };
       templateMessages.push({
         role: normalizedRole,
-        content,
+        content: thinking.content,
+        ...(thinking.thinking === undefined ? {} : { reasoning_content: thinking.thinking }),
         ...toolFields,
       });
       continue;

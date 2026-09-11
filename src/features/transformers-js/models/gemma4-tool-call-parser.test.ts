@@ -10,13 +10,53 @@ const quote = '<|"|>';
 
 function parse({ chunks }: { chunks: string[] }) {
   const text: string[] = [];
-  const parser = new Gemma4ToolCallParser({ onText: ({ text: chunk }) => text.push(chunk) });
+  const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: ({ text: chunk }) => text.push(chunk) });
   for (const output of chunks) parser.feed({ output });
   parser.flush();
   return { text: text.join(''), calls: parser.drainToolCalls() };
 }
 
 describe('Gemma native tool-call protocol controls, not model output evidence', () => {
+  it('maps a recognized thought channel to the existing inline contract at every chunk boundary', () => {
+    const source = `\
+Before<|channel>thought
+ Reason <channel|>After<turn|>`;
+    for (let index = 0; index <= source.length; index++) {
+      expect(parse({ chunks: [source.slice(0, index), source.slice(index)] })).toEqual({
+        text: 'Before<think> Reason </think>After', calls: [],
+      });
+    }
+  });
+
+  it.each(['<|channel>', '<|channel>th', '<|channel>thought'])('does not publish an incomplete channel header as an answer or invented thought: %s', source => {
+    expect(parse({ chunks: [...source] })).toEqual({ text: '', calls: [] });
+  });
+
+  it('closes a bounded public thought interval without claiming the native channel completed', () => {
+    const source = `\
+<|channel>thought
+Partial`;
+    expect(parse({ chunks: [...source] })).toEqual({ text: '<think>Partial</think>', calls: [] });
+    expect(source.endsWith('<channel|>')).toBe(false);
+  });
+
+  it('preserves an explicitly empty recognized thought without manufacturing body text', () => {
+    expect(parse({ chunks: [`\
+<|channel>thought
+<channel|>Answer`] })).toEqual({ text: '<think></think>Answer', calls: [] });
+  });
+
+  it('keeps native thought framing inside the parser at every chunk boundary', () => {
+    const source = `\
+<|channel>thought
+Reason<channel|>Answer<turn|>`;
+    for (let index = 0; index <= source.length; index++) {
+      expect(parse({ chunks: [source.slice(0, index), source.slice(index)] })).toEqual({
+        text: '<think>Reason</think>Answer', calls: [],
+      });
+    }
+  });
+
   it('parses native raw strings and nested values at every single chunk boundary', () => {
     const raw = 'line1\n"quoted" \\n literal <tool_call|> <|tool_call> text';
     const source = `Before ${open}call:9_probe.v1{items:[1,true,false,null,{label:${quote}${raw}${quote}}],empty:{}}${close}<|tool_response>`;
@@ -34,14 +74,73 @@ describe('Gemma native tool-call protocol controls, not model output evidence', 
     expect(parse({ chunks: [...source] })).toEqual({ text: source, calls: [] });
   });
 
+  it('drops known outside special tokens without deleting them from quoted tool arguments', () => {
+    const text: string[] = [];
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: ['<bos>', '<pad>'],
+      onText: ({ text: chunk }) => text.push(chunk),
+    });
+    for (const output of [...'<bos><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|><pad>Answer']) parser.feed({ output });
+    parser.flush();
+    expect(text.join('')).toBe('Answer');
+    const calls = parser.drainToolCalls();
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]!.function.arguments)).toEqual({ value: '<bos><pad>' });
+  });
+
+  it('does not invent a public thought body from the recorded single-token native prefix', () => {
+    expect(parse({ chunks: ['<|channel>'] })).toEqual({ text: '', calls: [] });
+  });
+
+  it('never publishes a native call when tools are disabled', () => {
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'disabled', ignoredSpecialTokens: [], onText: () => undefined });
+    parser.feed({ output: '<|tool_call>call:probe{}<tool_call|>' });
+    parser.flush();
+    expect(parser.drainToolCalls()).toEqual([]);
+  });
+
+  it('keeps unknown channel text visible without labeling it as thought or executing it', () => {
+    const source = `\
+<|channel>analysis
+Unknown <|tool_call>call:probe{}<tool_call|><channel|>Answer`;
+    expect(parse({ chunks: [...source] })).toEqual({ text: `\
+analysis
+Unknown call:probe{}Answer`, calls: [] });
+  });
+
+  it('closes only the public thought interval when native generation aborts', () => {
+    const text: string[] = [];
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: ({ text: chunk }) => text.push(chunk) });
+    parser.feed({ output: `\
+<|channel>thought
+Partial` });
+    expect(text.join('')).toBe('<think>Partial');
+    parser.abort();
+    parser.abort();
+    expect(text.join('')).toBe('<think>Partial</think>');
+    expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
+  });
+
+  it('preserves quoted native and inline-looking markers as data under the existing inline limitation', () => {
+    const body = '<|"|><channel|></think><|channel><|"|> data';
+    expect(parse({ chunks: [...`<|channel>thought\n${body}<channel|>Answer`] })).toEqual({ text: `<think>${body}</think>Answer`, calls: [] });
+  });
+
+  it('retains the order of multiple public thought intervals and visible text', () => {
+    const source = `\
+<|channel>thought
+A<channel|>Between<|channel>thought
+B<channel|>After`;
+    expect(parse({ chunks: [...source] })).toEqual({ text: '<think>A</think>Between<think>B</think>After', calls: [] });
+  });
+
   it('reports an incomplete recognized call instead of converting it into a successful answer', () => {
-    const parser = new Gemma4ToolCallParser({ onText: () => undefined });
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => undefined });
     parser.feed({ output: `${open}call:probe{key:${quote}unfinished` });
     expect(() => parser.flush()).toThrow();
   });
 
   it('does not release an earlier valid call when a later call is invalid', () => {
-    const parser = new Gemma4ToolCallParser({ onText: () => undefined });
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => undefined });
     parser.feed({ output: `${open}call:probe{}${close}${open}call:probe{items:[1,,2]}${close}` });
     expect(() => parser.flush()).toThrow();
     expect(() => parser.drainToolCalls()).toThrow();
@@ -59,15 +158,13 @@ describe('Gemma native tool-call protocol controls, not model output evidence', 
     const source = `<|channel>thought\n${thought}<channel|>Visible ${open}call:allowed{}${close} answer<turn|>`;
     for (let index = 0; index <= source.length; index++) {
       const result = parse({ chunks: [source.slice(0, index), source.slice(index)] });
-      expect(result.text).toBe(`\
-thought
-call:do_not_execute{value:1}Visible  answer`);
+      expect(result.text).toBe('<think><|tool_call>call:do_not_execute{value:1}<tool_call|></think>Visible  answer');
       expect(result.calls.map(call => call.function.name)).toEqual(['allowed']);
     }
   });
 
   it('holds all calls until flush, assigns distinct IDs to repeated names, and drains only once', () => {
-    const parser = new Gemma4ToolCallParser({ onText: () => undefined });
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => undefined });
     parser.feed({ output: `${open}call:probe{value:1}${close}${open}call:probe{value:2}${close}` });
     expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
     parser.flush();
@@ -114,7 +211,7 @@ call:do_not_execute{value:1}Visible  answer`);
     'call:unsafe name{}', 'call:unsafe:name{}', 'call:名前{}', 'call:probe{名前:1}',
     `call:probe{value:${quote}ambiguous ${quote} tail${quote}}`,
   ])('rejects malformed or unsupported syntax without argument repair: %s', body => {
-    const parser = new Gemma4ToolCallParser({ onText: () => undefined });
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => undefined });
     parser.feed({ output: `${open}${body}${close}` });
     expect(() => parser.flush()).toThrow(Gemma4ToolCallProtocolError);
     expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
@@ -128,7 +225,7 @@ call:do_not_execute{value:1}Visible  answer`);
   it('fails every incomplete suffix after recognizing a full call marker', () => {
     const source = `${open}call:probe{value:${quote}raw${quote}}${close}`;
     for (let index = open.length; index < source.length; index++) {
-      const parser = new Gemma4ToolCallParser({ onText: () => undefined });
+      const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => undefined });
       parser.feed({ output: source.slice(0, index) });
       expect(() => parser.flush()).toThrow(Gemma4ToolCallProtocolError);
       expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
@@ -144,7 +241,7 @@ call:do_not_execute{value:1}Visible  answer`);
   it('accepts sixteen calls but releases none when a seventeenth exceeds the generation cap', () => {
     const call = `${open}call:probe{}${close}`;
     expect(parse({ chunks: [call.repeat(16)] }).calls).toHaveLength(16);
-    const parser = new Gemma4ToolCallParser({ onText: () => undefined });
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => undefined });
     parser.feed({ output: call.repeat(17) });
     expect(() => parser.flush()).toThrow(Gemma4ToolCallProtocolError);
     expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
@@ -155,7 +252,7 @@ call:do_not_execute{value:1}Visible  answer`);
     const suffix = `${quote}}${close}`;
     const source = prefix + 'x'.repeat(64 * 1024 - prefix.length - suffix.length) + suffix;
     expect(parse({ chunks: [source] }).calls).toHaveLength(1);
-    const parser = new Gemma4ToolCallParser({ onText: () => undefined });
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => undefined });
     parser.feed({ output: source });
     expect(() => parser.feed({ output: 'x' })).toThrow(Gemma4ToolCallProtocolError);
     expect(() => parser.flush()).toThrow(Gemma4ToolCallProtocolError);
@@ -163,9 +260,40 @@ call:do_not_execute{value:1}Visible  answer`);
     expect(() => parse({ chunks: [source + 'x'] })).toThrow(Gemma4ToolCallProtocolError);
   });
 
+  it('closes an already published thought when a buffered close precedes oversized protocol', () => {
+    const chunks: string[] = [];
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: ({ text }) => chunks.push(text) });
+    parser.feed({ output: `\
+<|channel>thought
+Partial` });
+    expect(() => parser.feed({ output: `<channel|>${open}${'x'.repeat(65537)}` })).toThrow(Gemma4ToolCallProtocolError);
+    expect(chunks.join('')).toBe('<think>Partial</think>');
+    expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
+  });
+
+  it('removes unquoted terminal and padding controls from a bounded thought but preserves quoted data', () => {
+    const chunks: string[] = [];
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'disabled', ignoredSpecialTokens: ['<pad>', '<bos>'], onText: ({ text }) => chunks.push(text) });
+    parser.feed({ output: `\
+<|channel>thought
+Partial<|"|><eos><pad><|"|><eos><turn|><pad><bos>` });
+    parser.flush();
+    expect(chunks.join('')).toBe('<think>Partial<|"|><eos><pad><|"|></think>');
+    expect(parser.drainToolCalls()).toEqual([]);
+  });
+
+  it('does not publish an orphan close for an uncommitted thought before malformed protocol', () => {
+    const chunks: string[] = [];
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: ({ text }) => chunks.push(text) });
+    parser.feed({ output: `${open}call:probe{}${close}<|channel>thought\nUnpublished<channel|>${open}broken` });
+    expect(() => parser.flush()).toThrow(Gemma4ToolCallProtocolError);
+    expect(chunks).toEqual([]);
+    expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
+  });
+
   it('streams long ordinary text without applying the held-protocol cap to the answer', () => {
     const chunks: string[] = [];
-    const parser = new Gemma4ToolCallParser({ onText: ({ text }) => chunks.push(text) });
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: ({ text }) => chunks.push(text) });
     const text = 'ordinary '.repeat(10_000);
     parser.feed({ output: text });
     expect(chunks.join('')).toBe(text);
@@ -175,7 +303,7 @@ call:do_not_execute{value:1}Visible  answer`);
 
   it('preserves callback failure and prevents tools from escaping a failed text delivery', () => {
     const failure = new Error('synthetic delivery failure');
-    const parser = new Gemma4ToolCallParser({ onText: () => {
+    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => {
       throw failure;
     } });
     parser.feed({ output: `${open}call:probe{}${close}after` });

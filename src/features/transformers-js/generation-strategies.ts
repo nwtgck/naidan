@@ -529,10 +529,13 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       },
     });
 
-    const toolParser = tools?.length ? new Gemma4ToolCallParser({ onText: ({ text }) => onChunk({ chunk: text }) }) : undefined;
+    const toolParser = new Gemma4ToolCallParser({
+      onText: ({ text }) => onChunk({ chunk: text }), toolCalls: tools?.length ? 'enabled' : 'disabled',
+      ignoredSpecialTokens: tokenizer.all_special_ids.map(id => tokenizer.decode([id], { skip_special_tokens: false })),
+    });
     const streamer = new TextStreamer(tokenizer, {
       skip_prompt: true,
-      skip_special_tokens: toolParser === undefined,
+      skip_special_tokens: false,
       callback_function: (output: string) => {
         rawChunkIndex += 1;
         rawStreamOutput += output;
@@ -540,29 +543,32 @@ const gemma4GenerationStrategy: GenerationStrategy = {
           index: rawChunkIndex,
           output,
         }));
-        if (toolParser) toolParser.feed({ output });
-        else onChunk({ chunk: output });
+        toolParser.feed({ output });
       },
     });
 
-    const result = await generateWithModel({
-      model,
-      inputs,
-      pastKeyValues: null,
-      params,
-      streamer,
-      stoppingCriteria,
-      observationSink,
-      generationCapture,
-    });
-    if (toolParser) {
+    let result: Awaited<ReturnType<typeof generateWithModel>>;
+    try {
+      result = await generateWithModel({
+        model,
+        inputs,
+        pastKeyValues: null,
+        params,
+        streamer,
+        stoppingCriteria,
+        observationSink,
+        generationCapture,
+      });
       toolParser.flush();
-      const toolCalls = toolParser.drainToolCalls();
-      // Validate the whole batch before publishing any executable call. Native
-      // syntax can express values that its history template cannot preserve.
-      validateGemma4ToolCallsForTemplate({ toolCalls });
-      if (toolCalls.length > 0) onToolCalls({ toolCalls });
+    } catch (error) {
+      toolParser.abort();
+      throw error;
     }
+    const toolCalls = toolParser.drainToolCalls();
+    // Validate the whole batch before publishing any executable call. Native
+    // syntax can express values that its history template cannot preserve.
+    validateGemma4ToolCallsForTemplate({ toolCalls });
+    if (toolCalls.length > 0) onToolCalls({ toolCalls });
     console.log('[transformersJsWorker] gemma4 raw output start');
     console.log(rawStreamOutput);
     console.log('[transformersJsWorker] gemma4 raw output end');
@@ -699,6 +705,7 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
       onOutput: ({ output }) => onChunk({ chunk: output }),
     });
     const toolCallParser = new Qwen3_5ToolCallParser({
+      tools,
       onText: ({ text }) => {
         const sanitized = sanitizeQwen3_5VisibleText({ text });
         if (sanitized.length > 0) {

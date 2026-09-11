@@ -8,8 +8,10 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { Tool } from '@/01-models/tool';
-import type { ChatMessage } from '@/01-models/types';
-import { toToolCallId } from '@/01-models/ids';
+import { formatToolExecutionOutcomeForLm } from '@/01-models/tool';
+import type { ChatMessage, ChatContent } from '@/01-models/types';
+import { toMessageId, toToolCallId } from '@/01-models/ids';
+import { buildChatGenerationMessages } from '@/logic/build-chat-generation-messages';
 import imageJson from './provider-image-input-only.evidence.json';
 import { createProviderReplayTestImagePlatform } from '@/features/transformers-js/replay-models/support/provider-replay-test-image-platform';
 import inputJson from './provider-template-inputs.evidence.json';
@@ -1202,7 +1204,7 @@ Template probe user message.<turn|>
       expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
-  it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
+  it('reasoning: preserves the recorded low-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
@@ -1246,7 +1248,7 @@ Template probe user message.<turn|>
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
       const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
       const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
+      expect(responses).toEqual([[]]);
       expect(earlyChunks).toEqual([]);
       expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
       expect(order).toEqual(["assistant-start", "settled"]);
@@ -1259,7 +1261,7 @@ Template probe user message.<turn|>
       expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
-  it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
+  it('reasoning: preserves the recorded medium-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
@@ -1303,7 +1305,7 @@ Template probe user message.<turn|>
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
       const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
       const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
+      expect(responses).toEqual([[]]);
       expect(earlyChunks).toEqual([]);
       expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
       expect(order).toEqual(["assistant-start", "settled"]);
@@ -1316,7 +1318,7 @@ Template probe user message.<turn|>
       expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
-  it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
+  it('reasoning: preserves the recorded high-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
@@ -1360,7 +1362,7 @@ Template probe user message.<turn|>
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
       const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
       const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
+      expect(responses).toEqual([[]]);
       expect(earlyChunks).toEqual([]);
       expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
       expect(order).toEqual(["assistant-start", "settled"]);
@@ -1371,6 +1373,118 @@ Template probe user message.<turn|>
     } finally {
       await replay.close();
       expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+    }
+  }, 30_000);
+});
+
+describe('Gemma source-derived thinking controls, not recorded inference', () => {
+  it('closes the inline display interval before native failure settles without publishing tools', async () => {
+    const inputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
+    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
+      inputs.push(captureGemmaNativeInput(context));
+      emitSyntheticGemmaProtocol({ context, text: `\
+<|channel>thought
+Partial` });
+      throw new Error('Synthetic native failure after partial thought');
+    } });
+    let capture: ProviderChatCapture | undefined;
+    try {
+      capture = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [{ role: 'user', content: 'Synthetic failed thought control.' }],
+        tools: [],
+      } });
+      await expect(capture.completion).rejects.toThrow('Synthetic native failure after partial thought');
+      const observed = capture.snapshot();
+      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(['<think>Partial</think>']);
+      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['assistant-start', 'settled']);
+      expect(observed.toolCalls).toEqual([]);
+      expect(observed.toolResults).toEqual([]);
+      expect(observed.preStartChunks).toEqual([]);
+      expect(inputs).toHaveLength(1);
+      expect(inputs[0]!.pastIsNull).toBe(true);
+      expect(harness.observations.inferenceCalls).toHaveLength(1);
+    } finally {
+      await harness.close();
+      expect(capture?.snapshot().lateEvents).toEqual([]);
+    }
+  }, 30_000);
+
+  it.each(['enabled', 'disabled'] as const)('maps native thought to inline thinking and the original next input with tools %s', async toolMode => {
+    const nativeInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
+    const expectedNextInputs: number[][] = [];
+    const executions: unknown[] = [];
+    const captures: ProviderChatCapture[] = [];
+    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
+      nativeInputs.push(captureGemmaNativeInput(context));
+      if (nativeInputs.length !== 1) {
+        const declaration = toolMode === 'disabled' ? '' : '<|tool>declaration:probe{description:<|"|>Must not execute.<|"|>,parameters:{type:<|"|>OBJECT<|"|>}}<tool|>';
+        // The original template excludes thinking from this historical turn.
+        // The adapter receives the actually delivered inline public content.
+        expectedNextInputs.push(context.tokenizer.encode(`\
+<bos><|turn>system
+<|think|>
+${declaration}<turn|>
+<|turn>user
+Synthetic thinking control.<turn|>
+<|turn>model
+Answer<turn|>
+<|turn>user
+Continue.<turn|>
+<|turn>model
+`, { add_special_tokens: false }));
+        throw new Error('Synthetic next-input boundary; no continuation output');
+      }
+      return emitSyntheticGemmaProtocol({ context, text: `\
+<|channel>thought
+Reason<channel|>Answer<turn|>` });
+    } });
+    try {
+      const tools: Tool[] = toolMode === 'disabled' ? [] : [{ name: 'probe', description: 'Must not execute.', parametersSchema: z.object({}),
+        execute: async ({ args }) => {
+          executions.push(structuredClone(args)); return { status: 'success', content: 'Must not execute.' };
+        } }];
+      const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+        frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'high' as const } };
+      const capture = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [{ role: 'user', content: 'Synthetic thinking control.' }],
+        tools, parameters,
+      } });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.responses.map(response => response.join(''))).toEqual(['<think>Reason</think>Answer']);
+      expect(observed.toolCalls).toEqual([]);
+      expect(observed.toolResults).toEqual([]);
+      expect(executions).toEqual([]);
+      expect(observed.preStartChunks).toEqual([]);
+      const nextCapture = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [
+          { role: 'user', content: 'Synthetic thinking control.' },
+          { role: 'assistant', content: observed.responses[0]!.join('') },
+          { role: 'user', content: 'Continue.' },
+        ],
+        tools, parameters,
+      } });
+      captures.push(nextCapture);
+      await expect(nextCapture.completion).rejects.toThrow('Synthetic next-input boundary; no continuation output');
+      expect(nextCapture.snapshot().responses).toEqual([[]]);
+      expect(nextCapture.snapshot().toolCalls).toEqual([]);
+      expect(nativeInputs).toHaveLength(2);
+      expect(expectedNextInputs).toHaveLength(1);
+      const input = nativeInputs[1]!.tensors.input_ids;
+      if (!input.isTensor) throw new Error('Expected detached real next-input tensor');
+      expect(Array.from(input.data, Number)).toEqual(expectedNextInputs[0]);
+      expect(nativeInputs.map(input => input.pastIsNull), 'Gemma is stateless; this is input fidelity, not owned KV reuse').toEqual([true, true]);
+      expect(captures.flatMap(item => item.snapshot().lateEvents)).toEqual([]);
+      expect(harness.observations.inferenceCalls).toHaveLength(2);
+    } finally {
+      await harness.close();
+      expect(captures.flatMap(item => item.snapshot().lateEvents)).toEqual([]);
+      expect(executions).toEqual([]);
     }
   }, 30_000);
 });
@@ -2102,6 +2216,163 @@ describe('Gemma4 E2B Provider / tools', () => {
   }, 30_000);
 });
 
+describe('Gemma source-derived tool/history controls, not recorded inference', () => {
+  it('maps the delivered inline tool thought to the original canonical result-continuation input', async () => {
+    const inputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
+    const expectedInputs: number[][] = [];
+    const executions: unknown[] = [];
+    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
+      inputs.push(captureGemmaNativeInput(context));
+      if (inputs.length !== 1) {
+        expectedInputs.push(context.tokenizer.encode(`\
+<bos><|turn>system
+<|tool>declaration:probe{description:<|"|>Synthetic tool thought control.<|"|>,parameters:{properties:{value:{type:<|"|>STRING<|"|>}},required:[<|"|>value<|"|>],type:<|"|>OBJECT<|"|>}}<tool|><turn|>
+<|turn>user
+Use the synthetic tool.<turn|>
+<|turn>model
+<|channel>thought
+Reason
+<channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>response:probe{value:<|"|>Synthetic result.<|"|>}<tool_response|>`, { add_special_tokens: false }));
+        throw new Error('Canonical tool-thought input observed; no continuation output');
+      }
+      return emitSyntheticGemmaProtocol({ context, text: `\
+<|channel>thought
+ Reason${' '}
+<channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|>` });
+    } });
+    let capture: ProviderChatCapture | undefined;
+    try {
+      capture = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [{ role: 'user', content: 'Use the synthetic tool.' }],
+        tools: [{ name: 'probe', description: 'Synthetic tool thought control.', parametersSchema: z.object({ value: z.string() }),
+          execute: async ({ args }) => {
+            executions.push(structuredClone(args));
+            return { status: 'success', content: 'Synthetic result.' };
+          } }],
+      } });
+      await expect(capture.completion).rejects.toThrow('Canonical tool-thought input observed; no continuation output');
+      const observed = capture.snapshot();
+      expect(observed.responses.map(chunks => chunks.join(''))).toEqual([`\
+<think> Reason${' '}
+</think>`, '']);
+      expect(observed.toolCalls).toHaveLength(1);
+      expect(observed.toolCalls[0]).toMatchObject({ toolName: 'probe', modelVisibleArguments: '{"value":"Tokyo"}' });
+      expect(observed.toolResults).toEqual([{ id: observed.toolCalls[0]!.id, result: { status: 'success', content: 'Synthetic result.' } }]);
+      expect(executions).toEqual([{ value: 'Tokyo' }]);
+      expect(inputs).toHaveLength(2);
+      expect(expectedInputs).toHaveLength(1);
+      const input = inputs[1]!.tensors.input_ids;
+      if (!input.isTensor) throw new Error('Expected detached canonical continuation Tensor');
+      expect(Array.from(input.data, Number)).toEqual(expectedInputs[0]);
+      expect(inputs.map(item => item.pastIsNull)).toEqual([true, true]);
+      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['assistant-start', 'tool-call', 'tool-result', 'assistant-start', 'settled']);
+      expect(observed.preStartChunks).toEqual([]);
+      expect(harness.observations.inferenceCalls).toHaveLength(2);
+    } finally {
+      await harness.close();
+      expect(capture?.snapshot().lateEvents).toEqual([]);
+      expect(executions).toEqual([{ value: 'Tokyo' }]);
+    }
+  }, 30_000);
+
+  it('preserves quoted tool data and rebuilds the delivered inline thought through shared history', async () => {
+    const executions: unknown[] = [];
+    const nativeInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
+    let nativeCalls = 0;
+    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
+      nativeCalls++;
+      nativeInputs.push(captureGemmaNativeInput(context));
+      if (nativeCalls === 3) throw new Error('Rebuilt tool-history input observed; no synthetic continuation output');
+      if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
+      return emitSyntheticGemmaProtocol({ context, text: nativeCalls === 1
+        ? `\
+<bos><|channel>thought
+Use the quoted value.
+<channel|><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|>`
+        : 'Synthetic completion.<turn|>' });
+    } });
+    let capture: ProviderChatCapture | undefined;
+    let rebuiltCapture: ProviderChatCapture | undefined;
+    try {
+      const tools: Tool[] = [{ name: 'probe', description: 'Preserve native quoted strings.', parametersSchema: z.object({ value: z.string() }),
+        execute: async ({ args }) => {
+          executions.push(structuredClone(args)); return { status: 'success', content: 'Synthetic result.' };
+        } }];
+      capture = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX', messages: [{ role: 'user', content: 'Synthetic native quote control.' }],
+        tools,
+      } });
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(executions).toEqual([{ value: '<bos><pad>' }]);
+      expect(observed.toolCalls).toHaveLength(1);
+      expect(observed.toolResults).toHaveLength(1);
+      expect(observed.responses.map(response => response.join(''))).toEqual([`\
+<think>Use the quoted value.
+</think>`, 'Synthetic completion.']);
+      expect(nativeCalls).toBe(2);
+      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.lateEvents).toEqual([]);
+      const call = observed.toolCalls[0]!;
+      expect(observed.toolResults).toEqual([{ id: call.id, result: { status: 'success', content: 'Synthetic result.' } }]);
+      const result = observed.toolResults[0]!.result;
+      if (result.status !== 'success') throw new Error('Expected the actual successful synthetic tool result');
+      const resultId = toMessageId({ raw: 'synthetic-result' });
+      const chat: ChatContent = {
+        currentLeafId: resultId,
+        root: { items: [{
+          id: toMessageId({ raw: 'synthetic-user' }), role: 'user', content: 'Synthetic native quote control.', timestamp: 1,
+          replies: { items: [{
+            id: toMessageId({ raw: 'synthetic-assistant' }), role: 'assistant', content: observed.responses[0]!.join(''), timestamp: 2,
+            toolCalls: [{ id: call.id, type: 'function', function: { name: call.toolName, arguments: call.modelVisibleArguments } }],
+            replies: { items: [{
+              id: resultId, role: 'tool', content: undefined, attachments: undefined, thinking: undefined,
+              error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined, timestamp: 3,
+              results: [{ toolCallId: call.id, status: 'success', content: { type: 'text', text: result.content } }],
+              replies: { items: [] },
+            }] },
+          }] },
+        }] },
+      };
+      const messages = await buildChatGenerationMessages({
+        chat, excludedMessageId: undefined, systemPromptMessages: [],
+        resolveUserContent: async ({ message }) => message.content,
+        resolveToolResultText: async ({ result }) => {
+          if (result.status !== 'success') throw new Error('This connected history control has a successful tool result');
+          if (result.content.type !== 'text') throw new Error('This connected history control has no binary result');
+          return formatToolExecutionOutcomeForLm({ outcome: { status: 'success', content: result.content.text } });
+        },
+      });
+      expect(messages).toEqual([
+        { role: 'user', content: 'Synthetic native quote control.', tool_calls: undefined },
+        { role: 'assistant', content: `\
+<think>Use the quoted value.
+</think>`, tool_calls: [{ id: call.id, type: 'function', function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } }] },
+        { role: 'tool', tool_call_id: call.id, content: 'Synthetic result.' },
+      ]);
+      rebuiltCapture = captureProviderChat({ provider: harness.provider, request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX', messages, tools,
+      } });
+      await expect(rebuiltCapture.completion).rejects.toThrow('Rebuilt tool-history input observed; no synthetic continuation output');
+      expect(nativeInputs).toHaveLength(3);
+      const live = nativeInputs[1]!.tensors.input_ids;
+      const rebuilt = nativeInputs[2]!.tensors.input_ids;
+      if (!live.isTensor || !rebuilt.isTensor) throw new Error('Expected detached native history inputs');
+      expect(rebuilt.data, 'shared history reconstruction must preserve the actual live tool-continuation tokenizer input').toEqual(live.data);
+      expect(nativeInputs.map(input => input.pastIsNull)).toEqual([true, true, true]);
+      expect(executions).toEqual([{ value: '<bos><pad>' }]);
+      expect(rebuiltCapture.snapshot().responses).toEqual([[]]);
+      expect(rebuiltCapture.snapshot().toolCalls).toEqual([]);
+    } finally {
+      await harness.close();
+      expect(capture?.snapshot().lateEvents).toEqual([]);
+      expect(rebuiltCapture?.snapshot().lateEvents).toEqual([]);
+    }
+  }, 30_000);
+});
+
 describe('Gemma4 E2B Provider / images', () => {
   it('matches the captured token/shape facts and independently derived black pixels through actual RawImage and processor', async () => {
     const captures: ProviderChatCapture[] = [];
@@ -2603,8 +2874,31 @@ describe('Gemma4 E2B Provider / sequences', () => {
     expect(fullEvidenceJson.metadataRevision).toBe('9f4bef82ea6e296bc69f8a2f5939f73af81b07a6');
     expect(fullEvidenceJson.observedCacheRevision).toBe('9f4bef82ea6e296bc69f8a2f5939f73af81b07a6');
     const platform = createProviderReplayTestImagePlatform();
-    await verifyCapturedFullReplay({ unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson,
-      reviewedPublicContract: undefined,
+    await verifyCapturedFullReplay({ unavailableOutputs: [], completeResult: undefined,
+      // Current local planning now requires the processor's actual configuration.
+      // Keep the historical receipt and all its other fields unchanged.
+      expectedLoadReceipt: { ...fullEvidenceJson.loadReceipt, plannedRequiredPaths: [
+        'config.json', 'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
+        'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
+        'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
+        'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
+        'preprocessor_config.json', 'processor_config.json', 'tokenizer.json', 'tokenizer_config.json',
+      ] }, evidence: fullEvidenceJson,
+      reviewedPublicContract: {
+        correctedFinalizedStreams: [
+          { callOrdinal: 7, scenario: 'reasoning-low', reason: 'Decode the unchanged channel token instead of discarding it as special text.',
+            expectedFinalized: [{ text: '<|channel>', streamEnd: false }, { text: '', streamEnd: true }] },
+          { callOrdinal: 8, scenario: 'reasoning-medium', reason: 'Decode the unchanged channel token instead of discarding it as special text.',
+            expectedFinalized: [{ text: '<|channel>', streamEnd: false }, { text: '', streamEnd: true }] },
+          { callOrdinal: 9, scenario: 'reasoning-high', reason: 'Decode the unchanged channel token instead of discarding it as special text.',
+            expectedFinalized: [{ text: '<|channel>', streamEnd: false }, { text: '', streamEnd: true }] },
+        ],
+        // A lone native channel token contains no confirmed thought header or
+        // body. The parser now buffers it; the original public no-chunk trace
+        // remains correct without changing raw native/finalized evidence.
+        correctedEvents: [],
+        invalidatedOutputs: [],
+      },
       imagePlatform: { platform, allowedDataUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='] },
       artifactPaths: ['onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data', 'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data', 'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data', 'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data'],
     });

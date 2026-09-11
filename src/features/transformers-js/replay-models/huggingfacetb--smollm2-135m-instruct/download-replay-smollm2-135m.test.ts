@@ -301,6 +301,36 @@ describe('SmolLM2 135M Download replay', () => {
   });
 
   describe('completed artifact reuse', () => {
+    it('explicit Download restores missing config beside committed weights without transferring weights again', async () => {
+      const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
+      const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
+      const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
+      try {
+        await expect(h.serviceDownload()).resolves.toMatchObject({ status: 'idle', error: undefined });
+        expect(h.sessions).toEqual(expectedSessions);
+        const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
+        const configPath = `${base}config.json`;
+        const originalConfig = h.fs.files.get(configPath)!.slice();
+        expect(h.fs.files.delete(configPath)).toBe(true);
+        expect(h.fs.files.has(`${base}.config.json.complete`)).toBe(true);
+        expect(h.fs.files.has(`${base}onnx/.model_q4f16.onnx.complete`)).toBe(true);
+        const requestBoundary = h.requests.length;
+
+        await expect(h.serviceDownload()).resolves.toMatchObject({ status: 'idle', error: undefined });
+        expect(h.revisionAcceptanceCalls).toEqual([{ modelId, revision }]);
+        expect(h.fs.files.get(configPath)).toEqual(originalConfig);
+        expect(h.requests.slice(requestBoundary).some(request => request.path === 'config.json')).toBe(true);
+        expect(h.requests.slice(requestBoundary).filter(request => request.path.startsWith('onnx/'))).toEqual([]);
+        expect(h.sessions).toEqual([...expectedSessions, ...expectedSessions]);
+        expect(h.sessionErrors).toEqual([]);
+        expect(h.unknown).toEqual([]);
+        expect(h.offlineRequests).toEqual([]);
+        expect(h.offlineNonRuntimeFetchCalls).toEqual([]);
+      } finally {
+        await h.close();
+      }
+    });
+
     it('warm Download reuses completed model bytes without a second model transfer', async () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
@@ -360,7 +390,7 @@ describe('SmolLM2 135M Download replay', () => {
 
         // The newly imported service has never downloaded and owns no revision hint.
         await expect(h.coldServiceLoad()).resolves.toMatchObject({ status: 'ready', activeModelId: modelId, device: 'webgpu', error: undefined });
-        expect(h.serviceLoadCalls).toEqual([{ modelId, revision }]);
+        expect(h.serviceLoadCalls).toEqual([{ modelId, revisionSelection: { kind: 'discover-cached' } }]);
         expect(h.sessions).toEqual([...expectedSessions, ...expectedSessions, ...expectedSessions]);
         expect(h.serviceApiRequests).toHaveLength(2);
         expect(h.downloadCapabilityCalls).toEqual(downloadCallsBefore);
@@ -380,7 +410,7 @@ describe('SmolLM2 135M Download replay', () => {
           { service: 3, event: 'created' },
         ]);
         expect(h.sessions).toEqual([...expectedSessions, ...expectedSessions, ...expectedSessions, ...expectedSessions]);
-        expect(h.serviceLoadCalls).toEqual([{ modelId, revision }, { modelId, revision }]);
+        expect(h.serviceLoadCalls).toEqual([{ modelId, revisionSelection: { kind: 'discover-cached' } }, { modelId, revisionSelection: { kind: 'discover-cached' } }]);
         expect(h.serviceApiRequests).toHaveLength(2);
         expect(h.requests.slice(requestBoundary)).toEqual([]);
         expect(h.downloadCapabilityCalls).toEqual(downloadCallsBefore);

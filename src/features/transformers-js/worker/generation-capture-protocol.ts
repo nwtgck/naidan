@@ -26,7 +26,12 @@ export interface GenerationCaptureClientLifetime {
   workerEpoch: number;
   session: 'active' | 'inactive';
   issuedCalls: GenerationCaptureRequest['context'][];
-  loadRequests: Array<{ requestedModelId: string; requestedRevision: string | undefined }>;
+  loadRequests: Array<{
+    requestedModelId: string;
+    requestedRevision: string | undefined;
+    /** Older recordings omit selection and retain their pinned-revision meaning. */
+    revisionSelection?: import('@/features/transformers-js/runtime/downloaded-model-revision-selection').DownloadedModelRevisionSelection;
+  }>;
   incompleteReasons: Array<'request-unavailable' | 'request-invalid' | 'call-limit' | 'load-limit' | 'load-identity-limit'>;
 }
 

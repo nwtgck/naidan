@@ -223,7 +223,7 @@ describe('GPT-OSS 20B Download replay', () => {
 
         const loadBoundary = h.sessions.length;
         await expect(h.coldServiceLoad()).resolves.toMatchObject({ status: 'ready', activeModelId: modelId, device: 'webgpu', error: undefined });
-        expect(h.serviceLoadCalls).toEqual([{ modelId, revision }]);
+        expect(h.serviceLoadCalls).toEqual([{ modelId, revisionSelection: { kind: 'discover-cached' } }]);
         expect(h.sessions.slice(loadBoundary).sort((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
         expect(h.revisionAcceptanceCalls).toEqual([{ modelId, revision }]);
         expect(h.serviceApiRequests).toHaveLength(2);

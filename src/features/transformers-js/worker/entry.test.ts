@@ -69,6 +69,13 @@ const mockInterruptFn = vi.hoisted(() => vi.fn());
 const mockResetFn = vi.hoisted(() => vi.fn());
 const mockPlanDownloadedModelCandidates = vi.hoisted(() => vi.fn());
 
+// These orchestration tests supply AutoConfig and candidate plans independently
+// of OPFS. Actual required-config admission is covered by unmocked Load/Download
+// integration tests, alongside its own cache-error boundary controls.
+vi.mock('@/features/transformers-js/runtime/required-downloaded-config', () => ({
+  requireDownloadedModelConfig: vi.fn(async () => undefined),
+}));
+
 vi.mock('@/features/transformers-js/runtime/plan-downloaded-model-candidates', async importOriginal => ({
   ...await importOriginal<typeof import('@/features/transformers-js/runtime/plan-downloaded-model-candidates')>(),
   planDownloadedModelCandidates: mockPlanDownloadedModelCandidates,
@@ -434,7 +441,7 @@ describe('transformers-js.worker', () => {
 
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    const result = await workerObj.loadDownloadedModel('org/repo', undefined, () => { });
+    const result = await workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, () => { });
 
     expect(result.device).toBe('wasm');
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
@@ -462,7 +469,7 @@ describe('transformers-js.worker', () => {
       });
 
     try {
-      const failure = await workerObj.loadDownloadedModel('org/repo', revision, vi.fn())
+      const failure = await workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())
         .then(() => undefined, (error: unknown) => error);
       expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
       expect(failure).toBeInstanceOf(Error);
@@ -499,7 +506,7 @@ describe('transformers-js.worker', () => {
     const error = new Error('generation_config.json: SyntaxError: Unexpected end of JSON input', { cause });
     error.name = 'TransformersJsOptionalConfigurationError';
     vi.mocked(AutoModelForCausalLM.from_pretrained).mockRejectedValue(error);
-    await expect(workerObj.loadDownloadedModel('org/repo', undefined, vi.fn())).rejects.toBe(error);
+    await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toBe(error);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledOnce();
     expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
     expect(originalFetchMock).not.toHaveBeenCalled();
@@ -576,7 +583,7 @@ describe('transformers-js.worker', () => {
       return apparentModel;
     });
     try {
-      await expect(workerObj.loadDownloadedModel('org/repo', revision, vi.fn())).rejects.toMatchObject({
+      await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())).rejects.toMatchObject({
         name: 'RequiredDownloadedModelResourceError', failure: 'missing', url: requiredUrl,
       });
       expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
@@ -620,7 +627,7 @@ describe('transformers-js.worker', () => {
     });
     vi.mocked(AutoTokenizer.from_pretrained).mockResolvedValue({} as Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>);
     try {
-      await expect(workerObj.loadDownloadedModel('org/repo', revision, vi.fn())).rejects.toMatchObject({
+      await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())).rejects.toMatchObject({
         name: 'RequiredDownloadedModelResourceError', failure: 'io', cause: cancellationError,
       });
       expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
@@ -852,7 +859,7 @@ describe('transformers-js.worker', () => {
       .mockResolvedValueOnce({ dispose: vi.fn(), config: { model_type: 'example' } });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    await workerObj.loadDownloadedModel('org/repo', undefined, vi.fn());
+    await workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn());
 
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(1, 'org/repo', expect.objectContaining({
       device: 'webgpu',
@@ -892,7 +899,7 @@ describe('transformers-js.worker', () => {
     });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    await workerObj.loadDownloadedModel('org/repo', undefined, vi.fn());
+    await workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn());
 
     expect(allowLocalModelsDuringLoad).toBe(true);
     expect(allowRemoteModelsDuringLoad).toBe(false);
@@ -919,7 +926,7 @@ describe('transformers-js.worker', () => {
 
     (AutoModelForCausalLM.from_pretrained as any).mockRejectedValue(new Error('missing downloaded artifact'));
 
-    await expect(workerObj.loadDownloadedModel('org/repo', undefined, vi.fn()))
+    await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn()))
       .rejects.toThrow('missing downloaded artifact');
 
     expect(env.allowLocalModels).toBe(true);
@@ -1811,7 +1818,7 @@ describe('transformers-js.worker', () => {
       },
     });
 
-    await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', undefined, vi.fn());
+    await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', { kind: 'pinned', revision: undefined }, vi.fn());
 
     expect(AutoModelForImageTextToText.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
     expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
@@ -1826,7 +1833,7 @@ describe('transformers-js.worker', () => {
 
     (AutoModelForImageTextToText.supports as any).mockReturnValueOnce(false);
 
-    await expect(workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', undefined, vi.fn()))
+    await expect(workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', { kind: 'pinned', revision: undefined }, vi.fn()))
       .rejects
       .toThrow('does not support gemma4');
 
@@ -2929,7 +2936,7 @@ describe('transformers-js.worker', () => {
       await initializeWorkerEntry();
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadDownloadedModel('standard-model', undefined, vi.fn());
+      await workerObj.loadDownloadedModel('standard-model', { kind: 'pinned', revision: undefined }, vi.fn());
     });
 
     it('awaits actual Comlink chunk delivery before generation settles', async () => {
@@ -3121,7 +3128,7 @@ describe('transformers-js.worker', () => {
       vi.mocked(tfMock.AutoModelForCausalLM.from_pretrained)
         .mockRejectedValueOnce(new Error('Synthetic incompatible webgpu q4f16 candidate'))
         .mockRejectedValueOnce(new Error('Synthetic incompatible webgpu q4 candidate'));
-      await expect(worker.loadDownloadedModel('standard-model', 'synthetic-revision', vi.fn())).resolves.toEqual({ device: 'wasm', dtype: 'q4' });
+      await expect(worker.loadDownloadedModel('standard-model', { kind: 'pinned', revision: 'synthetic-revision' }, vi.fn())).resolves.toEqual({ device: 'wasm', dtype: 'q4' });
       await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
       if (result.status !== 'captured') throw new Error('Expected capture');
@@ -3136,7 +3143,7 @@ describe('transformers-js.worker', () => {
       const tfMock = await import('@huggingface/transformers');
       const failure = new Error('Synthetic tokenizer preparation failure');
       vi.mocked(tfMock.AutoTokenizer.from_pretrained).mockRejectedValueOnce(failure);
-      await expect(worker.loadDownloadedModel('standard-model', undefined, vi.fn())).rejects.toMatchObject({ name: 'DownloadedModelPreparationError', cause: failure });
+      await expect(worker.loadDownloadedModel('standard-model', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toMatchObject({ name: 'DownloadedModelPreparationError', cause: failure });
       expect(await worker.takeGenerationCapture(captureRun)).toEqual({ status: 'not-started' });
       await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest)).rejects.toThrow('Model not loaded');
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
@@ -3187,10 +3194,10 @@ describe('transformers-js.worker', () => {
         started.resolve();
         return heldConfig.promise;
       });
-      const first = worker.loadDownloadedModel('standard-model', 'first', vi.fn());
+      const first = worker.loadDownloadedModel('standard-model', { kind: 'pinned', revision: 'first' }, vi.fn());
       await started.promise;
       try {
-        await expect(worker.loadDownloadedModel('standard-model', 'second', vi.fn())).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
+        await expect(worker.loadDownloadedModel('standard-model', { kind: 'pinned', revision: 'second' }, vi.fn())).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
       } finally {
         heldConfig.resolve(config);
         await first;
@@ -3656,7 +3663,7 @@ Use shell tools.<|im_end|>
       await initializeWorkerEntry();
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadDownloadedModel('onnx-community/Qwen3.5-2B-ONNX', undefined, vi.fn());
+      await workerObj.loadDownloadedModel('onnx-community/Qwen3.5-2B-ONNX', { kind: 'pinned', revision: undefined }, vi.fn());
     });
 
     it('does not let a late rejected callback from an older request interrupt or clear the next request', async () => {
@@ -3790,7 +3797,7 @@ Use shell tools.<|im_end|>
     it.each(['2B', '4B'] as const)('preserves the %s native thinking default when effort is omitted', async modelSize => {
       nativeTemplate = nativeTemplates[modelSize];
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
-      await worker.loadDownloadedModel(`onnx-community/Qwen3.5-${modelSize}-ONNX`, undefined, vi.fn());
+      await worker.loadDownloadedModel(`onnx-community/Qwen3.5-${modelSize}-ONNX`, { kind: 'pinned', revision: undefined }, vi.fn());
       const messages = [{ role: 'user', content: 'Synthetic default probe.' }];
       await worker.generateText(messages, vi.fn(), vi.fn(), undefined, undefined);
       expect(mockApplyTemplate).toHaveBeenCalledExactlyOnceWith(messages, {
@@ -4407,6 +4414,7 @@ file-a
         }),
         {
           tokenizer: {
+            all_special_ids: [],
             apply_chat_template: vi.fn(),
             decode: vi.fn(() => 'synthetic image output'),
           },
@@ -4420,7 +4428,7 @@ file-a
       await initializeWorkerEntry();
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', undefined, vi.fn());
+      await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', { kind: 'pinned', revision: undefined }, vi.fn());
     });
 
     it('uses the processor chat template and forwards multimodal inputs to model.generate', async () => {
@@ -4601,7 +4609,7 @@ file-a
       await initializeWorkerEntry();
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadDownloadedModel('my-gpt-oss-model', undefined, vi.fn());
+      await workerObj.loadDownloadedModel('my-gpt-oss-model', { kind: 'pinned', revision: undefined }, vi.fn());
     });
 
     const GPT_OSS_TOOL_CALL_TOKENS = [

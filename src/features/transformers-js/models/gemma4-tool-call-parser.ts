@@ -129,15 +129,24 @@ class ArgumentReader {
  */
 export class Gemma4ToolCallParser {
   private readonly onText: ({ text }: { text: string }) => void;
+  private readonly toolCalls: 'enabled' | 'disabled';
+  private readonly controls: readonly string[];
   private pending = '';
   private protocol: string | undefined;
-  private channel: 'ordinary' | 'channel' = 'ordinary';
+  private channel: 'ordinary' | 'header' | 'thought' | 'other' = 'ordinary';
+  private channelHeader = '';
+  private publicThought: 'open' | 'closed' = 'closed';
   private quoteState: 'outside' | 'inside' = 'outside';
   private state: 'feeding' | 'flushed' | 'failed' = 'feeding';
   private calls: ToolCall[] = [];
 
-  constructor({ onText }: { onText: ({ text }: { text: string }) => void }) {
+  constructor({ onText, toolCalls, ignoredSpecialTokens }: {
+    onText: ({ text }: { text: string }) => void; toolCalls: 'enabled' | 'disabled'; ignoredSpecialTokens: readonly string[];
+  }) {
     this.onText = onText;
+    this.toolCalls = toolCalls;
+    if (ignoredSpecialTokens.some(token => typeof token !== 'string' || token.length === 0)) throw new Gemma4ToolCallProtocolError();
+    this.controls = [...new Set([...CONTROLS, ...ignoredSpecialTokens])];
   }
 
   feed({ output }: { output: string }): void {
@@ -177,6 +186,7 @@ export class Gemma4ToolCallParser {
     try {
       this.streamOrdinary({ final: true });
       if (this.protocol !== undefined) this.parseProtocol();
+      this.closePublicThought();
       this.state = 'flushed';
       this.protocol = undefined;
     } catch (error) {
@@ -200,11 +210,62 @@ export class Gemma4ToolCallParser {
     return calls;
   }
 
+  /** End only the public display interval on native failure, never publish calls. */
+  abort(): void {
+    this.fail();
+  }
+
+  private closePublicThought(): void {
+    const wasPublished = this.publicThought === 'open';
+    this.channel = 'ordinary';
+    this.channelHeader = '';
+    this.publicThought = 'closed';
+    if (wasPublished) this.onText({ text: '</think>' });
+  }
+
+  private publishText({ text }: { text: string }): void {
+    if (!text) return;
+    // Parsing may advance past an opening or closing delimiter before a later
+    // error. Only committed text changes the public interval's state.
+    switch (this.channel) {
+    case 'thought': this.publicThought = 'open'; break;
+    case 'ordinary': case 'header': case 'other': this.publicThought = 'closed'; break;
+    default: { const exhaustive: never = this.channel; throw new Error(`Unhandled channel state: ${exhaustive}`); }
+    }
+    this.onText({ text });
+  }
+
   private fail(): void {
     this.state = 'failed';
     this.pending = '';
     this.protocol = undefined;
     this.calls = [];
+    // A failed output callback must not replace the original protocol/native
+    // error. This terminates a public interval, not a native completion claim.
+    try {
+      this.closePublicThought();
+    } catch { /* Preserve the original failure. */ }
+  }
+
+  private renderCharacter({ character }: { character: string }): string {
+    switch (this.channel) {
+    case 'ordinary': case 'thought': case 'other': return character;
+    case 'header': break;
+    default: { const exhaustive: never = this.channel; throw new Error(`Unhandled channel state: ${exhaustive}`); }
+    }
+    this.channelHeader += character;
+    if (this.channelHeader === 'thought\n') {
+      this.channelHeader = '';
+      this.channel = 'thought';
+      return '<think>';
+    }
+    if ('thought\n'.startsWith(this.channelHeader)) return '';
+    // Unknown channel labels remain ordinary text, not invented reasoning or
+    // executable syntax. Native framing itself stays inside this adapter.
+    this.channel = 'other';
+    const header = this.channelHeader;
+    this.channelHeader = '';
+    return header;
   }
 
   private renderControl({ control }: { control: string }): string {
@@ -219,9 +280,26 @@ export class Gemma4ToolCallParser {
         this.quoteState = 'inside';
         return control;
       }
-      if (control === CHANNEL_OPEN) this.channel = 'channel';
-      if (control === CHANNEL_CLOSE) this.channel = 'ordinary';
-      return '';
+      if (control === CHANNEL_OPEN) {
+        const ending = this.renderThoughtEnding();
+        this.channel = 'header';
+        this.channelHeader = '';
+        return ending;
+      }
+      if (control === CHANNEL_CLOSE) {
+        const ending = this.renderThoughtEnding();
+        this.channel = 'ordinary';
+        this.channelHeader = '';
+        return ending;
+      }
+      switch (this.channel) {
+      // Call-shaped strings inside a thought are data, not executable calls.
+      case 'thought': return [OPEN, CLOSE, '<|tool_response>', '<tool_response|>'].includes(control) ? control : '';
+      case 'header': return '';
+      case 'other': return '';
+      case 'ordinary': return '';
+      default: { const exhaustive: never = this.channel; throw new Error(`Unhandled channel state: ${exhaustive}`); }
+      }
     default: {
       const _ex: never = this.quoteState;
       throw new Error(`Unhandled quote state: ${_ex}`);
@@ -229,12 +307,20 @@ export class Gemma4ToolCallParser {
     }
   }
 
+  private renderThoughtEnding(): string {
+    switch (this.channel) {
+    case 'thought': return '</think>';
+    case 'ordinary': case 'header': case 'other': return '';
+    default: { const exhaustive: never = this.channel; throw new Error(`Unhandled channel state: ${exhaustive}`); }
+    }
+  }
+
   private streamOrdinary({ final }: { final: boolean }): void {
     let position = 0;
     let text = '';
     while (position < this.pending.length) {
-      const control = CONTROLS.find(token => this.pending.startsWith(token, position));
-      if (control === OPEN && this.channel === 'ordinary' && this.quoteState === 'outside') {
+      const control = this.controls.find(token => this.pending.startsWith(token, position));
+      if (control === OPEN && this.toolCalls === 'enabled' && this.channel === 'ordinary' && this.quoteState === 'outside') {
         const remaining = this.pending.length - position;
         if (remaining > MAX_PROTOCOL_CHARACTERS) throw new Gemma4ToolCallProtocolError();
         this.protocol = this.pending.slice(position);
@@ -245,13 +331,17 @@ export class Gemma4ToolCallParser {
         text += this.renderControl({ control });
         position += control.length;
       } else {
-        if (!final && CONTROLS.some(token => token.startsWith(this.pending.slice(position)))) break;
-        text += this.pending[position];
+        if (!final && this.controls.some(token => token.startsWith(this.pending.slice(position)))) break;
+        if (final && this.quoteState === 'outside' && [CHANNEL_OPEN, CHANNEL_CLOSE].some(token => token.startsWith(this.pending.slice(position)))) {
+          position = this.pending.length;
+          break;
+        }
+        text += this.renderCharacter({ character: this.pending[position]! });
         position++;
       }
     }
     this.pending = this.pending.slice(position);
-    if (text) this.onText({ text });
+    this.publishText({ text });
   }
 
   private parseProtocol(): void {
@@ -260,7 +350,7 @@ export class Gemma4ToolCallParser {
     const calls: ToolCall[] = [];
     let text = '';
     while (reader.position < source.length) {
-      const control = CONTROLS.find(token => source.startsWith(token, reader.position));
+      const control = this.controls.find(token => source.startsWith(token, reader.position));
       if (control === OPEN && this.channel === 'ordinary' && this.quoteState === 'outside') {
         if (calls.length >= MAX_CALLS) throw new Gemma4ToolCallProtocolError();
         reader.consume({ token: OPEN });
@@ -275,12 +365,12 @@ export class Gemma4ToolCallParser {
         text += this.renderControl({ control });
         reader.position += control.length;
       } else {
-        text += source[reader.position];
+        text += this.renderCharacter({ character: source[reader.position]! });
         reader.position++;
       }
     }
     // Callback failure must also prevent draining the otherwise valid calls.
-    if (text) this.onText({ text });
+    this.publishText({ text });
     this.calls = calls;
   }
 }

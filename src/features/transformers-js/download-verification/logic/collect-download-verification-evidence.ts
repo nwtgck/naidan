@@ -1,5 +1,5 @@
 import type { DownloadVerificationProbeEvidenceInput } from '@/features/transformers-js/download-verification/evidence/types';
-import { inspectDownloadVerificationCachedRevisions } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+import { inspectDownloadVerificationCachedRevisions } from '@/features/transformers-js/runtime/cached-model-revisions';
 import { observeProductionModelArtifactRequests } from '@/features/transformers-js/download-verification/logic/observe-production-model-artifact-requests';
 import { runBrowserDownloadVerification } from '@/features/transformers-js/download-verification/logic/run-browser-download-verification';
 import type { DownloadVerificationResolvedRepository } from '@/features/transformers-js/download-verification/types';

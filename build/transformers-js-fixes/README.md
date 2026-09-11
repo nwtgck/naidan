@@ -8,7 +8,7 @@ covered by this fix.
 
 ## What changes
 
-Seven exact web-bundle edits address resource ownership, optional preparation and template parsing:
+Eight exact web-bundle edits address resource ownership, optional preparation and template parsing:
 
 1. `getModelDataFiles` no longer uses an async Promise executor. Each external
    file's rejection now reaches the returned Promise instead of leaving an
@@ -33,6 +33,17 @@ Seven exact web-bundle edits address resource ownership, optional preparation an
    and runtime message contents are not rewritten. This is rendering support,
    not assistant-token masks, generation-span tracking or an AST formatting
    round-trip guarantee.
+5. `constructSessions` retains ownership of sessions created before a sibling
+   fails, including successes that arrive after the original failure. It requests
+   each orphan session's release once and observes cleanup rejection without
+   replacing or delaying the original Load error. Successful complete session
+   sets transfer unchanged to the model and are not released by this failure path.
+
+Orphan cleanup is best effort: requesting release does not prove that native GPU
+memory is already freed before another candidate starts. A pending sibling or
+release must not prevent prompt rejection of the original Load. The owning
+Worker's termination remains the ultimate lifecycle bound. Tests observe release
+requests and completion of resolvable synthetic releases, not GPU quiescence.
 
 Resource selection, dtype, device, external binding paths, optional-file absence
 defaults and successful constructor arguments are unchanged. Optional metadata
@@ -69,7 +80,7 @@ or alternate unpatched browser path.
 Original web SHA-256:
 `25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff`.
 Transformed web SHA-256:
-`875b33675dcf7b646f7f39d2680d2612040b1eb570f865a537aea1118658b731`.
+`6b6a707a7163365ac1bbee232e4228b8177dd05b11e825c061167d56d986070f`.
 
 `buildTransformersJsFixesArtifact` runs a real Vite library build with the same
 plugin, `configFile: false`, and no application plugins. Runtime regression
@@ -91,7 +102,7 @@ extracted at reviewed boundaries; independent SHA-256 values in
 `transform.test.ts` preserve their exact bytes, including trailing newlines.
 Those section identities were verified against the former unmodified copies
 before removing them. `upstream/LICENSE` retains the existing package notice.
-`replacements.ts` contains the seven exact before/after web edits as `String.raw`
+`replacements.ts` contains the eight exact before/after web edits as `String.raw`
 literals. Their whitespace and trailing newlines are part of the edits; they are
 not trimmed or normalized. This keeps source backslashes readable without JSON
 escaping. The full original web bundle is supplied by the pinned dependency,
@@ -140,6 +151,13 @@ unhandled-rejection suppression handler. Integration tests cover a real Vite
 library build, real Worker bundle, development Worker/dependency transforms,
 and cold/warm dependency optimization with unknown-original rejection. They do
 not launch a browser or prove WebGPU, OPFS, or browser Worker termination.
+
+Session-ownership controls additionally cover multiple fulfilled siblings, early
+failure with a late success or indefinitely pending sibling, synchronous and
+asynchronous release failures, held releases, duplicate handles, and unchanged
+successful ownership. An actual transformed model-loader regression uses the
+original Qwen3.5-2B metadata with synthetic ORT sessions to verify failure cleanup
+and a separately owned same-runtime follow-up model; no inference is synthesized.
 
 The ordinary model-specific runtime regressions use this same artifact builder;
 their unmodified original-source and selector contracts still examine installed

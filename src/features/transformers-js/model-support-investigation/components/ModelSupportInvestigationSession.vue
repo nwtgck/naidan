@@ -2267,7 +2267,12 @@ defineExpose({
       </div>
 
       <section v-if="providerProgressPresentation !== undefined" data-testid="model-support-provider-progress" aria-live="polite" tw-class="px-6 py-3 border-t border-gray-200 dark:border-gray-700 text-xs space-y-1">
-        <p>{{ lazyStrings.ModelSupportInvestigationSession__provider_collection_progress(providerProgressPresentation) }}</p>
+        <p>{{ lazyStrings.ModelSupportInvestigationSession__provider_collection_progress({
+          phase: providerProgressPresentation.phase,
+          settled: providerProgressPresentation.settled,
+          total: providerProgressPresentation.total,
+          active: providerProgressPresentation.active,
+        }) }}</p>
         <p v-if="providerLiveProgress !== undefined" data-testid="model-support-provider-deadlines">{{ lazyStrings.ModelSupportInvestigationSession__maximum_phase_deadlines({ runSeconds: providerLiveProgress.deadlines.runMs / 1000, collectionSeconds: providerLiveProgress.deadlines.collectionMs / 1000, sealingSeconds: providerLiveProgress.deadlines.sealingMs / 1000, cleanupSeconds: providerLiveProgress.deadlines.cleanupMs / 1000 }) }}</p>
         <p>{{ lazyStrings.ModelSupportInvestigationSession__native_recording_is_not_correctness({ recording: nativeRecording }) }}</p>
       </section>

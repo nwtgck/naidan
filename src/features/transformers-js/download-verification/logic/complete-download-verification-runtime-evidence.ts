@@ -1,5 +1,5 @@
 import type { DownloadVerificationEvidenceInput, DownloadVerificationRuntimeCompletionEvidence } from '@/features/transformers-js/download-verification/evidence/types';
-import { inspectDownloadVerificationCachedRevisions } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+import { inspectDownloadVerificationCachedRevisions } from '@/features/transformers-js/runtime/cached-model-revisions';
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 import { awaitWithAbort } from './await-with-abort';

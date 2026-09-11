@@ -382,9 +382,9 @@ describe('investigation-owned generation capture client', () => {
     });
     try {
       await MockWorker.latest.publishReady();
-      await expect(owner.client.loadDownloadedModel({ modelId: 'org/synthetic-model', revision: 'main', progressCallback: () => undefined })).rejects.toBe(original);
-      expect(owner.getCaptureLifetime().loadRequests).toEqual([{ requestedModelId: 'org/synthetic-model', requestedRevision: 'main' }]);
-      expect(loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/synthetic-model', 'main', expect.any(Function), { runId: 'synthetic-run', workerEpoch: 1 });
+      await expect(owner.client.loadDownloadedModel({ modelId: 'org/synthetic-model', revisionSelection: { kind: 'pinned', revision: 'main' }, progressCallback: () => undefined })).rejects.toBe(original);
+      expect(owner.getCaptureLifetime().loadRequests).toEqual([{ requestedModelId: 'org/synthetic-model', requestedRevision: 'main', revisionSelection: { kind: 'pinned', revision: 'main' } }]);
+      expect(loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/synthetic-model', { kind: 'pinned', revision: 'main' }, expect.any(Function), { runId: 'synthetic-run', workerEpoch: 1 });
     } finally {
       await owner.client.dispose();
     }

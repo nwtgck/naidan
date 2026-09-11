@@ -14,7 +14,7 @@ beforeAll(async () => {
   vi.stubGlobal('fetch', fetch);
   const artifact = await getProductionTransformersArtifact();
   expect(artifact.originalBundleSha256).toBe('25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff');
-  expect(artifact.transformedBundleSha256).toBe('875b33675dcf7b646f7f39d2680d2612040b1eb570f865a537aea1118658b731');
+  expect(artifact.transformedBundleSha256).toBe('6b6a707a7163365ac1bbee232e4228b8177dd05b11e825c061167d56d986070f');
   // The browser bundle intentionally contains no Node backend. Select its
   // actual browser route while evaluating it, as the Production replay does.
   // This is test platform setup, not a Tensor/runtime implementation replacement.

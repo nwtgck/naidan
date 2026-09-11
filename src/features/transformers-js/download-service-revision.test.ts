@@ -100,13 +100,13 @@ it('reuses the exact cached revision and carries that accepted identity into the
     throw new Error('Offline after explicit Download');
   });
   await transformersJsService.loadDownloadedModel({ modelId });
-  expect(boundary.load).toHaveBeenCalledExactlyOnceWith({ modelId, revision: exactRevision, progressCallback: expect.any(Function) });
+  expect(boundary.load).toHaveBeenCalledExactlyOnceWith({ modelId, revisionSelection: { kind: 'pinned', revision: exactRevision }, progressCallback: expect.any(Function) });
   expect(h.repositoryFetch).toHaveBeenCalledTimes(1);
   expect(h.fs.activity.every(item => item.operation === 'stat')).toBe(true);
   expect(transformersJsService.getState().status).toBe('ready');
 });
 
-it('chooses an immutable cached revision on cold offline Load without resolving current main', async () => {
+it('delegates cold offline namespace discovery to the Load Worker without resolving current main', async () => {
   const h = fixture();
   await seedCommittedRevision({ revision: exactRevision });
   await seedCommittedRevision({ revision: 'main' });
@@ -115,7 +115,7 @@ it('chooses an immutable cached revision on cold offline Load without resolving 
   h.repositoryFetch.mockRejectedValue(new Error('No internet during Load'));
   const { transformersJsService } = await import('./index-hosted');
   await transformersJsService.loadDownloadedModel({ modelId });
-  expect(boundary.load).toHaveBeenCalledExactlyOnceWith({ modelId, revision: exactRevision, progressCallback: expect.any(Function) });
+  expect(boundary.load).toHaveBeenCalledExactlyOnceWith({ modelId, revisionSelection: { kind: 'discover-cached' }, progressCallback: expect.any(Function) });
   expect(h.repositoryFetch).not.toHaveBeenCalled();
   expect(boundary.verifyRevision).not.toHaveBeenCalled();
   expect(boundary.prepare).not.toHaveBeenCalled();
@@ -170,7 +170,7 @@ it('does not leave a failed new-revision Download hint that would replace a usab
   h.fs.enter({ nextPhase: 'load', mutationPolicy: 'read-only' });
   h.fs.activity.length = 0;
   await transformersJsService.loadDownloadedModel({ modelId });
-  expect(boundary.load).toHaveBeenCalledExactlyOnceWith({ modelId, revision: exactRevision, progressCallback: expect.any(Function) });
+  expect(boundary.load).toHaveBeenCalledExactlyOnceWith({ modelId, revisionSelection: { kind: 'discover-cached' }, progressCallback: expect.any(Function) });
   expect(h.repositoryFetch).toHaveBeenCalledTimes(1);
   expect(boundary.prepare).toHaveBeenCalledTimes(1);
   expect(h.fs.activity.every(item => item.operation === 'stat')).toBe(true);
@@ -191,7 +191,7 @@ it('does not let an interrupted different dtype bypass acceptance of a reusable 
   expect(h.fs.activity.every(item => item.operation === 'stat')).toBe(true);
 });
 
-it('finds the usable exact namespace on cold offline Load even when another dtype is interrupted', async () => {
+it('keeps candidate completeness in the Load Worker when another dtype is interrupted', async () => {
   const h = fixture();
   await seedCommittedRevision({ revision: exactRevision });
   await seedCommittedRevision({ revision: 'main' });
@@ -201,7 +201,7 @@ it('finds the usable exact namespace on cold offline Load even when another dtyp
   h.repositoryFetch.mockRejectedValue(new Error('No internet during Load'));
   const { transformersJsService } = await import('./index-hosted');
   await transformersJsService.loadDownloadedModel({ modelId });
-  expect(boundary.load).toHaveBeenCalledExactlyOnceWith({ modelId, revision: exactRevision, progressCallback: expect.any(Function) });
+  expect(boundary.load).toHaveBeenCalledExactlyOnceWith({ modelId, revisionSelection: { kind: 'discover-cached' }, progressCallback: expect.any(Function) });
   expect(boundary.verifyRevision).not.toHaveBeenCalled();
   expect(boundary.prepare).not.toHaveBeenCalled();
   expect(h.repositoryFetch).not.toHaveBeenCalled();

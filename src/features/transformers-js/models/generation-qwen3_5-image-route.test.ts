@@ -36,7 +36,7 @@ describe('Qwen image generation session ownership', () => {
       limits: { maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 256, maxTextBytes: 8192, maxTensorBytes: 8192, maxTotalTensorBytes: 65536,
         maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 } });
     try {
-      await capture.client.loadDownloadedModel({ modelId, revision, progressCallback: () => undefined });
+      await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined });
       const result = await capture.takeGenerationCapture();
       if (result.status !== 'not-started' || result.loadObservation?.outcome.status !== 'accepted') throw new Error('Expected actual Load receipt before generation');
       const receipt = result.loadObservation.outcome.receipt;

@@ -3,7 +3,7 @@ import {
   planDownloadVerificationCachedRevisionLoadCandidates,
   type DownloadVerificationCachedRevisionInventory,
   type DownloadVerificationCachedRevisionLoadCandidate,
-} from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+} from '@/features/transformers-js/runtime/cached-model-revisions';
 import type { DownloadVerificationRevisionAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 import type { RuntimeAcceptanceProgressCallback } from './runtime-acceptance-progress';

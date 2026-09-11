@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { downloadedModelRevisionSelectionSchema } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import { generationCaptureReadResultSchema, generationCaptureReadRequestSchema, type GenerationCaptureReadResult, type GenerationCaptureClientLifetime } from '@/features/transformers-js/worker/generation-capture-protocol';
 import { productionLoadIdentitySchema } from '@/features/transformers-js/worker/load-identity';
 import { productionLoadObservationSchema, type ProductionLoadObservation } from '@/features/transformers-js/worker/load-receipt';
@@ -37,7 +38,7 @@ export const nativeBinaryReferenceSchema = z.object({ path: z.string().regex(/^g
 const referenceSchema = nativeBinaryReferenceSchema;
 class ExportRefusal extends Error {}
 
-const lifetimeSchema = z.object({ runId: z.string(), workerEpoch: z.number().int().positive(), session: z.enum(['active', 'inactive']), issuedCalls: z.array(generationCaptureReadRequestSchema.extend({ requestId: z.string().min(1).max(128), generationCallId: z.number().int().positive() })).max(32), loadRequests: z.array(z.object({ requestedModelId: z.string().max(256), requestedRevision: z.string().max(128).optional() }).strict()).max(32), incompleteReasons: z.array(z.enum(['request-unavailable', 'request-invalid', 'call-limit', 'load-limit', 'load-identity-limit'])).max(5) }).strict().transform(value => ({ ...value, loadRequests: value.loadRequests.map(load => ({ ...load, requestedRevision: load.requestedRevision })) }));
+const lifetimeSchema = z.object({ runId: z.string(), workerEpoch: z.number().int().positive(), session: z.enum(['active', 'inactive']), issuedCalls: z.array(generationCaptureReadRequestSchema.extend({ requestId: z.string().min(1).max(128), generationCallId: z.number().int().positive() })).max(32), loadRequests: z.array(z.object({ requestedModelId: z.string().max(256), requestedRevision: z.string().max(128).optional(), revisionSelection: downloadedModelRevisionSelectionSchema.optional() }).strict()).max(32), incompleteReasons: z.array(z.enum(['request-unavailable', 'request-invalid', 'call-limit', 'load-limit', 'load-identity-limit'])).max(5) }).strict().transform(value => ({ ...value, loadRequests: value.loadRequests.map(load => ({ ...load, requestedRevision: load.requestedRevision })) }));
 const waitingCollectionSchema = z.object({ status: z.enum(['not-requested', 'pending']) }).strict();
 const failedCollectionSchema = z.object({ status: z.literal('failed'), reason: z.literal('take-failed') }).strict();
 const unavailableCollectionSchema = z.object({ status: z.literal('unavailable'), reason: z.enum(['session-inactive', 'host-state-unavailable']) }).strict();
@@ -311,7 +312,10 @@ function createDescriptorChecks() {
     } }),
     incompleteReasons: array({ check: scalar, maximum: 32 }), unobserved: array({ check: scalar, maximum: 32 }),
   }, optional: [] });
-  const lifetimeCheck: Check = ({ value }) => record<GenerationCaptureClientLifetime>({ value, fields: { runId: scalar, workerEpoch: scalar, session: scalar, issuedCalls: array({ check: contextCheck, maximum: 32 }), loadRequests: array({ maximum: 32, check: ({ value }) => record<GenerationCaptureClientLifetime['loadRequests'][number]>({ value, fields: { requestedModelId: scalar, requestedRevision: scalar }, optional: [] }) }), incompleteReasons: array({ check: scalar, maximum: 5 }) }, optional: [] });
+  const revisionSelectionCheck: Check = ({ value }) => record<{ kind: 'pinned' | 'discover-cached'; revision?: string }>({
+    value, fields: { kind: scalar, revision: scalar }, optional: ['revision'],
+  });
+  const lifetimeCheck: Check = ({ value }) => record<GenerationCaptureClientLifetime>({ value, fields: { runId: scalar, workerEpoch: scalar, session: scalar, issuedCalls: array({ check: contextCheck, maximum: 32 }), loadRequests: array({ maximum: 32, check: ({ value }) => record<GenerationCaptureClientLifetime['loadRequests'][number]>({ value, fields: { requestedModelId: scalar, requestedRevision: scalar, revisionSelection: revisionSelectionCheck }, optional: ['revisionSelection'] }) }), incompleteReasons: array({ check: scalar, maximum: 5 }) }, optional: [] });
   const resultCheck: Check = ({ value }) => {
     const loadObservationCheck: Check = ({ value }) => {
       function inspect({ value, depth }: { value: unknown; depth: number }): void {
@@ -488,7 +492,24 @@ function validateCorrelatedLoadObservation({ observation, lifetime, provider, wo
   case 'accepted': {
     const receipt = observation.outcome.receipt;
     const revision = productionLoadReceiptRevisionOption({ option: receipt.loaderRevisionOption });
-    if (receipt.modelId !== normalizeTransformersJsProductionModelId({ modelId: load.requestedModelId }) || revision !== load.requestedRevision) invalid();
+    if (receipt.modelId !== normalizeTransformersJsProductionModelId({ modelId: load.requestedModelId })) invalid();
+    const selection = load.revisionSelection;
+    if (selection === undefined) {
+      // Historical captures requested one pinned namespace. Never reinterpret
+      // those bytes as cache discovery merely because the new API supports it.
+      if (revision !== load.requestedRevision) invalid();
+    } else {
+      switch (selection.kind) {
+      case 'pinned':
+        if (selection.revision !== load.requestedRevision || revision !== selection.revision) invalid();
+        break;
+      case 'discover-cached':
+        if (load.requestedRevision !== undefined) invalid();
+        // Discovery did not request a SHA; the actual accepted receipt owns it.
+        break;
+      default: { const exhaustive: never = selection; return exhaustive; }
+      }
+    }
     break;
   }
   case 'loading': case 'failed': case 'cleared': case 'not-recorded': break;

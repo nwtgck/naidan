@@ -4,6 +4,7 @@ import type { ProductionCandidateResourcePlan } from '@/features/transformers-js
 import type { GenerationCaptureRequest, GenerationCaptureReadRequest, GenerationCaptureReadResult } from './worker/generation-capture-protocol';
 import type { ProductionLoadReceiptOwner } from './worker/load-receipt';
 import type { ProductionLoadReceipt } from './runtime/production-load-receipt';
+import type { DownloadedModelRevisionSelection } from './runtime/downloaded-model-revision-selection';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -546,7 +547,7 @@ export interface ITransformersJsWorker {
    * load instead of falling back to a remote fetch.
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  loadDownloadedModel(modelId: string, revision: string | undefined, progressCallback: WorkerProxy<(x: ProgressInfo) => void>, loadReceiptOwner?: ProductionLoadReceiptOwner): Promise<ModelLoadResult>,
+  loadDownloadedModel(modelId: string, revisionSelection: DownloadedModelRevisionSelection, progressCallback: WorkerProxy<(x: ProgressInfo) => void>, loadReceiptOwner?: ProductionLoadReceiptOwner): Promise<ModelLoadResult>,
   /**
    * Download Verification only: verifies exactly one Production candidate from
    * already-downloaded artifacts. No candidate fallback or remote model fetch.
@@ -600,9 +601,9 @@ export interface TransformersJsWorkerClient {
    * Loads a model that has already been fully downloaded. This MUST NOT start,
    * resume, repair, or otherwise perform any model download.
    */
-  loadDownloadedModel({ modelId, revision, progressCallback }: {
+  loadDownloadedModel({ modelId, revisionSelection, progressCallback }: {
     modelId: string,
-    revision?: string,
+    revisionSelection: DownloadedModelRevisionSelection,
     progressCallback: TransformersJsProgressCallback,
   }): Promise<ModelLoadResult>,
   unloadModel(): Promise<void>,

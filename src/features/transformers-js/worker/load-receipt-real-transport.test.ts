@@ -28,7 +28,7 @@ describe('ordinary Load receipt through actual Worker communication without gene
         maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 },
     });
     try {
-      expect(await capture.client.loadDownloadedModel({ modelId, revision, progressCallback: () => undefined }))
+      expect(await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined }))
         .toStrictEqual({ device: 'webgpu', dtype: 'q4f16' });
       const first = await capture.takeGenerationCapture();
       expect(first.status).toBe('not-started');

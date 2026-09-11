@@ -1,5 +1,6 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
 import type { GenerationCaptureClient, GenerationCaptureRequest } from './generation-capture-protocol';
+import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import type {
   TransformersJsWorkerClient,
   ModelLoadResult,
@@ -25,9 +26,9 @@ export function createTransformersJsGenerationCaptureClient({ runId: _runId, wor
 
 export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   return {
-    async loadDownloadedModel({ modelId: _modelId, revision: _revision, progressCallback: _progressCallback }: {
+    async loadDownloadedModel({ modelId: _modelId, revisionSelection: _revisionSelection, progressCallback: _progressCallback }: {
       modelId: string,
-      revision?: string,
+      revisionSelection: DownloadedModelRevisionSelection,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
       throw createUnsupportedError();

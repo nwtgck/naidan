@@ -89,6 +89,54 @@ describe('transformers-js-gemma4', () => {
     expect(messages[1]!.tool_calls![0]!.function.arguments).toBe('{"text":"12","count":12,"flag":false,"nested":[1,{"key":true}]}');
   });
 
+  it('maps assistant inline thinking to the native field without changing user or tool data', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const id = toToolCallId({ raw: 'synthetic-thinking-call' });
+    const result = await buildGemma4TemplateInput({ messages: [
+      { role: 'user', content: '<think>User literal</think>' },
+      { role: 'assistant', content: '<think> Reason </think>Answer', tool_calls: [{ id, type: 'function', function: { name: 'probe', arguments: '{"text":"<think>Argument literal</think>"}' } }] },
+      { role: 'tool', tool_call_id: id, content: '<think>Result literal</think>' },
+    ] });
+    expect(result.templateMessages).toEqual([
+      { role: 'user', content: '<think>User literal</think>' },
+      { role: 'assistant', content: 'Answer', reasoning_content: 'Reason', tool_calls: [{ id, type: 'function', function: { name: 'probe', arguments: { text: '<think>Argument literal</think>' } } }] },
+      { role: 'tool', tool_call_id: id, content: '<think>Result literal</think>' },
+    ]);
+  });
+
+  it('uses the existing inline meaning policy for empty and multiple thoughts rather than claiming raw-prefix equivalence', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const result = await buildGemma4TemplateInput({ messages: [
+      { role: 'assistant', content: '<think></think>Answer' },
+      { role: 'assistant', content: '<think> A </think>Between<think>B</think>After' },
+    ] });
+    expect(result.templateMessages).toEqual([
+      { role: 'assistant', content: 'Answer', reasoning_content: '' },
+      { role: 'assistant', content: 'BetweenAfter', reasoning_content: `\
+A
+
+---
+
+B` },
+    ]);
+  });
+
+  it('maps assistant text-array thinking across adjacent text parts without changing ordinary parts', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const result = await buildGemma4TemplateInput({ messages: [
+      { role: 'assistant', content: [{ type: 'text', text: '<thi' }, { type: 'text', text: 'nk> Reason </think>Answer' }] },
+      { role: 'assistant', content: [{ type: 'text', text: '<think>Reason</think>' }] },
+      { role: 'assistant', content: [{ type: 'text', text: ' First ' }, { type: 'text', text: ' Second ' }] },
+      { role: 'user', content: [{ type: 'text', text: '<think>User literal</think>' }] },
+    ] });
+    expect(result.templateMessages).toEqual([
+      { role: 'assistant', content: 'Answer', reasoning_content: 'Reason' },
+      { role: 'assistant', content: '', reasoning_content: 'Reason' },
+      { role: 'assistant', content: [{ type: 'text', text: ' First ' }, { type: 'text', text: ' Second ' }] },
+      { role: 'user', content: [{ type: 'text', text: '<think>User literal</think>' }] },
+    ]);
+  });
+
   it('rejects malformed tool arguments rather than manufacturing an empty argument object', async () => {
     const { buildGemma4TemplateInput } = await import('./gemma4');
     await expect(buildGemma4TemplateInput({ messages: [{ role: 'assistant', content: '', tool_calls: [{

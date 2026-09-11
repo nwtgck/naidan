@@ -70,10 +70,23 @@ it('stops revision reuse after an exact candidate-plan OPFS I/O failure instead 
   }
   fs.files.set(`${base}model_q4f16.onnx`, new Uint8Array([1, 2, 3]));
   fs.files.set(`${base}.model_q4f16.onnx.complete`, new Uint8Array());
+  // Required config admission precedes the candidate plan. Let it succeed so
+  // the injected I/O failure still belongs to planning, not config presence.
+  const exactBase = `models/huggingface.co/${modelId}/resolve/${revision}/`;
+  let exactDirectory = fs.root;
+  for (const part of exactBase.split('/').filter(Boolean)) {
+    exactDirectory = await exactDirectory.getDirectoryHandle(part, { create: true });
+  }
+  fs.files.set(`${exactBase}config.json`, new TextEncoder().encode('{"model_type":"gpt2"}'));
+  fs.files.set(`${exactBase}.config.json.complete`, new Uint8Array());
   fs.activity.length = 0;
   fs.enter({ nextPhase: 'load', mutationPolicy: 'read-only' });
   const failure = new DOMException('Synthetic exact-revision permission failure', 'NotAllowedError');
-  const getDirectory = vi.fn(async () => fs.root).mockRejectedValueOnce(failure);
+  let candidatePlanning = false;
+  const getDirectory = vi.fn(async () => {
+    if (candidatePlanning) throw failure;
+    return fs.root;
+  });
   const forbiddenFetch = vi.fn<typeof fetch>(async () => {
     throw new Error('Unexpected network request');
   });
@@ -103,6 +116,7 @@ it('stops revision reuse after an exact candidate-plan OPFS I/O failure instead 
     try {
       return await worker.verifyDownloadedModelRevision(modelId, loadRevision, info => {
         if (typeof info.status === 'string') phases.push(info.status);
+        if (info.status === 'cache-acceptance-candidate-plan') candidatePlanning = true;
       });
     } catch (error) {
       if (!(error instanceof Error)) throw error;
