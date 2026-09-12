@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { TransformersJsWorkerClient } from '@/features/transformers-js/types';
 import { generationCaptureContextSchema, generationCaptureLimitsSchema, generationCaptureTakeResultSchema } from './generation-capture';
 import { productionLoadObservationSchema } from './load-receipt';
+import type { LoadDiagnostics } from './load-diagnostics';
 
 // Attached only by an investigation-owned client to the existing generate RPC.
 // It grants recording capacity, not model/network/storage authority.
@@ -25,6 +26,8 @@ export interface GenerationCaptureClientLifetime {
   runId: string;
   workerEpoch: number;
   session: 'active' | 'inactive';
+  /** Missing in older evidence means unobserved, not an empty Load history. */
+  loadDiagnostics?: LoadDiagnostics;
   issuedCalls: GenerationCaptureRequest['context'][];
   loadRequests: Array<{
     requestedModelId: string;

@@ -3,6 +3,158 @@
 // backslashes and newlines, including the final newline in the deletion below.
 export default [
   {
+    before: String.raw`async function readResponse(response, progress_callback, expectedSize) {
+  const contentLength = response.headers.get("Content-Length");
+  let total = contentLength ? parseInt(contentLength, 10) : expectedSize ?? 0;
+  if (contentLength === null && !expectedSize) {
+    logger.warn("Unable to determine content-length from response headers. Will expand buffer when needed.");
+  }
+  let buffer = new Uint8Array(total);
+  let loaded = 0;
+  const reader = response.body.getReader();
+  async function read() {
+    const { done, value } = await reader.read();
+    if (done) return;
+    const newLoaded = loaded + value.length;
+    if (newLoaded > total) {
+      total = newLoaded;
+      const newBuffer = new Uint8Array(total);
+      newBuffer.set(buffer);
+      buffer = newBuffer;
+    }
+    buffer.set(value, loaded);
+    loaded = newLoaded;
+    const progress = loaded / total * 100;
+    progress_callback({ progress, loaded, total });
+    return read();
+  }
+  await read();
+  return buffer;
+}`,
+    after: String.raw`// Naidan fix: observe allocation stages without granting recording code control over loading.
+function naidanCreateModelLoadObserver(kind, resource) {
+  let sink;
+  try {
+    sink = env.naidanModelLoadObserver;
+  } catch {
+    return;
+  }
+  if (typeof sink !== "function") return;
+  const token = {};
+  return (phase, bytes, error) => {
+    try {
+      const result = sink({ token, kind, resource, phase, bytes, errorName: error === void 0 ? void 0 : error?.name });
+      if (result !== void 0) Promise.resolve(result).catch(() => {});
+    } catch {
+    }
+  };
+}
+async function readResponse(response, progress_callback, expectedSize, diagnosticResource) {
+  const observe = naidanCreateModelLoadObserver("read", diagnosticResource);
+  const contentLength = response.headers.get("Content-Length");
+  let total = contentLength ? parseInt(contentLength, 10) : expectedSize ?? 0;
+  if (contentLength === null && !expectedSize) {
+    logger.warn("Unable to determine content-length from response headers. Will expand buffer when needed.");
+  }
+  observe?.("allocation-attempt", total);
+  let buffer;
+  try {
+    buffer = new Uint8Array(total);
+  } catch (error) {
+    observe?.("allocation-failed", total, error);
+    throw error;
+  }
+  observe?.("allocation-succeeded", total);
+  let loaded = 0;
+  let reader;
+  try {
+    reader = response.body.getReader();
+  } catch (error) {
+    observe?.("read-failed", loaded, error);
+    throw error;
+  }
+  observe?.("read-start", loaded);
+  async function read() {
+    const { done, value } = await reader.read();
+    if (done) return;
+    const newLoaded = loaded + value.length;
+    if (newLoaded > total) {
+      total = newLoaded;
+      observe?.("allocation-attempt", total);
+      let newBuffer;
+      try {
+        newBuffer = new Uint8Array(total);
+      } catch (error) {
+        observe?.("allocation-failed", total, error);
+        throw error;
+      }
+      observe?.("allocation-succeeded", total);
+      newBuffer.set(buffer);
+      buffer = newBuffer;
+    }
+    buffer.set(value, loaded);
+    loaded = newLoaded;
+    const progress = loaded / total * 100;
+    progress_callback({ progress, loaded, total });
+    return read();
+  }
+  try {
+    await read();
+  } catch (error) {
+    observe?.("read-failed", loaded, error);
+    throw error;
+  }
+  observe?.("read-returned", buffer.byteLength);
+  return buffer;
+}`,
+  },
+  {
+    before: String.raw`          expectedSize
+        );`,
+    after: String.raw`          expectedSize,
+          // Naidan fix: identify the resource at the actual buffer-allocation boundary.
+          filename
+        );`,
+  },
+  {
+    before: String.raw`async function createInferenceSession(buffer_or_path, session_options, session_config) {
+  await ensureWasmLoaded();
+  const logSeverityLevel = getOnnxLogSeverityLevel(env.logLevel ?? LogLevel.WARNING);
+  const load = () => InferenceSession.create(buffer_or_path, {
+    // Set default log severity level, but allow overriding through session options
+    logSeverityLevel,
+    ...session_options
+  });
+  const session = await (apis.IS_WEB_ENV ? webInitChain = webInitChain.then(load) : load());
+  session.config = session_config;
+  return session;
+}`,
+    after: String.raw`async function createInferenceSession(buffer_or_path, session_options, session_config) {
+  // Naidan fix: distinguish session preparation from actual ORT entry without changing its chain.
+  const observe = naidanCreateModelLoadObserver("session");
+  observe?.("session-preparing", 0);
+  try {
+  await ensureWasmLoaded();
+  const logSeverityLevel = getOnnxLogSeverityLevel(env.logLevel ?? LogLevel.WARNING);
+  const load = () => {
+    observe?.("session-entering", 0);
+    return InferenceSession.create(buffer_or_path, {
+    // Set default log severity level, but allow overriding through session options
+    logSeverityLevel,
+    ...session_options
+  });
+  };
+  const session = await (apis.IS_WEB_ENV ? webInitChain = webInitChain.then(load) : load());
+  session.config = session_config;
+  observe?.("session-fulfilled", 0);
+  return session;
+  } catch (error) {
+    observe?.("session-rejected", 0, error);
+    throw error;
+  }
+}`,
+  },
+  {
     before: String.raw`async function constructSessions(pretrained_model_name_or_path, names, options, cache_sessions = void 0) {
   return Object.fromEntries(
     await Promise.all(

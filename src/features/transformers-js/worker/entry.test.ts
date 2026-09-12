@@ -423,6 +423,18 @@ describe('transformers-js.worker', () => {
     )).rejects.toThrow('Read-only OPFS model cache MUST NOT be written during model loading');
   });
 
+  it.each([17, 'synthetic unload rejection'])('preserves an ordinary prior-unload non-Error rejection: %s', async failure => {
+    const comlink = await import('comlink');
+    await initializeWorkerEntry();
+    const exposed = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const unload = vi.spyOn(exposed, 'unloadModel').mockRejectedValueOnce(failure);
+    try {
+      await expect(exposed.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toBe(failure);
+    } finally {
+      unload.mockRestore();
+    }
+  });
+
   it('loadDownloadedModel should try tiered fallback from WebGPU to WASM', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');

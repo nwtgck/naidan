@@ -1,0 +1,29 @@
+{
+  "format": "model-load-allocation-observation-v1",
+  "modelId": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "metadataRevision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+  "source": "selected-browser-load-diagnostics-and-cache-observations",
+  "success": {
+    "nativeCaptureSha256": "f36dab748a0301ad6fcd7a94b2641f9ae5c2c383784540c6fefcc82845b61884",
+    "cacheRevision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+    "wholeFileIdentity": "not-verified",
+    "candidate": { "device": "webgpu", "dtype": "q4f16" },
+    "resources": [
+      { "path": "onnx/model_q4f16.onnx", "bytes": 117691126, "successfulAllocations": 1 }
+    ],
+    "successfulAllocationBytes": 117691126,
+    "returnedReadBufferBytes": 117691126,
+    "ortEntry": "after-all-required-reads",
+    "load": "fulfilled",
+    "nativeCalls": 13
+  },
+  "missingCache": {
+    "nativeCaptureSha256": "9776d39125e2d23bd99ba64002f56cd716a1d9461565754739cf821f54e9e854",
+    "fileCount": 0,
+    "load": "rejected-before-candidate",
+    "weightReads": 0,
+    "ortEntries": 0,
+    "modelDownloads": 0
+  },
+  "limits": "Selected scalar observations, not model bodies, full file identity, deterministic read completion order, live memory, or a browser capacity guarantee."
+}

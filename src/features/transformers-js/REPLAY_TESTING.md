@@ -27,6 +27,7 @@ the changed behavior reviewable.
 | `download-replay-<model>.test.ts` | Download, completed cache files, and Offline Load using those files |
 | `provider-replay-<model>.test.ts` | Actual `LmProvider.chat()` input conversion, generation calls, output interpretation, tools, continuation, and settlement |
 | `model-runtime-input-replay-<model>.test.ts` | Original metadata, tokenizer or processor inputs, and runtime artifact requests without entering the public Provider |
+| `model-load-allocation-replay-<model>.test.ts` | Observed resource sizes refused before large allocation through the actual model reader, separately from explicitly tiny read/copy/session controls; not browser memory capacity or ONNX inference |
 | Replay infrastructure tests | Evidence readers, input gates, Worker transport, test platforms, and cleanup |
 
 Provider replay replaces expensive weight-based inference with recorded data.

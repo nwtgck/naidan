@@ -74,6 +74,8 @@ import { requireDownloadedModelConfig } from '@/features/transformers-js/runtime
 import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/runtime/cached-model-revisions';
 import { createProductionLoadReceiptRecorder, type ProductionLoadReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
 import { createProductionLoadReceiptSlot, type ProductionLoadReceiptOwner } from './load-receipt';
+import { productionLoadReceiptOwnerSchema } from './load-receipt';
+import { createLoadDiagnosticOperation, loadDiagnosticErrorDetails, LOAD_DIAGNOSTIC_CHANNEL, type LoadDiagnosticMessage, type UpstreamLoadDiagnosticObserver } from './load-diagnostics';
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
 import {
   downloadedModelCandidatePlanError,
@@ -97,6 +99,8 @@ let generationCapture: ReturnType<typeof createGenerationCapture> | undefined;
 let generationCaptureLimits: string | undefined;
 const productionLoadIdentity = createProductionLoadIdentityTracker();
 const productionLoadReceipt = createProductionLoadReceiptSlot();
+let diagnosticLoadOrdinal = 0;
+let postLoadDiagnostic: (({ message }: { message: LoadDiagnosticMessage }) => unknown) | undefined;
 
 function beginGenerationCapture({ request }: { request: GenerationCaptureRequest | undefined }): GenerationCaptureCall | undefined {
   if (request === undefined) return undefined;
@@ -536,6 +540,7 @@ async function loadProductionRuntime({
   onCandidateStart = () => undefined,
   onCandidateAttempt = () => undefined,
   onRuntimePhase,
+  loadDiagnostics,
 }: {
   loadIdentitySource: 'ordinary' | 'non-ordinary',
   loadReceiptOwner: ProductionLoadReceiptOwner | undefined,
@@ -554,6 +559,7 @@ async function loadProductionRuntime({
   onRuntimePhase?: ({ phase }: {
     phase: 'config' | 'candidate-plan' | 'model-session' | 'tokenizer-processor' | 'ready',
   }) => void,
+  loadDiagnostics?: ReturnType<typeof createLoadDiagnosticOperation>,
 }): Promise<ProductionLoadRoute> {
   invalidateGenerationState();
   const receiptOperation = productionLoadReceipt.begin({ owner: loadReceiptOwner });
@@ -610,6 +616,12 @@ async function loadProductionRuntime({
             cacheOnlyFetch,
           });
           onCandidateStart({ candidate });
+          if (loadDiagnostics !== undefined) {
+            const diagnosticEnv = env as typeof env & { naidanModelLoadObserver?: UpstreamLoadDiagnosticObserver };
+            recordGenerationCapture({ record: () => {
+              diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.beginCandidate({ device: candidate.device, dtype: candidate.dtype, revision });
+            } });
+          }
           // This boundary includes cache reads and session creation. File progress
           // alone cannot distinguish those operations or prove that either ended.
           onRuntimePhase?.({ phase: 'model-session' });
@@ -663,12 +675,16 @@ async function loadProductionRuntime({
                 elapsedMs: Math.round(modelLoadDurationMs),
               },
             });
+            loadDiagnostics?.closeCandidate();
             break;
           } catch (error) {
             lastError = typeof error === 'number' ? new Error(`Numeric error ${error}`) : error;
+            loadDiagnostics?.emit({ kind: 'resource-cleanup-start', details: {} });
             try {
               await resources.close();
+              loadDiagnostics?.emit({ kind: 'resource-cleanup-finished', details: {} });
             } catch (cleanupError) {
+              loadDiagnostics?.emit({ kind: 'resource-cleanup-failed', details: loadDiagnosticErrorDetails({ error: cleanupError }) });
               lastError = cleanupError;
             }
             try {
@@ -708,6 +724,7 @@ async function loadProductionRuntime({
                 error: lastError instanceof Error ? lastError.message : String(lastError),
               },
             });
+            loadDiagnostics?.closeCandidate();
             if (lastError instanceof RequiredDownloadedModelResourceError || lastError instanceof RequiredDownloadedResourceCleanupError
             || isTransformersJsOptionalConfigurationError({ error: lastError })) {
               clearLoadedRuntimeState({ loadIdentityOperation });
@@ -1016,39 +1033,74 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   async loadDownloadedModel(modelId: string, revisionSelection: DownloadedModelRevisionSelection, progressCallback: (x: ProgressInfo) => void, loadReceiptOwner?: ProductionLoadReceiptOwner): Promise<ModelLoadResult> {
     console.log('[transformersJsWorker] Starting loadDownloadedModel:', modelId);
-
-    await this.unloadModel();
-    activeModelId = modelId;
-    generationRuntimeState.activeModelId = modelId;
-
+    let loadDiagnostics: ReturnType<typeof createLoadDiagnosticOperation> | undefined;
+    const diagnosticEnv = env as typeof env & { naidanModelLoadObserver?: UpstreamLoadDiagnosticObserver };
+    let previousObserver: typeof diagnosticEnv.naidanModelLoadObserver;
+    // Recording is optional and never grants a different Load/OPFS/fetch path.
+    recordGenerationCapture({ record: () => {
+      diagnosticLoadOrdinal++;
+      const owner = productionLoadReceiptOwnerSchema.safeParse(loadReceiptOwner);
+      const diagnosticSender = postLoadDiagnostic;
+      if (owner.success && diagnosticSender !== undefined && diagnosticLoadOrdinal <= 32) {
+        const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
+        loadDiagnostics = createLoadDiagnosticOperation({ owner: owner.data, loadOrdinal: diagnosticLoadOrdinal,
+          sink: ({ packet }) => diagnosticSender({ message: { channel: LOAD_DIAGNOSTIC_CHANNEL, packet } }),
+          resourceNames: cleanModelId.startsWith('user/') || cleanModelId.startsWith('local/') ? 'omit' : 'public-repository' });
+        previousObserver = diagnosticEnv.naidanModelLoadObserver;
+        diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.observeUpstream;
+        loadDiagnostics.emit({ kind: 'load-start', details: { priorRuntime: model === null ? 'absent' : 'present' } });
+      }
+    } });
     try {
-      const route = await loadProductionRuntime({
-        loadIdentitySource: 'ordinary',
-        loadReceiptOwner,
-        modelId,
-        revisionSelection,
-        candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
-        progressCallback: ({ info }) => progressCallback(info),
-        serializeError: ({ error }) => {
-          const normalized = error instanceof Error ? error : new Error(String(error));
-          return {
-            name: normalized.name,
-            message: normalized.message,
-            stack: normalized.stack,
-          };
-        },
-      });
-      console.log('[transformersJsWorker] Model loaded successfully.');
-      // The opt-in capture slot owns Load evidence. It must not leak into the
-      // ordinary public Load result or change its transport shape.
-      return { device: route.candidate.device, dtype: route.candidate.dtype };
-    } catch (error) {
-      const errorMessage = typeof error === 'number'
-        ? `Low-level engine error (code ${error}). This usually means memory allocation failed or the model format is incompatible.`
-        : (error instanceof Error ? error.message : String(error));
-      console.error('[transformersJsWorker] Detailed load error:', error, errorMessage);
-      if (error instanceof Error) throw error;
-      throw new Error(errorMessage);
+      loadDiagnostics?.emit({ kind: 'previous-unload-start', details: {} });
+      try {
+        await this.unloadModel();
+      } catch (error) {
+        loadDiagnostics?.emit({ kind: 'load-failed', details: loadDiagnosticErrorDetails({ error }) });
+        throw error;
+      }
+      loadDiagnostics?.emit({ kind: 'previous-unload-finished', details: {} });
+      activeModelId = modelId;
+      generationRuntimeState.activeModelId = modelId;
+      try {
+        const route = await loadProductionRuntime({
+          loadIdentitySource: 'ordinary',
+          loadReceiptOwner,
+          loadDiagnostics,
+          modelId,
+          revisionSelection,
+          candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
+          progressCallback: ({ info }) => progressCallback(info),
+          serializeError: ({ error }) => {
+            const normalized = error instanceof Error ? error : new Error(String(error));
+            return {
+              name: normalized.name,
+              message: normalized.message,
+              stack: normalized.stack,
+            };
+          },
+        });
+        console.log('[transformersJsWorker] Model loaded successfully.');
+        loadDiagnostics?.emit({ kind: 'load-finished', details: {} });
+        // The opt-in capture slot owns Load evidence. It must not leak into the
+        // ordinary public Load result or change its transport shape.
+        return { device: route.candidate.device, dtype: route.candidate.dtype };
+      } catch (error) {
+        loadDiagnostics?.emit({ kind: 'load-failed', details: loadDiagnosticErrorDetails({ error }) });
+        const errorMessage = typeof error === 'number'
+          ? `Low-level engine error (code ${error}). This usually means memory allocation failed or the model format is incompatible.`
+          : (error instanceof Error ? error.message : String(error));
+        console.error('[transformersJsWorker] Detailed load error:', error, errorMessage);
+        if (error instanceof Error) throw error;
+        throw new Error(errorMessage);
+      }
+    } finally {
+      recordGenerationCapture({ record: () => {
+        if (loadDiagnostics !== undefined) {
+          if (previousObserver === undefined) delete diagnosticEnv.naidanModelLoadObserver;
+          else diagnosticEnv.naidanModelLoadObserver = previousObserver;
+        }
+      } });
     }
   },
 
@@ -1994,11 +2046,13 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
 let initializationStarted = false;
 
 /** The only entry-publication path, shared by bootstrap and direct-entry replay. */
-export async function initializeProductionWorkerRuntime({ requestRuntimeModule }: {
+export async function initializeProductionWorkerRuntime({ requestRuntimeModule, postLoadDiagnostic: diagnosticSender }: {
   requestRuntimeModule: RequestProductionRuntimeModule;
+  postLoadDiagnostic?: ({ message }: { message: LoadDiagnosticMessage }) => unknown;
 }): Promise<{ requestId: string }> {
   if (initializationStarted) throw new Error('Production runtime initialization is one-shot');
   initializationStarted = true;
+  postLoadDiagnostic = diagnosticSender;
   const bytes = await fetchProductionRuntimeModule({ assets: runtimeAssets, runtimeFetch });
   const { requestId, objectUrl } = await requestRuntimeModule({ variant: runtimeAssets.variant, bytes });
   const leasedUrl = new URL(objectUrl);

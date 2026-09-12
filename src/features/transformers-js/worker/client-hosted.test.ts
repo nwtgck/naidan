@@ -440,6 +440,15 @@ describe('investigation-owned generation capture client', () => {
       await expect(owner.takeGenerationCapture()).rejects.toThrow('not available in this environment');
       expect(owner.getCaptureLifetime()).toEqual({
         runId: 'synthetic-run', workerEpoch: 1, session: 'inactive', issuedCalls: [], loadRequests: [], incompleteReasons: [],
+        // The host ledger exists independently of Worker availability. No Load
+        // was requested, so this is not evidence of an unobserved successful Load.
+        loadDiagnostics: {
+          format: 'production-load-diagnostics-v1', owner: { runId: 'synthetic-run', workerEpoch: 1 },
+          limits: { maxEvents: 512, maxResources: 128 },
+          byteAccounting: 'successful-allocation-request-sum-not-live-memory-or-gc',
+          coverage: 'transformers-readResponse-and-session-entry-only-not-response-arrayBuffer-or-ort-internals',
+          events: [], incompleteReasons: [],
+        },
       });
       expect(getActiveRequest).not.toHaveBeenCalled();
       expect(mocks.workerConstructor).not.toHaveBeenCalled();

@@ -1,0 +1,36 @@
+{
+  "format": "model-load-allocation-observation-v1",
+  "modelId": "onnx-community/gpt-oss-20b-ONNX",
+  "metadataRevision": "6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7",
+  "source": "selected-browser-load-diagnostics-and-cache-observations",
+  "success": {
+    "nativeCaptureSha256": "4adc2c0c378fc05bf56b9123e5a6fe35be4b61ad9318f0b87dc083242bbab22c",
+    "cacheRevision": "main",
+    "wholeFileIdentity": "not-verified",
+    "candidate": { "device": "webgpu", "dtype": "q4f16" },
+    "resources": [
+      { "path": "onnx/model_q4f16.onnx", "bytes": 55192622, "successfulAllocations": 1 },
+      { "path": "onnx/model_q4f16.onnx_data", "bytes": 2070839296, "successfulAllocations": 1 },
+      { "path": "onnx/model_q4f16.onnx_data_1", "bytes": 2057011200, "successfulAllocations": 1 },
+      { "path": "onnx/model_q4f16.onnx_data_2", "bytes": 1974067200, "successfulAllocations": 1 },
+      { "path": "onnx/model_q4f16.onnx_data_3", "bytes": 2057011200, "successfulAllocations": 1 },
+      { "path": "onnx/model_q4f16.onnx_data_4", "bytes": 1974067200, "successfulAllocations": 1 },
+      { "path": "onnx/model_q4f16.onnx_data_5", "bytes": 2096824320, "successfulAllocations": 1 },
+      { "path": "onnx/model_q4f16.onnx_data_6", "bytes": 339033600, "successfulAllocations": 1 }
+    ],
+    "successfulAllocationBytes": 12624046638,
+    "returnedReadBufferBytes": 12624046638,
+    "ortEntry": "after-all-required-reads",
+    "load": "fulfilled",
+    "nativeCalls": 15
+  },
+  "missingCache": {
+    "nativeCaptureSha256": "dd1b645b04630d2693b3839fe854bd165ebde3d407e298a01375a08df03ea5d7",
+    "fileCount": 0,
+    "load": "rejected-before-candidate",
+    "weightReads": 0,
+    "ortEntries": 0,
+    "modelDownloads": 0
+  },
+  "limits": "Selected scalar observations, not model bodies, full file identity, deterministic read completion order, live memory, or a browser capacity guarantee."
+}

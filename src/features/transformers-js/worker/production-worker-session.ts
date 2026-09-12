@@ -3,6 +3,7 @@ import type { ITransformersJsWorker } from '@/features/transformers-js/types';
 import { REQUIRED_DOWNLOADED_RESOURCE_CLEANUP_ERROR_NAME } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
 import { PRODUCTION_WORKER_READY, productionWorkerStartupSchema } from './production-worker-startup';
 import { verifiedRuntimeModuleBlob } from '@/features/transformers-js/runtime/production-runtime-module';
+import { LOAD_DIAGNOSTIC_CHANNEL, loadDiagnosticMessageSchema, type LoadDiagnosticPacket } from './load-diagnostics';
 
 export const PRODUCTION_WORKER_STARTUP_TIMEOUT_MS = 30_000;
 
@@ -18,9 +19,10 @@ export class ProductionWorkerLifecycleError extends Error {
 }
 
 /** Owns readiness, outstanding RPCs and termination for one Production Realm. */
-export function createProductionWorkerSession({ worker, startupTimeoutMs }: {
+export function createProductionWorkerSession({ worker, startupTimeoutMs, observeLoadDiagnostic }: {
   worker: Worker,
   startupTimeoutMs: number | undefined,
+  observeLoadDiagnostic?: ({ packet }: { packet: LoadDiagnosticPacket }) => unknown,
 }) {
   let remote: WorkerRemote<ITransformersJsWorker> | undefined;
   let terminalError: Error | undefined;
@@ -68,6 +70,18 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs }: {
   function onMessage(event: MessageEvent<unknown>): void {
     if (terminalError) return;
     const data = event.data;
+    if (typeof data === 'object' && data !== null && 'channel' in data && data.channel === LOAD_DIAGNOSTIC_CHANNEL) {
+      // Same endpoint as RPC completion: records sent before settlement are
+      // retained before a caller can retire this Worker. No callback RPC await.
+      try {
+        const diagnostic = loadDiagnosticMessageSchema.safeParse(data);
+        if (diagnostic.success && observeLoadDiagnostic !== undefined) {
+          const result = observeLoadDiagnostic({ packet: diagnostic.data.packet });
+          if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+        }
+      } catch { /* Optional observation cannot terminate or delay model work. */ }
+      return;
+    }
     if (typeof data !== 'object' || data === null || !('channel' in data)
       || data.channel !== PRODUCTION_WORKER_READY.channel) return;
     const parsed = productionWorkerStartupSchema.safeParse(data);
@@ -141,7 +155,7 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs }: {
     error: new ProductionWorkerLifecycleError({ reason: 'startup-timeout', message: `Production Worker startup timed out after ${timeoutMs}ms` }),
     releaseIdleRemote: false,
   }), timeoutMs);
-  // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Audited startup-only protocol is Zod-validated above; all model RPCs use worker-transport after readiness.
+  // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Audited startup and optional scalar diagnostic envelopes are Zod-validated above; all model RPCs use worker-transport after readiness.
   worker.addEventListener('message', onMessage);
   worker.addEventListener('error', onError);
   worker.addEventListener('messageerror', onMessageError);

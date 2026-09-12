@@ -17,7 +17,9 @@ void startProductionWorkerRuntime({
   loadEntry: async () => {
     const { initializeProductionWorkerRuntime } = await import('./entry');
     const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: self });
-    return await initializeProductionWorkerRuntime({ requestRuntimeModule });
+    return await initializeProductionWorkerRuntime({ requestRuntimeModule,
+      postLoadDiagnostic: ({ message }) => self.postMessage(message),
+    });
   },
   postMessage: ({ message }) => self.postMessage(message),
 }).catch(error => {

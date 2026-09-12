@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProductionWorkerSession } from './production-worker-session';
 import { PRODUCTION_WORKER_READY, startProductionWorkerRuntime } from './production-worker-startup';
+import { createLoadDiagnosticOperation, LOAD_DIAGNOSTIC_CHANNEL, type LoadDiagnosticMessage } from './load-diagnostics';
 
 import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 
@@ -39,6 +40,42 @@ afterEach(() => {
 });
 
 describe('Production Worker startup ownership', () => {
+  it.each(['dispose', 'timeout'] as const)('ignores late diagnostic messages after %s', async terminal => {
+    vi.useFakeTimers();
+    const worker = new LifecycleWorker();
+    const observeLoadDiagnostic = vi.fn();
+    const session = createProductionWorkerSession({ worker: worker as unknown as Worker, startupTimeoutMs: 100, observeLoadDiagnostic });
+    sessions.push(session);
+    const messages: LoadDiagnosticMessage[] = [];
+    const operation = createLoadDiagnosticOperation({ owner: { runId: 'diagnostic-session', workerEpoch: 1 }, loadOrdinal: 1,
+      resourceNames: 'public-repository', sink: ({ packet }) => messages.push({ channel: LOAD_DIAGNOSTIC_CHANNEL, packet }) });
+    operation.emit({ kind: 'load-start', details: {} });
+    worker.dispatchEvent(new MessageEvent('message', { data: messages[0] }));
+    expect(observeLoadDiagnostic).toHaveBeenCalledTimes(1);
+    if (terminal === 'dispose') session.dispose();
+    else await vi.advanceTimersByTimeAsync(100);
+    worker.dispatchEvent(new MessageEvent('message', { data: messages[0] }));
+    expect(observeLoadDiagnostic).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['throw', 'reject'] as const)('keeps model RPC settlement unchanged when the host observer %s fails', async mode => {
+    const worker = new LifecycleWorker();
+    const session = createProductionWorkerSession({ worker: worker as unknown as Worker, startupTimeoutMs: 100,
+      observeLoadDiagnostic: () => {
+        if (mode === 'throw') throw new Error('Diagnostic failure');
+        return Promise.reject(new Error('Diagnostic failure'));
+      },
+    });
+    sessions.push(session);
+    mocks.wrap.mockReturnValue({});
+    await worker.publishReady();
+    const operation = createLoadDiagnosticOperation({ owner: { runId: 'diagnostic-session', workerEpoch: 1 }, loadOrdinal: 1,
+      resourceNames: 'public-repository', sink: ({ packet }) => worker.dispatchEvent(new MessageEvent('message', { data: { channel: LOAD_DIAGNOSTIC_CHANNEL, packet } })) });
+    operation.emit({ kind: 'load-start', details: {} });
+    await expect(session.run({ operation: async () => 'unchanged' })).resolves.toBe('unchanged');
+    expect(session.isActive()).toBe(true);
+  });
+
   it('keeps its host-owned URL until disposal and revokes it exactly once', async () => {
     const { worker, session } = fixture();
     mocks.wrap.mockReturnValue({});

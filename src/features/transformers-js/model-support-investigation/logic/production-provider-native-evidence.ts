@@ -3,6 +3,7 @@ import { downloadedModelRevisionSelectionSchema } from '@/features/transformers-
 import { generationCaptureReadResultSchema, generationCaptureReadRequestSchema, type GenerationCaptureReadResult, type GenerationCaptureClientLifetime } from '@/features/transformers-js/worker/generation-capture-protocol';
 import { productionLoadIdentitySchema } from '@/features/transformers-js/worker/load-identity';
 import { productionLoadObservationSchema, type ProductionLoadObservation } from '@/features/transformers-js/worker/load-receipt';
+import { loadDiagnosticsSchema, type LoadDiagnostics, type LoadDiagnosticEvent } from '@/features/transformers-js/worker/load-diagnostics';
 import { productionLoadReceiptRevisionOption } from '@/features/transformers-js/runtime/production-load-receipt';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import type { ProductionProviderNativeCollectionSnapshot } from './production-provider-generation-capture-owner';
@@ -38,7 +39,14 @@ export const nativeBinaryReferenceSchema = z.object({ path: z.string().regex(/^g
 const referenceSchema = nativeBinaryReferenceSchema;
 class ExportRefusal extends Error {}
 
-const lifetimeSchema = z.object({ runId: z.string(), workerEpoch: z.number().int().positive(), session: z.enum(['active', 'inactive']), issuedCalls: z.array(generationCaptureReadRequestSchema.extend({ requestId: z.string().min(1).max(128), generationCallId: z.number().int().positive() })).max(32), loadRequests: z.array(z.object({ requestedModelId: z.string().max(256), requestedRevision: z.string().max(128).optional(), revisionSelection: downloadedModelRevisionSelectionSchema.optional() }).strict()).max(32), incompleteReasons: z.array(z.enum(['request-unavailable', 'request-invalid', 'call-limit', 'load-limit', 'load-identity-limit'])).max(5) }).strict().transform(value => ({ ...value, loadRequests: value.loadRequests.map(load => ({ ...load, requestedRevision: load.requestedRevision })) }));
+const lifetimeSchema = z.object({ runId: z.string(), workerEpoch: z.number().int().positive(), session: z.enum(['active', 'inactive']), loadDiagnostics: loadDiagnosticsSchema.optional(), issuedCalls: z.array(generationCaptureReadRequestSchema.extend({ requestId: z.string().min(1).max(128), generationCallId: z.number().int().positive() })).max(32), loadRequests: z.array(z.object({ requestedModelId: z.string().max(256), requestedRevision: z.string().max(128).optional(), revisionSelection: downloadedModelRevisionSelectionSchema.optional() }).strict()).max(32), incompleteReasons: z.array(z.enum(['request-unavailable', 'request-invalid', 'call-limit', 'load-limit', 'load-identity-limit'])).max(5) }).strict().superRefine((value, context) => {
+  if (value.loadDiagnostics !== undefined && (value.loadDiagnostics.owner.runId !== value.runId || value.loadDiagnostics.owner.workerEpoch !== value.workerEpoch)) {
+    context.addIssue({ code: 'custom', message: 'Load diagnostic owner differs from Worker lifetime' });
+  }
+  if (value.loadDiagnostics?.events.some(event => event.loadOrdinal > value.loadRequests.length)) {
+    context.addIssue({ code: 'custom', message: 'Load diagnostic has no corresponding host Load request' });
+  }
+}).transform(value => ({ ...value, loadRequests: value.loadRequests.map(load => ({ ...load, requestedRevision: load.requestedRevision })) }));
 const waitingCollectionSchema = z.object({ status: z.enum(['not-requested', 'pending']) }).strict();
 const failedCollectionSchema = z.object({ status: z.literal('failed'), reason: z.literal('take-failed') }).strict();
 const unavailableCollectionSchema = z.object({ status: z.literal('unavailable'), reason: z.enum(['session-inactive', 'host-state-unavailable']) }).strict();
@@ -315,7 +323,18 @@ function createDescriptorChecks() {
   const revisionSelectionCheck: Check = ({ value }) => record<{ kind: 'pinned' | 'discover-cached'; revision?: string }>({
     value, fields: { kind: scalar, revision: scalar }, optional: ['revision'],
   });
-  const lifetimeCheck: Check = ({ value }) => record<GenerationCaptureClientLifetime>({ value, fields: { runId: scalar, workerEpoch: scalar, session: scalar, issuedCalls: array({ check: contextCheck, maximum: 32 }), loadRequests: array({ maximum: 32, check: ({ value }) => record<GenerationCaptureClientLifetime['loadRequests'][number]>({ value, fields: { requestedModelId: scalar, requestedRevision: scalar, revisionSelection: revisionSelectionCheck }, optional: ['revisionSelection'] }) }), incompleteReasons: array({ check: scalar, maximum: 5 }) }, optional: [] });
+  const loadDiagnosticCheck: Check = ({ value }) => record<LoadDiagnostics>({ value, fields: {
+    format: scalar, byteAccounting: scalar, coverage: scalar,
+    owner: ({ value }) => record<LoadDiagnostics['owner']>({ value, fields: { runId: scalar, workerEpoch: scalar }, optional: [] }),
+    limits: ({ value }) => record<LoadDiagnostics['limits']>({ value, fields: { maxEvents: scalar, maxResources: scalar }, optional: [] }),
+    events: array({ maximum: 512, check: ({ value }) => record<LoadDiagnosticEvent>({ value, fields: {
+      loadOrdinal: scalar, sequence: scalar, candidateOrdinal: scalar, kind: scalar, resource: scalar, readOrdinal: scalar, requestedBytes: scalar,
+      errorName: scalar, device: scalar, dtype: scalar, priorRuntime: scalar, revision: scalar,
+      candidateScopeAllocatedBytes: scalar, returnedReadBufferBytes: scalar, activeReadCount: scalar, scope: scalar,
+    }, optional: ['resource', 'readOrdinal', 'requestedBytes', 'errorName', 'device', 'dtype', 'priorRuntime', 'revision'] }) }),
+    incompleteReasons: array({ check: scalar, maximum: 6 }),
+  }, optional: [] });
+  const lifetimeCheck: Check = ({ value }) => record<GenerationCaptureClientLifetime>({ value, fields: { runId: scalar, workerEpoch: scalar, session: scalar, loadDiagnostics: loadDiagnosticCheck, issuedCalls: array({ check: contextCheck, maximum: 32 }), loadRequests: array({ maximum: 32, check: ({ value }) => record<GenerationCaptureClientLifetime['loadRequests'][number]>({ value, fields: { requestedModelId: scalar, requestedRevision: scalar, revisionSelection: revisionSelectionCheck }, optional: ['revisionSelection'] }) }), incompleteReasons: array({ check: scalar, maximum: 5 }) }, optional: ['loadDiagnostics'] });
   const resultCheck: Check = ({ value }) => {
     const loadObservationCheck: Check = ({ value }) => {
       function inspect({ value, depth }: { value: unknown; depth: number }): void {

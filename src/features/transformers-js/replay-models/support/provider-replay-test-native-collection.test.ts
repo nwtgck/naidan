@@ -5,11 +5,194 @@ import { createProviderReplayTestRuntime } from './provider-replay-test-runtime'
 import { createProviderReplayTestImagePlatform } from './provider-replay-test-image-platform';
 import { createSyntheticModelBody } from './download-synthetic-session-oracle';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE as image } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
+import type { GenerationCaptureClient } from '@/features/transformers-js/worker/generation-capture-protocol';
+import { loadDiagnosticsSchema } from '@/features/transformers-js/worker/load-diagnostics';
 
 // This is a collection/transport control, not captured model inference. Only
 // native generate and browser platforms are substituted; the real Provider,
 // service, Comlink, Worker strategy, tokenizer, streamer and parser still run.
+// Allocation controls additionally refuse a tiny readResponse allocation;
+// they exercise failure transport without claiming device memory capacity.
 describe('Production native collection through actual Comlink', () => {
+  it.each(['available', 'session-inactive', 'take-failed', 'fatal-auto-retirement'] as const)('retains actual readResponse allocation failure in host-owned diagnostics through %s collection and ZIP re-export', async collectionMode => {
+    const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
+    const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
+    const path = 'onnx/model_q4f16.onnx';
+    const requestedBytes = 257;
+    const harness = await createProviderReplayTestRuntime({
+      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: 'all-fixture',
+      artifacts: [{ path, bytes: new Uint8Array(requestedBytes) }], imagePlatform: undefined,
+      generate: async () => {
+        throw new Error('Allocation control must stop before native generation');
+      },
+    });
+    const { createProductionProviderGenerationCaptureOwner } = await import('@/features/transformers-js/model-support-investigation/logic/production-provider-generation-capture-owner');
+    const { createTransformersJsGenerationCaptureClient } = await import('@/features/transformers-js/worker/client-hosted');
+    const clients: GenerationCaptureClient[] = [];
+    const creationSnapshots: Array<ReturnType<GenerationCaptureClient['getCaptureLifetime']>> = [];
+    const takeCalls: number[] = [];
+    const replacementEpochs: number[] = [];
+    const replacementOperations: string[] = [];
+    const owner = createProductionProviderGenerationCaptureOwner({
+      runId: `synthetic-allocation-${collectionMode}`, modelId, plan: 'first-continuity-independent',
+      traceLimits: { maximumEvents: 64, maximumCharacters: 4096 }, maximumWorkerEpochs: 8,
+      createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => {
+        if (workerEpoch > 1) {
+          // The first Worker and its fatal-error retirement are real. A new
+          // platform boundary stops here: never reuse the old Node Realm or
+          // present this unavailable replacement as a successful next Load.
+          replacementEpochs.push(workerEpoch);
+          const unavailable = async ({ operation }: { operation: string }): Promise<never> => {
+            replacementOperations.push(operation);
+            throw new Error('Explicit unavailable replacement platform boundary');
+          };
+          return {
+            client: {
+              loadDownloadedModel: () => unavailable({ operation: 'load' }),
+              unloadModel: () => unavailable({ operation: 'unload' }),
+              interrupt: () => unavailable({ operation: 'interrupt' }),
+              resetCache: () => unavailable({ operation: 'reset-cache' }),
+              generateText: () => unavailable({ operation: 'generate' }),
+              async dispose() {
+                replacementOperations.push('dispose');
+              },
+            },
+            takeGenerationCapture: () => unavailable({ operation: 'take' }),
+            getCaptureLifetime: () => ({ runId, workerEpoch, session: 'inactive', issuedCalls: [], loadRequests: [], incompleteReasons: [] }),
+          };
+        }
+        const capture = createTransformersJsGenerationCaptureClient({
+          runId, workerEpoch, getActiveRequest,
+          limits: { maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 256, maxTextBytes: 8192,
+            maxTensorBytes: 8192, maxTotalTensorBytes: 65536,
+            maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 },
+        });
+        clients.push(capture);
+        creationSnapshots.push(capture.getCaptureLifetime());
+        return { ...capture, async takeGenerationCapture() {
+          takeCalls.push(workerEpoch);
+          const result = await capture.takeGenerationCapture();
+          if (collectionMode === 'take-failed') throw new Error('Synthetic capture reply discarded after the actual take');
+          return result;
+        } };
+      },
+      createUnrecordedWorkerClient: () => {
+        throw new Error('Unexpected replacement Worker');
+      },
+    });
+    const originalUint8Array = globalThis.Uint8Array;
+    const rejectedAllocations: Array<{ bytes: number; stack: string }> = [];
+    // Reject one explicitly tiny allocation in the hash-verified Vite artifact.
+    // No observer is called by the test, and ordinary metadata allocations run.
+    globalThis.Uint8Array = new Proxy(originalUint8Array, {
+      construct(target, argumentsList, newTarget) {
+        if (argumentsList[0] === requestedBytes) {
+          const stack = new Error().stack ?? '';
+          if (stack.includes('readResponse') && stack.includes('transformers-js-fixes.mjs')) {
+            rejectedAllocations.push({ bytes: requestedBytes, stack });
+            throw new RangeError(collectionMode === 'fatal-auto-retirement' ? 'Array buffer allocation failed' : 'Synthetic readResponse allocation refusal');
+          }
+        }
+        return Reflect.construct(target, argumentsList, newTarget);
+      },
+    });
+    try {
+      const provider = await owner.run();
+      globalThis.Uint8Array = originalUint8Array;
+      expect(rejectedAllocations).toHaveLength(1);
+      expect(rejectedAllocations[0]?.bytes).toBe(requestedBytes);
+      expect(provider.run).toEqual({ status: 'stopped', reason: 'provider-rejected' });
+      expect(provider.requests[0]?.trace.settled?.outcome).toEqual({ status: 'rejected', errorName: 'RangeError' });
+      expect(harness.observations.inferenceCalls).toEqual([]);
+      expect(harness.observations.ortCalls).toEqual([]);
+      expect(clients).toHaveLength(1);
+      expect(replacementEpochs).toEqual(collectionMode === 'fatal-auto-retirement' ? [2] : []);
+      expect(replacementOperations).toEqual([]);
+      if (collectionMode === 'session-inactive') await clients[0]!.client.dispose();
+      await owner.collectNative();
+      const snapshot = owner.snapshot();
+      if (snapshot.native.status !== 'retained') throw new Error('Expected retained allocation diagnostics');
+      expect(snapshot.native.capture.epochs).toHaveLength(collectionMode === 'fatal-auto-retirement' ? 2 : 1);
+      if (collectionMode === 'fatal-auto-retirement') {
+        expect(snapshot.native.capture.epochs[1]).toEqual({
+          workerEpoch: 2,
+          lifetime: { status: 'observed', value: { runId: provider.runId, workerEpoch: 2, session: 'inactive', issuedCalls: [], loadRequests: [], incompleteReasons: [] } },
+          collection: { status: 'unavailable', reason: 'session-inactive' },
+        });
+      }
+      const epoch = snapshot.native.capture.epochs[0]!;
+      if (epoch.lifetime.status !== 'observed') throw new Error('Expected host-owned lifetime');
+      const diagnostics = loadDiagnosticsSchema.parse(epoch.lifetime.value.loadDiagnostics);
+      expect(diagnostics.owner).toEqual({ runId: provider.runId, workerEpoch: 1 });
+      expect(creationSnapshots).toHaveLength(1);
+      // Actual later Worker callbacks must not mutate a previously owned view.
+      expect(creationSnapshots[0]?.loadDiagnostics?.events).toEqual([]);
+      expect(diagnostics.byteAccounting).toBe('successful-allocation-request-sum-not-live-memory-or-gc');
+      expect(diagnostics.incompleteReasons).toEqual([]);
+      const allocation = diagnostics.events.filter(event => event.kind === 'allocation-failed');
+      expect(allocation, JSON.stringify(diagnostics)).toHaveLength(1);
+      expect(allocation[0]).toMatchObject({
+        loadOrdinal: 1, candidateOrdinal: 1, resource: path, requestedBytes,
+        errorName: 'RangeError', candidateScopeAllocatedBytes: 0, returnedReadBufferBytes: 0,
+        activeReadCount: 0, scope: 'active',
+      });
+      expect(diagnostics.events[0]).toMatchObject({ kind: 'load-start', priorRuntime: 'absent' });
+      expect(diagnostics.events.find(event => event.kind === 'candidate-start')).toMatchObject({
+        candidateOrdinal: 1, device: 'webgpu', dtype: 'q4f16', revision,
+      });
+      expect(diagnostics.events.filter(event => event.kind === 'allocation-attempt')).toEqual([
+        expect.objectContaining({ resource: path, requestedBytes, readOrdinal: allocation[0]!.readOrdinal }),
+      ]);
+      expect(diagnostics.events.some(event => event.kind === 'load-failed')).toBe(true);
+      expect(diagnostics.events.filter(event => event.kind === 'session-entering' || event.kind === 'allocation-succeeded')).toEqual([]);
+      switch (collectionMode) {
+      case 'available': expect(epoch.collection.status).toBe('returned'); expect(takeCalls).toEqual([1]); break;
+      case 'session-inactive': case 'fatal-auto-retirement':
+        expect(epoch.collection).toEqual({ status: 'unavailable', reason: 'session-inactive' });
+        expect(epoch.lifetime.value.session).toBe('inactive'); expect(takeCalls).toEqual([]); break;
+      case 'take-failed': expect(epoch.collection).toEqual({ status: 'failed', reason: 'take-failed' }); expect(takeCalls).toEqual([1]); break;
+      default: { const exhaustive: never = collectionMode; throw new Error(String(exhaustive)); }
+      }
+      const { createProductionProviderNativeEvidence, verifyProductionProviderNativeEvidenceSidecar } = await import('@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence');
+      const sidecar = await createProductionProviderNativeEvidence({ native: snapshot.native.capture, provider: snapshot.provider, maximumBinaryBytes: 65536 });
+      expect(sidecar.summary).toMatchObject({ refusedEpochCount: 0, capturedCallCount: 0, enteredNativeInvocationCount: 0 });
+      expect(sidecar.binaries).toEqual([]);
+      expect(sidecar.json).not.toContain('Synthetic readResponse allocation refusal');
+      expect(sidecar.json).not.toContain('transformers-js-fixes.mjs');
+      await verifyProductionProviderNativeEvidenceSidecar({ evidence: structuredClone(sidecar), provider: snapshot.provider, maximumBinaryBytes: 65536 });
+      const { createInitialInvestigationCheckpoint } = await import('@/features/transformers-js/model-support-investigation/logic/investigation-recovery');
+      const { createPartialModelSupportEvidence } = await import('@/features/transformers-js/model-support-investigation/logic/create-partial-evidence');
+      const { run, recovery } = createInitialInvestigationCheckpoint({ runId: provider.runId, modelId, now: () => '2026-09-13T00:00:00.000Z' });
+      run.productionProviderCapture = snapshot.provider;
+      const first = await createPartialModelSupportEvidence({ run, recovery, nativeEvidence: sidecar });
+      await owner.dispose();
+      expect(replacementOperations).toEqual(collectionMode === 'fatal-auto-retirement' ? ['dispose'] : []);
+      const second = await createPartialModelSupportEvidence({ run, recovery, nativeEvidence: structuredClone(sidecar) });
+      const firstZip = await JSZip.loadAsync(await first.blob.arrayBuffer());
+      const secondZip = await JSZip.loadAsync(await second.blob.arrayBuffer());
+      expect(await firstZip.file(sidecar.path)!.async('text')).toBe(sidecar.json);
+      const exported: unknown = JSON.parse(await firstZip.file(sidecar.path)!.async('text'));
+      expect(exported).toMatchObject({ epochs: expect.arrayContaining([
+        expect.objectContaining({ workerEpoch: 1, lifetime: { status: 'observed', value: expect.objectContaining({ loadDiagnostics: diagnostics }) } }),
+      ]) });
+      const paths = Object.keys(firstZip.files).filter(path => !firstZip.files[path]!.dir).sort();
+      expect(Object.keys(secondZip.files).filter(path => !secondZip.files[path]!.dir).sort()).toEqual(paths);
+      for (const entry of paths) expect(await secondZip.file(entry)!.async('uint8array')).toEqual(await firstZip.file(entry)!.async('uint8array'));
+      expect(takeCalls).toEqual(collectionMode === 'session-inactive' || collectionMode === 'fatal-auto-retirement' ? [] : [1]);
+      expect(harness.observations.workers).toHaveLength(1);
+      expect(harness.observations.workers[0]!.terminated).toBe(true);
+      expect(harness.observations.forbiddenTransport).toEqual([]);
+      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    } finally {
+      globalThis.Uint8Array = originalUint8Array;
+      try {
+        await owner.dispose();
+      } finally {
+        await harness.close();
+      }
+    }
+  }, 30_000);
+
   it.each([
     { modelId: 'onnx-community/Qwen3.5-2B-ONNX', revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb', extraShards: [] },
     { modelId: 'onnx-community/Qwen3.5-4B-ONNX', revision: '74d8caba2117fd5f41d655e9cc27eda1338662b3', extraShards: ['onnx/decoder_model_merged_q4f16.onnx_data_1'] },
@@ -270,7 +453,14 @@ describe('Production native collection through actual Comlink', () => {
         runId: 'synthetic-native-collection', workerEpoch: 1,
         requestId: request.requestId, generationCallId: index + 1,
       }));
-      expect(epoch.lifetime).toEqual({ status: 'observed', value: {
+      if (epoch.lifetime.status !== 'observed') throw new Error('Expected host-owned lifetime');
+      const { loadDiagnostics, ...existingLifetime } = epoch.lifetime.value;
+      expect(loadDiagnosticsSchema.parse(loadDiagnostics).events).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'allocation-succeeded', resource: 'onnx/model_q4f16.onnx', requestedBytes: 3 }),
+        expect.objectContaining({ kind: 'session-fulfilled' }),
+        expect.objectContaining({ kind: 'load-finished' }),
+      ]));
+      expect(existingLifetime).toEqual({
         runId: 'synthetic-native-collection', workerEpoch: 1, session: 'active',
         issuedCalls: contexts, incompleteReasons: [],
         // The host requests offline discovery; the Worker's exact selected
@@ -280,7 +470,7 @@ describe('Production native collection through actual Comlink', () => {
           requestedRevision: undefined,
           revisionSelection: { kind: 'discover-cached' },
         }],
-      } });
+      });
       if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Expected actual native capture result');
       const capture = epoch.collection.result.capture;
       expect(capture.calls).toEqual(contexts.map(context => ({ context, loadIdentity: {

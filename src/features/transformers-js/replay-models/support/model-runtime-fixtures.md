@@ -87,6 +87,15 @@ the synthetic session boundary to make a regression pass.
 
 ## Evidence roles
 
+`model-load-allocation.evidence.json` retains selected scalar browser Load
+observations without model bodies or whole-file identity claims. Its model-local
+tests pass each observed Content-Length through the real model reader and refuse
+the allocation before native memory is requested. Other bodies in those failure
+controls are explicitly tiny. Separate tiny multi-chunk controls check copying,
+session entry, failure, cancellation and later-operation isolation. Neither kind
+certifies browser capacity or real ONNX execution. Core/shard sets and partial
+orders matter; incidental concurrent read completion order is not an invariant.
+
 `model-runtime-inputs.evidence.json` is the manifest for original metadata bytes.
 Its resource paths and digests remain upstream identities even though stored
 asset filenames use a `model-` prefix. `model-parsed-metadata.evidence.json`

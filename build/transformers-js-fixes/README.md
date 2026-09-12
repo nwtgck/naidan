@@ -8,7 +8,7 @@ covered by this fix.
 
 ## What changes
 
-Eight exact web-bundle edits address resource ownership, optional preparation and template parsing:
+Eleven exact web-bundle edits address resource ownership, optional preparation, template parsing and optional Load observation:
 
 1. `getModelDataFiles` no longer uses an async Promise executor. Each external
    file's rejection now reaches the returned Promise instead of leaving an
@@ -38,6 +38,17 @@ Eight exact web-bundle edits address resource ownership, optional preparation an
    each orphan session's release once and observes cleanup rejection without
    replacing or delaying the original Load error. Successful complete session
    sets transfer unchanged to the model and are not released by this failure path.
+6. An optional observer records `readResponse` allocation requests/results and
+   runtime session entry without changing buffer allocation, reading, fallback,
+   error identity or return values. Ordinary loads install no observer. Callback
+   exceptions and rejected promises cannot change Load settlement. The host
+   investigation retains bounded scalar records on the same Worker endpoint as
+   RPC completion, including failure followed immediately by Worker retirement.
+
+Allocation records cover `readResponse`, not other `response.arrayBuffer()`
+branches or ORT-internal copies. Successful allocation totals are cumulative
+requests, not live memory, GC reclamation, or proof of browser capacity. Neither
+read completion nor resource cleanup is reported as native memory release.
 
 Orphan cleanup is best effort: requesting release does not prove that native GPU
 memory is already freed before another candidate starts. A pending sibling or
@@ -80,7 +91,7 @@ or alternate unpatched browser path.
 Original web SHA-256:
 `25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff`.
 Transformed web SHA-256:
-`6b6a707a7163365ac1bbee232e4228b8177dd05b11e825c061167d56d986070f`.
+`4e017bc8f4e39a2ab6d66deee046fc666d69d49631950c579ed7ffa4c2b8e64c`.
 
 `buildTransformersJsFixesArtifact` runs a real Vite library build with the same
 plugin, `configFile: false`, and no application plugins. Runtime regression

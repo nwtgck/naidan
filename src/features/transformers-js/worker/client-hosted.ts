@@ -1,6 +1,7 @@
 import { workerProxy } from '@/utils/worker-transport';
 import { createProductionWorkerSession } from './production-worker-session';
 import { generationCaptureLimitsSchema } from './generation-capture';
+import { createLoadDiagnosticLedger, type LoadDiagnosticPacket } from './load-diagnostics';
 import { downloadedModelRevisionSelectionSchema, type DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import {
   generationCaptureReadRequestSchema,
@@ -40,11 +41,15 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
 }): GenerationCaptureClient {
   const identity = generationCaptureReadRequestSchema.parse({ runId, workerEpoch });
   const limits = generationCaptureLimitsSchema.parse(rawLimits);
+  const loadDiagnostics = createLoadDiagnosticLedger({ owner: identity });
   const issuedCalls: GenerationCaptureRequest['context'][] = [];
   const loadRequests: GenerationCaptureClientLifetime['loadRequests'] = [];
   const incompleteReasons = new Set<GenerationCaptureClientLifetime['incompleteReasons'][number]>();
   const core = createWorkerClientCore({ capture: {
     loadReceiptOwner: identity,
+    observeLoad({ packet }) {
+      loadDiagnostics.observe({ packet });
+    },
     createRequest() {
       // Read the owner once, before startup/session awaits. A tool loop may
       // issue several calls for one Provider request, each with its own ID.
@@ -124,6 +129,7 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
       return {
         ...identity,
         session: core.isActive() ? 'active' as const : 'inactive' as const,
+        loadDiagnostics: loadDiagnostics.snapshot({ expectedLoadCount: loadRequests.length }),
         issuedCalls: issuedCalls.map(context => ({ ...context })),
         loadRequests: loadRequests.map(request => ({ ...request, revisionSelection: request.revisionSelection === undefined ? undefined : { ...request.revisionSelection } })),
         incompleteReasons: [...incompleteReasons],
@@ -135,6 +141,7 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
 function createWorkerClientCore({ capture }: {
   capture: {
     loadReceiptOwner: GenerationCaptureReadRequest,
+    observeLoad({ packet }: { packet: LoadDiagnosticPacket }): void,
     createRequest(): GenerationCaptureRequest | undefined,
     recordLoad({ modelId, revisionSelection }: { modelId: string; revisionSelection: DownloadedModelRevisionSelection }): void,
   } | undefined,
@@ -177,7 +184,9 @@ function createWorkerClientCore({ capture }: {
     { type: 'module' },
   );
 
-  const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined });
+  const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined,
+    observeLoadDiagnostic: capture === undefined ? undefined : ({ packet }) => capture.observeLoad({ packet }),
+  });
   const client: TransformersJsWorkerClient = {
     async loadDownloadedModel({ modelId, revisionSelection: rawSelection, progressCallback }: {
       modelId: string,
@@ -192,7 +201,7 @@ function createWorkerClientCore({ capture }: {
         workerProxy({ value: (info: ProgressInfo) => {
           if (session.isActive()) return progressCallback({ info });
         } }),
-        ...(capture === undefined ? [] : [capture.loadReceiptOwner]),
+        ...(capture === undefined ? [] as const : [capture.loadReceiptOwner] as const),
       ) });
     },
     async unloadModel(): Promise<void> {

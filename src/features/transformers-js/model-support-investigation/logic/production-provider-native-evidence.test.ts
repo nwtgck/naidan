@@ -7,6 +7,7 @@ import type { ProductionProviderCaptureSnapshot } from './production-provider-ca
 import { createProductionProviderNativeEvidence, verifyProductionProviderNativeEvidence, measureProductionProviderNativeEvidenceSidecar, verifyProductionProviderNativeEvidenceSidecar, readProductionProviderLoadObservations, PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, TEST_ONLY } from './production-provider-native-evidence';
 import type { ProductionLoadObservation } from '@/features/transformers-js/worker/load-receipt';
 import { providerLoadRuntimeCompletion } from './provider-load-runtime-completion';
+import { createLoadDiagnosticLedger } from '@/features/transformers-js/worker/load-diagnostics';
 import { createProductionProviderCapturePolicy } from './production-provider-capture-policy';
 import type { ProductionProviderInvestigationResult } from './run-production-provider-investigation';
 
@@ -91,6 +92,18 @@ afterEach(() => {
 });
 
 describe('native capture post-run export', () => {
+  it.each(['runId', 'workerEpoch'] as const)('rejects a diagnostic owner with a foreign %s', async field => {
+    const native = collectionFixture({ capture: nativeFixture() });
+    const lifetime = native.epochs[0]!.lifetime;
+    if (lifetime.status !== 'observed') throw new Error('Expected the test lifetime');
+    lifetime.value.loadDiagnostics = createLoadDiagnosticLedger({ owner: {
+      runId: field === 'runId' ? 'foreign-run' : context.runId,
+      workerEpoch: field === 'workerEpoch' ? 2 : context.workerEpoch,
+    } }).snapshot({ expectedLoadCount: 0 });
+    await expect(createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
+      native, provider: providerFixture() })).rejects.toThrow(/^Invalid native capture evidence$/u);
+  });
+
   it.each(['captured', 'not-started'] as const)('round-trips an independently owned Load receipt with native status %s', async status => {
     const baseline = collectionFixture({ capture: nativeFixture() });
     const loadObservation: ProductionLoadObservation = {

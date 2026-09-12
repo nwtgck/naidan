@@ -277,7 +277,9 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
         await startProductionWorkerRuntime({ loadEntry: async () => {
           const entry = await import('@/features/transformers-js/worker/entry');
           const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: worker.startupEndpoint });
-          return entry.initializeProductionWorkerRuntime({ requestRuntimeModule });
+          return entry.initializeProductionWorkerRuntime({ requestRuntimeModule,
+            postLoadDiagnostic: ({ message }) => worker.sendFromWorker({ message }),
+          });
         }, postMessage: ({ message }) => worker.sendFromWorker({ message }) });
       },
     }) });
