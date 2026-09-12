@@ -128,8 +128,7 @@ describe('ordinary offline revision selection through the actual Production Work
     const harness = await createRuntime();
     try {
       await seedImmutable({ harness, paths: ['config.json', 'tokenizer_config.json', 'tokenizer.json', modelPath], malformedConfig: false, targetRevision: revision });
-      const original = vi.mocked(harness.runtime.AutoModelForCausalLM.from_pretrained).getMockImplementation();
-      if (original === undefined) throw new Error('Missing native replay platform observer');
+      const original = harness.runtime.AutoModelForCausalLM.from_pretrained.bind(harness.runtime.AutoModelForCausalLM);
       let nativeLoads = 0;
       vi.spyOn(harness.runtime.AutoModelForCausalLM, 'from_pretrained').mockImplementation(async (...args) => {
         nativeLoads++;

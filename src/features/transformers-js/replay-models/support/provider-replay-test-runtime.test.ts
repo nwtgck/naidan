@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
+import { getEventListeners } from 'node:events';
 import { createProviderReplayTestRuntime } from './provider-replay-test-runtime';
-import { createProviderReplayTestWorkerConstructor } from './provider-replay-test-transport';
+import { createProviderReplayTestWorkerConstructor, ProviderReplayTestWorker } from './provider-replay-test-transport';
 import { createProviderReplayTestImagePlatform } from './provider-replay-test-image-platform';
 import * as artifactFixture from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import type { ProviderReplayGenerate } from './provider-replay-test-runtime';
@@ -197,20 +198,37 @@ describe('Production replay explicit image platform ownership', () => {
   it('restores image globals even when service unload rejects', async () => {
     const keys = ['self', 'WorkerGlobalScope', 'DedicatedWorkerGlobalScope', 'ImageData', 'OffscreenCanvas', 'createImageBitmap', 'fetch'];
     const before = keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key));
-    const harness = await createProviderReplayTestRuntime({
-      ...mechanicsArguments({ generate: async () => {
-        throw new Error('No inference in unload failure test');
-      } }),
-      imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [dataUrl] },
+    const originalImport = artifactFixture.importProductionTransformersArtifact;
+    const methods: Array<{ target: object, descriptor: PropertyDescriptor | undefined }> = [];
+    const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockImplementationOnce(async args => {
+      const runtime = await originalImport(args) as typeof import('@huggingface/transformers');
+      for (const target of [runtime.AutoTokenizer, runtime.AutoProcessor, runtime.AutoModelForCausalLM, runtime.AutoModelForImageTextToText]) {
+        methods.push({ target, descriptor: Object.getOwnPropertyDescriptor(target, 'from_pretrained') });
+      }
+      return runtime;
     });
-    const failure = new Error('Synthetic unload failure with image platform');
-    const unload = vi.spyOn(harness.service, 'unloadModel').mockRejectedValueOnce(failure);
     try {
-      await expect(harness.close()).rejects.toBe(failure);
-      expect(keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(before);
-      expect(harness.observations.cleanupErrors).toEqual([]);
+      const harness = await createProviderReplayTestRuntime({
+        ...mechanicsArguments({ generate: async () => {
+          throw new Error('No inference in unload failure test');
+        } }),
+        imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [dataUrl] },
+      });
+      const failure = new Error('Synthetic unload failure with image platform');
+      const unload = vi.spyOn(harness.service, 'unloadModel').mockRejectedValueOnce(failure);
+      try {
+        await expect(harness.close()).rejects.toBe(failure);
+        expect(keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(before);
+        expect(harness.observations.cleanupErrors).toEqual([]);
+        expect(methods).toHaveLength(4);
+        for (const { target, descriptor } of methods) {
+          expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
+        }
+      } finally {
+        unload.mockRestore();
+      }
     } finally {
-      unload.mockRestore();
+      importer.mockRestore();
     }
   }, 30_000);
 
@@ -260,6 +278,48 @@ describe('Production replay explicit local cache metadata', () => {
 });
 
 describe('Production replay construction ownership', () => {
+  it('owns fresh runtime wrappers without global spies and restores own and inherited methods', async () => {
+    const parent = { call: () => 'parent' };
+    const parentSpy = vi.spyOn(parent, 'call');
+    const originalImport = artifactFixture.importProductionTransformersArtifact;
+    const methods: Array<{ target: object, descriptor: PropertyDescriptor | undefined }> = [];
+    const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockImplementationOnce(async args => {
+      const runtime = await originalImport(args) as typeof import('@huggingface/transformers');
+      for (const target of [runtime.AutoTokenizer, runtime.AutoProcessor, runtime.AutoModelForCausalLM, runtime.AutoModelForImageTextToText]) {
+        methods.push({ target, descriptor: Object.getOwnPropertyDescriptor(target, 'from_pretrained') });
+      }
+      return runtime;
+    });
+    try {
+      const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate: async () => {
+        throw new Error('No inference in wrapper ownership control');
+      } }));
+      try {
+        expect(methods).toHaveLength(4);
+        expect(methods[0]!.descriptor).toBeDefined();
+        expect(methods[2]!.descriptor).toBeUndefined();
+        for (const { target } of methods) {
+          expect(vi.isMockFunction(Reflect.get(target, 'from_pretrained'))).toBe(false);
+          expect(Object.hasOwn(target, 'from_pretrained')).toBe(true);
+        }
+        await harness.service.loadDownloadedModel({ modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct' });
+        expect(harness.service.getState().status).toBe('ready');
+        expect(harness.observations.modelLoadCalls).toEqual(['AutoModelForCausalLM']);
+      } finally {
+        await harness.close();
+      }
+      for (const { target, descriptor } of methods) {
+        expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
+      }
+      expect(parent.call).toBe(parentSpy);
+      expect(parent.call()).toBe('parent');
+      expect(parentSpy).toHaveBeenCalledExactlyOnceWith();
+    } finally {
+      importer.mockRestore();
+      parentSpy.mockRestore();
+    }
+  }, 30_000);
+
   it('keeps the setup error and restores parent globals even when a spy restoration throws', async () => {
     const artifact = await artifactFixture.getProductionTransformersArtifact();
     const ort = await import(/* @vite-ignore */ artifact.ortWebGpuUrl);
@@ -328,6 +388,15 @@ describe('Production replay construction ownership', () => {
   it('removes owned module mocks when Provider import fails after their registration', async () => {
     const failure = new Error('Synthetic Provider evaluation failure');
     const beforeFetch = globalThis.fetch;
+    const originalImport = artifactFixture.importProductionTransformersArtifact;
+    const methods: Array<{ target: object, descriptor: PropertyDescriptor | undefined }> = [];
+    const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockImplementationOnce(async args => {
+      const runtime = await originalImport(args) as typeof import('@huggingface/transformers');
+      for (const target of [runtime.AutoTokenizer, runtime.AutoProcessor, runtime.AutoModelForCausalLM, runtime.AutoModelForImageTextToText]) {
+        methods.push({ target, descriptor: Object.getOwnPropertyDescriptor(target, 'from_pretrained') });
+      }
+      return runtime;
+    });
     vi.doMock('@/features/transformers-js/provider-hosted', () => {
       throw failure;
     });
@@ -341,7 +410,12 @@ describe('Production replay construction ownership', () => {
       const imported = await import('@/utils/worker-transport');
       expect(imported.exposeWorkerRemote).toBe(actual.exposeWorkerRemote);
       expect(globalThis.fetch).toBe(beforeFetch);
+      expect(methods).toHaveLength(4);
+      for (const { target, descriptor } of methods) {
+        expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
+      }
     } finally {
+      importer.mockRestore();
       vi.doUnmock('@/features/transformers-js/provider-hosted');
       vi.doUnmock('@huggingface/transformers');
       vi.doUnmock('@/utils/worker-transport');
@@ -402,6 +476,121 @@ describe('Production replay native inference boundary', () => {
 });
 
 describe('Production replay Worker construction boundary', () => {
+  it('reads capture once and preserves inherited once and signal options at the native endpoint', async () => {
+    const started = Promise.withResolvers<void>();
+    const worker = new ProviderReplayTestWorker({ start: async () => {
+      started.resolve();
+    } });
+    await started.promise;
+    const controller = new AbortController();
+    const calls: string[] = [];
+    let captureReads = 0;
+    const options = Object.create({ once: true, signal: controller.signal }) as AddEventListenerOptions;
+    Object.defineProperty(options, 'capture', { get: () => {
+      captureReads++;
+      return true;
+    } });
+    const once = () => calls.push('once');
+    const aborted = () => calls.push('aborted');
+    try {
+      worker.endpoint.addEventListener('message', once, options);
+      worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'first' }));
+      worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'second' }));
+      const abortOptions = Object.create({ signal: controller.signal }) as AddEventListenerOptions;
+      worker.endpoint.addEventListener('message', aborted, abortOptions);
+      controller.abort();
+      worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'after-abort' }));
+      expect(captureReads).toBe(1);
+      expect(calls).toEqual(['once']);
+      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(once);
+      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(aborted);
+    } finally {
+      worker.terminate();
+    }
+  });
+
+  it('releases owned endpoint listeners by capture identity and prevents late registration after termination', async () => {
+    const started = Promise.withResolvers<void>();
+    const worker = new ProviderReplayTestWorker({ start: async () => {
+      started.resolve();
+    } });
+    await started.promise;
+    const listener = () => {};
+    const mutableOptions = { capture: false };
+    try {
+      worker.endpoint.addEventListener('message', listener, mutableOptions);
+      worker.endpoint.addEventListener('message', listener, true);
+      worker.endpoint.removeEventListener('message', listener, true);
+      expect(getEventListeners(worker.channel.port2, 'message').filter(item => item === listener)).toHaveLength(1);
+      // The native registration captured false, regardless of later mutation.
+      mutableOptions.capture = true;
+      worker.terminate();
+      worker.terminate();
+      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
+      worker.endpoint.addEventListener('message', listener);
+      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
+      expect(worker.hostMessages).toEqual([]);
+      expect(worker.workerMessages).toEqual([]);
+    } finally {
+      worker.terminate();
+    }
+  });
+
+  it('preserves native clone errors but discards valid sends after physical termination', async () => {
+    const started = Promise.withResolvers<void>();
+    const worker = new ProviderReplayTestWorker({ start: async () => {
+      started.resolve();
+    } });
+    await started.promise;
+    worker.terminate();
+    expect(() => worker.postMessage({ type: 'RELEASE', id: 'synthetic-closed-port' }, [])).not.toThrow();
+    expect(() => worker.postMessage(() => {}, [])).toThrow(expect.objectContaining({ name: 'DataCloneError' }));
+    expect(worker.hostMessages).toEqual([]);
+    expect(worker.workerMessages).toEqual([]);
+  });
+
+  it('does not retain listeners added by an already-started entry after termination', async () => {
+    const entered = Promise.withResolvers<void>();
+    const continueStartup = Promise.withResolvers<void>();
+    const completed = Promise.withResolvers<void>();
+    const listener = () => {};
+    const worker = new ProviderReplayTestWorker({ start: async ({ worker }) => {
+      entered.resolve();
+      await continueStartup.promise;
+      worker.endpoint.addEventListener('message', listener);
+      completed.resolve();
+    } });
+    try {
+      await entered.promise;
+      worker.terminate();
+      continueStartup.resolve();
+      await completed.promise;
+      expect(worker.terminated).toBe(true);
+      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
+      expect(worker.hostMessages).toEqual([]);
+      expect(worker.workerMessages).toEqual([]);
+    } finally {
+      continueStartup.resolve();
+      worker.terminate();
+    }
+  });
+
+  it('delivers the original asynchronous startup error before cleanup', async () => {
+    const failure = new Error('Synthetic replay entry startup failure');
+    const delivered = Promise.withResolvers<unknown>();
+    const worker = new ProviderReplayTestWorker({ start: async () => {
+      throw failure;
+    } });
+    worker.addEventListener('error', event => delivered.resolve((event as MessageEvent).data));
+    try {
+      expect(await delivered.promise).toBe(failure);
+      expect(worker.hostMessages).toEqual([]);
+      expect(worker.workerMessages).toEqual([]);
+    } finally {
+      worker.terminate();
+    }
+  });
+
   it('rejects a foreign first entry before creating channels or scheduling Production startup', async () => {
     const started = Promise.withResolvers<void>();
     const start = vi.fn(async () => started.resolve());
@@ -416,6 +605,9 @@ describe('Production replay Worker construction boundary', () => {
       expect(start).toHaveBeenCalledOnce();
       expect(onConstructed).toHaveBeenCalledOnce();
       expect(worker.workerMessages).toEqual([]); // The factory never invents ready.
+      expect(() => new Worker(scriptUrl, { type: 'module' })).toThrow('unexpected restart or Download');
+      expect(onConstructed).toHaveBeenCalledOnce();
+      expect(start).toHaveBeenCalledOnce();
     } finally {
       worker.terminate();
     }

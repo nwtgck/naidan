@@ -3,12 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { compileFunction, constants } from 'node:vm';
+import { compileFunction, constants, SourceTextModule, SyntheticModule } from 'node:vm';
 import { afterAll } from 'vitest';
 import { buildTransformersJsFixesArtifact } from '../../../../../build/transformers-js-fixes/artifact';
 
 // Share build mechanics, never an evaluated Transformers.js runtime instance.
-// Consumers append their own query identity before each native import.
 let artifactPromise: ReturnType<typeof createArtifact> | undefined;
 const ownedDirectories = new Set<string>();
 
@@ -39,13 +38,46 @@ export function getProductionTransformersArtifact() {
   return artifactPromise;
 }
 
-// A constant native import boundary prevents Vitest's jsdom module runner from
-// resolving or transforming Vite's already-built bytes again. The URL is an
-// argument, never interpolated source, and must name this fixture's own artifact.
+// Only the two reviewed external ORT modules use Node's native import cache.
+// Keep the same ESM Tensor and InferenceSession identities as the replay spies.
 type NativeImport = ({ moduleUrl }: { moduleUrl: string }) => Promise<unknown>;
 const nativeImport = compileFunction('return import(input.moduleUrl)', ['input'], {
   importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
 }) as NativeImport;
+
+async function evaluateArtifactModule({ code, moduleUrl, ortWebGpuUrl, ortCommonUrl }: {
+  code: string,
+  moduleUrl: string,
+  ortWebGpuUrl: string,
+  ortCommonUrl: string,
+}): Promise<unknown> {
+  // SourceTextModule evaluates the emitted bytes as ESM, not a test-only
+  // rewrite. No registry retains this module: its namespace belongs to the
+  // caller and can be collected when the caller releases it. A fresh query in
+  // native import() would instead permanently retain each runtime and its
+  // captured fetch/cache closures in Node's module map.
+  const module = new SourceTextModule(code, {
+    identifier: moduleUrl,
+    initializeImportMeta(meta) {
+      meta.url = moduleUrl;
+    },
+    async importModuleDynamically(specifier) {
+      throw new Error(`Unprovided dynamic production artifact dependency: ${specifier}`);
+    },
+  });
+  await module.link(async specifier => {
+    if (specifier !== ortWebGpuUrl && specifier !== ortCommonUrl) {
+      throw new Error(`Unprovided static production artifact dependency: ${specifier}`);
+    }
+    const namespace = await nativeImport({ moduleUrl: specifier }) as Record<string, unknown>;
+    const exports = Object.keys(namespace);
+    return new SyntheticModule(exports, function () {
+      for (const name of exports) this.setExport(name, namespace[name]);
+    }, { identifier: specifier });
+  });
+  await module.evaluate();
+  return module.namespace;
+}
 
 export async function importProductionTransformersArtifact({ moduleUrl }: { moduleUrl: string }): Promise<unknown> {
   const artifact = await getProductionTransformersArtifact();
@@ -54,9 +86,14 @@ export async function importProductionTransformersArtifact({ moduleUrl }: { modu
   if (requested.href !== artifact.moduleUrl) {
     throw new Error('Native replay import must use this fixture\'s verified production artifact');
   }
-  // Each consumer keeps its fresh query identity and narrows the unknown module
-  // to the external API it observes; model selection expectations stay local.
-  return nativeImport({ moduleUrl });
+  const code = await readFile(new URL(artifact.moduleUrl), 'utf8');
+  if (createHash('sha256').update(code).digest('hex') !== artifact.artifactSha256) {
+    throw new Error('Production replay artifact bytes changed before evaluation');
+  }
+  // Even the same URL deliberately evaluates a fresh runtime. Queries remain
+  // diagnostic identities, not cache keys. The native ORT dependencies above
+  // retain their real identities; Transformers.js env is never shared.
+  return evaluateArtifactModule({ code, moduleUrl, ortWebGpuUrl: artifact.ortWebGpuUrl, ortCommonUrl: artifact.ortCommonUrl });
 }
 
 afterAll(async () => {
@@ -67,4 +104,5 @@ afterAll(async () => {
 });
 
 export const TEST_ONLY = {
+  evaluateArtifactModule,
 };

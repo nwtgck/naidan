@@ -366,7 +366,7 @@ describe('transformersJsService', () => {
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
-    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledWith('some-model', undefined, expect.any(Function));
+    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('some-model', { kind: 'discover-cached' }, expect.any(Function));
     expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
     expect(transformersJsService.getState().status).toBe('ready');
     expect(transformersJsService.getState().device).toBe('webgpu');
@@ -419,7 +419,7 @@ describe('transformersJsService', () => {
     const { transformersJsService } = await import('./index');
     await transformersJsService.loadDownloadedModel({ modelId: 'hf.co/some-org/some-model' });
 
-    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledWith('hf.co/some-org/some-model', undefined, expect.any(Function));
+    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('hf.co/some-org/some-model', { kind: 'discover-cached' }, expect.any(Function));
     expect(scanModel).not.toHaveBeenCalled();
     expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
   });

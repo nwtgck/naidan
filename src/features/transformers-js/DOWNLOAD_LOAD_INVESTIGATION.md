@@ -579,21 +579,36 @@ or network authority. It may delay session work until optional reads settle;
 an unresponsive read still needs the owning Worker's existing lifecycle handling.
 Do not infer that a generic exception proves another multi-GB transfer will help.
 
-### Partial ORT session ownership remains unverified
+### Partial ORT session ownership: repaired boundary and remaining limits
 
-Source review of the pinned runtime also identifies a separate lifecycle risk:
-`constructSessions()` aggregates sessions with `Promise.all()`. If one session
-is created and another rejects, or a model constructor throws after session
-creation, Naidan's awaited model assignment has not completed. Disposing that
-model cannot recover sessions it never received. The resource-operation boundary
-owns response readers, not native ORT sessions, and ordinary Load failure does
-not always imply physical Worker termination.
+The original pinned runtime's `constructSessions()` aggregates sessions with
+`Promise.all()`. If one session is created and another rejects, Naidan's awaited
+model assignment never completes and cannot dispose the sessions it did not
+receive. The resource-operation boundary owns response readers, not native ORT
+sessions, and ordinary Load failure does not always terminate the Worker.
 
-This is a source-derived risk, not an observed browser leak or a newly reproduced
-ORT failure. The identity-bearing synthetic session tests do not prove native
-session reclamation in these cases. The current Vite fixes do not claim to fix
-this ownership gap; investigating it needs a separate failure reproduction and
-session/Worker lifecycle contract, without weakening the offline boundary.
+This ownership failure was subsequently reproduced with the actual browser
+runtime and instrumented ORT sessions. The current version-bound
+[Vite fix](../../../build/transformers-js-fixes/README.md) retains ownership of
+partial session sets and requests release once for each successful sibling,
+including sessions that succeed after the original rejection. It observes
+release failures without replacing the original error or waiting indefinitely
+for another sibling or release. Successful complete sets remain owned by the
+model and are not released by this failure path.
+
+[Session ownership controls](../../../build/transformers-js-fixes/session-ownership.test.ts)
+retain the original failure and exercise transformed success, failure, late
+completion and cleanup boundaries. The
+[actual-runtime regression](./runtime/partial-model-session-ownership.test.ts)
+also verifies failed-load cleanup and an independently owned subsequent model.
+These use synthetic ORT session handles; they do not measure GPU memory
+reclamation or prove that release finishes before another candidate starts.
+Physical Worker termination remains the ultimate lifecycle bound.
+
+A model constructor throwing after `constructSessions()` has successfully
+returned is outside this fix. That separate ownership risk remains unresolved;
+the sibling-failure regression must not be presented as coverage of every
+failure between session creation and completed model assignment.
 
 ### Fetch redirects and native module loading are different boundaries
 

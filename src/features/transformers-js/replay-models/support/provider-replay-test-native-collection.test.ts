@@ -273,7 +273,13 @@ describe('Production native collection through actual Comlink', () => {
       expect(epoch.lifetime).toEqual({ status: 'observed', value: {
         runId: 'synthetic-native-collection', workerEpoch: 1, session: 'active',
         issuedCalls: contexts, incompleteReasons: [],
-        loadRequests: [{ requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct', requestedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac' }],
+        // The host requests offline discovery; the Worker's exact selected
+        // revision remains independently asserted in every call's loadIdentity.
+        loadRequests: [{
+          requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+          requestedRevision: undefined,
+          revisionSelection: { kind: 'discover-cached' },
+        }],
       } });
       if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Expected actual native capture result');
       const capture = epoch.collection.result.capture;

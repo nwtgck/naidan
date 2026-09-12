@@ -194,6 +194,17 @@ const imageEvidence = z.object({
 
 const IMAGE_INPUT_BOUNDARY = 'Gemma real image processor input verified; no native generation replay';
 
+// Compare every value without materializing Object.entries for two million
+// tensor values. A failure retains its exact position and values, not a full-array diff.
+function findGemmaPixelMismatch({ actual, expected }: { actual: unknown, expected: Float32Array }) {
+  if (!(actual instanceof Float32Array)) return { kind: 'type' as const, expected: 'Float32Array' };
+  if (actual.length !== expected.length) {
+    return { kind: 'length' as const, actual: actual.length, expected: expected.length };
+  }
+  const index = actual.findIndex((value, offset) => !Object.is(value, expected[offset]));
+  return index === -1 ? undefined : { kind: 'value' as const, index, actual: actual[index], expected: expected[index] };
+}
+
 // Both cases exercise the same image-input contract. Only the explicit image
 // bytes and independently expected pixels change; no inference tokens are used.
 async function createGemmaImageInputControl({ imageUrl, expectedRgba, expectedPixels }: {
@@ -237,7 +248,7 @@ async function createGemmaImageInputControl({ imageUrl, expectedRgba, expectedPi
     }
     expect(Array.from(tensors.input_ids.data, Number)).toEqual(imageEvidence.inputTokenIds);
     expect(tensors.attention_mask.data).toEqual(new BigInt64Array(279).fill(1n));
-    expect(tensors.pixel_values.data).toEqual(expectedPixels);
+    expect(findGemmaPixelMismatch({ actual: tensors.pixel_values.data, expected: expectedPixels })).toBeUndefined();
 
     // These values are independently derived from the fixed 1x1 geometry:
     // 768/16 = 48 patches per side, 2304 real patches, 216 padded patches.
@@ -2371,6 +2382,37 @@ Use the quoted value.
       expect(rebuiltCapture?.snapshot().lateEvents).toEqual([]);
     }
   }, 30_000);
+});
+
+describe('Gemma4 E2B Provider / synthetic pixel comparison controls', () => {
+  it.each([
+    { name: 'first real pixel', index: 0 },
+    { name: 'last real pixel', index: 2304 * 768 - 1 },
+    { name: 'first padding pixel', index: 2304 * 768 },
+    { name: 'last padding pixel', index: 2520 * 768 - 1 },
+  ])('reports the exact changed $name without a full-array diff', ({ index }) => {
+    // Source-derived geometry, not recorded browser pixel data.
+    const expected = new Float32Array(2520 * 768);
+    expected.fill(1, 0, 2304 * 768);
+    const actual = expected.slice();
+    actual[index] = 2;
+    expect(findGemmaPixelMismatch({ actual, expected })).toEqual({
+      kind: 'value', index, actual: 2, expected: expected[index],
+    });
+  });
+
+  it('retains Float32Array type, exact length and Object.is numeric semantics', () => {
+    expect(findGemmaPixelMismatch({ actual: Float64Array.of(0), expected: Float32Array.of(0) }))
+      .toEqual({ kind: 'type', expected: 'Float32Array' });
+    expect(findGemmaPixelMismatch({ actual: Float32Array.of(0, 0), expected: Float32Array.of(0) }))
+      .toEqual({ kind: 'length', actual: 2, expected: 1 });
+    expect(findGemmaPixelMismatch({ actual: Float32Array.of(-0), expected: Float32Array.of(0) }))
+      .toEqual({ kind: 'value', index: 0, actual: -0, expected: 0 });
+    expect(findGemmaPixelMismatch({ actual: Float32Array.of(NaN), expected: Float32Array.of(0) }))
+      .toEqual({ kind: 'value', index: 0, actual: NaN, expected: 0 });
+    expect(findGemmaPixelMismatch({ actual: Float32Array.of(NaN, 0, 1), expected: Float32Array.of(NaN, 0, 1) }))
+      .toBeUndefined();
+  });
 });
 
 describe('Gemma4 E2B Provider / images', () => {

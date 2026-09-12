@@ -34,6 +34,7 @@ export interface ProviderReplayTestRuntime {
     forbiddenTransport: string[];
     ortCalls: unknown[][];
     inferenceCalls: ProviderReplayGenerationOptions[];
+    modelLoadCalls: Array<'AutoModelForCausalLM' | 'AutoModelForImageTextToText'>;
     processors: Array<Awaited<ReturnType<Runtime['AutoProcessor']['from_pretrained']>>>;
     workers: ProviderReplayTestWorker[];
     platform: ReturnType<typeof installProductionRuntimeStartupPlatform>;
@@ -203,14 +204,17 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     }
     let tokenizer: PreTrainedTokenizer | undefined;
     const originalTokenizer = runtime.AutoTokenizer.from_pretrained.bind(runtime.AutoTokenizer);
-    const tokenizerSpy = vi.spyOn(runtime.AutoTokenizer, 'from_pretrained').mockImplementation(async (...args) => {
+    // Global spy registries retain fresh runtime classes even after mockRestore.
+    // These wrappers belong only to this owner and restore exact descriptors.
+    rememberProperty({ target: runtime.AutoTokenizer, key: 'from_pretrained' });
+    runtime.AutoTokenizer.from_pretrained = async (...args) => {
       tokenizer = await originalTokenizer(...args);
       return tokenizer;
-    });
-    restorations.push(() => tokenizerSpy.mockRestore());
+    };
     const processors: Array<Awaited<ReturnType<Runtime['AutoProcessor']['from_pretrained']>>> = [];
     const originalProcessor = runtime.AutoProcessor.from_pretrained.bind(runtime.AutoProcessor);
-    const processorSpy = vi.spyOn(runtime.AutoProcessor, 'from_pretrained').mockImplementation(async (...args) => {
+    rememberProperty({ target: runtime.AutoProcessor, key: 'from_pretrained' });
+    runtime.AutoProcessor.from_pretrained = async (...args) => {
       const processor = await originalProcessor(...args);
       processors.push(processor);
       // Processor subclasses may construct their tokenizer internally without
@@ -218,12 +222,17 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
       // never replace the callable processor, its components or its cache.
       if (processor.tokenizer instanceof runtime.PreTrainedTokenizer) tokenizer = processor.tokenizer;
       return processor;
-    });
-    restorations.push(() => processorSpy.mockRestore());
+    };
     const inferenceCalls: ProviderReplayGenerationOptions[] = [];
-    for (const autoClass of [runtime.AutoModelForCausalLM, runtime.AutoModelForImageTextToText]) {
+    const modelLoadCalls: Array<'AutoModelForCausalLM' | 'AutoModelForImageTextToText'> = [];
+    for (const [name, autoClass] of [
+      ['AutoModelForCausalLM', runtime.AutoModelForCausalLM],
+      ['AutoModelForImageTextToText', runtime.AutoModelForImageTextToText],
+    ] as const) {
       const original = autoClass.from_pretrained.bind(autoClass);
-      const modelSpy = vi.spyOn(autoClass, 'from_pretrained').mockImplementation(async (...args) => {
+      rememberProperty({ target: autoClass, key: 'from_pretrained' });
+      autoClass.from_pretrained = async (...args) => {
+        modelLoadCalls.push(name);
         const model = await original(...args);
         model.generate = options => {
           if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Replay requires actual Tensor: input_ids');
@@ -233,8 +242,7 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
           return generate({ options, model, tokenizer, runtime });
         };
         return model;
-      });
-      restorations.push(() => modelSpy.mockRestore());
+      };
     }
     vi.resetModules();
     vi.doMock('@huggingface/transformers', () => runtime);
@@ -287,7 +295,7 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     const { transformersJsService: service } = await import('@/features/transformers-js/index-hosted');
     return {
       provider: new TransformersJsProvider(), service, runtime,
-      observations: { fs, fetchCalls, runtimeAssetFetchCalls, localImageFetchCalls, forbiddenTransport, ortCalls, inferenceCalls, processors, workers, platform, cleanupErrors, expectedRuntimeAssetUrl: assets.mjsUrl },
+      observations: { fs, fetchCalls, runtimeAssetFetchCalls, localImageFetchCalls, forbiddenTransport, ortCalls, inferenceCalls, modelLoadCalls, processors, workers, platform, cleanupErrors, expectedRuntimeAssetUrl: assets.mjsUrl },
       async close() {
         try {
           await service.unloadModel();

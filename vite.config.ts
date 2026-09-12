@@ -477,6 +477,11 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      // Replay evaluates verified ESM bytes without Node's permanent import cache.
+      // Node 22's V8 compilation cache also retains VM modules and captured
+      // fixture state. Disable that optimization in test workers so completed
+      // runtimes can be collected; this trades compilation CPU, not heap limits.
+      execArgv: ['--experimental-vm-modules', '--no-compilation-cache'],
       exclude: [
         ...configDefaults.exclude,
         'src/test-tmp/**',

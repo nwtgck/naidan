@@ -7,6 +7,7 @@ import type { ToolCall } from '@/01-models/types';
 import { createTransformersJsWorkerClient } from './client-hosted';
 import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
 import { RequiredDownloadedResourceCleanupError } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
+import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 
 const workers: TransportWorker[] = [];
@@ -79,8 +80,10 @@ describe('Production startup through real Comlink transport', () => {
     const client = createTransformersJsWorkerClient();
     clients.push(client);
     const worker = currentWorker();
+    const loadRequests: Array<{ modelId: string; revisionSelection: DownloadedModelRevisionSelection }> = [];
     expose({
-      async loadDownloadedModel(_model: string, _revision: string, callback: Remote<(info: ProgressInfo) => void>) {
+      async loadDownloadedModel(modelId: string, revisionSelection: DownloadedModelRevisionSelection, callback: Remote<(info: ProgressInfo) => void>) {
+        loadRequests.push({ modelId, revisionSelection: structuredClone(revisionSelection) });
         callback[releaseProxy]();
         throw new RequiredDownloadedResourceCleanupError({ cause: new Error('Fixture unfinished body') });
       },
@@ -92,6 +95,7 @@ describe('Production startup through real Comlink transport', () => {
       name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed',
       cause: { name: 'RequiredDownloadedResourceCleanupError' },
     });
+    expect(loadRequests).toEqual([{ modelId: 'public/model', revisionSelection: { kind: 'pinned', revision: 'exact' } }]);
     expect(worker.terminate).toHaveBeenCalledOnce();
     const sent = worker.sent.length;
     await expect(client.unloadModel()).rejects.toMatchObject({ reason: 'resource-cleanup-failed' });

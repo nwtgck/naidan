@@ -1624,7 +1624,7 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
       expect(observedNativeIds).toEqual([defaultIds, expectedNextIds]);
       expect(replay.observations.inferenceCalls).toHaveLength(2);
       expect(replay.observations.workers).toHaveLength(1);
-      expect(replay.runtime.AutoModelForImageTextToText.from_pretrained).toHaveBeenCalledTimes(1);
+      expect(replay.observations.modelLoadCalls).toEqual(['AutoModelForImageTextToText']);
       expect(replay.observations.forbiddenTransport).toEqual([]);
       expect(replay.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
@@ -1742,7 +1742,7 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
       // Both requests are complete bounded 16-token executions. Their open
       // thinking prefixes do not assert completion of a natural-language answer.
       replay.assertComplete({ requests: 2, nativeCalls: 2 });
-      expect(replay.runtime.AutoModelForImageTextToText.from_pretrained).toHaveBeenCalledTimes(1);
+      expect(replay.observations.modelLoadCalls).toEqual(['AutoModelForImageTextToText']);
     } finally {
       await replay.close();
     }

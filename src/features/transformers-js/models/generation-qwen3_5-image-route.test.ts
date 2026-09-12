@@ -176,8 +176,7 @@ describe('Qwen image generation session ownership', () => {
       throw new Error('Generation must not start');
     });
     const harness = await createRouteRuntime({ paths: [...textArtifacts, ...visionArtifacts], generate });
-    const original = vi.mocked(harness.runtime.AutoModelForImageTextToText.from_pretrained).getMockImplementation();
-    if (original === undefined) throw new Error('Expected the shared native-session boundary adapter');
+    const original = harness.runtime.AutoModelForImageTextToText.from_pretrained.bind(harness.runtime.AutoModelForImageTextToText);
     const imageLoad = vi.spyOn(harness.runtime.AutoModelForImageTextToText, 'from_pretrained').mockImplementation(async (...args) => {
       // Exact loader boundary occurs after local planning, before native reads.
       harness.observations.fs.files.delete(`models/huggingface.co/${modelId}/resolve/${revision}/onnx/vision_encoder_q4f16.onnx`);

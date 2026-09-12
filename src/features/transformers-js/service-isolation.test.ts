@@ -171,8 +171,59 @@ describe('Transformers.js service instance ownership', () => {
     await first.service.downloadModel({ modelId: 'fixture/same' });
     await second.service.loadDownloadedModel({ modelId: 'fixture/same' });
     await first.service.loadDownloadedModel({ modelId: 'fixture/same' });
-    expect(secondClient.loadDownloadedModel).toHaveBeenCalledWith(expect.objectContaining({ revision: undefined }));
-    expect(firstClient.loadDownloadedModel).toHaveBeenCalledWith(expect.objectContaining({ revision }));
+    expect(secondClient.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith({
+      modelId: 'fixture/same',
+      revisionSelection: { kind: 'discover-cached' },
+      progressCallback: expect.any(Function),
+    });
+    expect(firstClient.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith({
+      modelId: 'fixture/same',
+      revisionSelection: { kind: 'pinned', revision },
+      progressCallback: expect.any(Function),
+    });
+
+    await first.service.unloadModel();
+    await first.service.loadDownloadedModel({ modelId: 'fixture/same' });
+    expect(firstClient.unloadModel).toHaveBeenCalledOnce();
+    expect(firstClient.loadDownloadedModel).toHaveBeenCalledTimes(2);
+    expect(firstClient.loadDownloadedModel).toHaveBeenNthCalledWith(2, {
+      modelId: 'fixture/same',
+      revisionSelection: { kind: 'discover-cached' },
+      progressCallback: expect.any(Function),
+    });
+    expect(secondClient.loadDownloadedModel).toHaveBeenCalledTimes(1);
+    expect(download.prepare).not.toHaveBeenCalled();
+  });
+
+  it('preserves an accepted main hint as pinned undefined exactly once', async () => {
+    download.resolve.mockResolvedValue({ normalizedModelId: 'fixture/main', requestedRevision: 'main', resolvedRevision: 'a'.repeat(40) });
+    download.reuse.mockResolvedValue({
+      reused: true, loadRevision: undefined,
+      acceptance: {
+        status: 'accepted',
+        selectedRevision: { revision: 'main', loaderRevisionOption: undefined, source: 'legacy-main' },
+        attempts: [], error: undefined,
+      },
+    });
+    const client = createClientFixture();
+    const owner = await createOwner({ createWorkerClient: () => client });
+    await owner.service.downloadModel({ modelId: 'fixture/main' });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/main' });
+    expect(client.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith({
+      modelId: 'fixture/main',
+      revisionSelection: { kind: 'pinned', revision: undefined },
+      progressCallback: expect.any(Function),
+    });
+
+    await owner.service.unloadModel();
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/main' });
+    expect(client.unloadModel).toHaveBeenCalledOnce();
+    expect(client.loadDownloadedModel).toHaveBeenCalledTimes(2);
+    expect(client.loadDownloadedModel).toHaveBeenNthCalledWith(2, {
+      modelId: 'fixture/main',
+      revisionSelection: { kind: 'discover-cached' },
+      progressCallback: expect.any(Function),
+    });
     expect(download.prepare).not.toHaveBeenCalled();
   });
 

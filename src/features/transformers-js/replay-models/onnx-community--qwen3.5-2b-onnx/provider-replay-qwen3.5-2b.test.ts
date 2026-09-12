@@ -2488,8 +2488,7 @@ describe('Qwen3.5 2B Provider / images', () => {
     let capture: ProviderChatCapture | undefined;
     try {
       await harness.service.loadDownloadedModel({ modelId });
-      expect(harness.runtime.AutoModelForImageTextToText.from_pretrained).toHaveBeenCalledTimes(1);
-      expect(harness.runtime.AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+      expect(harness.observations.modelLoadCalls).toEqual(['AutoModelForImageTextToText']);
       expect(harness.observations.processors).toHaveLength(1);
       expect(harness.observations.processors[0]!.constructor.name).toBe('Qwen3VLProcessor');
       const expectedSessions = ['decoder_model_merged_q4f16', 'embed_tokens_q4f16', 'vision_encoder_q4f16'].map(name => ({

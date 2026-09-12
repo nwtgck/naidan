@@ -44,7 +44,14 @@ describe('ordinary Load receipt through actual Worker communication without gene
           limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
         } },
       });
-      expect(capture.getCaptureLifetime()).toMatchObject({ issuedCalls: [], loadRequests: [{ requestedModelId: modelId, requestedRevision: revision }], incompleteReasons: [] });
+      const lifetime = capture.getCaptureLifetime();
+      expect(lifetime).toMatchObject({ issuedCalls: [], incompleteReasons: [] });
+      // Requested selection is separate from the actual accepted receipt above.
+      expect(lifetime.loadRequests).toEqual([{
+        requestedModelId: modelId,
+        requestedRevision: revision,
+        revisionSelection: { kind: 'pinned', revision },
+      }]);
       expect(await capture.takeGenerationCapture()).toEqual(first);
       expect(activeRequest).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(0);
