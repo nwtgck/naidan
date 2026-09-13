@@ -1,1 +1,1 @@
-export const TransformersJsManager__transferring = (): string => "Transfiriendo";
+export const TransformersJsManager__transferring = (): string => "Descargando";

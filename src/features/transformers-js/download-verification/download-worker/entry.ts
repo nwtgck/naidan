@@ -206,6 +206,14 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
     const progress = createDownloadProgressEmitter({ callback: ({ info }) => progressCallback(info) });
     try {
       const files: TransformersJsPrefetchFileResult[] = [];
+      let clockId: string | undefined;
+      try {
+        clockId = crypto.randomUUID();
+      } catch {
+        // Optional timing must not make otherwise available artifact I/O fail.
+      }
+      let sequence = 0;
+      let requestId = 0;
       function recordFailure({ file }: { file: Extract<TransformersJsPrefetchFileResult, { status: 'failed' }> }): void {
         files.push(file);
         // Report the existing failure without waiting for later files or any
@@ -260,16 +268,36 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
           continue;
         }
         const expected = expectedDecodedResponseByteLength({ response });
+        requestId++;
+        const currentRequestId = requestId;
+        const downloadTotalKind = response.type === 'cors' && response.headers.get('Content-Encoding')?.trim().toLowerCase() !== 'identity'
+          ? 'unverified-http' as const : 'decoded-response' as const;
+        const timing = () => {
+          if (clockId === undefined) return 'unavailable' as const;
+          try {
+            const observedAtMs = performance.now();
+            if (!Number.isFinite(observedAtMs) || observedAtMs < 0) throw new Error('Unavailable timing observation');
+            return { clockId, requestId: currentRequestId, sequence: ++sequence, observedAtMs };
+          } catch {
+            // Only the timing observation is omitted; fetch/write failures keep
+            // their original classification and remain terminal below.
+            // Disable timing for this prefetch. Sticky unavailability survives
+            // coalescing through later progress and terminal notifications;
+            // recovery belongs to the next prefetch, not a growing epoch ledger.
+            clockId = undefined;
+            return 'unavailable' as const;
+          }
+        };
         let loaded = 0;
-        progress.publish({ info: { status: 'download', file: fileNameFromUrl({ url: originalUrl }), loaded: 0, total: expected } });
+        progress.publish({ info: { status: 'download', file: fileNameFromUrl({ url: originalUrl }), loaded: 0, total: expected, downloadTotalKind, downloadTiming: timing() } });
         const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
           transform(chunk, controller) {
             loaded += chunk.byteLength;
-            progress.publish({ info: { status: 'progress', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected) } });
+            progress.publish({ info: { status: 'progress', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected), downloadTotalKind, downloadTiming: timing() } });
             controller.enqueue(chunk);
           },
           flush() {
-            progress.publish({ info: { status: 'saving', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected) } });
+            progress.publish({ info: { status: 'saving', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected), downloadTotalKind, downloadTiming: timing() } });
           },
         }));
         let written: number;
@@ -288,7 +316,7 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
             throw new Error(`Final OPFS byte length mismatch for ${path}: expected ${expected}, received ${verified}`);
           }
           files.push({ status: 'downloaded', url, path, byteLength: verified, expectedByteLength: expected });
-          progress.publish({ info: { status: 'done', file: fileNameFromUrl({ url: originalUrl }), loaded: verified, total: verified, progress: 100 } });
+          progress.publish({ info: { status: 'done', file: fileNameFromUrl({ url: originalUrl }), loaded: verified, total: verified, progress: 100, ...clockId === undefined ? { downloadTiming: 'unavailable' as const } : {} } });
         } catch (error) {
           recordFailure({ file: { ...prefetchFailure({ url, path, failureStage: 'verification', httpStatus: response.status, error }), transferObservation: { receivedBytes: loaded, expectedBytes: expected } } });
         }

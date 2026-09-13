@@ -38,14 +38,14 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
       const paths = new Set(urls.map(url => downloadResourcePath({ url })).filter(path => path !== undefined));
       const deliveredTerminals = new Map<string, string>();
       function publishProgress({ info }: { info: ProgressInfo }): Promise<void> | undefined {
-        const { status, file, loaded, total, progress, name, ...unhandled } = info;
+        const { status, file, loaded, total, progress, name, downloadTiming, downloadTotalKind, ...unhandled } = info;
         unhandled satisfies Record<PropertyKey, never>;
         if (file === undefined) return;
         const terminal = status === 'done' || status === 'cached' || status === 'error';
         if (terminal) {
           // Keep only immutable scalars, before invoking an observer that may
           // mutate its input. The RPC result may correct a differing terminal.
-          const signature = JSON.stringify([status, file, loaded, total, progress, name]);
+          const signature = JSON.stringify([status, file, loaded, total, progress, name, downloadTiming, downloadTotalKind]);
           if (deliveredTerminals.get(file) === signature) return;
           deliveredTerminals.set(file, signature);
         } else if (deliveredTerminals.has(file)) {

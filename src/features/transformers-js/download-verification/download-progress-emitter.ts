@@ -37,9 +37,9 @@ export function createDownloadProgressEmitter({ callback }: { callback: Transfor
     publish({ info }: { info: ProgressInfo }): void {
       if (closed) return;
       // Scalar snapshots only: never retain response bodies or stream chunks.
-      const { status, progress, loaded, total, name, file, ...unhandled } = info;
+      const { status, progress, loaded, total, name, file, downloadTiming, downloadTotalKind, ...unhandled } = info;
       unhandled satisfies Record<PropertyKey, never>;
-      pending.set(file ?? name ?? '<stage>', { status, ...progress === undefined ? {} : { progress }, ...loaded === undefined ? {} : { loaded }, ...total === undefined ? {} : { total }, ...name === undefined ? {} : { name }, ...file === undefined ? {} : { file } });
+      pending.set(file ?? name ?? '<stage>', { status, ...progress === undefined ? {} : { progress }, ...loaded === undefined ? {} : { loaded }, ...total === undefined ? {} : { total }, ...name === undefined ? {} : { name }, ...file === undefined ? {} : { file }, ...downloadTiming === undefined ? {} : { downloadTiming: typeof downloadTiming === 'object' ? { ...downloadTiming } : downloadTiming }, ...downloadTotalKind === undefined ? {} : { downloadTotalKind } });
       flush();
     },
     close(): void {

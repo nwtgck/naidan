@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ProgressInfo, TransformersJsProductionInvestigationCandidate } from './types';
+import { createDownloadEtaEstimator } from './download-eta';
 
 export type DownloadPhase = 'resolving-revision' | 'checking-cache' | 'preparing-metadata' | 'observing-candidate' | 'transferring' | 'saving' | 'checking-runtime' | 'complete' | 'failed';
 export type DownloadFileStatus = 'queued' | 'transferring' | 'saving' | 'cached' | 'complete' | 'failed';
@@ -13,7 +14,12 @@ export interface DownloadFileProgress {
 export interface DownloadProgressSnapshot {
   phase: DownloadPhase,
   /** Milestone/work estimate, never a percentage of elapsed time or all downloads. */
-  overallProgress: number,
+  overallProgress: number | undefined,
+  estimateGeneration: number,
+  revisionReason: 'size-updated' | 'size-conflict' | 'resource-restarted' | undefined,
+  completedFileCount: number,
+  totalFileCount: number,
+  downloadEta: { status: 'estimating'; remainingSeconds: number; bytesPerSecond: number } | { status: 'unavailable' | 'warming-up' | 'stalled' },
   attemptNumber: number | undefined,
   attemptCount: number,
   candidate: TransformersJsProductionInvestigationCandidate | undefined,
@@ -28,6 +34,9 @@ export type DownloadProgressEvent =
   | { kind: 'metadata'; stage: string }
   | { kind: 'candidate'; candidate: TransformersJsProductionInvestigationCandidate; index: number; count: number }
   | { kind: 'plan'; index: number; paths: readonly string[] }
+  | { kind: 'sizes'; index: number; sizes: readonly { path: string; bytes: number }[] }
+  | { kind: 'prefetch-complete'; index: number }
+  | { kind: 'cached-acceptance' }
   | { kind: 'file'; index: number; info: ProgressInfo }
   | { kind: 'acceptance'; index: number };
 export type DownloadProgressCallback = ({ event }: { event: DownloadProgressEvent }) => void;
@@ -49,8 +58,9 @@ export function publishDownloadProgress({ callback, event }: { callback: Downloa
     switch (event.kind) {
     case 'candidate': return { ...event, candidate: { ...event.candidate } };
     case 'plan': return { ...event, paths: [...event.paths] };
-    case 'file': return { ...event, info: { ...event.info } };
-    case 'phase': case 'metadata': case 'acceptance': return { ...event };
+    case 'file': return { ...event, info: { ...event.info, ...event.info.downloadTiming === undefined ? {} : { downloadTiming: typeof event.info.downloadTiming === 'object' ? { ...event.info.downloadTiming } : event.info.downloadTiming } } };
+    case 'sizes': return { ...event, sizes: event.sizes.map(size => ({ ...size })) };
+    case 'phase': case 'metadata': case 'acceptance': case 'prefetch-complete': case 'cached-acceptance': return { ...event };
     default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
     }
   })();
@@ -65,6 +75,8 @@ export const downloadTransferProgressSchema = z.object({
   loaded: z.number().finite().nonnegative().optional(),
   total: z.number().finite().nonnegative().optional(),
   progress: z.number().finite().nonnegative().optional(),
+  downloadTotalKind: z.enum(['decoded-response', 'unverified-http']).optional(),
+  downloadTiming: z.union([z.literal('unavailable'), z.object({ clockId: z.string().min(1), requestId: z.number().int().nonnegative(), sequence: z.number().int().positive(), observedAtMs: z.number().finite().nonnegative() }).strict()]).optional(),
 }).strict();
 
 export const downloadFailedTransferObservationSchema = z.object({
@@ -86,29 +98,54 @@ export function downloadResourcePath({ url }: { url: string }): string | undefin
 
 export function createDownloadProgressTracker() {
   let phase: DownloadPhase = 'resolving-revision';
-  let overall = 0;
+  let overall: number | undefined = 0;
   let index: number | undefined;
   let count = 0;
   let candidate: TransformersJsProductionInvestigationCandidate | undefined;
   let files = new Map<string, DownloadFileProgress>();
+  let estimateGeneration = 0;
+  let revisionReason: DownloadProgressSnapshot['revisionReason'];
+  let denominatorPublished = false;
+  let prefetchComplete = false;
+  let eta = createDownloadEtaEstimator({ now: () => performance.now() });
+  const blockedHints = new Set<string>();
+  const sequences = new Map<string, number>();
+
+  function revise({ reason }: { reason: NonNullable<DownloadProgressSnapshot['revisionReason']> }): void {
+    if (denominatorPublished) {
+      estimateGeneration++; revisionReason = reason;
+    }
+  }
 
   function advance({ value }: { value: number }): void {
-    overall = Math.max(overall, Math.min(99, value));
+    overall = Math.min(100, value);
   }
   function updateTransfer(): void {
     if (index === undefined || count === 0) return;
     const rows = [...files.values()];
-    const known = rows.length > 0 && rows.every(row => row.total !== undefined && row.total > 0);
-    const fraction = known
-      ? rows.reduce((sum, row) => sum + Math.min(row.loaded, row.total!), 0) / rows.reduce((sum, row) => sum + row.total!, 0)
-      : rows.length === 0 ? 0 : rows.reduce((sum, row) => sum + (
-        row.status === 'complete' || row.status === 'cached' ? 1 : row.total === undefined || row.total === 0 ? 0 : Math.min(1, row.loaded / row.total)
-      ), 0) / rows.length;
-    const slot = 85 / count;
-    // Candidate slots reserve work for fallback, not bytes of unrequested models.
-    // Unknown sizes use equal-file work units; known sizes use available bytes.
-    // Keep only this overall estimate monotonic when those meanings switch.
-    advance({ value: 10 + slot * index + slot * (0.1 + 0.7 * fraction) });
+    if (rows.some(row => row.status === 'failed')) {
+      overall = undefined; return;
+    }
+    if (prefetchComplete) {
+      overall = 95; return;
+    }
+    const total = rows.reduce((sum, row) => sum + (row.total ?? 0), 0);
+    const known = rows.length > 0 && Number.isSafeInteger(total) && total > 0 && rows.every(row => row.total !== undefined && row.total > 0);
+    if (!known) {
+      overall = undefined; return;
+    }
+    denominatorPublished = true;
+    const filled = rows.reduce((sum, row) => {
+      switch (row.status) {
+      case 'queued': return sum;
+      case 'transferring': case 'saving': case 'complete': case 'cached': case 'failed': return sum + Math.min(row.loaded, row.total!);
+      default: { const exhaustive: never = row.status; throw new Error(String(exhaustive)); }
+      }
+    }, 0);
+    // Current candidate only. Cached bytes and received bytes are disjoint;
+    // copying staging data never adds bytes a second time. The last point is
+    // reserved for the real prefetch result, not body EOF or a display timer.
+    advance({ value: Math.min(94, 5 + 90 * filled / total) });
   }
 
   return {
@@ -119,9 +156,9 @@ export function createDownloadProgressTracker() {
         phase = event.phase;
         switch (event.phase) {
         case 'resolving-revision': break;
-        case 'checking-cache': advance({ value: 3 }); break;
-        case 'preparing-metadata': advance({ value: 5 }); break;
-        case 'complete': overall = 100; break; // Accepted: all unneeded fallback slots are skipped.
+        case 'checking-cache': advance({ value: 1 }); break;
+        case 'preparing-metadata': advance({ value: 2 }); break;
+        case 'complete': overall = 100; break;
         case 'failed': break;
         case 'observing-candidate':
         case 'transferring':
@@ -133,7 +170,7 @@ export function createDownloadProgressTracker() {
       }
       case 'metadata': {
         if (index !== undefined) return;
-        const milestones: Record<string, number> = { configuration: 5, 'resource-selection': 6, processor: 7, tokenizer: 7, 'storage-finalization': 9, complete: 10 };
+        const milestones: Record<string, number> = { configuration: 2, 'resource-selection': 3, processor: 4, tokenizer: 4, 'storage-finalization': 4, complete: 5 };
         const value = milestones[event.stage];
         if (value !== undefined) advance({ value });
         break;
@@ -144,8 +181,11 @@ export function createDownloadProgressTracker() {
         count = event.count;
         candidate = { ...event.candidate };
         files = new Map();
+        blockedHints.clear(); sequences.clear(); prefetchComplete = false;
+        estimateGeneration = 0; revisionReason = undefined; denominatorPublished = false;
+        eta = createDownloadEtaEstimator({ now: () => performance.now() });
         phase = 'observing-candidate';
-        advance({ value: 10 + 85 * index / count });
+        advance({ value: 5 });
         break;
       case 'plan':
         if (event.index !== index) return;
@@ -153,6 +193,24 @@ export function createDownloadProgressTracker() {
         phase = 'transferring';
         updateTransfer();
         break;
+      case 'sizes':
+        if (event.index !== index || prefetchComplete) return;
+        for (const { path, bytes } of event.sizes) {
+          const row = files.get(path);
+          if (row === undefined || blockedHints.has(path) || row.status === 'complete' || row.status === 'cached' || row.status === 'failed') continue;
+          if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes < row.loaded || row.total !== undefined && row.total !== bytes) {
+            if (row.total !== undefined) revise({ reason: 'size-conflict' });
+            blockedHints.add(path); files.set(path, { ...row, total: undefined, progress: undefined }); continue;
+          }
+          files.set(path, { ...row, total: bytes, progress: 100 * row.loaded / bytes });
+        }
+        updateTransfer();
+        break;
+      case 'prefetch-complete':
+        if (event.index !== index || [...files.values()].some(row => row.status !== 'complete' && row.status !== 'cached')) return;
+        prefetchComplete = true; updateTransfer(); break;
+      case 'cached-acceptance':
+        phase = 'checking-runtime'; overall = 95; break;
       case 'file': {
         if (event.index !== index) return;
         const parsed = downloadTransferProgressSchema.safeParse(event.info);
@@ -162,8 +220,37 @@ export function createDownloadProgressTracker() {
         if (previous === undefined || previous.status === 'complete' || previous.status === 'cached' || previous.status === 'failed') return;
         if (previous.status === 'saving' && (info.status === 'queued' || info.status === 'download' || info.status === 'progress')) return;
         if ((info.status === 'done' || info.status === 'cached') && !(info.loaded !== undefined && info.loaded > 0)) return;
-        const loaded = info.loaded ?? previous.loaded;
-        const total = info.total ?? previous.total;
+        if (typeof info.downloadTiming === 'object') {
+          const key = info.downloadTiming.clockId;
+          if (info.downloadTiming.sequence <= (sequences.get(key) ?? 0)) return;
+          sequences.set(key, info.downloadTiming.sequence);
+        }
+        let loaded = info.loaded ?? previous.loaded;
+        let total = previous.total;
+        const terminal = info.status === 'done' || info.status === 'cached';
+        if (loaded < previous.loaded) {
+          switch (info.status) {
+          case 'download': revise({ reason: 'resource-restarted' }); break;
+          case 'queued': case 'progress': case 'saving': case 'done': case 'cached': case 'error': return;
+          default: { const exhaustive: never = info.status; throw new Error(String(exhaustive)); }
+          }
+        }
+        switch (info.status) {
+        case 'queued': loaded = 0; break;
+        case 'download': case 'progress': case 'saving': case 'done': case 'cached': case 'error': break;
+        default: { const exhaustive: never = info.status; throw new Error(String(exhaustive)); }
+        }
+        if (terminal) {
+          if (total !== undefined && total !== loaded) revise({ reason: 'size-updated' });
+          total = Number.isSafeInteger(loaded) ? loaded : undefined;
+        } else if (info.downloadTotalKind === 'decoded-response' && info.total !== undefined && !blockedHints.has(info.file)) {
+          if (total !== undefined && total !== info.total) {
+            revise({ reason: 'size-conflict' }); blockedHints.add(info.file); total = undefined;
+          } else total = Number.isSafeInteger(info.total) && info.total > 0 ? info.total : undefined;
+        }
+        if (total !== undefined && loaded > total) {
+          revise({ reason: 'size-conflict' }); blockedHints.add(info.file); total = undefined;
+        }
         const status: DownloadFileStatus = (() => {
           switch (info.status) {
           case 'queued': return 'queued';
@@ -177,13 +264,15 @@ export function createDownloadProgressTracker() {
         })();
         const progress = total === undefined || total === 0 ? undefined : Math.min(100, 100 * loaded / total);
         files.set(info.file, { path: info.file, status, loaded, total, progress });
+        eta.observe({ info });
         switch (phase) {
         case 'checking-runtime': break;
         case 'resolving-revision': case 'checking-cache': case 'preparing-metadata':
         case 'observing-candidate': case 'transferring': case 'saving':
           switch (status) {
           case 'saving': phase = 'saving'; break;
-          case 'queued': case 'transferring': case 'cached': case 'complete': case 'failed': phase = 'transferring'; break;
+          case 'queued': case 'transferring': case 'cached': case 'complete': case 'failed':
+            phase = [...files.values()].some(row => row.status === 'saving') ? 'saving' : 'transferring'; break;
           default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
           }
           break;
@@ -195,7 +284,7 @@ export function createDownloadProgressTracker() {
       case 'acceptance':
         if (event.index !== index || count === 0) return;
         phase = 'checking-runtime';
-        advance({ value: 10 + 85 / count * (event.index + 0.9) });
+        advance({ value: 95 });
         break;
       default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
       }
@@ -211,12 +300,19 @@ export function createDownloadProgressTracker() {
         default: { const exhaustive: never = row.status; throw new Error(String(exhaustive)); }
         }
       }
+      const total = rows.reduce((sum, row) => sum + (row.total ?? 0), 0);
+      const known = rows.length > 0 && Number.isSafeInteger(total) && rows.every(row => row.total !== undefined && row.total > 0 && row.status !== 'failed');
+      const remaining = known ? rows.reduce((sum, row) => sum + Math.max(0, row.total! - row.loaded), 0) : undefined;
       return {
-        phase, overallProgress: Math.floor(overall), attemptNumber: index === undefined ? undefined : index + 1,
+        phase, overallProgress: overall === undefined ? undefined : Math.floor(overall), attemptNumber: index === undefined ? undefined : index + 1,
+        estimateGeneration, revisionReason,
+        completedFileCount: rows.filter(row => row.status === 'complete' || row.status === 'cached').length,
+        totalFileCount: rows.length,
+        downloadEta: eta.snapshot({ remainingBytes: remaining, active: phase === 'transferring' }),
         attemptCount: count, candidate: candidate === undefined ? undefined : { ...candidate }, files: rows,
         receivedBytes,
         cachedBytes,
-        knownTotalBytes: rows.reduce((sum, row) => sum + (row.total ?? 0), 0),
+        knownTotalBytes: Number.isSafeInteger(total) ? total : 0,
         unknownTotalCount: rows.filter(row => row.total === undefined || row.total <= 0).length,
       };
     },

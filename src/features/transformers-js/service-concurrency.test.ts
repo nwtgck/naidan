@@ -37,7 +37,10 @@ describe('Transformers.js service runtime serialization', () => {
     const owner = createTransformersJsService({ createWorkerClient: factory });
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    client.unloadModel.mockImplementationOnce(async () => { entered.resolve(); await release.promise; });
+    client.unloadModel.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+    });
     const operations: Promise<unknown>[] = [];
     try {
       await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
@@ -49,7 +52,11 @@ describe('Transformers.js service runtime serialization', () => {
       expect(client.dispose).not.toHaveBeenCalled();
       expect(factory).toHaveBeenCalledTimes(1);
       expect(owner.service.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
-    } finally { release.resolve(); await Promise.allSettled(operations); await owner.dispose(); }
+    } finally {
+      release.resolve();
+      await Promise.allSettled(operations);
+      await owner.dispose();
+    }
   });
 
   it('allows an independent service to finish while another service holds its own runtime', async () => {

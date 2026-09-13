@@ -119,6 +119,125 @@ afterEach(async () => {
 // single Node Worker Realm, in-memory OPFS and exact tiny HTTP responses are
 // platform controls, not captured model evidence or browser scheduling proof.
 describe('Download progress observation does not control transfer', () => {
+  it('preserves real bytes, markers and result when optional clock identity generation throws', async () => {
+    const baseline = await createTransferFixture();
+    const original = await baseline.client.prefetchUrls({ urls, progressCallback: () => undefined });
+    const h = await createTransferFixture();
+    const identity = vi.spyOn(crypto, 'randomUUID').mockImplementationOnce(() => {
+      throw new Error('Synthetic unavailable timing identity');
+    });
+    const samples: ProgressInfo[] = [];
+    const release = Promise.withResolvers<void>();
+    h.responses.push(new Response(new ReadableStream<Uint8Array>({ async pull(controller) {
+      await release.promise; controller.enqueue(Uint8Array.of(1, 2, 3, 4)); controller.close();
+    } }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
+    const running = h.client.prefetchUrls({ urls, progressCallback: ({ info }) => {
+      samples.push(info);
+    } });
+    try {
+      await vi.waitFor(() => expect(samples.some(info => info.downloadTiming === 'unavailable')).toBe(true));
+    } finally {
+      release.resolve();
+    }
+    const result = await running;
+    expect(identity).toHaveBeenCalled();
+    expect(samples.length).toBeGreaterThan(0);
+    expect(samples.some(info => info.downloadTiming === 'unavailable')).toBe(true);
+    expect(samples.every(info => typeof info.downloadTiming !== 'object')).toBe(true);
+    expect(result).toEqual(original);
+    expect(result).toEqual(expectedResult);
+    expect(h.requests).toEqual(baseline.requests);
+    expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles);
+    expect(h.unexpectedMetadata).not.toHaveBeenCalled();
+  });
+
+  it('carries coalesced source timing through real Comlink and invalidates ETA on a later sampling failure', async () => {
+    const h = await createTransferFixture();
+    let sourceTime = 20_000;
+    let hostTime = 0;
+    let inHost = false;
+    let refuseSourceTime = false;
+    const clockFailures: Error[] = [];
+    vi.spyOn(performance, 'now').mockImplementation(() => {
+      // Inject only at the real Worker's sampling boundary, not Vitest's own
+      // performance clock or the deliberately separate host arrival clock.
+      if (refuseSourceTime && /\bat timing\b/u.test(new Error().stack ?? '')) {
+        const error = new Error('Synthetic source clock failure'); clockFailures.push(error); throw error;
+      }
+      return inHost ? hostTime : sourceTime;
+    });
+    const tracker = createDownloadProgressTracker();
+    tracker.observe({ event: { kind: 'candidate', index: 0, count: 1, candidate: { device: 'wasm', dtype: 'q4' } } });
+    tracker.observe({ event: { kind: 'plan', index: 0, paths: ['onnx/model_q4.onnx'] } });
+    tracker.observe({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'onnx/model_q4.onnx', bytes: 1000 }] } });
+    const firstObserved = Promise.withResolvers<void>();
+    const acknowledgement = Promise.withResolvers<void>();
+    const produce = Promise.withResolvers<void>();
+    const firstChunk = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    const failSampling = Promise.withResolvers<void>();
+    const failedChunk = Promise.withResolvers<void>();
+    const samples: ProgressInfo[] = [];
+    let stage = 0;
+    h.responses.push(new Response(new ReadableStream<Uint8Array>({ async pull(controller) {
+      const currentStage = stage++;
+      if (currentStage === 0) {
+        await produce.promise; sourceTime = 24_000;
+        controller.enqueue(new Uint8Array(400));
+      } else if (currentStage === 1) {
+        firstChunk.resolve(); await failSampling.promise;
+        controller.enqueue(Uint8Array.of(0));
+      } else {
+        failedChunk.resolve(); await finish.promise;
+        controller.enqueue(new Uint8Array(599)); controller.close();
+      }
+    } }, { highWaterMark: 0 }), { headers: { 'Content-Length': '1000' } }));
+    const running = h.client.prefetchUrls({ urls: [urls[0]!], progressCallback: ({ info }) => {
+      samples.push(info);
+      inHost = true;
+      try {
+        tracker.observe({ event: { kind: 'file', index: 0, info } });
+      } finally {
+        inHost = false;
+      }
+      if (info.status === 'download') {
+        firstObserved.resolve(); return acknowledgement.promise;
+      }
+      return undefined;
+    } });
+    try {
+      await Promise.race([firstObserved.promise, running.then(() => {
+        throw new Error('Missing source start sample');
+      })]);
+      produce.resolve(); await firstChunk.promise;
+      expect(samples.filter(info => info.downloadTiming !== undefined)).toHaveLength(1);
+      hostTime = 150; acknowledgement.resolve();
+      await vi.waitFor(() => expect(tracker.snapshot().files[0]?.loaded).toBe(400));
+      const timed = samples.filter(info => info.downloadTiming !== undefined);
+      expect(timed[0]?.downloadTiming).toMatchObject({ observedAtMs: 20_000 });
+      const firstTiming = timed[0]?.downloadTiming;
+      expect(timed[1]?.downloadTiming).toMatchObject({ clockId: typeof firstTiming === 'object' ? firstTiming.clockId : undefined, requestId: 1, observedAtMs: 24_000 });
+      inHost = true;
+      expect(tracker.snapshot().downloadEta).toEqual({ status: 'estimating', remainingSeconds: 6, bytesPerSecond: 100 });
+      inHost = false;
+      expect(h.fs.files.has(modelMarker)).toBe(false);
+      refuseSourceTime = true; failSampling.resolve(); await failedChunk.promise;
+      await vi.waitFor(() => expect(tracker.snapshot().files[0]?.loaded).toBe(401));
+      expect(clockFailures).toHaveLength(1);
+      expect(samples.at(-1)?.downloadTiming).toBe('unavailable');
+      expect(tracker.snapshot().downloadEta).toEqual({ status: 'unavailable' });
+      expect(h.fs.files.has(modelMarker)).toBe(false);
+    } finally {
+      inHost = false; acknowledgement.resolve(); produce.resolve(); failSampling.resolve(); finish.resolve(); await running;
+      refuseSourceTime = false;
+    }
+    expect(h.requests).toEqual([{ url: urls[0], method: 'GET' }]);
+    expect(h.fs.files.get(modelPath)?.byteLength).toBe(1000);
+    expect(h.fs.files.has(modelMarker)).toBe(true);
+    expect(clockFailures).toHaveLength(1);
+    expect(tracker.snapshot().downloadEta).toEqual({ status: 'unavailable' });
+  });
+
   it('shows a verified first file as complete while a later resource body is still transferring', async () => {
     const h = await createTransferFixture();
     const tracker = createDownloadProgressTracker();

@@ -1290,7 +1290,16 @@ import { TransformersJsManager__checking_runtime } from '@/strings/messages/Tran
 import { TransformersJsManager__complete } from '@/strings/messages/TransformersJsManager__complete/ko';
 import { TransformersJsManager__queued } from '@/strings/messages/TransformersJsManager__queued/ko';
 import { TransformersJsManager__cached } from '@/strings/messages/TransformersJsManager__cached/ko';
-import { TransformersJsManager__work_estimate_not_remaining_time } from '@/strings/messages/TransformersJsManager__work_estimate_not_remaining_time/ko';
+import { TransformersJsManager__current_candidate_preparation_includes_cached_files } from '@/strings/messages/TransformersJsManager__current_candidate_preparation_includes_cached_files/ko';
+import { TransformersJsManager__total_size_unknown } from '@/strings/messages/TransformersJsManager__total_size_unknown/ko';
+import { TransformersJsManager__recalculated_after_size_update } from '@/strings/messages/TransformersJsManager__recalculated_after_size_update/ko';
+import { TransformersJsManager__recalculated_after_download_restart } from '@/strings/messages/TransformersJsManager__recalculated_after_download_restart/ko';
+import { TransformersJsManager__retrying_with_another_candidate } from '@/strings/messages/TransformersJsManager__retrying_with_another_candidate/ko';
+import { TransformersJsManager__saving_and_checks_not_included } from '@/strings/messages/TransformersJsManager__saving_and_checks_not_included/ko';
+import { TransformersJsManager__estimating_download_time } from '@/strings/messages/TransformersJsManager__estimating_download_time/ko';
+import { TransformersJsManager__recalculating_download_time } from '@/strings/messages/TransformersJsManager__recalculating_download_time/ko';
+import { TransformersJsManager__files_complete } from '@/strings/messages/TransformersJsManager__files_complete/ko';
+import { TransformersJsManager__current_candidate_download_time_remaining } from '@/strings/messages/TransformersJsManager__current_candidate_download_time_remaining/ko';
 import { TransformersJsManager__candidate_number } from '@/strings/messages/TransformersJsManager__candidate_number/ko';
 import { TransformersJsManager__current_candidate_received_and_cached_bytes } from '@/strings/messages/TransformersJsManager__current_candidate_received_and_cached_bytes/ko';
 import { TransformersJsManager__preset_model_paths } from '@/strings/messages/TransformersJsManager__preset_model_paths/ko';
@@ -2984,7 +2993,16 @@ export const catalog = {
   TransformersJsManager__complete,
   TransformersJsManager__queued,
   TransformersJsManager__cached,
-  TransformersJsManager__work_estimate_not_remaining_time,
+  TransformersJsManager__current_candidate_preparation_includes_cached_files,
+  TransformersJsManager__total_size_unknown,
+  TransformersJsManager__recalculated_after_size_update,
+  TransformersJsManager__recalculated_after_download_restart,
+  TransformersJsManager__retrying_with_another_candidate,
+  TransformersJsManager__saving_and_checks_not_included,
+  TransformersJsManager__estimating_download_time,
+  TransformersJsManager__recalculating_download_time,
+  TransformersJsManager__files_complete,
+  TransformersJsManager__current_candidate_download_time_remaining,
   TransformersJsManager__candidate_number,
   TransformersJsManager__current_candidate_received_and_cached_bytes,
   TransformersJsManager__preset_model_paths,

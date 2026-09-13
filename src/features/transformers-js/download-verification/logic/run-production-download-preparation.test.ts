@@ -81,7 +81,7 @@ describe('runProductionDownloadPreparation', () => {
       { candidate: { device: 'webgpu', dtype: 'q4' }, paths: ['onnx/model_q4.onnx'] },
     ]);
     expect(acceptDownloadedProductionCandidate).toHaveBeenCalledTimes(2);
-    expect(events).toEqual(['metadata', 'candidate', 'plan', 'file', 'acceptance', 'candidate', 'plan', 'file', 'acceptance']);
+    expect(events.filter(kind => kind !== 'sizes')).toEqual(['metadata', 'candidate', 'plan', 'file', 'prefetch-complete', 'acceptance', 'candidate', 'plan', 'file', 'prefetch-complete', 'acceptance']);
   });
   it('skips an unplannable candidate without transferring it and accepts the next valid plan', async () => {
     vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({

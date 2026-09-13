@@ -85,7 +85,9 @@ describe('Transformers.js service instance ownership', () => {
       return { normalizedModelId: 'fixture/download', requestedRevision: 'main', resolvedRevision: 'a'.repeat(40) };
     });
     let downloadSettled = false;
-    const downloading = owner.service.downloadModel({ modelId: 'fixture/download' }).catch(error => error).finally(() => { downloadSettled = true; });
+    const downloading = owner.service.downloadModel({ modelId: 'fixture/download' }).catch(error => error).finally(() => {
+      downloadSettled = true;
+    });
     const operations: Promise<unknown>[] = [downloading];
     try {
       await entered.promise;

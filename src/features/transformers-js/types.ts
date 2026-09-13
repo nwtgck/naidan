@@ -17,6 +17,10 @@ export interface ProgressInfo {
   total?: number,
   name?: string,
   file?: string,
+  /** Dedicated Download observation only; absent on ordinary Load progress. */
+  downloadTiming?: { clockId: string; requestId: number; sequence: number; observedAtMs: number } | 'unavailable',
+  /** Display byte-domain, never an input to writer verification. */
+  downloadTotalKind?: 'decoded-response' | 'unverified-http',
 }
 
 export interface TransformersJsModelLoadProgressObservation {

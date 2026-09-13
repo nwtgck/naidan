@@ -1,5 +1,9 @@
 export const STANDALONE_FACADES = [
   {
+    facadePath: '@/features/transformers-js/download-verification/size-worker/client',
+    standalonePath: 'src/features/transformers-js/download-verification/size-worker/client-standalone.ts',
+  },
+  {
     facadePath: '@/features/transformers-js/model-support-investigation',
     standalonePath: 'src/features/transformers-js/model-support-investigation/index-standalone.ts',
   },

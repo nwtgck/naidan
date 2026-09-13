@@ -996,13 +996,21 @@ export function createTransformersJsService({ createWorkerClient }: {
         observeDownloadSafely({ observe: () => {
           tracker.observe({ event });
           downloadProgress = tracker.snapshot();
-          loadingProgress = downloadProgress.overallProgress;
+          loadingProgress = downloadProgress.overallProgress ?? 0;
           totalLoadedAmount = downloadProgress.receivedBytes;
           totalSizeAmount = downloadProgress.knownTotalBytes;
           notify();
         } });
       };
       downloadProgress = tracker.snapshot();
+      const refreshEstimate = setInterval(() => {
+        if (!isCurrent() || owner.signal.aborted) return;
+        observeDownloadSafely({ observe: () => {
+          downloadProgress = tracker.snapshot(); notify();
+        } });
+      }, 1_000);
+      const stopEstimate = () => clearInterval(refreshEstimate);
+      owner.signal.addEventListener('abort', stopEstimate, { once: true });
 
       try {
         const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
@@ -1026,10 +1034,16 @@ export function createTransformersJsService({ createWorkerClient }: {
           if (info.status.startsWith('download-metadata:')) onDownloadProgress({ event: { kind: 'metadata', stage: info.status.slice('download-metadata:'.length) } });
         };
 
-        const { resolvedRevision } = await resolvePublicHuggingFaceRevision({ modelId });
+        const { resolvedRevision, sizeHints } = await resolvePublicHuggingFaceRevision({ modelId });
         assertCurrent();
         onDownloadProgress({ event: { kind: 'phase', phase: 'checking-cache' } });
-        const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision });
+        const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision, onProgress: ({ progress }) => {
+          // The runtime emits model-session only after admitting a locally
+          // complete candidate. Inventory/revision selection alone is not 95%.
+          if (progress.phase === 'runtime' && progress.info?.status === 'cache-acceptance-model-session') {
+            onDownloadProgress({ event: { kind: 'cached-acceptance' } });
+          }
+        } });
         assertCurrent();
         if (cachedReuse.reused) {
           downloadedModelRevisionHints.set(normalizedModelId, cachedReuse.loadRevision);
@@ -1040,6 +1054,7 @@ export function createTransformersJsService({ createWorkerClient }: {
             revision: resolvedRevision,
             progressCallback: progress_callback,
             onDownloadProgress,
+            ...sizeHints === undefined ? {} : { sizeHints },
           });
           assertCurrent();
           switch (preparation.status) {
@@ -1078,6 +1093,8 @@ export function createTransformersJsService({ createWorkerClient }: {
         notify();
         throw e;
       } finally {
+        stopEstimate();
+        owner.signal.removeEventListener('abort', stopEstimate);
         // Cancellation does not stop Download I/O. Finalize only after it settles,
         // and never let a retired operation overwrite a replacement lane's state.
         if (isCurrent() && owner.signal.aborted && loadingStatus === 'loading') {

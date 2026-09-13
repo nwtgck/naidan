@@ -1,1 +1,0 @@
-export const TransformersJsManager__work_estimate_not_remaining_time = (): string => "Estimativa do trabalho total, não do tempo restante. As porcentagens dos arquivos são baseadas nos bytes medidos.";

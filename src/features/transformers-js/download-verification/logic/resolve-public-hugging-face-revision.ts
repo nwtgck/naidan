@@ -1,10 +1,14 @@
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
+import { z } from 'zod';
 
 export interface ResolvedPublicHuggingFaceRevision {
   normalizedModelId: string;
   requestedRevision: 'main';
   resolvedRevision: string;
+  sizeHints?: readonly { path: string; bytes: number }[];
 }
+
+const siblingSizeSchema = z.object({ rfilename: z.string().min(1), size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(), lfs: z.object({ size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).optional() });
 
 function encodedModelId({ modelId }: { modelId: string }): string {
   const normalized = normalizeTransformersJsProductionModelId({ modelId }).trim().replace(/^\/+|\/+$/g, '');
@@ -55,10 +59,35 @@ export async function resolvePublicHuggingFaceRevision({ modelId, repositoryFetc
     throw new Error('Hugging Face repository metadata did not include a resolved commit SHA');
   }
 
+  // Reuse only optional scalars already present in this exact-SHA response.
+  // Do not enlarge the mandatory API request or fail SHA resolution for size.
+  const sizeHints = new Map<string, number>();
+  const invalid = new Set<string>();
+  const seen = new Set<string>();
+  if (typeof metadata === 'object' && metadata !== null && 'siblings' in metadata && Array.isArray(metadata.siblings)) {
+    for (const sibling of metadata.siblings.slice(0, 256)) {
+      const identity = z.object({ rfilename: z.string() }).safeParse(sibling);
+      if (!identity.success) continue;
+      const path = identity.data.rfilename;
+      if (seen.has(path)) invalid.add(path);
+      seen.add(path);
+      const item = siblingSizeSchema.safeParse(sibling);
+      if (!item.success) {
+        invalid.add(path); continue;
+      }
+      const { rfilename: _path, size, lfs } = item.data;
+      const bytes = size ?? lfs?.size;
+      if (sizeHints.has(path) || size !== undefined && lfs !== undefined && size !== lfs.size) invalid.add(path);
+      if (bytes !== undefined) sizeHints.set(path, bytes);
+    }
+  }
+  const hints = [...sizeHints].filter(([path]) => !invalid.has(path)).map(([path, bytes]) => ({ path, bytes }));
+
   return {
     normalizedModelId,
     requestedRevision: 'main',
     resolvedRevision,
+    ...hints.length === 0 ? {} : { sizeHints: hints },
   };
 }
 

@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { TransformersJsProgressCallback, TransformersJsWorkerClient } from './types';
 import type { DownloadProgressCallback } from './download-progress';
+import type { RuntimeAcceptanceProgressCallback } from './download-verification/logic/runtime-acceptance-progress';
 
 const transfer = vi.hoisted(() => ({ resolve: vi.fn(), reuse: vi.fn(), prepare: vi.fn() }));
 vi.mock('./download-verification/logic/resolve-public-hugging-face-revision', () => ({ resolvePublicHuggingFaceRevision: transfer.resolve }));
@@ -46,6 +47,8 @@ it('bounds a held Download subscriber and retains terminal state without waiting
 afterEach(async () => {
   await Promise.all(owners.splice(0).map(owner => owner.dispose()));
   expect(fetch).not.toHaveBeenCalled();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -68,7 +71,7 @@ it('does not let a failing Download progress subscriber prevent cache reuse or c
   owner.service.subscribeModelList({ listener: healthyList });
   await expect(owner.service.downloadModel({ modelId: 'fixture/model' })).resolves.toBeUndefined();
   expect(transfer.resolve).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model' });
-  expect(transfer.reuse).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model', resolvedRevision: 'a'.repeat(40) });
+  expect(transfer.reuse).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model', resolvedRevision: 'a'.repeat(40), onProgress: expect.any(Function) });
   expect(transfer.prepare).not.toHaveBeenCalled();
   expect(createWorkerClient).not.toHaveBeenCalled();
   expect(owner.service.getState()).toMatchObject({ status: 'idle', loadingModelId: undefined });
@@ -94,9 +97,40 @@ it('does not turn a completed raw cache or metadata read into early Download com
   await owner.service.downloadModel({ modelId: 'fixture/model' });
   expect(observed).toHaveLength(1);
   expect(observed[0]?.progress).toBeLessThanOrEqual(10);
-  expect(observed[0]).toMatchObject({ status: 'loading', totalLoadedAmount: 0, downloadProgress: { phase: 'preparing-metadata', overallProgress: 5, files: [], receivedBytes: 0 } });
+  expect(observed[0]).toMatchObject({ status: 'loading', totalLoadedAmount: 0, downloadProgress: { phase: 'preparing-metadata', overallProgress: 2, files: [], receivedBytes: 0 } });
   expect(owner.service.getState()).toMatchObject({ status: 'idle', downloadProgress: { phase: 'complete', overallProgress: 100 } });
   expect(transfer.prepare).toHaveBeenCalledOnce();
+});
+
+it('shows cached model-session acceptance at 95 without starting size discovery or prefetch', async () => {
+  const { createTransformersJsService } = await import('./index-hosted');
+  const createWorkerClient = vi.fn<() => TransformersJsWorkerClient>(() => {
+    throw new Error('Unexpected runtime');
+  });
+  const owner = createTransformersJsService({ createWorkerClient }); owners.push(owner);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let reuseProgress: RuntimeAcceptanceProgressCallback | undefined;
+  transfer.reuse.mockImplementationOnce(async ({ onProgress }: { onProgress: RuntimeAcceptanceProgressCallback }) => {
+    reuseProgress = onProgress; entered.resolve(); await release.promise;
+    return { reused: true, loadRevision: 'a'.repeat(40), acceptance: {} };
+  });
+  const running = owner.service.downloadModel({ modelId: 'fixture/model' });
+  await Promise.race([entered.promise, running.then(() => {
+    throw new Error('Download settled before acceptance');
+  })]);
+  try {
+    reuseProgress?.({ progress: { phase: 'cache-inventory', revision: 'a'.repeat(40), candidate: undefined, info: undefined } });
+    expect(owner.service.getState().downloadProgress?.overallProgress).toBe(1);
+    reuseProgress?.({ progress: { phase: 'runtime', revision: 'a'.repeat(40), candidate: { device: 'wasm', dtype: 'q4' }, info: { status: 'cache-acceptance-model-session' } } });
+    expect(owner.service.getState()).toMatchObject({ status: 'loading', downloadProgress: { overallProgress: 95, phase: 'checking-runtime', files: [], downloadEta: { status: 'unavailable' } } });
+    expect(transfer.prepare).not.toHaveBeenCalled();
+    expect(createWorkerClient).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    release.resolve(); await running;
+  }
+  expect(owner.service.getState().downloadProgress).toMatchObject({ phase: 'complete', overallProgress: 100 });
 });
 
 it('ignores a previous Download callback while a new operation owns the service', async () => {
@@ -162,4 +196,46 @@ it('drops the old buffered snapshot when the same listener is unsubscribed and r
   await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(before + 1));
   expect(listener.mock.calls.at(-1)?.[0]).toMatchObject({ status: 'idle' });
   unsubscribeAgain();
+});
+
+it('publishes stalled ETA from the display timer and retires that timer after Download settles', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+  const { createTransformersJsService } = await import('./index-hosted');
+  const owner = createTransformersJsService({ createWorkerClient: () => {
+    throw new Error('No runtime expected');
+  } }); owners.push(owner);
+  // The existing subscriber is an invalidation signal; Manager reads getState.
+  const snapshots: ReturnType<typeof owner.service.getState>[] = [];
+  const notifications = vi.fn(() => {
+    snapshots.push(owner.service.getState());
+  }); owner.service.subscribe({ listener: notifications });
+  transfer.reuse.mockResolvedValue({ reused: false });
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  transfer.prepare.mockImplementationOnce(async ({ onDownloadProgress }: { onDownloadProgress: DownloadProgressCallback }) => {
+    onDownloadProgress({ event: { kind: 'candidate', index: 0, count: 1, candidate: { device: 'wasm', dtype: 'q4' } } });
+    onDownloadProgress({ event: { kind: 'plan', index: 0, paths: ['onnx/a'] } });
+    onDownloadProgress({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'onnx/a', bytes: 600 }] } });
+    onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'download', file: 'onnx/a', loaded: 0, downloadTiming: { clockId: 'source', requestId: 1, sequence: 1, observedAtMs: 20_000 } } } });
+    onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'onnx/a', loaded: 300, downloadTiming: { clockId: 'source', requestId: 1, sequence: 2, observedAtMs: 23_000 } } } });
+    started.resolve(); await release.promise; return { status: 'accepted' };
+  });
+  const running = owner.service.downloadModel({ modelId: 'fixture/model' });
+  await Promise.race([started.promise, running.then(() => {
+    throw new Error('Premature Download completion');
+  })]);
+  try {
+    expect(owner.service.getState().downloadProgress?.downloadEta).toEqual({ status: 'estimating', remainingSeconds: 3, bytesPerSecond: 100 });
+    expect(vi.getTimerCount()).toBe(1);
+    clock.mockReturnValue(10_000);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(snapshots.at(-1)).toMatchObject({ downloadProgress: { downloadEta: { status: 'stalled' }, overallProgress: 50 } });
+  } finally {
+    release.resolve(); await running;
+  }
+  expect(vi.getTimerCount()).toBe(0);
+  const completed = owner.service.getState();
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(owner.service.getState()).toEqual(completed);
 });

@@ -5,32 +5,34 @@ it('publishes the complete current plan while totals are unknown and uses real f
   const tracker = createDownloadProgressTracker();
   expect(tracker.snapshot().overallProgress).toBe(0);
   tracker.observe({ event: { kind: 'phase', phase: 'checking-cache' } });
-  expect(tracker.snapshot().overallProgress).toBe(3);
+  expect(tracker.snapshot().overallProgress).toBe(1);
   tracker.observe({ event: { kind: 'candidate', candidate: { device: 'webgpu', dtype: 'q4f16' }, index: 0, count: 3 } });
   tracker.observe({ event: { kind: 'plan', index: 0, paths: ['decoder/model.onnx', 'encoder/model.onnx'] } });
   expect(tracker.snapshot()).toMatchObject({ unknownTotalCount: 2, files: [
     { path: 'decoder/model.onnx', status: 'queued', progress: undefined },
     { path: 'encoder/model.onnx', status: 'queued', progress: undefined },
   ] });
+  tracker.observe({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'decoder/model.onnx', bytes: 100 }] } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'decoder/model.onnx', loaded: 25, total: 100 } } });
   const snapshot = tracker.snapshot();
   expect(snapshot.files[0]).toMatchObject({ loaded: 25, total: 100, progress: 25 });
   expect(snapshot.files[1]?.progress).toBeUndefined();
-  expect(snapshot.overallProgress).toBeGreaterThan(10);
-  expect(snapshot.overallProgress).toBeLessThan(25);
+  expect(snapshot.overallProgress).toBeUndefined();
   expect(snapshot.receivedBytes).toBe(25);
 });
 
-it('advances unknown-size file work, preserves known totals on sparse samples, and does not mistake body completion for saved data', () => {
+it('retains unknown-size work without a numeric total, preserves known totals on sparse samples, and distinguishes saved data', () => {
   const tracker = createDownloadProgressTracker();
   tracker.observe({ event: { kind: 'candidate', candidate: { device: 'wasm', dtype: 'q4' }, index: 0, count: 1 } });
   tracker.observe({ event: { kind: 'plan', index: 0, paths: ['a', 'b'] } });
   const initial = tracker.snapshot().overallProgress;
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'a', loaded: 10, total: 10 } } });
   const completed = tracker.snapshot().overallProgress;
-  expect(completed).toBeGreaterThan(initial);
+  expect(initial).toBeUndefined();
+  expect(completed).toBeUndefined();
+  tracker.observe({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'b', bytes: 1000 }] } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'download', file: 'b', loaded: 0, total: 1000 } } });
-  expect(tracker.snapshot().overallProgress).toBe(completed);
+  expect(tracker.snapshot().overallProgress).toBe(5);
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'b', loaded: 500 } } });
   expect(tracker.snapshot().files[1]).toMatchObject({ total: 1000, progress: 50 });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'saving', file: 'b', loaded: 1000, total: 1000 } } });
@@ -43,19 +45,19 @@ it('advances unknown-size file work, preserves known totals on sparse samples, a
   expect(tracker.snapshot().files[1]?.status).toBe('failed');
 });
 
-it('reserves future candidate work instead of stranding a fallback at the previous acceptance percentage', () => {
+it('starts fallback in an explicit new candidate context without reserving unattempted work', () => {
   const tracker = createDownloadProgressTracker();
   tracker.observe({ event: { kind: 'candidate', candidate: { device: 'webgpu', dtype: 'q4f16' }, index: 0, count: 2 } });
   tracker.observe({ event: { kind: 'plan', index: 0, paths: ['old'] } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'old', loaded: 5, total: 5 } } });
   tracker.observe({ event: { kind: 'acceptance', index: 0 } });
   const rejected = tracker.snapshot().overallProgress;
-  expect(rejected).toBeLessThan(50);
+  expect(rejected).toBe(95);
   tracker.observe({ event: { kind: 'candidate', candidate: { device: 'wasm', dtype: 'q4' }, index: 1, count: 2 } });
   tracker.observe({ event: { kind: 'plan', index: 1, paths: ['new'] } });
   const next = tracker.snapshot();
-  expect(next.overallProgress).toBeGreaterThan(rejected);
-  expect(next.overallProgress).toBeLessThan(70);
+  expect(next.overallProgress).toBeUndefined();
+  expect(next.attemptNumber).toBe(2);
   expect(next.files.map(file => file.path)).toEqual(['new']);
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'new', loaded: 500, total: 500 } } });
   expect(tracker.snapshot()).toEqual(next);
@@ -70,6 +72,7 @@ it('distinguishes cached bytes, unknown size, zero length and contradictory size
   const tracker = createDownloadProgressTracker();
   tracker.observe({ event: { kind: 'candidate', candidate: { device: 'wasm', dtype: 'q4' }, index: 0, count: 1 } });
   tracker.observe({ event: { kind: 'plan', index: 0, paths: ['cache', 'unknown', 'zero', 'mismatch'] } });
+  tracker.observe({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'mismatch', bytes: 10 }] } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'cached', file: 'cache', loaded: 20, total: 20 } } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'unknown', loaded: 7 } } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'zero', loaded: 0, total: 0 } } });
@@ -77,7 +80,7 @@ it('distinguishes cached bytes, unknown size, zero length and contradictory size
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'error', file: 'mismatch' } } });
   expect(tracker.snapshot()).toMatchObject({ cachedBytes: 20, receivedBytes: 19, files: [
     { status: 'cached', progress: 100 }, { progress: undefined, loaded: 7 },
-    { status: 'queued', progress: undefined }, { status: 'failed', loaded: 12, total: 10, progress: 100 },
+    { status: 'queued', progress: undefined }, { status: 'failed', loaded: 12, total: undefined, progress: undefined },
   ] });
 });
 
