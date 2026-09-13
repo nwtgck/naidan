@@ -3,6 +3,7 @@ import { ensureStrings, lazyStrings } from '@/strings';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
 import type { ProgressInfo } from '@/features/transformers-js/types';
+import type { DownloadFileStatus } from '@/features/transformers-js/download-progress';
 import { isModelSupportInvestigationAvailable } from '@/features/transformers-js/model-support-investigation';
 import {
   Loader2Icon, CheckCircle2Icon, AlertCircleIcon, DownloadIcon, FolderOpenIcon, RefreshCcwIcon, Trash2Icon,
@@ -33,6 +34,35 @@ const activeModelId = ref(transformersJsService.getState().activeModelId);
 const device = ref(transformersJsService.getState().device);
 const isCached = ref(transformersJsService.getState().isCached);
 const isLoadingFromCache = ref(transformersJsService.getState().isLoadingFromCache);
+const downloadProgress = ref(transformersJsService.getState().downloadProgress);
+const downloadPhaseLabel = computed(() => {
+  const phase = downloadProgress.value?.phase;
+  switch (phase) {
+  case undefined: return undefined;
+  case 'resolving-revision': return lazyStrings.TransformersJsManager__resolving_revision();
+  case 'checking-cache': return lazyStrings.TransformersJsManager__checking_cache();
+  case 'preparing-metadata': return lazyStrings.TransformersJsManager__preparing_metadata();
+  case 'observing-candidate': return lazyStrings.TransformersJsManager__checking_required_files();
+  case 'transferring': return lazyStrings.TransformersJsManager__transferring();
+  case 'saving': return lazyStrings.TransformersJsManager__saving();
+  case 'checking-runtime': return lazyStrings.TransformersJsManager__checking_runtime();
+  case 'complete': return lazyStrings.TransformersJsManager__complete();
+  case 'failed': return lazyStrings.TransformersJsManager__download_failed();
+  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  }
+});
+
+const downloadFileStatusLabel = ({ status }: { status: DownloadFileStatus }): string | undefined => {
+  switch (status) {
+  case 'queued': return lazyStrings.TransformersJsManager__queued();
+  case 'transferring': return lazyStrings.TransformersJsManager__transferring();
+  case 'saving': return lazyStrings.TransformersJsManager__saving();
+  case 'cached': return lazyStrings.TransformersJsManager__cached();
+  case 'complete': return lazyStrings.TransformersJsManager__complete();
+  case 'failed': return lazyStrings.TransformersJsManager__error();
+  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  }
+};
 
 const isFileUrl = typeof window !== 'undefined' && window.location.protocol === 'file:';
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;
@@ -65,6 +95,7 @@ const containerRef = ref<HTMLElement | null>(null);
 const isImporting = ref(false);
 const importProgress = ref(0);
 const lastDownloadError = ref<string | null>(null);
+const isDownloadFailureDismissed = ref(false);
 
 let unsubscribe: (() => void) | null = null;
 let unsubscribeList: (() => void) | null = null;
@@ -146,6 +177,21 @@ onMounted(async () => {
     isLoadingFromCache.value = l;
     progressItems.value = items;
     const state = transformersJsService.getState();
+    downloadProgress.value = state.downloadProgress;
+    const downloadPhase = state.downloadProgress?.phase;
+    switch (downloadPhase) {
+    case 'failed': break;
+    case undefined:
+    case 'resolving-revision':
+    case 'checking-cache':
+    case 'preparing-metadata':
+    case 'observing-candidate':
+    case 'transferring':
+    case 'saving':
+    case 'checking-runtime':
+    case 'complete': isDownloadFailureDismissed.value = false; break;
+    default: { const exhaustive: never = downloadPhase; throw new Error(String(exhaustive)); }
+    }
     activeModelId.value = state.activeModelId;
     device.value = state.device;
     totalLoadedAmount.value = state.totalLoadedAmount;
@@ -439,7 +485,49 @@ defineExpose({
             </div>
 
             <!-- Contextual Progress for Download -->
-            <div v-if="(status === 'loading' && !isLoadingFromCache) || lastDownloadError" class="animate-in fade-in slide-in-from-top-2" tw-class="duration-300">
+            <div v-if="downloadProgress !== undefined && !isDownloadFailureDismissed" data-testid="download-progress" tw-class="space-y-3 rounded-2xl border border-purple-100 dark:border-purple-900/40 p-4">
+              <div tw-class="flex items-center justify-between gap-3 text-sm font-bold text-purple-700 dark:text-purple-300">
+                <span>{{ downloadPhaseLabel }}</span>
+                <div tw-class="flex items-center gap-3">
+                  <span data-testid="download-overall-progress">{{ downloadProgress.overallProgress }}%</span>
+                  <button v-if="downloadProgress.phase === 'failed'" data-testid="dismiss-download-failure" :aria-label="lazyStrings.TransformersJsManager__close_error_details()" @click="isDownloadFailureDismissed = true; lastDownloadError = null" tw-class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                    <XIcon tw-class="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div role="progressbar" :aria-label="lazyStrings.TransformersJsManager__overall_progress()" :aria-valuenow="downloadProgress.overallProgress" aria-valuemin="0" aria-valuemax="100" tw-class="h-1.5 rounded-full overflow-hidden bg-purple-100 dark:bg-purple-900/30">
+                <div tw-class="h-full bg-purple-600 dark:bg-purple-400 transition-all" :style="{ width: downloadProgress.overallProgress + '%' }"></div>
+              </div>
+              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.TransformersJsManager__work_estimate_not_remaining_time() }}</p>
+              <p v-if="downloadProgress.attemptNumber !== undefined" tw-class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                {{ lazyStrings.TransformersJsManager__candidate_number({ number: downloadProgress.attemptNumber, count: downloadProgress.attemptCount }) }}
+                <span v-if="downloadProgress.candidate !== undefined"> · {{ downloadProgress.candidate.device }} / {{ downloadProgress.candidate.dtype }}</span>
+              </p>
+              <p v-if="downloadProgress.attemptNumber !== undefined" data-testid="download-byte-summary" tw-class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                {{ lazyStrings.TransformersJsManager__current_candidate_received_and_cached_bytes({ received: formatSize({ bytes: downloadProgress.receivedBytes }), cached: formatSize({ bytes: downloadProgress.cachedBytes }) }) }}
+              </p>
+              <button v-if="downloadProgress.files.length > 0" @click="isDetailsExpanded = !isDetailsExpanded" :aria-expanded="isDetailsExpanded" tw-class="flex items-center gap-1.5 text-xs font-bold text-gray-500 dark:text-gray-400">
+                <ChevronDownIcon :tw-class="['w-3 h-3 transition-transform', { '-rotate-90': !isDetailsExpanded }]" />
+                {{ lazyStrings.TransformersJsManager__asset_details() }}
+              </button>
+              <ul v-if="isDetailsExpanded" tw-class="space-y-3 max-h-80 overflow-y-auto">
+                <li v-for="file in downloadProgress.files" :key="file.path" data-testid="download-file-row" tw-class="space-y-1 text-xs">
+                  <div tw-class="flex justify-between gap-3">
+                    <span tw-class="break-all text-gray-700 dark:text-gray-300">{{ file.path }}</span>
+                    <span tw-class="shrink-0 text-purple-600 dark:text-purple-400">{{ downloadFileStatusLabel({ status: file.status }) }}</span>
+                  </div>
+                  <div tw-class="flex justify-between gap-3 tabular-nums text-gray-500 dark:text-gray-400">
+                    <span>{{ formatSize({ bytes: file.loaded }) }} / {{ file.total === undefined || file.total <= 0 ? lazyStrings.TransformersJsManager__unknown() : formatSize({ bytes: file.total }) }}</span>
+                    <span>{{ file.progress === undefined ? lazyStrings.TransformersJsManager__unknown() : `${Math.round(file.progress)}%` }}</span>
+                  </div>
+                  <div v-if="file.progress !== undefined" role="progressbar" :aria-label="file.path" :aria-valuenow="file.progress" aria-valuemin="0" aria-valuemax="100" tw-class="h-1 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800">
+                    <div tw-class="h-full bg-purple-400 dark:bg-purple-500" :style="{ width: file.progress + '%' }"></div>
+                  </div>
+                </li>
+              </ul>
+              <p v-if="downloadProgress.phase === 'failed'" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ lastDownloadError || error }}</p>
+            </div>
+            <div v-else-if="(status === 'loading' && !isLoadingFromCache) || lastDownloadError" class="animate-in fade-in slide-in-from-top-2" tw-class="duration-300">
               <template v-if="lastDownloadError">
                 <div tw-class="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-2xl">
                   <div tw-class="flex items-start gap-3">
@@ -570,7 +658,7 @@ defineExpose({
                   <template v-if="isImporting">{{ lazyStrings.TransformersJsManager__importing_local_model({ progress: importProgress }) }}</template>
                   <template v-else>
                     {{ status === 'idle' ? lazyStrings.TransformersJsManager__engine_idle() :
-                      status === 'loading' ? lazyStrings.TransformersJsManager__initializing_engine() :
+                      status === 'loading' ? (downloadProgress === undefined ? lazyStrings.TransformersJsManager__initializing_engine() : downloadPhaseLabel) :
                       status === 'ready' ? lazyStrings.TransformersJsManager__engine_ready() : lazyStrings.TransformersJsManager__error() }}
                   </template>
                 </h4>
@@ -602,14 +690,14 @@ defineExpose({
                 <template v-if="isImporting">{{ lazyStrings.TransformersJsManager__writing_model_files_to_browser_local_storage_opfs() }}</template>
                 <template v-else>
                   {{ status === 'idle' ? lazyStrings.TransformersJsManager__load_a_model_from_the_list_below_to_start_in_browser_inference() :
-                    status === 'loading' ? (isLoadingFromCache ? lazyStrings.TransformersJsManager__loading_from_local_storage({ progress }) : lazyStrings.TransformersJsManager__downloading_and_compiling({ progress })) :
+                    status === 'loading' ? (downloadProgress !== undefined ? lazyStrings.TransformersJsManager__work_estimate_not_remaining_time() : isLoadingFromCache ? lazyStrings.TransformersJsManager__loading_from_local_storage({ progress }) : lazyStrings.TransformersJsManager__downloading_and_compiling({ progress })) :
                     status === 'ready' ? (activeModelId === undefined ? lazyStrings.TransformersJsManager__engine_ready() : lazyStrings.TransformersJsManager__active_model({ modelId: activeModelId })) :
                     (lastDownloadError ? lazyStrings.TransformersJsManager__download_failed_check_details_in_the_section_below() : error) }}
                 </template>
               </p>
 
               <!-- Progress Bar -->
-              <div v-if="status === 'loading' || isImporting" tw-class="mt-5 h-2 w-full bg-blue-200 dark:bg-blue-900/50 rounded-full overflow-hidden">
+              <div v-if="(status === 'loading' && downloadProgress === undefined) || isImporting" tw-class="mt-5 h-2 w-full bg-blue-200 dark:bg-blue-900/50 rounded-full overflow-hidden">
                 <div tw-class="h-full bg-blue-600 dark:bg-blue-400 transition-all duration-300 ease-out" :style="{ width: (isImporting ? importProgress : progress) + '%' }"></div>
               </div>
             </div>

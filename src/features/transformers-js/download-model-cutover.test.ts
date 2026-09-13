@@ -89,6 +89,7 @@ describe('user-facing Transformers.js download cutover', () => {
       modelId: 'org/model',
       revision: SHA,
       progressCallback: expect.any(Function),
+      onDownloadProgress: expect.any(Function),
     });
     expect(mocks.legacyWorkerDownloadModel).not.toHaveBeenCalled();
     expect(mocks.inspectCachedRevisions).toHaveBeenCalledTimes(1);
@@ -199,6 +200,7 @@ describe('user-facing Transformers.js download cutover', () => {
       modelId: 'org/model',
       revision: SHA,
       progressCallback: expect.any(Function),
+      onDownloadProgress: expect.any(Function),
     });
   });
 

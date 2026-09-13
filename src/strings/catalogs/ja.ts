@@ -1279,6 +1279,20 @@ import { TransformersJsManager__no_models_match_your_filter } from '@/strings/me
 import { TransformersJsManager__note } from '@/strings/messages/TransformersJsManager__note/ja';
 import { TransformersJsManager__origin_private_file_system_opfs } from '@/strings/messages/TransformersJsManager__origin_private_file_system_opfs/ja';
 import { TransformersJsManager__overall_progress } from '@/strings/messages/TransformersJsManager__overall_progress/ja';
+import { TransformersJsManager__close_error_details } from '@/strings/messages/TransformersJsManager__close_error_details/ja';
+import { TransformersJsManager__resolving_revision } from '@/strings/messages/TransformersJsManager__resolving_revision/ja';
+import { TransformersJsManager__checking_cache } from '@/strings/messages/TransformersJsManager__checking_cache/ja';
+import { TransformersJsManager__preparing_metadata } from '@/strings/messages/TransformersJsManager__preparing_metadata/ja';
+import { TransformersJsManager__checking_required_files } from '@/strings/messages/TransformersJsManager__checking_required_files/ja';
+import { TransformersJsManager__transferring } from '@/strings/messages/TransformersJsManager__transferring/ja';
+import { TransformersJsManager__saving } from '@/strings/messages/TransformersJsManager__saving/ja';
+import { TransformersJsManager__checking_runtime } from '@/strings/messages/TransformersJsManager__checking_runtime/ja';
+import { TransformersJsManager__complete } from '@/strings/messages/TransformersJsManager__complete/ja';
+import { TransformersJsManager__queued } from '@/strings/messages/TransformersJsManager__queued/ja';
+import { TransformersJsManager__cached } from '@/strings/messages/TransformersJsManager__cached/ja';
+import { TransformersJsManager__work_estimate_not_remaining_time } from '@/strings/messages/TransformersJsManager__work_estimate_not_remaining_time/ja';
+import { TransformersJsManager__candidate_number } from '@/strings/messages/TransformersJsManager__candidate_number/ja';
+import { TransformersJsManager__current_candidate_received_and_cached_bytes } from '@/strings/messages/TransformersJsManager__current_candidate_received_and_cached_bytes/ja';
 import { TransformersJsManager__preset_model_paths } from '@/strings/messages/TransformersJsManager__preset_model_paths/ja';
 import { TransformersJsManager__refresh } from '@/strings/messages/TransformersJsManager__refresh/ja';
 import { TransformersJsManager__restart } from '@/strings/messages/TransformersJsManager__restart/ja';
@@ -2959,6 +2973,20 @@ export const catalog = {
   TransformersJsManager__note,
   TransformersJsManager__origin_private_file_system_opfs,
   TransformersJsManager__overall_progress,
+  TransformersJsManager__close_error_details,
+  TransformersJsManager__resolving_revision,
+  TransformersJsManager__checking_cache,
+  TransformersJsManager__preparing_metadata,
+  TransformersJsManager__checking_required_files,
+  TransformersJsManager__transferring,
+  TransformersJsManager__saving,
+  TransformersJsManager__checking_runtime,
+  TransformersJsManager__complete,
+  TransformersJsManager__queued,
+  TransformersJsManager__cached,
+  TransformersJsManager__work_estimate_not_remaining_time,
+  TransformersJsManager__candidate_number,
+  TransformersJsManager__current_candidate_received_and_cached_bytes,
   TransformersJsManager__preset_model_paths,
   TransformersJsManager__refresh,
   TransformersJsManager__restart,

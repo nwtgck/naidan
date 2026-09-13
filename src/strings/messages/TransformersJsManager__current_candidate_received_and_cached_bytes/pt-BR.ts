@@ -1,0 +1,1 @@
+export const TransformersJsManager__current_candidate_received_and_cached_bytes = ({ received, cached }: { received: string; cached: string }): string => `Candidato atual — Recebido: ${received}; Em cache: ${cached}`;

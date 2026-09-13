@@ -89,6 +89,27 @@ beforeEach(() => {
 });
 
 describe('prepareProductionModelCandidate', () => {
+  it('publishes the selected complete plan before prefetch and isolates a throwing plan observer', async () => {
+    const order: string[] = [];
+    const capturedPlans: string[][] = [];
+    const expectedResult = result({ files: REQUIRED_MODEL_PATHS.map(path => successfulFile({ path })) });
+    const prefetchUrls = vi.fn(async () => {
+      order.push('prefetch'); return expectedResult;
+    });
+    const dispose = vi.fn(async () => undefined);
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({ prefetchUrls, dispose });
+    const actual = await prepareProductionModelCandidate({
+      modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS,
+      onPlan: ({ paths }) => {
+        order.push('plan'); capturedPlans.push([...paths]); throw new Error('Broken plan display');
+      },
+    });
+    expect(order).toEqual(['plan', 'prefetch']);
+    expect(capturedPlans).toEqual([['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data']]);
+    expect(prefetchUrls).toHaveBeenCalledExactlyOnceWith({ urls: REQUIRED_MODEL_PATHS.map(path => `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/${path}`), progressCallback: expect.any(Function) });
+    expect(actual).toEqual({ status: 'ready', prefetch: expectedResult });
+    expect(dispose).toHaveBeenCalledOnce();
+  });
   it('refuses to turn an observation into a complete plan when no selector plan was supplied', async () => {
     await expect(prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE }))
       .resolves.toMatchObject({ status: 'failed', error: { name: 'MissingProductionResourcePlan' } });

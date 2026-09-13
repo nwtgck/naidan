@@ -2569,7 +2569,8 @@ describe('transformers-js.worker', () => {
     const progressUpdates: any[] = [];
     const progressCallback = (info: any) => progressUpdates.push(info);
 
-    const result = await workerObj.prefetchUrls(['https://huggingface.co/org/repo/model.onnx'], progressCallback);
+    const url = 'https://huggingface.co/org/repo/resolve/0123456789abcdef0123456789abcdef01234567/model.onnx';
+    const result = await workerObj.prefetchUrls([url], progressCallback);
 
     expect(result).toEqual({
       requestedCount: 1,
@@ -2579,18 +2580,19 @@ describe('transformers-js.worker', () => {
       complete: true,
       files: [{
         status: 'downloaded',
-        url: 'https://huggingface.co/org/repo/model.onnx',
-        path: 'models/huggingface.co/org/repo/model.onnx',
+        url,
+        path: 'models/huggingface.co/org/repo/resolve/0123456789abcdef0123456789abcdef01234567/model.onnx',
         byteLength: 4,
         expectedByteLength: 4,
       }],
     });
-    expect(originalFetchMock).toHaveBeenCalledWith('https://huggingface.co/org/repo/model.onnx', undefined);
+    expect(originalFetchMock).toHaveBeenCalledWith(url, undefined);
     expect(mockRoot.getDirectoryHandle).toHaveBeenCalledWith('models', { create: true });
     expect(progressUpdates.length).toBeGreaterThan(0);
     expect(progressUpdates[0]).toMatchObject({
-      status: 'progress',
+      status: 'queued',
       file: 'model.onnx',
+      loaded: 0,
     });
   });
 

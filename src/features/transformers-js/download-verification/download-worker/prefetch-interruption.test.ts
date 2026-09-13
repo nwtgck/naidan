@@ -91,7 +91,9 @@ it('does not mark a fresh split artifact complete after its network stream is in
   expect(result).toMatchObject({ complete: false, downloadedCount: 0, failedCount: 1, files: [{
     status: 'failed', path, failureStage: 'write', error: { message: 'Fixture transfer interrupted' },
   }] });
-  expect(progress).toHaveBeenCalledWith(expect.objectContaining({ status: 'progress', loaded: 1, total: 2 }));
+  // Advisory samples may be coalesced. The RPC result retains final observed
+  // bytes even if the progress callback port is still waiting for its ACK.
+  expect(result.files[0]).toMatchObject({ transferObservation: { receivedBytes: 1, expectedBytes: 2 } });
   expect(h.fs.files.has(marker)).toBe(false);
   expect(h.fs.files.has(path)).toBe(false);
   expect([...h.fs.files.keys()].some(key => key.includes('.staging-'))).toBe(false);

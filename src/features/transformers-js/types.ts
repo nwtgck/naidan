@@ -143,6 +143,8 @@ export type TransformersJsPrefetchFileResult =
       failureStage: TransformersJsPrefetchFailureStage,
       httpStatus: number | undefined,
       error: TransformersJsProductionInvestigationError,
+      /** Decoded body bytes observed before a write/verification failure, not saved bytes. */
+      transferObservation?: { receivedBytes: number; expectedBytes: number | undefined },
     };
 
 export interface TransformersJsPrefetchResult {

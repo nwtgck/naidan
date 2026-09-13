@@ -1279,6 +1279,20 @@ import { TransformersJsManager__no_models_match_your_filter } from '@/strings/me
 import { TransformersJsManager__note } from '@/strings/messages/TransformersJsManager__note/zh-Hans';
 import { TransformersJsManager__origin_private_file_system_opfs } from '@/strings/messages/TransformersJsManager__origin_private_file_system_opfs/zh-Hans';
 import { TransformersJsManager__overall_progress } from '@/strings/messages/TransformersJsManager__overall_progress/zh-Hans';
+import { TransformersJsManager__close_error_details } from '@/strings/messages/TransformersJsManager__close_error_details/zh-Hans';
+import { TransformersJsManager__resolving_revision } from '@/strings/messages/TransformersJsManager__resolving_revision/zh-Hans';
+import { TransformersJsManager__checking_cache } from '@/strings/messages/TransformersJsManager__checking_cache/zh-Hans';
+import { TransformersJsManager__preparing_metadata } from '@/strings/messages/TransformersJsManager__preparing_metadata/zh-Hans';
+import { TransformersJsManager__checking_required_files } from '@/strings/messages/TransformersJsManager__checking_required_files/zh-Hans';
+import { TransformersJsManager__transferring } from '@/strings/messages/TransformersJsManager__transferring/zh-Hans';
+import { TransformersJsManager__saving } from '@/strings/messages/TransformersJsManager__saving/zh-Hans';
+import { TransformersJsManager__checking_runtime } from '@/strings/messages/TransformersJsManager__checking_runtime/zh-Hans';
+import { TransformersJsManager__complete } from '@/strings/messages/TransformersJsManager__complete/zh-Hans';
+import { TransformersJsManager__queued } from '@/strings/messages/TransformersJsManager__queued/zh-Hans';
+import { TransformersJsManager__cached } from '@/strings/messages/TransformersJsManager__cached/zh-Hans';
+import { TransformersJsManager__work_estimate_not_remaining_time } from '@/strings/messages/TransformersJsManager__work_estimate_not_remaining_time/zh-Hans';
+import { TransformersJsManager__candidate_number } from '@/strings/messages/TransformersJsManager__candidate_number/zh-Hans';
+import { TransformersJsManager__current_candidate_received_and_cached_bytes } from '@/strings/messages/TransformersJsManager__current_candidate_received_and_cached_bytes/zh-Hans';
 import { TransformersJsManager__preset_model_paths } from '@/strings/messages/TransformersJsManager__preset_model_paths/zh-Hans';
 import { TransformersJsManager__refresh } from '@/strings/messages/TransformersJsManager__refresh/zh-Hans';
 import { TransformersJsManager__restart } from '@/strings/messages/TransformersJsManager__restart/zh-Hans';
@@ -2959,6 +2973,20 @@ export const catalog = {
   TransformersJsManager__note,
   TransformersJsManager__origin_private_file_system_opfs,
   TransformersJsManager__overall_progress,
+  TransformersJsManager__close_error_details,
+  TransformersJsManager__resolving_revision,
+  TransformersJsManager__checking_cache,
+  TransformersJsManager__preparing_metadata,
+  TransformersJsManager__checking_required_files,
+  TransformersJsManager__transferring,
+  TransformersJsManager__saving,
+  TransformersJsManager__checking_runtime,
+  TransformersJsManager__complete,
+  TransformersJsManager__queued,
+  TransformersJsManager__cached,
+  TransformersJsManager__work_estimate_not_remaining_time,
+  TransformersJsManager__candidate_number,
+  TransformersJsManager__current_candidate_received_and_cached_bytes,
   TransformersJsManager__preset_model_paths,
   TransformersJsManager__refresh,
   TransformersJsManager__restart,

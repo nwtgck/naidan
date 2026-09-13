@@ -156,10 +156,10 @@ describe('Download Verification dedicated Worker clients', () => {
     const { createTransformersJsDownloadWorkerClient } = await import('./download-worker/client-hosted');
     const client = createTransformersJsDownloadWorkerClient();
     const progressCallback = vi.fn();
-    const pending = client.prefetchUrls({ urls: [], progressCallback });
+    const pending = client.prefetchUrls({ urls: ['https://huggingface.co/org/model/resolve/revision/model.onnx'], progressCallback });
     const callback = prefetch.mock.calls[0]![1];
-    callback({ status: 'initiate', file: 'model.onnx' });
-    expect(progressCallback).toHaveBeenCalledExactlyOnceWith({ info: { status: 'initiate', file: 'model.onnx' } });
+    callback({ status: 'queued', file: 'model.onnx', loaded: 0 });
+    expect(progressCallback).toHaveBeenCalledExactlyOnceWith({ info: { status: 'queued', file: 'model.onnx', loaded: 0 } });
     const failure = new Error('Download Worker stopped after progress');
     MockWorker.latest.dispatchEvent(new ErrorEvent('error', { error: failure, message: failure.message }));
     await expect(pending).rejects.toBe(failure);

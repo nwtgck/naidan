@@ -10,6 +10,7 @@ import { runProductionDownloadPreparation } from '@/features/transformers-js/dow
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import { createTransformersJsRuntimeLane, type TransformersJsRuntimeOperation } from './runtime-operation-lane';
 import type { TransformersJsInferenceOperation, TransformersJsInferenceScope } from './inference-operation';
+import { createDownloadProgressTracker, observeDownloadSafely, type DownloadProgressCallback, type DownloadProgressSnapshot } from './download-progress';
 import type {
   ProgressInfo,
   WorkerToolDefinition,
@@ -39,6 +40,7 @@ export function createTransformersJsService({ createWorkerClient }: {
   let heavyFileDetectedAt: number = 0;
   let totalLoadedAmount: number = 0;
   let totalSizeAmount: number = 0;
+  let downloadProgress: DownloadProgressSnapshot | undefined;
   let loadingError: string | undefined = undefined;
   let isCached: boolean = false;
   let isLoadingFromCache: boolean = false;
@@ -84,13 +86,50 @@ export function createTransformersJsService({ createWorkerClient }: {
     loadingModelId: string | undefined,
   }) => void;
   const listeners: Set<ProgressListener> = new Set();
+  const downloadListenerChannels = new Map<ProgressListener, { busy: boolean; latest: (() => void) | undefined }>();
+  let downloadObservationEpoch = 0;
+
+  function publishDownloadListener({ listener }: { listener: ProgressListener }): void {
+    const epoch = downloadObservationEpoch;
+    const payload = { status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems: new Map(progressItems), loadingModelId };
+    let channel = downloadListenerChannels.get(listener);
+    if (channel === undefined) {
+      channel = { busy: false, latest: undefined };
+      downloadListenerChannels.set(listener, channel);
+    }
+    const ownedChannel = channel;
+    const publish = () => {
+      if (!isOpen() || !listeners.has(listener) || downloadListenerChannels.get(listener) !== ownedChannel || downloadProgress === undefined || epoch !== downloadObservationEpoch) return;
+      ownedChannel.busy = true;
+      let observation: unknown;
+      try {
+        observation = listener(payload);
+      } catch {
+        observation = undefined;
+      }
+      void Promise.resolve(observation).catch(() => undefined).finally(() => {
+        ownedChannel.busy = false;
+        const latest = ownedChannel.latest;
+        ownedChannel.latest = undefined;
+        latest?.();
+      });
+    };
+    // A held subscriber retains only one in-flight call and the latest scalar
+    // snapshot. Completion is committed in getState even if it never responds.
+    if (channel.busy) channel.latest = publish;
+    else publish();
+  }
 
   type ModelListListener = () => void;
   const modelListListeners: Set<ModelListListener> = new Set();
 
   function notify() {
     if (!isOpen()) return;
-    listeners.forEach(l => l({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId }));
+    listeners.forEach(l => {
+      const publish = () => l({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId });
+      if (downloadProgress !== undefined) publishDownloadListener({ listener: l });
+      else publish();
+    });
   }
 
   function updateProgress({ info }: { info: ProgressInfo }) {
@@ -295,6 +334,8 @@ export function createTransformersJsService({ createWorkerClient }: {
     loadingModelId = undefined;
     loadingStatus = 'idle';
     loadingProgress = 0;
+    downloadProgress = undefined;
+    downloadObservationEpoch++;
     progressItems = new Map<string, ProgressInfo>();
     heavyFileDetectedAt = 0;
     totalLoadedAmount = 0;
@@ -304,6 +345,10 @@ export function createTransformersJsService({ createWorkerClient }: {
     isLoadingFromCache = false;
     downloadedModelRevisionHints.clear();
     listeners.clear();
+    downloadListenerChannels.forEach(channel => {
+      channel.latest = undefined;
+    });
+    downloadListenerChannels.clear();
     modelListListeners.clear();
     // Includes the old client while restart is awaiting disposal. Termination is
     // started synchronously; no remote unload or advisory ACK delays it.
@@ -464,8 +509,15 @@ export function createTransformersJsService({ createWorkerClient }: {
     subscribe({ listener }: { listener: ProgressListener }) {
       ensureOpen();
       listeners.add(listener);
-      listener({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId });
-      return () => listeners.delete(listener);
+      const publish = () => listener({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId });
+      if (downloadProgress !== undefined) publishDownloadListener({ listener });
+      else publish();
+      return () => {
+        const channel = downloadListenerChannels.get(listener);
+        if (channel !== undefined) channel.latest = undefined;
+        downloadListenerChannels.delete(listener);
+        return listeners.delete(listener);
+      };
     },
 
     subscribeModelList({ listener }: { listener: ModelListListener }) {
@@ -487,6 +539,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         progressItems,
         totalLoadedAmount,
         totalSizeAmount,
+        downloadProgress,
       };
     },
 
@@ -790,6 +843,8 @@ export function createTransformersJsService({ createWorkerClient }: {
     async loadDownloadedModel({ modelId }: { modelId: string }) {
       const { owner, assertCurrent, isCurrent } = captureRuntimeOperation();
       assertCurrent();
+      downloadProgress = undefined;
+      downloadObservationEpoch++;
       if (activeModelId === modelId && loadingStatus === 'ready') return;
 
       switch (loadingStatus) {
@@ -934,6 +989,21 @@ export function createTransformersJsService({ createWorkerClient }: {
       }
       }
 
+      const tracker = createDownloadProgressTracker();
+      downloadObservationEpoch++;
+      const onDownloadProgress: DownloadProgressCallback = ({ event }) => {
+        if (!isCurrent() || owner.signal.aborted) return;
+        observeDownloadSafely({ observe: () => {
+          tracker.observe({ event });
+          downloadProgress = tracker.snapshot();
+          loadingProgress = downloadProgress.overallProgress;
+          totalLoadedAmount = downloadProgress.receivedBytes;
+          totalSizeAmount = downloadProgress.knownTotalBytes;
+          notify();
+        } });
+      };
+      downloadProgress = tracker.snapshot();
+
       try {
         const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
         if (normalizedModelId.startsWith('user/')) {
@@ -950,29 +1020,26 @@ export function createTransformersJsService({ createWorkerClient }: {
         isLoadingFromCache = false;
         notify();
 
-        let lastProgressNotify = 0;
         const progress_callback: TransformersJsProgressCallback = ({ info }) => {
           if (!isCurrent() || owner.signal.aborted) return;
-          updateProgress({ info });
-
-          const now = Date.now();
-          if ((info.status !== 'progress' && info.status !== 'progress_total') || now - lastProgressNotify > 150) {
-            notify();
-            lastProgressNotify = now;
-          }
+          // Metadata/acceptance reads are not network weight-transfer rows.
+          if (info.status.startsWith('download-metadata:')) onDownloadProgress({ event: { kind: 'metadata', stage: info.status.slice('download-metadata:'.length) } });
         };
 
         const { resolvedRevision } = await resolvePublicHuggingFaceRevision({ modelId });
         assertCurrent();
+        onDownloadProgress({ event: { kind: 'phase', phase: 'checking-cache' } });
         const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision });
         assertCurrent();
         if (cachedReuse.reused) {
           downloadedModelRevisionHints.set(normalizedModelId, cachedReuse.loadRevision);
         } else {
+          onDownloadProgress({ event: { kind: 'phase', phase: 'preparing-metadata' } });
           const preparation = await runProductionDownloadPreparation({
             modelId,
             revision: resolvedRevision,
             progressCallback: progress_callback,
+            onDownloadProgress,
           });
           assertCurrent();
           switch (preparation.status) {
@@ -989,8 +1056,10 @@ export function createTransformersJsService({ createWorkerClient }: {
           }
         }
 
+        onDownloadProgress({ event: { kind: 'phase', phase: 'complete' } });
         finishDownloadState();
-        notifyModelListChange();
+        // One failed list renderer must not prevent the other views refreshing.
+        modelListListeners.forEach(listener => observeDownloadSafely({ observe: listener }));
       } catch (e) {
         if (!isCurrent() || owner.signal.aborted) throw e;
         console.error('[transformersJsService] Failed to download model:', modelId, e);
@@ -1002,6 +1071,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         }
 
         if (!isCurrent() || owner.signal.aborted) throw e;
+        onDownloadProgress({ event: { kind: 'phase', phase: 'failed' } });
         loadingStatus = 'error';
         loadingError = errorMsg;
         loadingModelId = undefined;
@@ -1011,6 +1081,8 @@ export function createTransformersJsService({ createWorkerClient }: {
         // Cancellation does not stop Download I/O. Finalize only after it settles,
         // and never let a retired operation overwrite a replacement lane's state.
         if (isCurrent() && owner.signal.aborted && loadingStatus === 'loading') {
+          tracker.observe({ event: { kind: 'phase', phase: 'failed' } });
+          downloadProgress = tracker.snapshot();
           finishDownloadState();
         }
       }
@@ -1028,6 +1100,8 @@ export function createTransformersJsService({ createWorkerClient }: {
         assertOwned();
         activeModelId = undefined;
         loadingStatus = 'idle';
+        downloadProgress = undefined;
+        downloadObservationEpoch++;
         loadingProgress = 0;
         progressItems = new Map<string, ProgressInfo>();
         heavyFileDetectedAt = 0;
@@ -1156,6 +1230,8 @@ export function createTransformersJsService({ createWorkerClient }: {
   };
 
   function clearRuntimeState(): void {
+    downloadProgress = undefined;
+    downloadObservationEpoch++;
     activeModelId = undefined;
     loadingModelId = undefined;
     loadingStatus = 'idle';

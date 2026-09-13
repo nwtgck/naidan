@@ -7,6 +7,8 @@ import type {
   DownloadVerificationRuntimeArtifactPreparationObservation,
 } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProductionInvestigationCandidate, TransformersJsProgressCallback } from '@/features/transformers-js/types';
+import { TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES } from '@/features/transformers-js/production-load-candidates';
+import { observeDownloadSafely, publishDownloadProgress, type DownloadProgressCallback } from '@/features/transformers-js/download-progress';
 
 export type DownloadVerificationProductionDownloadPreparationRun =
   | {
@@ -32,14 +34,17 @@ export async function runProductionDownloadPreparation({
   progressCallback = () => undefined,
   signal,
   candidateOrder,
+  onDownloadProgress,
 }: {
   modelId: string;
   revision: string;
   progressCallback?: TransformersJsProgressCallback;
   signal?: AbortSignal;
   candidateOrder?: readonly TransformersJsProductionInvestigationCandidate[];
+  onDownloadProgress?: DownloadProgressCallback;
 }): Promise<DownloadVerificationProductionDownloadPreparationRun> {
-  const runtimeArtifacts = await prepareProductionRuntimeArtifacts({ modelId, revision, progressCallback, signal });
+  const safeProgress: TransformersJsProgressCallback = ({ info }) => observeDownloadSafely({ observe: () => progressCallback({ info }) });
+  const runtimeArtifacts = await prepareProductionRuntimeArtifacts({ modelId, revision, progressCallback: safeProgress, signal });
   switch (runtimeArtifacts.status) {
   case 'failed':
     return {
@@ -56,30 +61,41 @@ export async function runProductionDownloadPreparation({
   }
   }
 
+  publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'metadata', stage: 'complete' } });
+  const order = candidateOrder ?? TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES;
+  let attemptIndex = -1;
   const candidates = await runCandidateDownloadOrchestration({
     prepareCandidate: async ({ candidate }) => {
+      const index = ++attemptIndex;
+      publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'candidate', candidate, index, count: order.length } });
       const key = candidateKey({ candidate });
       const plan = runtimeArtifacts.resourcePlansByCandidate[key];
       if (plan === undefined) return { status: 'failed', error: { name: 'MissingProductionResourcePlan', message: `No resource plan was returned for ${key}` }, prefetch: undefined };
       switch (plan.status) {
       case 'planning-failed': return { status: 'planning-failed', error: plan.error, prefetch: undefined };
-      case 'ready': return await prepareProductionModelCandidate({ modelId, revision, candidate, progressCallback, signal, requiredModelPaths: plan.paths });
+      case 'ready': return await prepareProductionModelCandidate({ modelId, revision, candidate, progressCallback: ({ info }) => {
+        safeProgress({ info });
+        publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'file', index, info } });
+      }, signal, requiredModelPaths: plan.paths, onPlan: ({ paths }) => publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'plan', index, paths } }) });
       default: {
         const unexpected: never = plan;
         throw new Error(`Unhandled resource plan: ${String(unexpected)}`);
       }
       }
     },
-    acceptCandidate: async ({ candidate }) => await acceptDownloadedProductionCandidate({
-      modelId,
-      resolvedRevision: revision,
-      loadRevision: revision,
-      candidate,
-      progressCallback,
-      signal,
-    }),
+    acceptCandidate: async ({ candidate }) => {
+      publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'acceptance', index: attemptIndex } });
+      return await acceptDownloadedProductionCandidate({
+        modelId,
+        resolvedRevision: revision,
+        loadRevision: revision,
+        candidate,
+        progressCallback: safeProgress,
+        signal,
+      });
+    },
     signal,
-    ...(candidateOrder === undefined ? {} : { candidates: candidateOrder }),
+    candidates: order,
   });
   const failureStage = (() => {
     switch (candidates.status) {

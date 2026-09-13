@@ -4,6 +4,7 @@ import { sanitizeDiagnosticText } from '@/features/transformers-js/download-veri
 import type { DownloadVerificationCandidatePreparationObservation } from '@/features/transformers-js/download-verification/types';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import { createTransformersJsDownloadWorkerClient } from '@/features/transformers-js/download-verification/download-worker/client-hosted';
+import { observeDownloadSafely } from '@/features/transformers-js/download-progress';
 import type {
   TransformersJsPrefetchFileResult,
   TransformersJsProductionInvestigationCandidate,
@@ -68,6 +69,7 @@ export async function prepareProductionModelCandidate({
   progressCallback = () => undefined,
   signal,
   requiredModelPaths,
+  onPlan,
 }: {
   modelId: string;
   revision: string;
@@ -75,6 +77,7 @@ export async function prepareProductionModelCandidate({
   progressCallback?: TransformersJsProgressCallback;
   signal?: AbortSignal;
   requiredModelPaths?: readonly string[];
+  onPlan?: ({ paths }: { paths: readonly string[] }) => void;
 }): Promise<DownloadVerificationCandidatePreparationObservation> {
   signal?.throwIfAborted();
   if (!requiredModelPaths?.length) {
@@ -149,6 +152,9 @@ export async function prepareProductionModelCandidate({
     const urls = [...plannedPaths].map(path => exactRevisionModelArtifactUrl({
       modelId: normalizedModelId, revision, path,
     }));
+    // Publish the existing transfer set before starting any GET. Display code
+    // cannot add paths or turn an observation failure into a transfer failure.
+    observeDownloadSafely({ observe: onPlan === undefined ? undefined : () => onPlan({ paths: [...plannedPaths] }) });
     const operation = client.prefetchUrls({
       urls,
       progressCallback,

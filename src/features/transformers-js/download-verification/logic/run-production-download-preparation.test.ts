@@ -50,6 +50,39 @@ beforeEach(() => {
 });
 
 describe('runProductionDownloadPreparation', () => {
+  it('keeps candidate order, transfer plans and acceptance identical when progress observers mutate and throw', async () => {
+    vi.mocked(prepareProductionModelCandidate).mockImplementation(async ({ requiredModelPaths, onPlan, progressCallback }) => {
+      onPlan?.({ paths: requiredModelPaths! });
+      progressCallback?.({ info: { status: 'done', file: requiredModelPaths![0], loaded: 8, total: 8 } });
+      return { status: 'ready', prefetch: emptyPrefetch() };
+    });
+    vi.mocked(acceptDownloadedProductionCandidate).mockImplementation(async ({ candidate }) => ({
+      modelId: MODEL_ID, resolvedRevision: REVISION, loaderRevisionOption: REVISION, candidate,
+      status: candidate.dtype === 'q4f16' ? 'rejected' : 'accepted',
+      observationMethod: 'production-cache-only-runtime-preparation', error: undefined,
+    }));
+    const baseline = await runProductionDownloadPreparation({ modelId: MODEL_ID, revision: REVISION });
+    const baselinePlans = vi.mocked(prepareProductionModelCandidate).mock.calls.map(([args]) => ({ candidate: { ...args.candidate }, paths: [...args.requiredModelPaths!] }));
+    vi.mocked(prepareProductionModelCandidate).mockClear();
+    vi.mocked(acceptDownloadedProductionCandidate).mockClear();
+    const events: string[] = [];
+    const observed = await runProductionDownloadPreparation({ modelId: MODEL_ID, revision: REVISION, progressCallback: () => {
+      throw new Error('Broken raw progress sink');
+    }, onDownloadProgress: ({ event }) => {
+      events.push(event.kind);
+      if (event.kind === 'candidate') event.candidate.dtype = 'q4';
+      if (event.kind === 'plan') (event.paths as string[]).push('vision/not-requested.onnx');
+      throw new Error('Broken work-progress sink');
+    } });
+    expect(observed).toEqual(baseline);
+    expect(vi.mocked(prepareProductionModelCandidate).mock.calls.map(([args]) => ({ candidate: args.candidate, paths: args.requiredModelPaths }))).toEqual(baselinePlans);
+    expect(baselinePlans).toEqual([
+      { candidate: { device: 'webgpu', dtype: 'q4f16' }, paths: ['onnx/model_q4f16.onnx'] },
+      { candidate: { device: 'webgpu', dtype: 'q4' }, paths: ['onnx/model_q4.onnx'] },
+    ]);
+    expect(acceptDownloadedProductionCandidate).toHaveBeenCalledTimes(2);
+    expect(events).toEqual(['metadata', 'candidate', 'plan', 'file', 'acceptance', 'candidate', 'plan', 'file', 'acceptance']);
+  });
   it('skips an unplannable candidate without transferring it and accepts the next valid plan', async () => {
     vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
       modelId: MODEL_ID, revision: REVISION, status: 'prepared', processor: 'tokenizer', modelType: 'llama',

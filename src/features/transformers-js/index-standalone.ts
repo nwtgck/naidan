@@ -1,6 +1,7 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
 import type { ProgressInfo, WorkerToolDefinition, TransformersJsChunkCallback, TransformersJsToolCallsCallback } from './types';
 import type { TransformersJsInferenceOperation } from './inference-operation';
+import type { DownloadProgressSnapshot } from './download-progress';
 
 type ProgressListener = ({
   status,
@@ -49,6 +50,7 @@ export const transformersJsService = {
       progressItems,
       totalLoadedAmount: 0,
       totalSizeAmount: 0,
+      downloadProgress: undefined as DownloadProgressSnapshot | undefined,
     };
   },
 

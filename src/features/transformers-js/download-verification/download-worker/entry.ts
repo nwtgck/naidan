@@ -22,6 +22,8 @@ import { createHostedTransformersModelFetch } from '@/features/transformers-js/r
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
 import { prepareRuntimeMetadata } from './prepare-runtime-metadata';
 import { createRuntimeMetadataStorage } from './metadata-storage';
+import { createDownloadProgressEmitter } from '@/features/transformers-js/download-verification/download-progress-emitter';
+import { downloadResourcePath } from '@/features/transformers-js/download-progress';
 
 const originalFetch = self.fetch;
 const { runtimeFetch } = configureHostedTransformersRuntime({
@@ -59,11 +61,7 @@ function sanitizeUrl({ url }: { url: string }): string {
 }
 
 function fileNameFromUrl({ url }: { url: string }): string | undefined {
-  try {
-    return new URL(url).pathname.split('/').at(-1) || undefined;
-  } catch {
-    return url.split(/[?#]/u, 1)[0]?.split('/').at(-1) || undefined;
-  }
+  return downloadResourcePath({ url });
 }
 
 function sanitizeDiagnosticText({ value }: { value: string }): string {
@@ -182,13 +180,14 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
     if (metadataIdentity !== undefined && metadataIdentity !== identity) throw new Error('A different metadata identity requires a fresh Worker');
     metadataIdentity = identity;
     activeDownloadOperation = 'metadata';
+    const progress = createDownloadProgressEmitter({ callback: ({ info }) => progressCallback(info) });
     let succeeded = false;
     try {
       const result = await prepareRuntimeMetadata({
         modelId: cleanModelId, revision, runtime: { AutoConfig, AutoProcessor, AutoTokenizer, env }, downloadFetch,
         storage: createRuntimeMetadataStorage(), maximumByteLength: 64 * 1024 * 1024,
-        progressCallback: progressCallback as TransformersProgressCallback,
-        onStage: () => undefined,
+        progressCallback: (info => progress.publish({ info })) as TransformersProgressCallback,
+        onStage: ({ stage }) => progress.publish({ info: { status: `download-metadata:${stage}` } }),
       });
       succeeded = true;
       return result;
@@ -196,6 +195,7 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
       // A failed operation can leave upstream memoized failures or unresponsive
       // cleanup. Only its caller's dispose/terminate may retire that ownership.
       activeDownloadOperation = succeeded ? undefined : 'terminal';
+      progress.close();
     }
   },
 
@@ -203,56 +203,73 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
   async prefetchUrls(urls, progressCallback): Promise<TransformersJsPrefetchResult> {
     if (activeDownloadOperation !== undefined) throw new Error('Download Worker is busy or terminal; concurrent operations are forbidden');
     activeDownloadOperation = 'prefetch';
+    const progress = createDownloadProgressEmitter({ callback: ({ info }) => progressCallback(info) });
     try {
       const files: TransformersJsPrefetchFileResult[] = [];
+      function recordFailure({ file }: { file: Extract<TransformersJsPrefetchFileResult, { status: 'failed' }> }): void {
+        files.push(file);
+        // Report the existing failure without waiting for later files or any
+        // observer. This does not change its classification or transfer result.
+        progress.publish({ info: {
+          status: 'error', file: fileNameFromUrl({ url: file.url }),
+          loaded: file.transferObservation?.receivedBytes,
+          total: file.transferObservation?.expectedBytes,
+        } });
+      }
+      for (const url of urls) progress.publish({ info: { status: 'queued', file: fileNameFromUrl({ url }), loaded: 0 } });
       for (const originalUrl of urls) {
         const url = sanitizeUrl({ url: originalUrl });
         const path = urlToPath({ url: originalUrl });
         if (path === null) {
-          files.push(prefetchFailure({ url, path: undefined, failureStage: 'resolve-path', error: new Error('The model URL could not be mapped to an OPFS path') }));
+          recordFailure({ file: prefetchFailure({ url, path: undefined, failureStage: 'resolve-path', error: new Error('The model URL could not be mapped to an OPFS path') }) });
           continue;
         }
         let cached: number | undefined;
         try {
           cached = await completedByteLength({ path });
         } catch (error) {
-          files.push(prefetchFailure({ url, path, failureStage: 'cache-check', error }));
+          recordFailure({ file: prefetchFailure({ url, path, failureStage: 'cache-check', error }) });
           continue;
         }
         if (cached !== undefined) {
           files.push({ status: 'cached', url, path, byteLength: cached, expectedByteLength: undefined });
+          progress.publish({ info: { status: 'cached', file: fileNameFromUrl({ url: originalUrl }), loaded: cached, total: cached, progress: 100 } });
           continue;
         }
         let response: Response;
         try {
           response = await downloadFetch(originalUrl);
         } catch (error) {
-          files.push(prefetchFailure({ url, path, failureStage: 'fetch', error }));
+          recordFailure({ file: prefetchFailure({ url, path, failureStage: 'fetch', error }) });
           continue;
         }
         try {
           await assertFullResourceResponse({ response });
         } catch (error) {
-          files.push(prefetchFailure({
+          recordFailure({ file: prefetchFailure({
             url,
             path,
             failureStage: 'response-status',
             httpStatus: response.status,
             error,
-          }));
+          }) });
           continue;
         }
         if (response.body === null) {
-          files.push(prefetchFailure({ url, path, failureStage: 'fetch', httpStatus: response.status, error: new Error('The model response did not include a readable body') }));
+          recordFailure({ file: prefetchFailure({ url, path, failureStage: 'fetch', httpStatus: response.status, error: new Error('The model response did not include a readable body') }) });
           continue;
         }
         const expected = expectedDecodedResponseByteLength({ response });
         let loaded = 0;
+        progress.publish({ info: { status: 'download', file: fileNameFromUrl({ url: originalUrl }), loaded: 0, total: expected } });
         const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
           transform(chunk, controller) {
             loaded += chunk.byteLength;
-            progressCallback({ status: 'progress', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected });
+            progress.publish({ info: { status: 'progress', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected) } });
             controller.enqueue(chunk);
+          },
+          flush() {
+            progress.publish({ info: { status: 'saving', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected) } });
           },
         }));
         let written: number;
@@ -261,7 +278,7 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
             status: response.status, statusText: response.statusText, headers: response.headers,
           }) }));
         } catch (error) {
-          files.push(prefetchFailure({ url, path, failureStage: 'write', httpStatus: response.status, error }));
+          recordFailure({ file: { ...prefetchFailure({ url, path, failureStage: 'write', httpStatus: response.status, error }), transferObservation: { receivedBytes: loaded, expectedBytes: expected } } });
           continue;
         }
         try {
@@ -271,8 +288,9 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
             throw new Error(`Final OPFS byte length mismatch for ${path}: expected ${expected}, received ${verified}`);
           }
           files.push({ status: 'downloaded', url, path, byteLength: verified, expectedByteLength: expected });
+          progress.publish({ info: { status: 'done', file: fileNameFromUrl({ url: originalUrl }), loaded: verified, total: verified, progress: 100 } });
         } catch (error) {
-          files.push(prefetchFailure({ url, path, failureStage: 'verification', httpStatus: response.status, error }));
+          recordFailure({ file: { ...prefetchFailure({ url, path, failureStage: 'verification', httpStatus: response.status, error }), transferObservation: { receivedBytes: loaded, expectedBytes: expected } } });
         }
       }
       const cachedCount = files.filter(file => file.status === 'cached').length;
@@ -287,6 +305,7 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
         files,
       };
     } finally {
+      progress.close();
       activeDownloadOperation = undefined;
     }
   },
