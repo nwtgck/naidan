@@ -12,6 +12,7 @@ import type {
 import {
   createModelArtifactRequestBarrier,
   huggingFaceResolveArtifactRequest,
+  type ModelArtifactRequestBarrier,
 } from '@/features/transformers-js/download-verification/model-artifact-request-worker/request-barrier';
 import {
   normalizeTransformersJsProductionModelId,
@@ -96,35 +97,63 @@ env.allowRemoteModels = true;
 env.useBrowserCache = false;
 env.useCustomCache = false;
 
+type ObservationLifetime =
+  | { kind: 'idle' }
+  | { kind: 'observing'; barrier: ModelArtifactRequestBarrier }
+  | { kind: 'retired' };
+let lifetime: ObservationLifetime = { kind: 'idle' };
+// Never reject abandoned parallel Transformers.js branches just to unwind them.
+// The one-shot worker's physical termination releases these pending operations.
+const inactiveFetch = new Promise<Response>(() => undefined);
+const interceptedFetch: typeof fetch = async (input, init) => {
+  switch (lifetime.kind) {
+  case 'idle':
+  case 'retired': return await inactiveFetch;
+  case 'observing': break;
+  default: {
+    const exhaustive: never = lifetime;
+    throw new Error(`Unhandled artifact observation lifetime: ${String(exhaustive)}`);
+  }
+  }
+  const url = requestUrl({ input });
+  if (isHuggingFaceModelArtifactUrl({ url })) {
+    const request = huggingFaceResolveArtifactRequest({ url });
+    if (request === undefined) {
+      throw new Error('Could not derive a sanitized repository-relative Transformers.js model artifact request');
+    }
+    return await lifetime.barrier.observe({ request });
+  }
+  return await runtimeFetch(input, {
+    ...init,
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+    cache: 'no-store',
+  });
+};
+// Dynamic lookups and previously captured references share the same terminal gate.
+// Never restore network authority between RPC settlement and host termination.
+self.fetch = interceptedFetch;
+env.fetch = interceptedFetch;
+
 const workerApi: WorkerServerApi<DownloadVerificationModelArtifactRequestWorker> = {
   async observeModelArtifactRequests({
     modelId,
     revision,
     candidate,
   }): Promise<DownloadVerificationModelArtifactRequestObservation> {
+    switch (lifetime.kind) {
+    case 'idle': break;
+    case 'observing':
+    case 'retired':
+      throw new Error('Model artifact request observation worker can only be used once');
+    default: {
+      const exhaustive: never = lifetime;
+      throw new Error(`Unhandled artifact observation lifetime: ${String(exhaustive)}`);
+    }
+    }
     const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
     const barrier = createModelArtifactRequestBarrier({ quiescenceMs: OBSERVATION_QUIESCENCE_MS });
-
-    const interceptedFetch: typeof fetch = async (input, init) => {
-      const url = requestUrl({ input });
-      if (isHuggingFaceModelArtifactUrl({ url })) {
-        const request = huggingFaceResolveArtifactRequest({ url });
-        if (request === undefined) {
-          throw new Error('Could not derive a sanitized repository-relative Transformers.js model artifact request');
-        }
-        return await barrier.observe({ request });
-      }
-
-      return await runtimeFetch(input, {
-        ...init,
-        credentials: 'omit',
-        referrerPolicy: 'no-referrer',
-        cache: 'no-store',
-      });
-    };
-
-    self.fetch = interceptedFetch;
-    env.fetch = interceptedFetch;
+    lifetime = { kind: 'observing', barrier };
 
     type LoadOutcome =
       | { kind: 'loaded' }
@@ -237,10 +266,9 @@ const workerApi: WorkerServerApi<DownloadVerificationModelArtifactRequestWorker>
       }
       }
     } finally {
+      lifetime = { kind: 'retired' };
       if (timeoutId !== undefined) clearTimeout(timeoutId);
       barrier.dispose();
-      self.fetch = originalFetch;
-      env.fetch = runtimeFetch;
     }
   },
 };
