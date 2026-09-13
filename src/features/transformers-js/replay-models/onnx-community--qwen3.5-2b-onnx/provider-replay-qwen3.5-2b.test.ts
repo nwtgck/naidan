@@ -375,15 +375,28 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
 }) {
   const serializer = await import('@/features/transformers-js/models/qwen3_5');
   const nativeRender = serializer.buildQwen3_5Prompt;
-  const nativeGenerate = harness.service.generateText;
-  const serviceSpy = vi.spyOn(harness.service, 'generateText').mockImplementation(args => {
+  const nativeRun = harness.service.runInferenceOperation;
+  const serviceSpy = vi.fn((args: Parameters<typeof harness.service.generateText>[0]) => {
     // Reject a changed request before its historical prompt can be substituted.
     expect(args.messages.map(message => ({ role: message.role, content: message.content }))).toStrictEqual(capture.replay.scenario.messages);
     expect(args.tools).toBeUndefined();
     expect(args.params).toStrictEqual({ ...capture.replay.scenario.lmParameters,
       presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort } });
-    return Reflect.apply(nativeGenerate, harness.service, [args]);
   });
+  // Provider generation now uses its operation-owned scope. Keep the historical
+  // request gate at that service boundary, before the unchanged native adapter.
+  const operationSpy = vi.spyOn(harness.service, 'runInferenceOperation').mockImplementation(({ signal, operation }) => nativeRun({
+    signal,
+    operation: ({ scope }) => operation({
+      scope: {
+        ...scope,
+        generateText: args => {
+          serviceSpy(args);
+          return scope.generateText(args);
+        },
+      },
+    }),
+  }));
   const builderSpy = vi.spyOn(serializer, 'buildQwen3_5Prompt').mockImplementation(args => {
     const tokenizer = harness.observations.processors[0]?.tokenizer;
     if (!tokenizer) throw new Error('Historical serializer requires the actual selected tokenizer');
@@ -432,7 +445,7 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
     return historical;
   });
   return { builderSpy, serviceSpy, restore() {
-    builderSpy.mockRestore(); serviceSpy.mockRestore();
+    builderSpy.mockRestore(); operationSpy.mockRestore();
   } };
 }
 
@@ -2335,7 +2348,9 @@ Here is the weather for Tokyo:
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
       expect(executedSignals).toHaveLength(1);
-      expect(executedSignals[0]).toBe(signal);
+      expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
+      expect(executedSignals[0]).not.toBe(signal);
+      expect(executedSignals[0]?.aborted).toBe(false);
       expect(observed.toolCalls).toHaveLength(1);
       expect(observed.toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
       expect(observed.toolResults).toEqual([{  id: observed.toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);
@@ -2382,7 +2397,9 @@ Here is the weather for Tokyo:
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
       expect(executedSignals).toHaveLength(1);
-      expect(executedSignals[0]).toBe(signal);
+      expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
+      expect(executedSignals[0]).not.toBe(signal);
+      expect(executedSignals[0]?.aborted).toBe(false);
       expect(observed.toolCalls).toHaveLength(1);
       expect(observed.toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
       expect(observed.toolResults).toEqual([{  id: observed.toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);

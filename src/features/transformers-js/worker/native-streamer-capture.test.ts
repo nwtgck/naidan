@@ -12,7 +12,7 @@ beforeAll(async () => {
   vi.stubGlobal('fetch', forbiddenFetch);
   const artifact = await getProductionTransformersArtifact();
   expect(artifact.originalBundleSha256).toBe('25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff');
-  expect(artifact.transformedBundleSha256).toBe('6b6a707a7163365ac1bbee232e4228b8177dd05b11e825c061167d56d986070f');
+  expect(artifact.transformedBundleSha256).toBe('4e017bc8f4e39a2ab6d66deee046fc666d69d49631950c579ed7ffa4c2b8e64c');
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'process')!;
   const originalProcess = globalThis.process;
   Object.defineProperty(globalThis, 'process', { configurable: true, writable: true, value: { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } } });

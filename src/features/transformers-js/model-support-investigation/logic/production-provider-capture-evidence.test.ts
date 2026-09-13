@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import type { TransformersJsWorkerClient } from '@/features/transformers-js/types';
+import * as providerBoundary from '@/features/transformers-js/provider-hosted';
 import { createProductionProviderCaptureOwner, type ProductionProviderCapturePlan, type ProductionProviderCaptureSnapshot } from './production-provider-capture-owner';
 import { createProductionProviderCaptureEvidence, readProductionProviderCaptureEvidence, PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS } from './production-provider-capture-evidence';
 
@@ -27,6 +28,24 @@ function ownerFixture({ plan }: { plan: ProductionProviderCapturePlan }) {
 
 function exportCapture({ capture }: { capture: ProductionProviderCaptureSnapshot }) {
   return createProductionProviderCaptureEvidence({ capture, runId: 'capture-run', modelId: 'fixture/model' });
+}
+
+function recordSyntheticProviderCallbackBoundary() {
+  const callbacks: Array<Parameters<ReturnType<typeof providerBoundary.createTransformersJsProvider>['chat']>[0]['onChunk']> = [];
+  const createProvider = providerBoundary.createTransformersJsProvider;
+  vi.spyOn(providerBoundary, 'createTransformersJsProvider').mockImplementation(({ service }) => {
+    const provider = createProvider({ service });
+    const chat = provider.chat.bind(provider);
+    vi.spyOn(provider, 'chat').mockImplementation(input => {
+      callbacks.push(input.onChunk);
+      // Preserve the real Provider invocation and its exact returned Promise.
+      // Tests explicitly inject late events at this public callback boundary,
+      // not through a revoked client callback or by editing a settled snapshot.
+      return chat(input);
+    });
+    return provider;
+  });
+  return callbacks;
 }
 
 beforeEach(() => {
@@ -167,14 +186,15 @@ describe('Production Provider capture evidence', () => {
     expect(exportCapture({ capture: restored }).json).toBe(exported.json);
   });
 
-  it('reads full fixed inputs and late events without requiring JSON object key order', async () => {
+  it('reads fixed inputs and synthetic Provider-boundary late events without requiring JSON object key order', async () => {
+    const callbacks = recordSyntheticProviderCallbackBoundary();
     const { owner, client } = ownerFixture({ plan: 'first-continuity-independent' });
-    let late: Parameters<TransformersJsWorkerClient['generateText']>[0]['onChunk'] | undefined;
     client.generateText.mockImplementationOnce(async ({ onChunk }) => {
-      late = onChunk; onChunk({ chunk: '{"captureValue":"undefined"}' });
+      onChunk({ chunk: '{"captureValue":"undefined"}' });
     });
     await owner.run();
-    late?.({ chunk: 'late' });
+    expect(callbacks).toHaveLength(3);
+    callbacks[0]!({ chunk: 'late' });
     const captured = owner.snapshot();
     const exported = exportCapture({ capture: captured });
     const document = JSON.parse(exported.json);
@@ -258,14 +278,15 @@ describe('Production Provider capture evidence', () => {
     expect(capture.requests[0]?.input).toBeUndefined();
   });
 
-  it('exports completed fixed inputs and late callbacks without rewriting settled history', async () => {
+  it('exports synthetic Provider-boundary late callbacks without rewriting completed fixed inputs or settled history', async () => {
+    const callbacks = recordSyntheticProviderCallbackBoundary();
     const { owner, client } = ownerFixture({ plan: 'first-continuity-independent' });
-    let late: Parameters<TransformersJsWorkerClient['generateText']>[0]['onChunk'] | undefined;
     client.generateText.mockImplementationOnce(async ({ onChunk }) => {
-      late = onChunk; onChunk({ chunk: 'first' });
+      onChunk({ chunk: 'first' });
     });
     const capture = await owner.run();
-    late?.({ chunk: '-late' });
+    expect(callbacks).toHaveLength(3);
+    callbacks[0]!({ chunk: '-late' });
     const before = exportCapture({ capture });
     const document = JSON.parse(exportCapture({ capture: owner.snapshot() }).json);
     expect(JSON.parse(before.json).snapshot.requests[0].trace.lateEvents).toEqual([]);
@@ -300,14 +321,12 @@ describe('Production Provider capture evidence', () => {
     release(); await run;
   });
 
-  it('keeps a completed settled projection exportable after late callback overflow', async () => {
-    const { owner, client } = ownerFixture({ plan: 'first-only' });
-    let late: Parameters<TransformersJsWorkerClient['generateText']>[0]['onChunk'] | undefined;
-    client.generateText.mockImplementation(async ({ onChunk }) => {
-      late = onChunk;
-    });
+  it('keeps a completed settled projection exportable after synthetic Provider-boundary late callback overflow', async () => {
+    const callbacks = recordSyntheticProviderCallbackBoundary();
+    const { owner } = ownerFixture({ plan: 'first-only' });
     const completed = await owner.run();
-    late?.({ chunk: 'x'.repeat(16385) });
+    expect(callbacks).toHaveLength(1);
+    callbacks[0]!({ chunk: 'x'.repeat(16385) });
     const document = JSON.parse(exportCapture({ capture: owner.snapshot() }).json);
     expect(document.snapshot.run.status).toBe('completed');
     expect(document.snapshot.requests[0].trace.completeness).toBe('incomplete');

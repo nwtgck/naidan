@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createTransformersJsProvider, type TransformersJsProviderService } from './provider-hosted';
 import { selectGenerationStrategy } from './generation-strategies';
 import * as standardToolProtocol from './standard-tool-call-protocol';
+import { runProviderTestInferenceOperation } from './provider-inference-test-scope';
 
 vi.mock('./index', () => ({ transformersJsService: {} }));
 vi.mock('@huggingface/transformers', () => ({
@@ -36,6 +37,9 @@ function createPublicationFixture({ outputs, historyEncoding }: {
     return { sequences: [], past_key_values: null };
   });
   const service: TransformersJsProviderService = {
+    runInferenceOperation(args) {
+      return runProviderTestInferenceOperation({ ...args, service });
+    },
     getState: () => ({ status: 'ready', activeModelId: 'synthetic/content-publication' }),
     loadDownloadedModel: vi.fn(async () => {
       throw new Error('Unexpected Load');

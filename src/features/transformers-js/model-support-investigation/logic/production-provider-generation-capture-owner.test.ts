@@ -135,7 +135,7 @@ describe('Provider native generation collection ownership', () => {
     expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
   });
 
-  it('does not recreate native retention if an aborted request triggers a later ordinary service restart', async () => {
+  it('does not start ordinary recovery or recreate native retention for a fatal error arriving after abort', async () => {
     const { owner, captures, createCaptureClient, createUnrecordedWorkerClient } = createOwner({ maximumWorkerEpochs: 8, plan: 'first-only' });
     const entered = deferred<void>();
     const pending = deferred<void>();
@@ -155,10 +155,59 @@ describe('Provider native generation collection ownership', () => {
     pending.reject(new Error('Synthetic allocation failed'));
     await running;
     expect(createCaptureClient).toHaveBeenCalledOnce();
-    expect(createUnrecordedWorkerClient).toHaveBeenCalledOnce();
+    expect(createUnrecordedWorkerClient).not.toHaveBeenCalled();
     expect(detached.cutoff.unrecordedWorkerCreations).toBe(0);
     expect(owner.snapshot().native).toEqual({ status: 'released', cutoff: detached.cutoff });
     expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
+  });
+
+  it('uses an unrecorded replacement when recovery started before abort completes after native cutoff', async () => {
+    const { owner, captures, createCaptureClient, createUnrecordedWorkerClient, unrecorded } = createOwner({ maximumWorkerEpochs: 8, plan: 'first-only' });
+    const disposalEntered = deferred<void>();
+    const releaseDisposal = deferred<void>();
+    createCaptureClient.mockImplementationOnce(input => {
+      const capture = captureFixture(input);
+      captures.push(capture);
+      capture.client.generateText.mockRejectedValueOnce(new Error('Synthetic allocation failed'));
+      const disposeClient = capture.client.dispose.getMockImplementation()!;
+      capture.client.dispose.mockImplementationOnce(async () => {
+        disposalEntered.resolve();
+        await releaseDisposal.promise;
+        await disposeClient();
+      });
+      return capture;
+    });
+    const running = owner.run();
+    try {
+      // The real service has already selected fatal recovery and is waiting on
+      // its old client's disposal. Abort/detach must not reacquire recording
+      // authority when that in-progress recovery creates its replacement.
+      expect(await Promise.race([
+        disposalEntered.promise.then(() => ({ status: 'disposal-started' })),
+        running.then(() => ({ status: 'provider-settled-before-disposal' })),
+      ])).toEqual({ status: 'disposal-started' });
+      expect(createCaptureClient).toHaveBeenCalledOnce();
+      expect(createUnrecordedWorkerClient).not.toHaveBeenCalled();
+      owner.abort({ reason: 'deadline' });
+      const detached = owner.detachNativeCollection({ reason: 'run-deadline' });
+      if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+      const cutoff = structuredClone(detached.cutoff);
+      releaseDisposal.resolve();
+      await running;
+      expect(createCaptureClient).toHaveBeenCalledOnce();
+      expect(createUnrecordedWorkerClient).toHaveBeenCalledOnce();
+      expect(detached.cutoff).toEqual(cutoff);
+      expect(cutoff.unrecordedWorkerCreations).toBe(0);
+      expect(owner.snapshot().native).toEqual({ status: 'released', cutoff });
+      expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
+      expect(unrecorded.loadDownloadedModel).not.toHaveBeenCalled();
+      expect(unrecorded.generateText).not.toHaveBeenCalled();
+      await owner.dispose();
+      expect(unrecorded.dispose).toHaveBeenCalledOnce();
+    } finally {
+      releaseDisposal.resolve();
+      await running;
+    }
   });
 
   it('never reads native text or host lifetime accessors into the small cutoff', async () => {

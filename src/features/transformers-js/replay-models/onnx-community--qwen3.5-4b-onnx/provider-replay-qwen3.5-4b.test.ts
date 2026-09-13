@@ -2169,7 +2169,9 @@ This looks like a pleasant day in Tokyo! Enjoy the clear weather.
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
       expect(executedSignals).toHaveLength(1);
-      expect(executedSignals[0]).toBe(signal);
+      expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
+      expect(executedSignals[0]).not.toBe(signal);
+      expect(executedSignals[0]?.aborted).toBe(false);
       expect(observed.toolCalls).toHaveLength(1);
       expect(observed.toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
       expect(observed.toolResults).toEqual([{  id: observed.toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);
@@ -2232,7 +2234,9 @@ The weather in Tokyo is currently 20°C with clear conditions.
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
       expect(executedSignals).toHaveLength(1);
-      expect(executedSignals[0]).toBe(signal);
+      expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
+      expect(executedSignals[0]).not.toBe(signal);
+      expect(executedSignals[0]?.aborted).toBe(false);
       expect(observed.toolCalls).toHaveLength(1);
       expect(observed.toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
       expect(observed.toolResults).toEqual([{  id: observed.toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);
@@ -2296,7 +2300,9 @@ The weather in Tokyo is currently 20°C with clear conditions.
       expect(firstExecutedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(firstExecute).toHaveBeenCalledOnce();
       expect(firstExecutedSignals).toHaveLength(1);
-      expect(firstExecutedSignals[0]).toBe(firstSignal);
+      expect(firstExecutedSignals[0]).toBeInstanceOf(AbortSignal);
+      expect(firstExecutedSignals[0]).not.toBe(firstSignal);
+      expect(firstExecutedSignals[0]?.aborted).toBe(false);
       expect(firstObserved.toolCalls).toHaveLength(1);
       expect(firstObserved.toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
       expect(firstObserved.toolResults).toEqual([{  id: firstObserved.toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);

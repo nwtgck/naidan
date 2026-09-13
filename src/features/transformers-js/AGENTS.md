@@ -46,6 +46,28 @@ inside `from_pretrained()`.
 - Production and Reference investigation loads must use the same offline
   resource-access boundary.
 
+## Shared inference ownership
+
+- Each service instance owns one FIFO runtime lane. Independent service instances
+  must not be serialized through a global lock or an implicit runtime pool.
+- A Provider chat owns the lane from its model selection/Load through all tool
+  approval, execution, continuation, and final generation settlement. Tool waits
+  must not allow another chat or model change to overwrite that runtime state.
+- Runtime-changing public methods must explicitly enter the lane. Scoped methods
+  operate under their existing owner, reject overlapping children and escaped
+  calls, and drain started children before normal ownership release.
+- A waiting cancellation affects only its own request. Running cancellation must
+  target the captured owner/client. Interrupt acknowledgement is not generation
+  completion: preserve callback Promise propagation and await RPC/cleanup before
+  starting the next operation. Do not invent completion for an uncooperative tool.
+- Explicit hard restart and terminal disposal revoke ownership immediately and
+  physically retire the old client; they must not wait behind a stuck operation.
+  Reject stale/queued work, preserve restart coalescing, and do not publish a fresh
+  client until retirement succeeds. Old callbacks/recovery cannot modify a new lane.
+- Snapshot model-visible inputs at admission without changing template-visible
+  history. Download's shared-state scheduling does not authorize model downloads
+  during Load or change Download's separate Worker and resource permissions.
+
 ## Candidate selection
 
 - Only locally complete candidates may be passed to the runtime loader.

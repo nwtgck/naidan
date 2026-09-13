@@ -9,7 +9,7 @@ export const PRODUCTION_WORKER_STARTUP_TIMEOUT_MS = 30_000;
 
 export class ProductionWorkerLifecycleError extends Error {
   readonly reason: 'initialization-failed' | 'startup-timeout' | 'worker-error'
-    | 'message-error' | 'disposed' | 'invalid-startup-message' | 'transport-failed' | 'resource-cleanup-failed';
+    | 'message-error' | 'disposed' | 'restarted' | 'invalid-startup-message' | 'transport-failed' | 'resource-cleanup-failed';
 
   constructor({ reason, message }: { reason: ProductionWorkerLifecycleError['reason'], message: string }) {
     super(message);

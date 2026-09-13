@@ -7,9 +7,10 @@ import { formatToolExecutionOutcomeForLm, type Tool, type ToolExecutionOutcome }
 import type { ToolApprovalContext } from '@/features/tools/approval';
 import type { WorkerToolDefinition, WorkerToolJsonObject } from './types';
 import { zodToJsonSchema } from '@/utils/lm-tools';
+import { cloneChatMessages, cloneLmParameters } from './inference-input-snapshot';
 
 export type TransformersJsProviderService = Pick<typeof transformersJsService,
-  'loadDownloadedModel' | 'generateText' | 'listCachedModels'> & {
+  'loadDownloadedModel' | 'generateText' | 'listCachedModels' | 'runInferenceOperation'> & {
     getState(): Pick<ReturnType<typeof transformersJsService.getState>, 'status' | 'activeModelId'>,
   };
 
@@ -36,32 +37,14 @@ class HostedTransformersJsProvider implements LmProvider {
     onAssistantMessageStart?: () => void,
     signal?: AbortSignal,
   }): Promise<void> {
-
-    // Auto-load if needed
-    const state = this.service.getState();
-    if (state.activeModelId !== model || state.status !== 'ready') {
-      const status = state.status;
-      switch (status) {
-      case 'loading':
-        // Wait for the existing loading process to finish if it's the same model,
-        // otherwise throw or wait for it to fail. For now, keep it simple.
-        throw new Error('Engine is busy. Please wait for the current operation to finish.');
-      case 'idle':
-      case 'ready':
-      case 'error':
-        break;
-      default: {
-        const _ex: never = status;
-        throw new Error(`Unhandled status: ${_ex}`);
-      }
-      }
-
-      console.log(`[TransformersJsProvider] Auto-loading model: ${model}`);
-      await this.service.loadDownloadedModel({ modelId: model });
-    }
-
-    const workerTools: WorkerToolDefinition[] | undefined = tools && tools.length > 0
-      ? tools.map(t => ({
+    // Freeze the accepted model-visible input before it can wait in the lane.
+    // Tool implementations and immutable schemas remain callable references;
+    // declaration fields and the selected tool list belong to this request.
+    const acceptedMessages = cloneChatMessages({ messages });
+    const acceptedParameters = cloneLmParameters({ params: parameters });
+    const acceptedTools = tools?.map(tool => ({ ...tool }));
+    const workerTools: WorkerToolDefinition[] | undefined = acceptedTools && acceptedTools.length > 0
+      ? acceptedTools.map(t => ({
         type: 'function' as const,
         function: {
           name: t.name,
@@ -70,109 +53,140 @@ class HostedTransformersJsProvider implements LmProvider {
         },
       }))
       : undefined;
+    return await this.service.runInferenceOperation({ signal, operation: async ({ scope }) => {
+      const signal = scope.signal;
 
-    const currentMessages: ChatMessage[] = [...messages];
-    // In-memory ownership of this public operation, including its tool loop.
-    // It is not a conversation identifier and is never persisted or captured.
-    const continuationOwner = crypto.randomUUID();
+      // Auto-load if needed
+      const state = scope.getState();
+      if (state.activeModelId !== model || state.status !== 'ready') {
+        const status = state.status;
+        switch (status) {
+        case 'loading':
+          // FIFO admission has already waited for preceding operations. Seeing
+          // loading inside the owned scope is an unexpected service state.
+          throw new Error('Engine is busy. Please wait for the current operation to finish.');
+        case 'idle':
+        case 'ready':
+        case 'error':
+          break;
+        default: {
+          const _ex: never = status;
+          throw new Error(`Unhandled status: ${_ex}`);
+        }
+        }
 
-    while (true) {
-      if (signal?.aborted) throw new Error('Generation aborted');
+        console.log(`[TransformersJsProvider] Auto-loading model: ${model}`);
+        await scope.loadDownloadedModel({ modelId: model });
+      }
 
-      onAssistantMessageStart?.();
+      const currentMessages: ChatMessage[] = acceptedMessages;
+      // In-memory ownership of this public operation, including its tool loop.
+      // It is not a conversation identifier and is never persisted or captured.
+      const continuationOwner = crypto.randomUUID();
 
-      let receivedToolCalls: ToolCall[] = [];
-      let fullContent = '';
-
-      await this.service.generateText({
-        messages: currentMessages,
-        onChunk: ({ chunk }) => {
-          fullContent += chunk; onChunk({ chunk });
-        },
-        onToolCalls: ({ toolCalls }) => {
-          receivedToolCalls = toolCalls;
-        },
-        params: parameters,
-        tools: workerTools,
-        signal,
-        continuationOwner,
-      });
-
-      if (receivedToolCalls.length === 0) break;
-
-      currentMessages.push({
-        role: 'assistant',
-        content: fullContent,
-        tool_calls: receivedToolCalls,
-      });
-
-      for (const tc of receivedToolCalls) {
+      while (true) {
         if (signal?.aborted) throw new Error('Generation aborted');
 
-        onToolCall?.({
-          id: tc.id,
-          toolName: tc.function.name,
-          modelVisibleArguments: tc.function.arguments,
+        onAssistantMessageStart?.();
+
+        let receivedToolCalls: ToolCall[] = [];
+        let fullContent = '';
+
+        await scope.generateText({
+          messages: currentMessages,
+          onChunk: ({ chunk }) => {
+            fullContent += chunk; return onChunk({ chunk });
+          },
+          onToolCalls: ({ toolCalls }) => {
+            receivedToolCalls = toolCalls;
+          },
+          params: acceptedParameters,
+          tools: workerTools,
+          continuationOwner,
         });
 
-        const tool = tools?.find(t => t.name === tc.function.name);
-        let result: string;
-        let parsedArgs: unknown;
+        if (receivedToolCalls.length === 0) break;
 
-        try {
-          parsedArgs = JSON.parse(tc.function.arguments);
-        } catch (e) {
-          const errorResult: ToolExecutionOutcome = {
-            status: 'error',
-            code: 'invalid_arguments',
-            message: `Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
-          };
-          onToolResult?.({ id: tc.id, result: errorResult });
-          currentMessages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: formatToolExecutionOutcomeForLm({ outcome: errorResult }),
+        currentMessages.push({
+          role: 'assistant',
+          content: fullContent,
+          tool_calls: receivedToolCalls,
+        });
+
+        for (const tc of receivedToolCalls) {
+          if (signal?.aborted) throw new Error('Generation aborted');
+
+          onToolCall?.({
+            id: tc.id,
+            toolName: tc.function.name,
+            modelVisibleArguments: tc.function.arguments,
           });
-          continue;
-        }
+          scope.assertActive();
 
-        if (!tool) {
-          const errorResult: ToolExecutionOutcome = {
-            status: 'error',
-            code: 'other',
-            message: `Tool "${tc.function.name}" not found.`,
-          };
-          onToolResult?.({ id: tc.id, result: errorResult });
-          result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
-        } else {
+          const tool = acceptedTools?.find(t => t.name === tc.function.name);
+          let result: string;
+          let parsedArgs: unknown;
+
           try {
-            const validatedArgs = tool.parametersSchema.strict().parse(parsedArgs);
-            const executionResult = await tool.execute({
-              args: validatedArgs,
-              signal,
-              onEvent: async ({ event }) => {
-                onToolEvent?.({ id: tc.id, event });
-              },
-              approvalContext: toolApprovalContext,
-            });
-            if (signal?.aborted) throw new Error('Generation aborted');
-            onToolResult?.({ id: tc.id, result: executionResult });
-            result = formatToolExecutionOutcomeForLm({ outcome: executionResult });
+            parsedArgs = JSON.parse(tc.function.arguments);
           } catch (e) {
-            if (e instanceof Error && e.message === 'Generation aborted') throw e;
+            const errorResult: ToolExecutionOutcome = {
+              status: 'error',
+              code: 'invalid_arguments',
+              message: `Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
+            };
+            onToolResult?.({ id: tc.id, result: errorResult });
+            currentMessages.push({
+              role: 'tool',
+              tool_call_id: tc.id,
+              content: formatToolExecutionOutcomeForLm({ outcome: errorResult }),
+            });
+            continue;
+          }
 
-            const errorResult: ToolExecutionOutcome = e instanceof z.ZodError
-              ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
-              : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
-
+          if (!tool) {
+            const errorResult: ToolExecutionOutcome = {
+              status: 'error',
+              code: 'other',
+              message: `Tool "${tc.function.name}" not found.`,
+            };
             onToolResult?.({ id: tc.id, result: errorResult });
             result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
-          }
-        }
+          } else {
+            try {
+              const validatedArgs = tool.parametersSchema.strict().parse(parsedArgs);
+              scope.assertActive();
+              const executionResult = await tool.execute({
+                args: validatedArgs,
+                signal,
+                onEvent: async ({ event }) => {
+                  if (signal.aborted) return;
+                  scope.assertActive();
+                  onToolEvent?.({ id: tc.id, event });
+                },
+                approvalContext: toolApprovalContext,
+              });
+              if (signal?.aborted) throw new Error('Generation aborted');
+              onToolResult?.({ id: tc.id, result: executionResult });
+              result = formatToolExecutionOutcomeForLm({ outcome: executionResult });
+            } catch (e) {
+              if (signal.aborted) throw new Error('Generation aborted');
+              scope.assertActive();
+              if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-        currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+              const errorResult: ToolExecutionOutcome = e instanceof z.ZodError
+                ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
+                : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
+
+              onToolResult?.({ id: tc.id, result: errorResult });
+              result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
+            }
+          }
+
+          currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+        }
       }
-    }
+    } });
   }
 
   async listModels({ signal: _signal }: { signal?: AbortSignal }): Promise<string[]> {

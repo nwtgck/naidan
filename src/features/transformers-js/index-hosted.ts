@@ -1,5 +1,5 @@
-import type { ChatMessage, LmParameters, MultimodalContent, ToolCall } from '@/01-models/types';
-import { exactObject } from '@/utils/exact-object';
+import type { ChatMessage, LmParameters } from '@/01-models/types';
+import { cloneChatMessages, cloneLmParameters, cloneWorkerTools } from './inference-input-snapshot';
 import { isOpfsStagingFileName } from './runtime/opfs-staging-file';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
@@ -8,10 +8,11 @@ import { reuseDownloadedProductionRevision } from '@/features/transformers-js/do
 import { resolvePublicHuggingFaceRevision } from '@/features/transformers-js/download-verification/logic/resolve-public-hugging-face-revision';
 import { runProductionDownloadPreparation } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
+import { createTransformersJsRuntimeLane, type TransformersJsRuntimeOperation } from './runtime-operation-lane';
+import type { TransformersJsInferenceOperation, TransformersJsInferenceScope } from './inference-operation';
 import type {
   ProgressInfo,
   WorkerToolDefinition,
-  WorkerToolJsonObject,
   TransformersJsWorkerClient,
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
@@ -43,6 +44,10 @@ export function createTransformersJsService({ createWorkerClient }: {
   let isLoadingFromCache: boolean = false;
   let currentDevice: string = 'wasm';
   const downloadedModelRevisionHints = new Map<string, string | undefined>();
+  let runtimeLane = createTransformersJsRuntimeLane();
+  let runtimeEpoch = 0;
+  let explicitRestart: Promise<void> | undefined;
+  const restartedError = new ProductionWorkerLifecycleError({ reason: 'restarted', message: 'Transformers.js runtime was explicitly restarted; retry the operation' });
 
   const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
@@ -60,86 +65,6 @@ export function createTransformersJsService({ createWorkerClient }: {
     });
   }
 
-  function cloneLmParameters({ params }: { params: LmParameters | undefined }): LmParameters | undefined {
-    if (!params) return undefined;
-
-    return {
-      temperature: params.temperature,
-      topP: params.topP,
-      maxCompletionTokens: params.maxCompletionTokens,
-      presencePenalty: params.presencePenalty,
-      frequencyPenalty: params.frequencyPenalty,
-      stop: params.stop ? [...params.stop] : undefined,
-      reasoning: {
-        effort: params.reasoning?.effort,
-      },
-    };
-  }
-
-  function cloneToolCalls({ toolCalls }: { toolCalls: ToolCall[] | undefined }): ToolCall[] | undefined {
-    if (!toolCalls) return undefined;
-
-    return toolCalls.map(toolCall => ({
-      id: toolCall.id,
-      type: 'function',
-      function: {
-        name: toolCall.function.name,
-        arguments: toolCall.function.arguments,
-      },
-    }));
-  }
-
-  function cloneChatMessages({ messages }: { messages: ChatMessage[] }): ChatMessage[] {
-    return messages.map(message => {
-      const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
-      unhandled satisfies Record<PropertyKey, never>;
-      // This is a detached native-template input, not a lossless JavaScript
-      // object clone. Undefined optional tool fields mean absence; creating
-      // their keys can select a template's tool-call branch. Keep empty lists.
-      return exactObject<ChatMessage>()({
-        role,
-        content: Array.isArray(content)
-          ? content.map((part): MultimodalContent => {
-            switch (part.type) {
-            case 'text': {
-              const { type, text, ...unhandledPart } = part;
-              unhandledPart satisfies Record<PropertyKey, never>;
-              return exactObject<Extract<MultimodalContent, { type: 'text' }>>()({ type, text });
-            }
-            case 'image_url': {
-              const { type, image_url, ...unhandledPart } = part;
-              unhandledPart satisfies Record<PropertyKey, never>;
-              const { url, ...unhandledImage } = image_url;
-              unhandledImage satisfies Record<PropertyKey, never>;
-              return exactObject<Extract<MultimodalContent, { type: 'image_url' }>>()({
-                type, image_url: exactObject<Extract<MultimodalContent, { type: 'image_url' }>['image_url']>()({ url }),
-              });
-            }
-            default: {
-              const _ex: never = part;
-              return _ex;
-            }
-            }
-          })
-          : content,
-        ...(tool_calls === undefined ? {} : { tool_calls: cloneToolCalls({ toolCalls: tool_calls }) }),
-        ...(tool_call_id === undefined ? {} : { tool_call_id }),
-      });
-    });
-  }
-
-  function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined }): WorkerToolDefinition[] | undefined {
-    if (!tools) return undefined;
-
-    return tools.map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.function.name,
-        description: tool.function.description,
-        parameters: JSON.parse(JSON.stringify(tool.function.parameters)) as WorkerToolJsonObject,
-      },
-    }));
-  }
 
   type ProgressListener = ({
     status,
@@ -271,6 +196,7 @@ export function createTransformersJsService({ createWorkerClient }: {
   let disposePromise: Promise<void> | undefined;
   const ownedClients = new Set<TransformersJsWorkerClient>();
   const clientDisposals = new WeakMap<TransformersJsWorkerClient, Promise<void>>();
+  let retirementFailure: { error: unknown } | undefined;
   const disposedError = new ProductionWorkerLifecycleError({ reason: 'disposed', message: 'Transformers.js service owner disposed' });
 
   function isOpen(): boolean {
@@ -279,6 +205,26 @@ export function createTransformersJsService({ createWorkerClient }: {
 
   function ensureOpen(): void {
     if (!isOpen()) throw disposedError;
+  }
+
+  function captureRuntimeOperation() {
+    const lane = runtimeLane;
+    const epoch = runtimeEpoch;
+    const owner = lane.getActive();
+    if (owner === undefined) throw new Error('Transformers.js runtime operation requires an owner');
+    function assertOwned(): void {
+      ensureOpen();
+      if (runtimeEpoch !== epoch || runtimeLane !== lane || lane.getActive() !== owner) throw restartedError;
+    }
+    return {
+      owner,
+      isCurrent: () => isOpen() && runtimeEpoch === epoch && runtimeLane === lane && lane.getActive() === owner,
+      assertOwned,
+      assertCurrent: () => {
+        assertOwned();
+        owner.assertActive();
+      },
+    };
   }
 
   function disposeOwnedClient({ ownedClient }: { ownedClient: TransformersJsWorkerClient }): Promise<void> {
@@ -298,11 +244,23 @@ export function createTransformersJsService({ createWorkerClient }: {
         ownedClients.delete(ownedClient);
         resolveDisposal();
       }, error => {
-        ownedClients.delete(ownedClient);
+        retirementFailure ??= { error };
+        if (isOpen()) {
+          clearRuntimeState();
+          loadingStatus = 'error';
+          loadingError = error instanceof Error ? error.message : String(error);
+        }
+        runtimeLane.close({ error: error instanceof Error ? error : new Error('Transformers.js client retirement failed') });
         rejectDisposal(error);
       });
     } catch (error) {
-      ownedClients.delete(ownedClient);
+      retirementFailure ??= { error };
+      if (isOpen()) {
+        clearRuntimeState();
+        loadingStatus = 'error';
+        loadingError = error instanceof Error ? error.message : String(error);
+      }
+      runtimeLane.close({ error: error instanceof Error ? error : new Error('Transformers.js client retirement failed') });
       rejectDisposal(error);
     }
     return disposal;
@@ -310,6 +268,7 @@ export function createTransformersJsService({ createWorkerClient }: {
 
   function createOwnedClient(): TransformersJsWorkerClient {
     ensureOpen();
+    if (retirementFailure !== undefined) throw retirementFailure.error;
     const created = createWorkerClient();
     ownedClients.add(created);
     return created;
@@ -328,6 +287,9 @@ export function createTransformersJsService({ createWorkerClient }: {
       resolveDisposal = resolve;
       rejectDisposal = reject;
     });
+    runtimeEpoch++;
+    // Reserve the idempotent result before abort listeners can reenter dispose.
+    runtimeLane.close({ error: disposedError });
     client = undefined;
     activeModelId = undefined;
     loadingModelId = undefined;
@@ -394,18 +356,16 @@ export function createTransformersJsService({ createWorkerClient }: {
 
   async function restartWorkerOnce(): Promise<TransformersJsWorkerClient> {
     ensureOpen();
+    const epoch = runtimeEpoch;
     const previousClient = client;
     client = undefined;
 
     if (previousClient !== undefined) {
-      try {
-        await disposeOwnedClient({ ownedClient: previousClient });
-      } catch (error) {
-        console.warn('[transformersJsService] Failed to dispose worker during restart:', error);
-      }
+      await disposeOwnedClient({ ownedClient: previousClient });
     }
 
     ensureOpen();
+    if (runtimeEpoch !== epoch) throw restartedError;
     client = createOwnedClient();
     return client;
   }
@@ -500,7 +460,7 @@ export function createTransformersJsService({ createWorkerClient }: {
     }
   }
 
-  const service = {
+  const rawService = {
     subscribe({ listener }: { listener: ProgressListener }) {
       ensureOpen();
       listeners.add(listener);
@@ -528,23 +488,6 @@ export function createTransformersJsService({ createWorkerClient }: {
         totalLoadedAmount,
         totalSizeAmount,
       };
-    },
-
-    /**
-     * Hard reset of the underlying engine worker.
-     */
-    async restart() {
-      await restartWorker();
-      ensureOpen();
-      activeModelId = undefined;
-      loadingStatus = 'idle';
-      loadingProgress = 0;
-      progressItems = new Map<string, ProgressInfo>();
-      heavyFileDetectedAt = 0;
-      totalLoadedAmount = 0;
-      totalSizeAmount = 0;
-      loadingError = undefined;
-      notify();
     },
 
     async listCachedModels(): Promise<Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }>> {
@@ -845,7 +788,8 @@ export function createTransformersJsService({ createWorkerClient }: {
      * operation handled by downloadModel().
      */
     async loadDownloadedModel({ modelId }: { modelId: string }) {
-      ensureOpen();
+      const { owner, assertCurrent, isCurrent } = captureRuntimeOperation();
+      assertCurrent();
       if (activeModelId === modelId && loadingStatus === 'ready') return;
 
       switch (loadingStatus) {
@@ -864,7 +808,7 @@ export function createTransformersJsService({ createWorkerClient }: {
       try {
         const loadStartedAt = performance.now();
         const remote = await getClient();
-        ensureOpen();
+        assertCurrent();
         const loadRevision = selectDownloadedModelLoadRevision({ modelId });
         // Every ordinary Load is read-only. Let the Worker's authoritative
         // inspection fail normally; a best-effort UI listing must not consume
@@ -883,7 +827,7 @@ export function createTransformersJsService({ createWorkerClient }: {
 
         let lastProgressNotify = 0;
         const progress_callback: TransformersJsProgressCallback = ({ info }) => {
-          if (!isOpen()) return;
+          if (!isCurrent() || owner.signal.aborted) return;
           updateProgress({ info });
           if (info.status === 'cached') {
             isCached = true;
@@ -929,8 +873,9 @@ export function createTransformersJsService({ createWorkerClient }: {
           },
         });
 
+        assertCurrent();
         const result = await remote.loadDownloadedModel({ modelId, revisionSelection: loadRevision, progressCallback: progress_callback });
-        ensureOpen();
+        assertCurrent();
         debugLog({
           event: 'worker loadDownloadedModel complete',
           details: {
@@ -947,7 +892,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         notify();
         notifyModelListChange();
       } catch (e) {
-        if (!isOpen()) throw e;
+        if (!isCurrent() || owner.signal.aborted) throw e;
         console.error('[transformersJsService] Failed to load model:', modelId, e);
         const errorMsg = e instanceof Error ? e.message : String(e);
 
@@ -957,7 +902,7 @@ export function createTransformersJsService({ createWorkerClient }: {
           await recoverAfterFailure({ error: e });
         }
 
-        if (!isOpen()) throw e;
+        if (!isCurrent() || owner.signal.aborted) throw e;
         loadingStatus = 'error';
         loadingError = errorMsg;
         activeModelId = undefined;
@@ -968,7 +913,14 @@ export function createTransformersJsService({ createWorkerClient }: {
     },
 
     async downloadModel({ modelId }: { modelId: string }) {
-      ensureOpen();
+      const { owner, assertCurrent, isCurrent } = captureRuntimeOperation();
+      assertCurrent();
+      const finishDownloadState = () => {
+        loadingStatus = 'idle';
+        loadingProgress = 0;
+        loadingModelId = undefined;
+        notify();
+      };
       switch (loadingStatus) {
       case 'loading':
         throw new Error('Another operation is in progress');
@@ -1000,7 +952,7 @@ export function createTransformersJsService({ createWorkerClient }: {
 
         let lastProgressNotify = 0;
         const progress_callback: TransformersJsProgressCallback = ({ info }) => {
-          if (!isOpen()) return;
+          if (!isCurrent() || owner.signal.aborted) return;
           updateProgress({ info });
 
           const now = Date.now();
@@ -1011,9 +963,9 @@ export function createTransformersJsService({ createWorkerClient }: {
         };
 
         const { resolvedRevision } = await resolvePublicHuggingFaceRevision({ modelId });
-        ensureOpen();
+        assertCurrent();
         const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision });
-        ensureOpen();
+        assertCurrent();
         if (cachedReuse.reused) {
           downloadedModelRevisionHints.set(normalizedModelId, cachedReuse.loadRevision);
         } else {
@@ -1022,7 +974,7 @@ export function createTransformersJsService({ createWorkerClient }: {
             revision: resolvedRevision,
             progressCallback: progress_callback,
           });
-          ensureOpen();
+          assertCurrent();
           switch (preparation.status) {
           case 'accepted':
             downloadedModelRevisionHints.set(normalizedModelId, resolvedRevision);
@@ -1037,13 +989,10 @@ export function createTransformersJsService({ createWorkerClient }: {
           }
         }
 
-        loadingStatus = 'idle';
-        loadingProgress = 0;
-        loadingModelId = undefined;
-        notify();
+        finishDownloadState();
         notifyModelListChange();
       } catch (e) {
-        if (!isOpen()) throw e;
+        if (!isCurrent() || owner.signal.aborted) throw e;
         console.error('[transformersJsService] Failed to download model:', modelId, e);
         const errorMsg = e instanceof Error ? e.message : String(e);
 
@@ -1052,24 +1001,31 @@ export function createTransformersJsService({ createWorkerClient }: {
           await recoverAfterFailure({ error: e });
         }
 
-        if (!isOpen()) throw e;
+        if (!isCurrent() || owner.signal.aborted) throw e;
         loadingStatus = 'error';
         loadingError = errorMsg;
         loadingModelId = undefined;
         notify();
         throw e;
+      } finally {
+        // Cancellation does not stop Download I/O. Finalize only after it settles,
+        // and never let a retired operation overwrite a replacement lane's state.
+        if (isCurrent() && owner.signal.aborted && loadingStatus === 'loading') {
+          finishDownloadState();
+        }
       }
     },
 
     async unloadModel() {
-      ensureOpen();
+      const { owner, assertOwned, assertCurrent, isCurrent } = captureRuntimeOperation();
+      assertCurrent();
       try {
         const remote = await getExistingClient();
-        ensureOpen();
+        assertCurrent();
         if (remote !== undefined) {
           await remote.unloadModel();
         }
-        ensureOpen();
+        assertOwned();
         activeModelId = undefined;
         loadingStatus = 'idle';
         loadingProgress = 0;
@@ -1081,35 +1037,30 @@ export function createTransformersJsService({ createWorkerClient }: {
         isCached = false;
         isLoadingFromCache = false;
         notify();
+        assertCurrent();
       } catch (e) {
-        if (!isOpen()) throw e;
+        if (!isCurrent() || owner.signal.aborted) throw e;
         console.error('[transformersJsService] Failed to unload model:', e);
         // If unload fails, it's likely the worker is dead anyway
         await recoverAfterFailure({ error: e });
-        if (!isOpen()) throw e;
+        if (!isCurrent()) throw e;
         activeModelId = undefined;
         loadingStatus = 'idle';
         notify();
       }
     },
 
-    async interrupt() {
-      ensureOpen();
-      const remote = await getExistingClient();
-      ensureOpen();
-      if (remote !== undefined) {
-        await remote.interrupt();
-      }
-    },
-
     async resetCache() {
-      ensureOpen();
+      const { assertOwned, assertCurrent } = captureRuntimeOperation();
+      assertCurrent();
       const remote = await getExistingClient();
-      ensureOpen();
+      assertCurrent();
       if (remote !== undefined) {
         await remote.resetCache();
       }
+      assertOwned();
       downloadedModelRevisionHints.clear();
+      assertCurrent();
     },
 
     /**
@@ -1124,7 +1075,8 @@ export function createTransformersJsService({ createWorkerClient }: {
       signal?: AbortSignal,
       continuationOwner?: string,
     }) {
-      ensureOpen();
+      const { owner, assertCurrent, isCurrent } = captureRuntimeOperation();
+      assertCurrent();
       switch (loadingStatus) {
       case 'idle':
       case 'loading':
@@ -1139,13 +1091,15 @@ export function createTransformersJsService({ createWorkerClient }: {
       }
 
       let interruptPromise: Promise<void> | undefined;
+      let generationClient: TransformersJsWorkerClient | undefined;
       const onAbort = () => {
-        if (interruptPromise !== undefined) {
+        if (interruptPromise !== undefined || generationClient === undefined) {
           return;
         }
+        const interruptedClient = generationClient;
         interruptPromise = (async () => {
           try {
-            await this.interrupt();
+            await interruptedClient.interrupt();
           } catch (error) {
             console.error('Failed to interrupt Transformers.js generation:', error);
           }
@@ -1158,27 +1112,35 @@ export function createTransformersJsService({ createWorkerClient }: {
 
       try {
         const remote = await getClient();
-        ensureOpen();
+        assertCurrent();
         if (signal?.aborted === true) {
           await interruptPromise;
           return;
         }
+        generationClient = remote;
         await remote.generateText({
           messages: cloneChatMessages({ messages }),
-          onChunk,
-          onToolCalls,
+          onChunk: ({ chunk }) => {
+            if (isCurrent() && !owner.signal.aborted) return onChunk({ chunk });
+          },
+          onToolCalls: ({ toolCalls }) => {
+            if (isCurrent() && !owner.signal.aborted) return onToolCalls({ toolCalls });
+          },
           params: cloneLmParameters({ params }),
           tools: cloneWorkerTools({ tools }),
           continuationOwner,
         });
-        ensureOpen();
+        assertCurrent();
       } catch (e) {
-        if (!isOpen()) throw e;
+        if (!isCurrent() || owner.signal.aborted) throw e;
         const errorMsg = e instanceof Error ? e.message : String(e);
         if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
           console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
           await recoverAfterFailure({ error: e });
-          if (!isOpen()) throw e;
+          if (!isCurrent()) throw e;
+          // Recovery replaces the model-bearing client even if cancellation
+          // arrived during retirement. Never advertise its empty replacement
+          // as the previously loaded model to the next Provider operation.
           activeModelId = undefined;
           loadingStatus = 'idle';
           notify();
@@ -1190,6 +1152,244 @@ export function createTransformersJsService({ createWorkerClient }: {
           await interruptPromise;
         }
       }
+    },
+  };
+
+  function clearRuntimeState(): void {
+    activeModelId = undefined;
+    loadingModelId = undefined;
+    loadingStatus = 'idle';
+    loadingProgress = 0;
+    loadingError = undefined;
+    progressItems = new Map();
+    heavyFileDetectedAt = 0;
+    totalLoadedAmount = 0;
+    totalSizeAmount = 0;
+    isCached = false;
+    isLoadingFromCache = false;
+  }
+
+  function enqueue({ signal, operation }: {
+    signal: AbortSignal | undefined,
+    operation: ({ owner }: { owner: TransformersJsRuntimeOperation }) => Promise<void>,
+  }): Promise<void> {
+    try {
+      ensureOpen();
+      if (explicitRestart !== undefined) throw restartedError;
+      return runtimeLane.run({ signal, operation });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+
+  async function loadForOwner({ owner, modelId }: { owner: TransformersJsRuntimeOperation, modelId: string }): Promise<void> {
+    owner.assertActive();
+    const epoch = runtimeEpoch;
+    const remote = await getClient();
+    owner.assertActive();
+    let cancellation: Promise<void> | undefined;
+    const onAbort = () => {
+      // Model loading has no cooperative interrupt contract. Retire only this
+      // captured client, never one created by a later hard reset.
+      if (client === remote) client = undefined;
+      cancellation = disposeOwnedClient({ ownedClient: remote });
+      void cancellation.catch(() => undefined);
+    };
+    owner.signal.addEventListener('abort', onAbort, { once: true });
+    let failure: { error: unknown } | undefined;
+    try {
+      await rawService.loadDownloadedModel({ modelId });
+    } catch (error) {
+      failure = { error };
+    } finally {
+      owner.signal.removeEventListener('abort', onAbort);
+    }
+    if (cancellation !== undefined) {
+      try {
+        await cancellation;
+      } catch (error) {
+        if (epoch === runtimeEpoch) {
+          runtimeLane.close({ error: new ProductionWorkerLifecycleError({ reason: 'resource-cleanup-failed', message: 'Failed to retire canceled model Load' }) });
+        }
+        failure = { error };
+      } finally {
+        if (isOpen() && epoch === runtimeEpoch && retirementFailure === undefined) {
+          clearRuntimeState();
+          notify();
+        }
+      }
+    }
+    owner.assertActive();
+    if (failure !== undefined) throw failure.error;
+  }
+
+  async function runInferenceScope({ owner, operation }: {
+    owner: TransformersJsRuntimeOperation,
+    operation: TransformersJsInferenceOperation['operation'],
+  }): Promise<void> {
+    let open = true;
+    let child: Promise<void> | undefined;
+    let childFailure: { error: unknown } | undefined;
+    function assertActive(): void {
+      owner.assertActive();
+      if (!open) throw new Error('Transformers.js inference scope is closed');
+    }
+    function runChild({ execute }: { execute: () => Promise<void> }): Promise<void> {
+      try {
+        assertActive();
+        if (child !== undefined) throw new Error('Transformers.js inference scope already has an active operation');
+        const pending = Promise.resolve().then(() => {
+          owner.assertActive();
+          return execute();
+        });
+        child = pending;
+        void pending.then(() => {
+          if (child === pending) child = undefined;
+        }, error => {
+          childFailure ??= { error };
+          if (child === pending) child = undefined;
+        });
+        return pending;
+      } catch (error) {
+        const rejected = Promise.reject<void>(error);
+        void rejected.catch(() => undefined);
+        return rejected;
+      }
+    }
+    const scope: TransformersJsInferenceScope = {
+      signal: owner.signal,
+      assertActive,
+      getState() {
+        assertActive(); return rawService.getState();
+      },
+      loadDownloadedModel({ modelId }) {
+        return runChild({ execute: () => loadForOwner({ owner, modelId }) });
+      },
+      generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner }) {
+        const snapshot = {
+          continuationOwner,
+          messages: cloneChatMessages({ messages }),
+          params: cloneLmParameters({ params }),
+          tools: cloneWorkerTools({ tools }),
+          onChunk: ({ chunk }: { chunk: string }) => {
+            if (open && owner.isActive()) return onChunk({ chunk });
+          },
+          onToolCalls: ({ toolCalls }: Parameters<TransformersJsToolCallsCallback>[0]) => {
+            if (open && owner.isActive()) return onToolCalls({ toolCalls });
+          },
+        };
+        return runChild({ execute: () => rawService.generateText({ ...snapshot, signal: owner.signal }) });
+      },
+    };
+    let callbackFailure: { error: unknown } | undefined;
+    try {
+      await operation({ scope });
+    } catch (error) {
+      callbackFailure = { error };
+    } finally {
+      open = false;
+      try {
+        await child;
+      } catch { /* The owned child outcome is retained above. */ }
+    }
+    if (callbackFailure !== undefined) throw callbackFailure.error;
+    if (childFailure !== undefined) throw childFailure.error;
+    owner.assertActive();
+  }
+
+  // Adding another raw method must make an explicit public scheduling choice.
+  // Storage inventory/import/deletion retain their separate OPFS ownership;
+  // runtime-changing methods never become public through an object spread.
+  const {
+    subscribe, subscribeModelList, getState, listCachedModels, importFile, deleteModel,
+    loadDownloadedModel: _ownedLoad, downloadModel: _ownedDownload,
+    unloadModel: _ownedUnload, resetCache: _ownedReset, generateText: _ownedGenerate,
+    ...unhandledRawService
+  } = rawService;
+  unhandledRawService satisfies Record<PropertyKey, never>;
+  const service = {
+    subscribe, subscribeModelList, getState, listCachedModels, importFile, deleteModel,
+    runInferenceOperation({ signal, operation }: TransformersJsInferenceOperation): Promise<void> {
+      return enqueue({ signal, operation: ({ owner }) => runInferenceScope({ owner, operation }) });
+    },
+    loadDownloadedModel({ modelId }: { modelId: string }): Promise<void> {
+      return enqueue({ signal: undefined, operation: ({ owner }) => loadForOwner({ owner, modelId }) });
+    },
+    downloadModel({ modelId }: { modelId: string }): Promise<void> {
+      return enqueue({ signal: undefined, operation: () => rawService.downloadModel({ modelId }) });
+    },
+    unloadModel(): Promise<void> {
+      return enqueue({ signal: undefined, operation: () => rawService.unloadModel() });
+    },
+    resetCache(): Promise<void> {
+      return enqueue({ signal: undefined, operation: () => rawService.resetCache() });
+    },
+    generateText({ messages, onChunk, onToolCalls, params, tools, signal, continuationOwner }: Parameters<typeof rawService.generateText>[0]): Promise<void> {
+      try {
+        ensureOpen();
+        if (explicitRestart !== undefined) throw restartedError;
+        if (retirementFailure !== undefined) throw retirementFailure.error;
+      } catch (error) {
+        return Promise.reject(error);
+      }
+      if (loadingStatus !== 'ready' || activeModelId === undefined) return Promise.reject(new Error('Model not loaded'));
+      const requestedModelId = activeModelId;
+      const snapshot = {
+        onChunk, onToolCalls, continuationOwner,
+        messages: cloneChatMessages({ messages }),
+        params: cloneLmParameters({ params }),
+        tools: cloneWorkerTools({ tools }),
+      };
+      return enqueue({ signal, operation: ({ owner }) => {
+        if (activeModelId !== requestedModelId || loadingStatus !== 'ready') {
+          throw new Error('The requested Transformers.js model is no longer loaded');
+        }
+        return rawService.generateText({ ...snapshot, signal: owner.signal });
+      } });
+    },
+    async interrupt(): Promise<void> {
+      ensureOpen();
+      // Capture synchronously. An advisory interrupt must never wait and then
+      // select a different owner after the original generation has completed.
+      runtimeLane.getActive()?.abort();
+    },
+    restart(): Promise<void> {
+      try {
+        ensureOpen();
+      } catch (error) {
+        return Promise.reject(error);
+      }
+      if (explicitRestart !== undefined) return explicitRestart;
+      const result = Promise.withResolvers<void>();
+      explicitRestart = result.promise;
+      runtimeEpoch++;
+      runtimeLane.close({ error: restartedError });
+      clearRuntimeState();
+      const pendingRecovery = restartPromise;
+      // Begin termination synchronously, even while a noncooperative tool or
+      // model operation is still pending. Never create before disposal settles.
+      const retiring = [...ownedClients].map(ownedClient => disposeOwnedClient({ ownedClient }));
+      client = undefined;
+      void (async () => {
+        try {
+          await Promise.all(retiring);
+          try {
+            await pendingRecovery;
+          } catch { /* Epoch invalidation prevents its replacement. */ }
+          ensureOpen();
+          await restartWorker();
+          ensureOpen();
+          runtimeLane = createTransformersJsRuntimeLane();
+          clearRuntimeState();
+          notify();
+          result.resolve();
+        } catch (error) {
+          result.reject(error);
+        } finally {
+          if (explicitRestart === result.promise) explicitRestart = undefined;
+        }
+      })();
+      return result.promise;
     },
   };
 

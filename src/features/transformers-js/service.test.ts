@@ -424,11 +424,13 @@ describe('transformersJsService', () => {
     expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
   });
 
-  it('should prevent concurrent loading', async () => {
+  it('serializes different model Loads in arrival order', async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     const mockRemote = {
-      loadDownloadedModel: vi.fn().mockImplementation(() => new Promise(resolve => {
-        setTimeout(() => resolve({ device: 'wasm' }), 100);
-      })),
+      loadDownloadedModel: vi.fn().mockImplementation(async () => {
+        entered.resolve(); await release.promise; return { device: 'wasm' };
+      }),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -436,24 +438,26 @@ describe('transformersJsService', () => {
 
     const { transformersJsService } = await import('./index');
 
-    // Start first load
     const firstLoad = transformersJsService.loadDownloadedModel({ modelId: 'model-1' });
-
-    // Wait for the status to become 'loading'
-    // In our implementation, it becomes 'loading' after listCachedModels()
-    // We give it a tiny bit of time
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    // Attempt second load immediately
-    await expect(transformersJsService.loadDownloadedModel({ modelId: 'model-2' })).rejects.toThrow('Another model is currently loading');
-
-    await firstLoad;
+    await entered.promise;
+    const secondLoad = transformersJsService.loadDownloadedModel({ modelId: 'model-2' });
+    try {
+      expect(mockRemote.loadDownloadedModel).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+    }
+    await Promise.all([firstLoad, secondLoad]);
+    expect(mockRemote.loadDownloadedModel.mock.calls.map(([modelId]) => modelId)).toEqual(['model-1', 'model-2']);
   });
 
   it('should call interrupt when AbortSignal is triggered during generation', async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     const mockRemote = {
       loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
-      generateText: vi.fn().mockResolvedValue(undefined),
+      generateText: vi.fn().mockImplementation(async () => {
+        entered.resolve(); await release.promise;
+      }),
       interrupt: vi.fn().mockResolvedValue(undefined),
     };
     (Comlink.wrap as any).mockImplementation(() => {
@@ -473,8 +477,11 @@ describe('transformersJsService', () => {
       signal: controller.signal,
     });
 
+    const canceled = expect(genPromise).rejects.toMatchObject({ name: 'AbortError' });
+    await entered.promise;
     controller.abort();
-    await genPromise;
+    release.resolve();
+    await canceled;
 
     expect(mockRemote.interrupt).toHaveBeenCalled();
   });

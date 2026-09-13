@@ -1,5 +1,6 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
 import type { ProgressInfo, WorkerToolDefinition, TransformersJsChunkCallback, TransformersJsToolCallsCallback } from './types';
+import type { TransformersJsInferenceOperation } from './inference-operation';
 
 type ProgressListener = ({
   status,
@@ -52,6 +53,10 @@ export const transformersJsService = {
   },
 
   async restart() {},
+
+  async runInferenceOperation({ signal: _signal, operation: _operation }: TransformersJsInferenceOperation): Promise<void> {
+    throw unsupportedError();
+  },
 
   async listCachedModels(): Promise<Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }>> {
     return [];

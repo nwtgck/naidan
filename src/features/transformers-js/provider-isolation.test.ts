@@ -5,6 +5,7 @@ import { toToolCallId } from '@/01-models/ids';
 import type { ChatMessage, ToolCall } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
 import { createTransformersJsProvider, type TransformersJsProviderService } from './provider-hosted';
+import { runProviderTestInferenceOperation } from './provider-inference-test-scope';
 
 const ordinaryService = vi.hoisted(() => ({
   getState: vi.fn(() => {
@@ -41,6 +42,9 @@ afterEach(() => {
 function createServiceFixture({ modelId, answer }: { modelId: string, answer: string }) {
   let activeModelId: string | undefined;
   const service: TransformersJsProviderService = {
+    runInferenceOperation(args) {
+      return runProviderTestInferenceOperation({ ...args, service });
+    },
     getState() {
       expect(this).toBe(service);
       return { status: activeModelId === undefined ? 'idle' : 'ready', activeModelId };

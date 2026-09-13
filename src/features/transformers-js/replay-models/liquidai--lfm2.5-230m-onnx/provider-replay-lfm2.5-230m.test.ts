@@ -1541,7 +1541,9 @@ describe('LFM2.5 230M Provider / tools', () => {
         expect(calls[0]!.id).not.toBe('');
         expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
         expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBe(signal);
+        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
+        expect(executions[0]!.signal).not.toBe(signal);
+        expect(executions[0]!.signal?.aborted).toBe(false);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
     } finally {
@@ -1624,7 +1626,9 @@ describe('LFM2.5 230M Provider / tools', () => {
         expect(calls[0]!.id).not.toBe('');
         expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
         expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBe(signal);
+        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
+        expect(executions[0]!.signal).not.toBe(signal);
+        expect(executions[0]!.signal?.aborted).toBe(false);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
     } finally {

@@ -74,6 +74,98 @@ afterEach(async () => {
 // These tests cover the real service with controlled client lifecycles, not
 // native Worker termination, GPU reclamation, or cancellation of Download I/O.
 describe('Transformers.js service instance ownership', () => {
+  it('settles an interrupted Download before admitting the next Load without canceling Download I/O', async () => {
+    const client = createClientFixture();
+    const owner = await createOwner({ createWorkerClient: () => client });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    download.resolve.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return { normalizedModelId: 'fixture/download', requestedRevision: 'main', resolvedRevision: 'a'.repeat(40) };
+    });
+    let downloadSettled = false;
+    const downloading = owner.service.downloadModel({ modelId: 'fixture/download' }).catch(error => error).finally(() => { downloadSettled = true; });
+    const operations: Promise<unknown>[] = [downloading];
+    try {
+      await entered.promise;
+      await owner.service.interrupt();
+      const nextLoad = owner.service.loadDownloadedModel({ modelId: 'fixture/next' });
+      operations.push(nextLoad);
+      void nextLoad.catch(() => undefined);
+      expect(downloadSettled).toBe(false);
+      expect(client.interrupt).not.toHaveBeenCalled();
+      expect(client.loadDownloadedModel).not.toHaveBeenCalled();
+      release.resolve();
+      expect(await downloading).toMatchObject({ name: 'AbortError' });
+      await nextLoad;
+      expect(client.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith({
+        modelId: 'fixture/next', revisionSelection: { kind: 'discover-cached' }, progressCallback: expect.any(Function),
+      });
+      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next', loadingModelId: undefined });
+      expect(download.reuse).not.toHaveBeenCalled();
+      expect(download.prepare).not.toHaveBeenCalled();
+      expect(client.interrupt).not.toHaveBeenCalled();
+      expect(client.dispose).not.toHaveBeenCalled();
+    } finally {
+      release.resolve();
+      await Promise.allSettled(operations);
+    }
+  });
+
+  it('queues explicit Download and cache reset behind generation without changing Download authority', async () => {
+    const client = createClientFixture();
+    const owner = await createOwner({ createWorkerClient: () => client });
+    const generationEntered = Promise.withResolvers<void>();
+    const releaseGeneration = Promise.withResolvers<void>();
+    const downloadEntered = Promise.withResolvers<void>();
+    const releaseDownload = Promise.withResolvers<void>();
+    const revision = 'a'.repeat(40);
+    const order: string[] = [];
+    client.generateText.mockImplementationOnce(async () => {
+      order.push('generation'); generationEntered.resolve(); await releaseGeneration.promise;
+    });
+    client.resetCache.mockImplementationOnce(async () => {
+      order.push('reset');
+    });
+    download.resolve.mockImplementationOnce(async () => {
+      order.push('download'); downloadEntered.resolve(); await releaseDownload.promise;
+      return { normalizedModelId: 'fixture/download', requestedRevision: 'main', resolvedRevision: revision };
+    });
+    download.reuse.mockResolvedValue({
+      reused: true, loadRevision: revision,
+      acceptance: {
+        status: 'accepted', selectedRevision: { revision, loaderRevisionOption: revision, source: 'current-resolved-revision' },
+        attempts: [], error: undefined,
+      },
+    });
+    const operations: Promise<unknown>[] = [];
+    try {
+      await owner.service.loadDownloadedModel({ modelId: 'fixture/loaded' });
+      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
+      await generationEntered.promise;
+      operations.push(owner.service.downloadModel({ modelId: 'fixture/download' }));
+      operations.push(owner.service.resetCache());
+      expect(download.resolve).not.toHaveBeenCalled();
+      expect(client.resetCache).not.toHaveBeenCalled();
+      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/loaded' });
+      releaseGeneration.resolve();
+      await downloadEntered.promise;
+      expect(client.resetCache).not.toHaveBeenCalled();
+      releaseDownload.resolve();
+      await Promise.all(operations);
+      expect(order).toEqual(['generation', 'download', 'reset']);
+      expect(download.resolve).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/download' });
+      expect(download.prepare).not.toHaveBeenCalled();
+      await owner.service.loadDownloadedModel({ modelId: 'fixture/download' });
+      expect(client.loadDownloadedModel).toHaveBeenLastCalledWith({
+        modelId: 'fixture/download', revisionSelection: { kind: 'discover-cached' }, progressCallback: expect.any(Function),
+      });
+    } finally {
+      releaseGeneration.resolve(); releaseDownload.resolve(); await Promise.allSettled(operations);
+    }
+  });
+
   it.each(['absent', 'undefined'] as const)('keeps %s optional tool fields out of ordinary messages sent to every model', async shape => {
     const client = createClientFixture();
     const owner = await createOwner({ createWorkerClient: () => client });
@@ -254,7 +346,7 @@ describe('Transformers.js service instance ownership', () => {
     const owner = await createOwner({ createWorkerClient: factory });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/pending' });
     const generation = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
-    const rejected = expect(generation).rejects.toBe(disposed);
+    const rejected = expect(generation).rejects.toMatchObject({ reason: 'disposed', message: 'Transformers.js service owner disposed' });
     await entered.promise;
     await owner.dispose();
     await rejected;
@@ -290,7 +382,7 @@ describe('Transformers.js service instance ownership', () => {
     expect(factory).toHaveBeenCalledOnce();
   });
 
-  it('closes during restart disposal without creating a replacement for restart or its waiting Load', async () => {
+  it('rejects new Load during hard restart and closes without creating a replacement', async () => {
     const client = createClientFixture();
     const releaseDisposal = deferred<void>();
     const disposalStarted = deferred<void>();
@@ -304,7 +396,7 @@ describe('Transformers.js service instance ownership', () => {
     const restartRejected = expect(restarting).rejects.toMatchObject({ reason: 'disposed' });
     await disposalStarted.promise;
     const loading = owner.service.loadDownloadedModel({ modelId: 'fixture/next' });
-    const loadRejected = expect(loading).rejects.toMatchObject({ reason: 'disposed' });
+    const loadRejected = expect(loading).rejects.toMatchObject({ reason: 'restarted' });
     const closing = owner.dispose();
     expect(owner.dispose()).toBe(closing);
     releaseDisposal.resolve();
@@ -350,7 +442,7 @@ describe('Transformers.js service instance ownership', () => {
     expect(replacement.dispose).toHaveBeenCalledOnce();
   });
 
-  it('preserves the original generation error when terminal disposal interrupts its recovery', async () => {
+  it('reports owner disposal immediately when terminal closure interrupts fatal recovery', async () => {
     const client = createClientFixture();
     const error = new ProductionWorkerLifecycleError({ reason: 'worker-error', message: 'Original synthetic failure' });
     const disposalStarted = deferred<void>();
@@ -363,7 +455,7 @@ describe('Transformers.js service instance ownership', () => {
     const owner = await createOwner({ createWorkerClient: factory });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/fatal' });
     const generation = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
-    const rejected = expect(generation).rejects.toBe(error);
+    const rejected = expect(generation).rejects.toMatchObject({ reason: 'disposed', message: 'Transformers.js service owner disposed' });
     await disposalStarted.promise;
     const closing = owner.dispose();
     releaseDisposal.resolve();
@@ -383,12 +475,18 @@ describe('Transformers.js service instance ownership', () => {
     const factory = vi.fn(() => client);
     const owner = await createOwner({ createWorkerClient: factory });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/unload' });
+    const listener = vi.fn();
+    owner.service.subscribe({ listener });
     const unloading = owner.service.unloadModel();
-    const rejected = expect(unloading).rejects.toBe(error);
+    const rejected = expect(unloading).rejects.toMatchObject({ reason: 'disposed', message: 'Transformers.js service owner disposed' });
     await entered.promise;
     await owner.dispose();
+    const notificationCount = listener.mock.calls.length;
     pending.reject(error);
     await rejected;
+    await Promise.resolve();
+    expect(owner.service.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
+    expect(listener).toHaveBeenCalledTimes(notificationCount);
     expect(factory).toHaveBeenCalledOnce();
     expect(client.dispose).toHaveBeenCalledOnce();
   });
@@ -415,7 +513,7 @@ describe('Transformers.js service instance ownership', () => {
     expect(owner.service.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
   });
 
-  it('keeps abort local and forwards the original callbacks without a settlement gate', async () => {
+  it('keeps abort local and revokes callback delivery after its operation ends', async () => {
     const firstClient = createClientFixture();
     const secondClient = createClientFixture();
     const first = await createOwner({ createWorkerClient: () => firstClient });
@@ -431,18 +529,19 @@ describe('Transformers.js service instance ownership', () => {
     const onChunk = vi.fn();
     const onToolCalls = vi.fn();
     const generation = first.service.generateText({ messages: [], onChunk, onToolCalls, signal: controller.signal });
+    const canceled = expect(generation).rejects.toMatchObject({ name: 'AbortError' });
     await entered.promise;
     controller.abort();
     pending.resolve();
-    await generation;
+    await canceled;
     expect(firstClient.interrupt).toHaveBeenCalledOnce();
     expect(secondClient.interrupt).not.toHaveBeenCalled();
     const request = firstClient.generateText.mock.calls[0]![0];
-    expect(request.onChunk).toBe(onChunk);
-    expect(request.onToolCalls).toBe(onToolCalls);
     // Controlled late delivery at the client boundary, not a browser timing
-    // claim. An open service must not add a new callback ACK or drop this call.
+    // claim. The canceled owner's callbacks cannot deliver into later work.
     request.onChunk({ chunk: 'late fixture chunk' });
-    expect(onChunk).toHaveBeenCalledExactlyOnceWith({ chunk: 'late fixture chunk' });
+    request.onToolCalls({ toolCalls: [] });
+    expect(onChunk).not.toHaveBeenCalled();
+    expect(onToolCalls).not.toHaveBeenCalled();
   });
 });

@@ -2060,7 +2060,9 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
       expect(executedSignals).toHaveLength(1);
-      expect(executedSignals[0]).toBe(signal);
+      expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
+      expect(executedSignals[0]).not.toBe(signal);
+      expect(executedSignals[0]?.aborted).toBe(false);
       expect(toolCalls).toHaveLength(1);
       expect(toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
       expect(toolResults).toEqual([{  id: toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);
@@ -2130,7 +2132,9 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
       expect(executedSignals).toHaveLength(1);
-      expect(executedSignals[0]).toBe(signal);
+      expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
+      expect(executedSignals[0]).not.toBe(signal);
+      expect(executedSignals[0]?.aborted).toBe(false);
       expect(toolCalls).toHaveLength(1);
       expect(toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
       expect(toolResults).toEqual([{  id: toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);

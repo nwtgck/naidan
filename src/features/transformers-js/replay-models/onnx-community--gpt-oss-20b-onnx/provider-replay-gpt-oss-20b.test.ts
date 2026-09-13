@@ -1352,7 +1352,9 @@ Clear
         expect(calls[0]!.id).not.toBe('');
         expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
         expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBe(signal);
+        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
+        expect(executions[0]!.signal).not.toBe(signal);
+        expect(executions[0]!.signal?.aborted).toBe(false);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
     } finally {
@@ -1441,7 +1443,9 @@ Clear
         expect(calls[0]!.id).not.toBe('');
         expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
         expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBe(signal);
+        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
+        expect(executions[0]!.signal).not.toBe(signal);
+        expect(executions[0]!.signal?.aborted).toBe(false);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
     } finally {
@@ -1544,7 +1548,9 @@ Clear
         expect(calls[0]!.id).not.toBe('');
         expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
         expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBe(signal);
+        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
+        expect(executions[0]!.signal).not.toBe(signal);
+        expect(executions[0]!.signal?.aborted).toBe(false);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
     } finally {
@@ -2057,7 +2063,9 @@ describe('GPT-OSS 20B Provider / sequences', () => {
         expect(calls[0]!.id).not.toBe('');
         expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
         expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBe(signal);
+        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
+        expect(executions[0]!.signal).not.toBe(signal);
+        expect(executions[0]!.signal?.aborted).toBe(false);
       }
       // structured-tool-history: public inputs and settled expectations are owned by this model.
       {

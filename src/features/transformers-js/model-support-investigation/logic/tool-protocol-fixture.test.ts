@@ -4,6 +4,7 @@ import { toToolCallId } from '@/01-models/ids';
 import type { ChatMessage, ToolCall } from '@/01-models/types';
 import { createTransformersJsProvider, type TransformersJsProviderService } from '@/features/transformers-js/provider-hosted';
 import { createModelSupportWeatherTool, MODEL_SUPPORT_TOOL_DEFINITIONS } from './tool-protocol-fixture';
+import { runProviderTestInferenceOperation } from '@/features/transformers-js/provider-inference-test-scope';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => {
@@ -36,6 +37,9 @@ function providerFixture({ call }: { call: ToolCall }) {
     throw new Error('The controlled service is already ready');
   });
   const service: TransformersJsProviderService = {
+    runInferenceOperation(args) {
+      return runProviderTestInferenceOperation({ ...args, service });
+    },
     getState: () => ({ status: 'ready', activeModelId: 'fixture/weather' }),
     loadDownloadedModel: load,
     generateText: generate,

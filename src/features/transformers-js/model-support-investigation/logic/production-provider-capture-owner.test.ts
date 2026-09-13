@@ -317,27 +317,28 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(client.generateText).toHaveBeenCalledOnce();
   });
 
-  it('keeps an empty settled assistant and assigns late first chunks to the first request during continuity', async () => {
+  it('keeps an empty settled assistant and rejects expired client callbacks during continuity', async () => {
     const client = clientFixture();
     const { owner } = createOwner({ client, runId: 'late', plan: 'first-continuity-independent', traceLimits: limits });
     let firstCallback: Parameters<TransformersJsWorkerClient['generateText']>[0]['onChunk'] | undefined;
+    let duringContinuity: unknown;
     client.generateText.mockImplementationOnce(async ({ onChunk }) => {
       firstCallback = onChunk; // no callback before the first Promise settles
     });
     client.generateText.mockImplementationOnce(async ({ messages, onChunk }) => {
-      expect(messages[1]?.content).toBe('');
-      expect(owner.snapshot().requests[0]?.trace.settled?.events).toEqual([
-        { kind: 'assistant-start', phase: 'before-settlement', sequence: 0 },
-      ]);
+      duringContinuity = { assistant: messages[1]?.content, firstEvents: owner.snapshot().requests[0]?.trace.settled?.events };
       firstCallback?.({ chunk: 'late first text' });
       onChunk({ chunk: 'second text' });
     });
     const result = await owner.run();
+    expect(duringContinuity).toEqual({ assistant: '', firstEvents: [
+      { kind: 'assistant-start', phase: 'before-settlement', sequence: 0 },
+    ] });
     expect(result.run).toEqual({ status: 'completed' });
     expect(result.requests[1]?.input?.messages[1]).toEqual({ role: 'assistant', content: '' });
-    expect(result.requests[0]?.trace.lateEvents).toEqual([
-      { kind: 'chunk', chunk: 'late first text', phase: 'after-settlement', sequence: 2 },
-    ]);
+    // The fixture can retain a callback beyond its RPC, but the real service
+    // must revoke that capability. It is not a late Provider event to export.
+    expect(result.requests[0]?.trace.lateEvents).toEqual([]);
     expect(result.requests[1]?.trace.events.filter(event => event.kind === 'chunk').map(event => event.chunk)).toEqual(['second text']);
     expect(result.requests[2]?.input?.messages).toEqual([{ role: 'user', content: 'A separate synthetic capture conversation.' }]);
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
@@ -377,10 +378,11 @@ describe('isolated fixed Production Provider capture owner', () => {
     const callback = client.generateText.mock.calls[0]![0].onChunk;
     callback({ chunk: 'after completion' });
     expect(complete.requests[0]?.trace.lateEvents).toEqual([]);
-    expect(owner.snapshot().requests[0]?.trace.lateEvents).toHaveLength(1);
+    expect(owner.snapshot().requests[0]?.trace).toEqual(complete.requests[0]?.trace);
+    expect(complete.requests[0]?.trace.events).toContainEqual({ kind: 'chunk', chunk: 'partial', phase: 'before-settlement', sequence: 1 });
     await owner.dispose();
     expect(owner.snapshot().observation).toBe('end-requested-by-dispose');
-    expect(owner.snapshot().requests[0]?.trace.lateEvents).toHaveLength(1);
+    expect(owner.snapshot().requests[0]?.trace).toEqual(complete.requests[0]?.trace);
   });
 
   it('separates a rejected Provider outcome from a stopped script and preserves partial callbacks', async () => {
@@ -431,7 +433,7 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(client.interrupt).not.toHaveBeenCalled();
   });
 
-  it('keeps actual fulfilled settlement when abort races with a cooperative generation completion', async () => {
+  it('records actual Provider cancellation even when the interrupted client generation fulfills', async () => {
     const client = clientFixture();
     const entered = deferred<void>();
     const generation = deferred<void>();
@@ -446,7 +448,10 @@ describe('isolated fixed Production Provider capture owner', () => {
     const result = await running;
     expect(result.abortReason).toBe('deadline');
     expect(result.run).toEqual({ status: 'stopped', reason: 'aborted' });
-    expect(result.requests[0]?.trace.settled?.outcome).toEqual({ status: 'fulfilled' });
+    // The owning lane rejects cancellation after draining the fulfilled client.
+    // The trace deliberately reads only own data error names; DOMException's
+    // inherited name remains unknown without evaluating an arbitrary getter.
+    expect(result.requests[0]?.trace.settled?.outcome).toEqual({ status: 'rejected', errorName: 'unknown' });
     expect(result.requests.slice(1).every(request => request.status === 'not-started')).toBe(true);
     expect(client.interrupt).toHaveBeenCalledOnce();
     expect(client.generateText).toHaveBeenCalledOnce();
