@@ -5,6 +5,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toToolCallId } from '@/01-models/ids';
 import ModelSupportInvestigationModal from './ModelSupportInvestigationModal.vue';
+import ModelSupportInvestigationSession from './ModelSupportInvestigationSession.vue';
 import { configurationForPreset } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import { createInvestigationSessionView, TEST_ONLY as sessionTestOnly } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
 import * as providerRetention from '@/features/transformers-js/model-support-investigation/logic/investigation-provider-retention';
@@ -28,6 +29,7 @@ function retainedTiming(): DownloadTimingSnapshot {
 const fixtureToolCallId = toToolCallId({ raw: 'call_fixture' });
 
 const workerMocks = vi.hoisted(() => ({
+  createClient: vi.fn(),
   runPartialInvestigation: vi.fn(),
   interrupt: vi.fn(),
   dispose: vi.fn(),
@@ -35,6 +37,7 @@ const workerMocks = vi.hoisted(() => ({
 }));
 
 const evidenceMocks = vi.hoisted(() => ({
+  createClient: vi.fn(),
   createRetainedDownloadTimingEvidence: vi.fn(),
   createPartialEvidence: vi.fn(),
   createBatchEvidence: vi.fn(),
@@ -46,11 +49,17 @@ const confirmMocks = vi.hoisted(() => ({ showConfirm: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => confirmMocks }));
 
 vi.mock('@/features/transformers-js/model-support-investigation/worker/client-hosted', () => ({
-  createModelSupportInvestigationWorkerClient: () => ({ ...workerMocks }),
+  createModelSupportInvestigationWorkerClient: () => {
+    workerMocks.createClient();
+    return { ...workerMocks };
+  },
 }));
 
 vi.mock('@/features/transformers-js/model-support-investigation/evidence-worker/client-hosted', () => ({
-  createModelSupportInvestigationEvidenceWorkerClient: () => ({ ...evidenceMocks }),
+  createModelSupportInvestigationEvidenceWorkerClient: () => {
+    evidenceMocks.createClient();
+    return { ...evidenceMocks };
+  },
 }));
 
 const completedRun: ModelSupportInvestigationRun = {
@@ -543,6 +552,30 @@ describe('ModelSupportInvestigationModal', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([false, true])('shows supplied runtime control inputs only when observed: %s', async recorded => {
+    const result = structuredClone(completedRun);
+    if (recorded && result.runtimeAssets !== undefined) {
+      result.runtimeAssets.controlRuntimeBindings = { wasm: {
+        format: 'runtime-control-binding-v1', executionProvider: 'wasm', constructorModule: 'onnxruntime-web/webgpu', environmentMatchesConfigured: true,
+        mjs: { matchesSelected: true, byteConnection: 'configured-url-not-verified-import-bytes' },
+        wasm: { matchesSelected: true, supplySource: 'preflight-verified-buffer', suppliedByteLength: 8, suppliedSha256: 'a'.repeat(64), suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' },
+      } };
+    }
+    workerMocks.runPartialInvestigation.mockResolvedValueOnce(result);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const details = wrapper.find('[data-testid="model-support-runtime-control-inputs"]');
+    expect(details.exists()).toBe(recorded);
+    if (recorded) {
+      expect(details.text()).toContain('onnxruntime-web/webgpu');
+      expect(details.text()).toContain('supplied=8 bytes');
+      expect(details.text()).toContain('compilerConsumption=not-observed');
+      expect(details.text()).toContain('configured-url-not-verified-import-bytes');
+    }
+    wrapper.unmount();
+  });
+
   it('keeps retained-only export disabled with an honest missing-session explanation', async () => {
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
     await flushPromises();
@@ -570,6 +603,40 @@ describe('ModelSupportInvestigationModal', () => {
     expect(wrapper.find('[data-testid="model-support-retained-timing-truncated"]').exists()).toBe(true);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     wrapper.unmount();
+  });
+
+  it.each([false, true])('blocks Setup admissions after retained export cleanup fails, including late readiness=%s', async lateReadiness => {
+    const ready = Promise.withResolvers<{ status: 'complete' }>();
+    const originalView = createInvestigationSessionView({ initialSnapshot: undefined });
+    const sessionView = lateReadiness ? { ...originalView, ready: ready.promise } : originalView;
+    evidenceMocks.dispose.mockRejectedValue(new Error('Retained export Worker termination unavailable'));
+    const wrapper = mount(ModelSupportInvestigationSession, { props: { modelId: 'org/model', sessionView, ordinaryDownloadTiming: retainedTiming() } });
+    try {
+      await flushPromises();
+      const exportButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-export-retained-timing"]');
+      const startButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-investigation-start"]');
+      await exportButton.trigger('click');
+      await flushPromises();
+      ready.resolve({ status: 'complete' });
+      await flushPromises();
+      // Explicit dispatch bypasses the disabled button's click() behavior and
+      // proves the handlers also reject new Worker admission in this view.
+      exportButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      startButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      expect(workerMocks.createClient).not.toHaveBeenCalled();
+      expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+      expect(evidenceMocks.createClient).toHaveBeenCalledTimes(1);
+      expect(evidenceMocks.createRetainedDownloadTimingEvidence).toHaveBeenCalledTimes(1);
+      expect(startButton.attributes('disabled')).toBeDefined();
+      expect(exportButton.attributes('disabled')).toBeDefined();
+      expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Retained export Worker termination unavailable');
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+    } finally {
+      wrapper.unmount();
+      await flushPromises();
+    }
   });
 
   it('does not publish a late retained-only export after its modal owner retires', async () => {
@@ -2410,7 +2477,51 @@ org/second
     expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(wrapper.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Passed');
+    const exportButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-investigation-download"]');
+    exportButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
+    // Recovery may create another bounded Evidence Worker, never another
+    // investigation/Load owner after the failed cleanup.
+    expect(evidenceMocks.createClient).toHaveBeenCalledTimes(2);
+    expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
+    expect(exportButton.attributes('disabled')).toBeUndefined();
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
     wrapper.unmount();
+  });
+
+  it('blocks the next target after concurrent Evidence cleanup fails without discarding the current result', async () => {
+    const completed = { ...completedRun, modelId: 'org/first', runId: 'first-run' };
+    const pending = Promise.withResolvers<ModelSupportInvestigationRun>();
+    workerMocks.runPartialInvestigation.mockImplementation(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const initial = createInitialInvestigationCheckpoint({ modelId: completed.modelId, runId: completed.runId, now: () => completed.startedAt });
+      onCheckpoint({ checkpoint: { ...initial, run: completed } });
+      return pending.promise;
+    });
+    evidenceMocks.dispose.mockRejectedValueOnce(new Error('Concurrent export cleanup failed'));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    try {
+      await wrapper.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await flushPromises();
+      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+      await flushPromises();
+      expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+      pending.resolve(completed);
+      await flushPromises();
+      expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
+      expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
+      expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Concurrent export cleanup failed');
+      const exportButton = wrapper.get('[data-testid="model-support-investigation-download"]');
+      expect(exportButton.attributes('disabled')).toBeUndefined();
+      await exportButton.trigger('click');
+      await flushPromises();
+      expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
+      expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
+    } finally {
+      wrapper.unmount();
+      await flushPromises();
+    }
   });
 
   it('records evidence export verification failure without downloading an archive', async () => {

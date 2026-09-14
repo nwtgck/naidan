@@ -16,6 +16,7 @@ import type { ProductionProviderCaptureSnapshot } from './logic/production-provi
 import type { ProductionProviderNativeEvidenceSidecar } from './logic/production-provider-native-evidence';
 import type { ProductionProviderInvestigationResult } from './logic/run-production-provider-investigation';
 import type { ProductionProviderInvestigationLiveProgress } from './logic/production-provider-investigation-summary';
+import type { RuntimeControlBinding } from './logic/runtime-control-binding';
 
 export type ModelSupportInvestigationJsonValue =
   | string
@@ -158,6 +159,7 @@ export interface ModelSupportInvestigationRuntimeAssets {
   applicationOrigin: string,
   environment: ModelSupportInvestigationRuntimeEnvironment,
   threading?: ModelSupportInvestigationWasmThreadingObservation,
+  controlRuntimeBindings?: { wasm?: RuntimeControlBinding, webgpu?: RuntimeControlBinding },
   control: ModelSupportInvestigationRuntimeControl,
   webGpuControl: ModelSupportInvestigationWebGpuRuntimeControl,
 }
@@ -203,6 +205,7 @@ export interface ModelSupportInvestigationRuntimeAssetsPartial {
   physicalWasmOrigin: string | undefined,
   environment: ModelSupportInvestigationRuntimeEnvironment | undefined,
   threading?: ModelSupportInvestigationWasmThreadingObservation,
+  controlRuntimeBindings?: { wasm?: RuntimeControlBinding, webgpu?: RuntimeControlBinding },
   wasmByteLength: number | undefined,
   control: ModelSupportInvestigationRuntimeControl | undefined,
   webGpuControl: ModelSupportInvestigationWebGpuRuntimeControl | undefined,

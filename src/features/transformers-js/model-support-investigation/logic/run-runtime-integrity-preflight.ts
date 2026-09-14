@@ -19,6 +19,7 @@ import {
   RUNTIME_CONTROL_FIXTURE_SHA256,
 } from "@/features/transformers-js/model-support-investigation/fixtures/runtime-control-model";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
+import { runtimeControlBindingSchema, type RuntimeControlInput, type VerifiedRuntimeControlBytes } from './runtime-control-binding';
 
 const NOT_RUN_STEPS: ModelSupportInvestigationStep[] = [
   { id: "repository-information", status: "not-run", detail: undefined },
@@ -178,8 +179,8 @@ export async function runRuntimeIntegrityPreflight({
   applicationOrigin: string,
   runtimeFetch: typeof fetch,
   importRuntimeModule: ({ url }: { url: string }) => Promise<void>,
-  runWasmControl: () => Promise<ModelSupportInvestigationRuntimeControl>,
-  runWebGpuControl: () => Promise<ModelSupportInvestigationWebGpuRuntimeControl>,
+  runWasmControl: ({ verifiedWasm, observeBinding }: RuntimeControlInput) => Promise<ModelSupportInvestigationRuntimeControl>,
+  runWebGpuControl: ({ verifiedWasm, observeBinding }: RuntimeControlInput) => Promise<ModelSupportInvestigationWebGpuRuntimeControl>,
   inspectEnvironment: () => Promise<ModelSupportInvestigationRuntimeEnvironment>,
   inspectWasmConfiguration?: () => { numThreads: number | undefined, proxy: boolean | undefined },
   onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
@@ -411,6 +412,7 @@ export async function runRuntimeIntegrityPreflight({
   }
 
   let wasmBytes: Uint8Array | undefined;
+  let verifiedWasm: VerifiedRuntimeControlBytes | undefined;
   emit({ status: "running", detail: "Fetching the same-origin ONNX Runtime WASM" });
   publishPartial({ stage: "wasm-fetch", detail: "Fetching the same-origin ONNX Runtime WASM" });
   try {
@@ -461,6 +463,11 @@ export async function runRuntimeIntegrityPreflight({
   } else {
     publishPartial({ stage: "wasm-validation", detail: "Validating the runtime WASM header" });
     if (hasWasmMagic({ bytes: wasmBytes })) {
+      // A valid header alone is insufficient. Supply only the buffer whose
+      // complete fingerprint and transport checks succeeded above.
+      if (partial.stageObservations.some(item => item.stage === 'wasm-fetch' && item.status === 'passed')) {
+        verifiedWasm = { bytes: wasmBytes, sha256: partial.assetIdentity!.wasm.observedSha256! };
+      }
       finishStage({ observation: { stage: "wasm-validation", status: "passed", detail: "Runtime WASM has a valid WebAssembly header" }, error: undefined });
     } else {
       const message = "ONNX Runtime WASM response does not contain a valid WebAssembly header";
@@ -470,8 +477,14 @@ export async function runRuntimeIntegrityPreflight({
 
   emit({ status: "running", detail: "Creating and running a fixed ONNX Runtime WASM control session" });
   publishPartial({ stage: "wasm-control", detail: "Creating and running a fixed ONNX Runtime WASM control session" });
+  const observeBinding: RuntimeControlInput['observeBinding'] = ({ observation }) => {
+    const parsed = runtimeControlBindingSchema.safeParse(observation);
+    if (!parsed.success) return;
+    partial.controlRuntimeBindings ??= {};
+    partial.controlRuntimeBindings[parsed.data.executionProvider] = parsed.data;
+  };
   try {
-    const observedControl = await runWasmControl();
+    const observedControl = await runWasmControl({ verifiedWasm, observeBinding });
     switch (observedControl.status) {
     case "failed":
       partial.control = observedControl;
@@ -528,7 +541,7 @@ export async function runRuntimeIntegrityPreflight({
   emit({ status: "running", detail: "Creating and running a fixed ONNX Runtime WebGPU control session when available" });
   publishPartial({ stage: "webgpu-control", detail: "Creating and running a fixed ONNX Runtime WebGPU control session when available" });
   try {
-    const webGpuControl = await runWebGpuControl();
+    const webGpuControl = await runWebGpuControl({ verifiedWasm, observeBinding });
     partial.webGpuControl = webGpuControl;
     const webGpuStatus = webGpuControl.status;
     switch (webGpuStatus) {
@@ -589,6 +602,7 @@ export async function runRuntimeIntegrityPreflight({
       applicationOrigin: partial.applicationOrigin,
       environment: partial.environment!,
       threading: partial.threading,
+      ...(partial.controlRuntimeBindings === undefined ? {} : { controlRuntimeBindings: partial.controlRuntimeBindings }),
       control: partial.control!,
       webGpuControl: partial.webGpuControl!,
     }

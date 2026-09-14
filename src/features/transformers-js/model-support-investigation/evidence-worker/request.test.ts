@@ -36,4 +36,27 @@ describe("Model Support Investigation Evidence Worker request", () => {
       "Invalid Model Support Investigation Evidence Worker request",
     );
   });
+
+  it('rejects unvalidated runtime control receipts at both sides of the Evidence boundary', async () => {
+    const run = {
+      runId: 'run-1', modelId: 'fixture/model',
+      runtimeAssets: { controlRuntimeBindings: { wasm: { arbitraryError: 'Do not retain unknown diagnostic payloads' } } },
+    } as unknown as ModelSupportInvestigationRun;
+    expect(() => createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined })).toThrow();
+    const request = new Blob([JSON.stringify({ schemaVersion: 2, run })], { type: 'application/json' });
+    await expect(readModelSupportInvestigationEvidenceWorkerRequest({ request })).rejects.toThrow();
+  });
+
+  it.each(['mjs', 'wasm'] as const)('rejects an injected configured URL in the %s receipt', async field => {
+    const binding = {
+      format: 'runtime-control-binding-v1', executionProvider: 'wasm', constructorModule: 'onnxruntime-web/webgpu', environmentMatchesConfigured: true,
+      mjs: { matchesSelected: true, byteConnection: 'configured-url-not-verified-import-bytes' },
+      wasm: { matchesSelected: true, supplySource: 'preflight-verified-buffer', suppliedByteLength: 8, suppliedSha256: 'a'.repeat(64), suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' },
+    };
+    Reflect.set(binding[field], 'configuredUrl', 'https://private.invalid/path?token=secret');
+    const run = { runId: 'run-1', modelId: 'fixture/model', runtimeAssets: { controlRuntimeBindings: { wasm: binding } } } as unknown as ModelSupportInvestigationRun;
+    expect(() => createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined })).toThrow();
+    const request = new Blob([JSON.stringify({ schemaVersion: 2, run })], { type: 'application/json' });
+    await expect(readModelSupportInvestigationEvidenceWorkerRequest({ request })).rejects.toThrow();
+  });
 });

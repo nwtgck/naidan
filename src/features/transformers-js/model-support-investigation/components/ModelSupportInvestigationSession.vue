@@ -99,14 +99,20 @@ const ordinaryDownloadTiming = parseDownloadTiming({ schema: downloadTimingSnaps
 const retainedTimingAvailable = (ordinaryDownloadTiming?.records.length ?? 0) > 0;
 const retainedTimingTruncated = ordinaryDownloadTiming !== undefined && (ordinaryDownloadTiming.droppedOperations > 0 || ordinaryDownloadTiming.records.some(record => record.truncated));
 const retainedTimingExportError = ref<string | undefined>(undefined);
-const sessionReady = ref(sessionView.initialReadiness === 'ready');
+const inheritedSessionReady = ref(sessionView.initialReadiness === 'ready');
+const resourceFailure = shallowRef<{ status: 'failed'; cause: unknown } | undefined>(undefined);
 const teardownError = ref<string | undefined>(undefined);
+// A late inherited readiness receipt cannot clear this view's own failed
+// cleanup or authorize another model execution. Results export deliberately
+// remains a read-only evidence recovery path; it never starts a model Load.
+const modelExecutionAvailable = computed(() => resourceFailure.value === undefined && teardownError.value === undefined);
+const sessionReady = computed(() => inheritedSessionReady.value && modelExecutionAvailable.value);
 void sessionView.ready.then(result => {
   if (!sessionView.isActive()) return;
   switch (result.status) {
   case 'complete':
-    sessionReady.value = true;
-    if (providerRetention.value !== undefined && !running.value) providerRetention.value = { ...providerRetention.value, reserved: emptyInvestigationProviderRetentionUsage() };
+    inheritedSessionReady.value = true;
+    if (sessionReady.value && providerRetention.value !== undefined && !running.value) providerRetention.value = { ...providerRetention.value, reserved: emptyInvestigationProviderRetentionUsage() };
     return;
   case 'failed': teardownError.value = result.error; return;
   default: {
@@ -631,6 +637,20 @@ const supportBoundarySummary = computed(() => lazyStrings.ModelSupportInvestigat
   boundaries: [...new Set(supportBoundaryAssessments.value.map(item => item.boundary))].join(", "),
 }));
 const runtimeAssetsView = computed(() => run.value?.runtimeAssets ?? run.value?.runtimeAssetsPartial);
+const runtimeControlInputs = computed(() => {
+  const bindings = runtimeAssetsView.value?.controlRuntimeBindings;
+  // These are bounded technical observations, not a claim that a compiler
+  // consumed the supplied bytes. Missing older evidence stays missing.
+  return [bindings?.wasm, bindings?.webgpu].filter(binding => binding !== undefined).map(binding => {
+    const { format: _format, executionProvider, constructorModule, environmentMatchesConfigured, mjs, wasm, ...unhandled } = binding;
+    unhandled satisfies Record<PropertyKey, never>;
+    const { matchesSelected: mjsMatches, byteConnection, ...unhandledMjs } = mjs;
+    unhandledMjs satisfies Record<PropertyKey, never>;
+    const { matchesSelected: wasmMatches, supplySource, suppliedByteLength, suppliedSha256, suppliedMagicHex, compilerConsumption, ...unhandledWasm } = wasm;
+    unhandledWasm satisfies Record<PropertyKey, never>;
+    return `${executionProvider}: ${constructorModule}; environmentMatchesConfigured=${environmentMatchesConfigured}\nMJS: matchesSelected=${mjsMatches}; ${byteConnection}\nWASM: matchesSelected=${wasmMatches}; ${supplySource}; supplied=${suppliedByteLength} bytes\nSHA-256: ${suppliedSha256}; header=${suppliedMagicHex}; compilerConsumption=${compilerConsumption}`;
+  });
+});
 const runtimeEnvironmentSummary = computed(() => {
   const environment = runtimeAssetsView.value?.environment;
   if (environment === undefined) return undefined;
@@ -887,8 +907,12 @@ const nativeEvidenceByTarget = new Map<string, ProductionProviderNativeEvidenceS
 const nativeAdmissions = new WeakMap<ProductionProviderNativeEvidenceSidecar, {
   runId: string; modelId: string; result: Promise<ProductionProviderNativeEvidenceSidecar>;
 }>();
-let resourceFailure: { status: 'failed'; cause: unknown } | undefined;
 const waitingForResources = ref<'cleanup' | 'seal-release' | undefined>(undefined);
+
+function recordResourceFailure({ cause }: { cause: unknown }): void {
+  resourceFailure.value ??= { status: 'failed', cause };
+  teardownError.value ??= cause instanceof Error ? cause.message : 'Investigation resource release remains unconfirmed';
+}
 
 function disposeOwnedClient({ client }: { client: SessionWorkerClient }): Promise<void> {
   const existing = clientDisposals.get(client);
@@ -899,7 +923,7 @@ function disposeOwnedClient({ client }: { client: SessionWorkerClient }): Promis
     } catch (error) {
       // Disposal failure is not evidence that the Worker/native owner stopped.
       // Preserve already adopted records, but never authorize another Load.
-      resourceFailure ??= { status: 'failed', cause: error };
+      recordResourceFailure({ cause: error });
       throw error;
     } finally {
       ownedClients.delete(client);
@@ -914,7 +938,7 @@ async function disposeSessionWorkers(): Promise<void> {
   // Start all physical disposals before waiting for a pending sealing owner.
   const disposals = [...ownedClients].map(client => disposeOwnedClient({ client }));
   await Promise.allSettled([...disposals, ...ownedEvidenceReleases]);
-  if (resourceFailure !== undefined) throw resourceFailure.cause;
+  if (resourceFailure.value !== undefined) throw resourceFailure.value.cause;
 }
 
 function retireCurrentView(): void {
@@ -1027,6 +1051,7 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
   replayMetadataBudgetBytes: number,
 }): Promise<ModelSupportInvestigationRun> {
   if (!sessionView.isActive()) throw new Error('Investigation view is retired');
+  if (!modelExecutionAvailable.value) throw new Error('Investigation resource release remains unconfirmed');
   const client = createModelSupportInvestigationWorkerClient();
   ownedClients.add(client);
   let acceptingCallbacks = true;
@@ -1074,7 +1099,7 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
   ownedEvidenceReleases.add(evidenceRelease);
   void evidenceRelease.then(() => ownedEvidenceReleases.delete(evidenceRelease), error => {
     ownedEvidenceReleases.delete(evidenceRelease);
-    resourceFailure ??= { status: 'failed', cause: error };
+    recordResourceFailure({ cause: error });
   });
   function observeEvidenceRelease(): void {
     if (!ownsProviderSealing) return;
@@ -1197,10 +1222,9 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
       // owned verification still holds the reservation until it actually settles.
       await Promise.all([...pendingAdmissions]);
     } catch (error) {
-      resourceFailure ??= { status: 'failed', cause: error };
+      recordResourceFailure({ cause: error });
       interruptionRequested = true;
       skipRequestedTarget = undefined;
-      teardownError.value = error instanceof Error ? error.message : 'Investigation resource release remains unconfirmed';
       // Preserve the result already obtained above. This separate failure stops
       // the next model and every new view, without rewriting that observation.
     } finally {
@@ -1432,7 +1456,7 @@ async function startInvestigation(): Promise<void> {
         try {
           return await runSingleTarget({ target, configuration, timeoutMs, replayMetadataBudgetBytes });
         } finally {
-          if (resourceFailure === undefined) {
+          if (resourceFailure.value === undefined) {
             const observedRun = runByTarget.get(target);
             const nativeEvidence = nativeEvidenceByTarget.get(target);
             reservation.release({ retained: measureInvestigationProviderRetention({
@@ -1450,7 +1474,7 @@ async function startInvestigation(): Promise<void> {
       onUpdate: ({ executions: nextExecutions }) => {
         if (sessionView.isActive()) targetExecutions.value = [...nextExecutions];
       },
-      shouldInterrupt: () => interruptionRequested || !sessionView.isActive(),
+      shouldInterrupt: () => interruptionRequested || !modelExecutionAvailable.value || !sessionView.isActive(),
       takeSkipRequest: ({ target }) => {
         if (skipRequestedTarget !== target) return false;
         skipRequestedTarget = undefined;
@@ -2226,6 +2250,10 @@ defineExpose({
                 </dd>
               </div>
             </dl>
+            <details v-if="runtimeControlInputs.length > 0" data-testid="model-support-runtime-control-inputs" tw-class="border-t border-gray-100 dark:border-gray-800 p-3 text-[10px]">
+              <summary tw-class="cursor-pointer font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSupportInvestigationModal__runtime_control_inputs() }}</summary>
+              <pre v-for="(observation, index) in runtimeControlInputs" :key="index" tw-class="mt-2 whitespace-pre-wrap break-all text-gray-700 dark:text-gray-200">{{ observation }}</pre>
+            </details>
           </div>
 
           <div v-if="run?.repository" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-1">
@@ -2359,7 +2387,7 @@ defineExpose({
         <button
           v-if="!started"
           type="button"
-          :disabled="!sessionReady || targetParseResult.targets.length === 0 || targetParseResult.errors.length > 0 || !hasRequestedScope"
+          :disabled="!sessionReady || evidenceExporting || targetParseResult.targets.length === 0 || targetParseResult.errors.length > 0 || !hasRequestedScope"
           tw-class="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           data-testid="model-support-investigation-start"
           @click="startInvestigation"

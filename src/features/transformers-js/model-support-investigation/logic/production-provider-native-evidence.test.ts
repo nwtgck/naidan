@@ -7,7 +7,7 @@ import type { ProductionProviderCaptureSnapshot } from './production-provider-ca
 import { createProductionProviderNativeEvidence, verifyProductionProviderNativeEvidence, measureProductionProviderNativeEvidenceSidecar, verifyProductionProviderNativeEvidenceSidecar, readProductionProviderLoadObservations, PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, TEST_ONLY } from './production-provider-native-evidence';
 import type { ProductionLoadObservation } from '@/features/transformers-js/worker/load-receipt';
 import { providerLoadRuntimeCompletion } from './provider-load-runtime-completion';
-import { createLoadDiagnosticLedger } from '@/features/transformers-js/worker/load-diagnostics';
+import { createLoadDiagnosticLedger, createLoadDiagnosticOperation } from '@/features/transformers-js/worker/load-diagnostics';
 import { createProductionProviderCapturePolicy } from './production-provider-capture-policy';
 import type { ProductionProviderInvestigationResult } from './run-production-provider-investigation';
 
@@ -92,6 +92,27 @@ afterEach(() => {
 });
 
 describe('native capture post-run export', () => {
+  it('round-trips the optional fixed session failure category without manufacturing categories for old events', async () => {
+    const native = collectionFixture({ capture: nativeFixture() });
+    const lifetime = native.epochs[0]!.lifetime;
+    if (lifetime.status !== 'observed') throw new Error('Expected the test lifetime');
+    const owner = { runId: context.runId, workerEpoch: context.workerEpoch };
+    const ledger = createLoadDiagnosticLedger({ owner });
+    const operation = createLoadDiagnosticOperation({ owner, loadOrdinal: 1, resourceNames: 'omit', sink: ({ packet }) => ledger.observe({ packet }) });
+    const observe = operation.beginCandidate({ device: 'webgpu', dtype: 'q4', revision: undefined });
+    observe({ token: {}, kind: 'session', phase: 'session-rejected', bytes: 0, errorName: 'TypeError', errorCategory: 'missing-webgpu-entrypoint' });
+    operation.emit({ kind: 'load-failed', details: { errorName: 'Error' } });
+    lifetime.value.loadDiagnostics = ledger.snapshot({ expectedLoadCount: 1 });
+    const provider = providerFixture();
+    const evidence = await createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native, provider });
+    expect(evidence.json).toMatch(/"errorCategory":\s*"missing-webgpu-entrypoint"/u);
+    expect(evidence.json.match(/"errorCategory"/gu)).toHaveLength(1);
+    await expect(verifyProductionProviderNativeEvidenceSidecar({ evidence, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES })).resolves.toEqual(evidence);
+    // Verification returns the original JSON: invalid stored labels must be
+    // rejected, not merely dropped from a temporary decoded projection.
+    const malformed = { ...evidence, json: evidence.json.replace('missing-webgpu-entrypoint', 'arbitrary private text') };
+    await expect(verifyProductionProviderNativeEvidenceSidecar({ evidence: malformed, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES })).rejects.toThrow();
+  });
   it.each(['runId', 'workerEpoch'] as const)('rejects a diagnostic owner with a foreign %s', async field => {
     const native = collectionFixture({ capture: nativeFixture() });
     const lifetime = native.epochs[0]!.lifetime;

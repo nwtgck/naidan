@@ -1,8 +1,86 @@
-import { expect, it } from 'vitest';
+// @vitest-environment node
+import { readFileSync } from 'node:fs';
+import { expect, it, vi } from 'vitest';
+import { applyTransformersJsFixes } from '../../../../build/transformers-js-fixes/transform';
 import { createLoadDiagnosticLedger, createLoadDiagnosticOperation, loadDiagnosticsSchema, type LoadDiagnosticPacket } from './load-diagnostics';
+
+// The application-side test owns the transformed producer → Worker ledger
+// connection. Build-only tests must not import application runtime contracts.
+const original = readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8');
+const transformed = applyTransformersJsFixes({ code: original, version: '4.2.0' }).code;
+function session({ observer, failure }: { observer: unknown; failure: unknown }): () => Promise<unknown> {
+  const observerStart = transformed.indexOf('function naidanCreateModelLoadObserver(');
+  const observerEnd = transformed.indexOf('\nasync function readResponse(', observerStart);
+  const sessionStart = transformed.indexOf('async function createInferenceSession(');
+  const sessionEnd = transformed.indexOf('\nvar webInferenceChain', sessionStart);
+  if (observerStart < 0 || observerEnd <= observerStart || sessionStart < 0 || sessionEnd <= sessionStart) throw new Error('Missing pinned diagnostic/session boundaries');
+  // Actual transformed observer and session functions; only native ORT is tiny.
+  return new Function('env', 'failure', `
+    const apis = { IS_WEB_ENV: true }; let webInitChain = Promise.resolve();
+    const LogLevel = { WARNING: 1 }; const getOnnxLogSeverityLevel = () => 1;
+    const ensureWasmLoaded = async () => {}; const InferenceSession = { create: async () => { throw failure; } };
+    ${transformed.slice(observerStart, observerEnd)}
+    ${transformed.slice(sessionStart, sessionEnd)}
+    return () => createInferenceSession(new Uint8Array([1]), {}, {});
+  `)({ naidanModelLoadObserver: observer }, failure) as () => Promise<unknown>;
+}
+
+it.each([
+  ['missing-webgpu-entrypoint', new TypeError('Sl().webgpuInit is not a function')],
+  ['invalid-wasm-magic', new WebAssembly.CompileError("module doesn't start with '\\0asm'")],
+  ['prior-initialization-failure', new Error("previous call to 'initWasm()' failed")],
+  ['unclassified', new Error('Synthetic unrecognized failure /private/example?token=synthetic')],
+  ['unclassified', new Error('webgpuInit is not a function' + 'x'.repeat(4096))],
+] as const)('retains only the %s category through the actual observer and host ledger', async (category, failure) => {
+  const owner = { runId: 'synthetic-classification', workerEpoch: 1 };
+  const ledger = createLoadDiagnosticLedger({ owner });
+  const operation = createLoadDiagnosticOperation({ owner, loadOrdinal: 1, resourceNames: 'omit', sink: ({ packet }) => ledger.observe({ packet }) });
+  const observe = operation.beginCandidate({ device: 'webgpu', dtype: 'q4', revision: undefined });
+  await expect(session({ observer: observe, failure })()).rejects.toBe(failure);
+  const snapshot = ledger.snapshot({ expectedLoadCount: 1 });
+  expect(snapshot.events.map(event => event.kind)).toEqual(['candidate-start', 'session-preparing', 'session-entering', 'session-rejected']);
+  expect(snapshot.events.at(-1)).toMatchObject({ candidateOrdinal: 1, errorCategory: category });
+  expect(JSON.stringify(snapshot)).not.toContain(failure.message);
+  expect(JSON.stringify(snapshot)).not.toContain('stack');
+});
+
+it('does not invoke message accessors or allow classification and observer failures to replace the native exception', async () => {
+  const getter = vi.fn(() => {
+    throw new Error('Diagnostic getter');
+  });
+  const failure = Object.defineProperty(new Error(), 'message', { get: getter });
+  const events: unknown[] = [];
+  await expect(session({ observer: (event: unknown) => events.push(event), failure })()).rejects.toBe(failure);
+  expect(getter).not.toHaveBeenCalled();
+  expect(events.at(-1)).toMatchObject({ phase: 'session-rejected', errorCategory: 'unclassified' });
+  const inaccessible = new Proxy({}, { getOwnPropertyDescriptor() {
+    throw new Error('Diagnostic proxy');
+  } });
+  await expect(session({ observer: (event: unknown) => events.push(event), failure: inaccessible })()).rejects.toBe(inaccessible);
+  expect(events.at(-1)).toMatchObject({ errorCategory: 'unclassified' });
+  await expect(session({ observer: (event: unknown) => events.push(event), failure: "previous call to 'initWasm()' failed" })()).rejects.toBe("previous call to 'initWasm()' failed");
+  expect(events.at(-1)).toMatchObject({ errorCategory: 'prior-initialization-failure' });
+  for (const observer of [undefined, () => {
+    throw new Error('Observer');
+  }, () => Promise.reject(new Error('Observer')), () => new Promise(() => {})]) {
+    await expect(session({ observer, failure })()).rejects.toBe(failure);
+  }
+  await new Promise<void>(resolve => setImmediate(resolve));
+});
 
 const owner = { runId: 'synthetic-load-diagnostics', workerEpoch: 1 };
 const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
+it('keeps legacy category absence unobserved and drops an invalid optional classification without losing the event', () => {
+  const { ledger, operation } = setup();
+  const observe = operation.beginCandidate({ device: 'wasm', dtype: 'q4', revision });
+  observe({ token: {}, kind: 'session', phase: 'session-rejected', bytes: 0, errorName: 'Error' });
+  observe({ token: {}, kind: 'session', phase: 'session-rejected', bytes: 0, errorName: 'Error', errorCategory: 'arbitrary private message' });
+  const snapshot = ledger.snapshot({ expectedLoadCount: 1 });
+  expect(snapshot.events.filter(event => event.kind === 'session-rejected')).toHaveLength(2);
+  for (const event of snapshot.events) expect(event).not.toHaveProperty('errorCategory');
+  expect(loadDiagnosticsSchema.safeParse(snapshot).success).toBe(true);
+  expect(JSON.stringify(snapshot)).not.toContain('private message');
+});
 function setup() {
   const ledger = createLoadDiagnosticLedger({ owner });
   const packets: LoadDiagnosticPacket[] = [];

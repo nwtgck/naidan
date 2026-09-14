@@ -6,6 +6,18 @@ This document preserves investigation knowledge about Naidan's Transformers.js
 Download and Load paths. It is not a specification and is not a substitute for
 reading the active implementation.
 
+Some progress and saving findings below describe superseded implementations.
+Ordinary Download now uses selected-candidate progress and a cumulative download
+wall-time estimate; the original per-file 0% and early 99% observations do not
+describe that calculation. With Web Locks support, incomplete artifacts stream
+to their final OPFS writable under coordinated access, with completion markers
+published only after close and verification; completed artifacts are reused.
+The explicit staging-to-final copy remains on the unsupported-coordination
+compatibility path. Browser-internal writable temporary storage or swap is
+separate from the removed application-level copy. These source changes do not
+establish universal ETA accuracy, native storage durability, or performance
+across devices. Historical observations remain below for context.
+
 The observations below were made against the Transformers.js 4.2 runtime and
 the Naidan implementation present when this document was written. Transformers.js
 internals, model repositories, exported model configurations, and Naidan routes
@@ -755,3 +767,63 @@ observation as timeout, and allows a second model's fresh preparation to proceed
 Late completion and progress from the retired Worker cannot replace the timeout.
 That test uses simulated Worker endpoints; native termination remains a browser
 canary item, not a claim established by the model replay.
+
+### Browser session initialization failures and Safari runtime selection
+
+The inspected upstream browser path assigns `webInitChain.then(load)` back to
+its initialization queue. Once a session rejects, later queued callbacks never
+enter ORT and instead inherit that error, even when requesting another backend.
+Fresh per-candidate acceptance Workers can therefore succeed with WASM while a
+subsequent ordinary Load cannot reach its same-Worker WASM fallback. The local
+Vite fix preserves each caller's original rejection and recovers only the
+serialization tail. Queued sessions remain serial; late sibling sessions retain
+their existing cleanup owner. This does not reset a failed ORT backend.
+
+The regression uses the actual transformed AutoClass with existing SmolLM2
+metadata and synthetic native ORT sessions. Its `self` is a
+`DedicatedWorkerGlobalScope` instance: a plain object in Node can make upstream
+`IS_WEB_ENV` false and bypass this queue. Independent model-specific resource
+and output evidence remains unchanged. These controls establish the queue
+behavior, not successful native Safari inference or GPU cleanup.
+
+Safari's standard MJS/WASM selection predates this queue fix and agrees with
+the previously inspected implementation and the bundled upstream default.
+[Transformers.js PR #1250](https://github.com/huggingface/transformers.js/pull/1250)
+documents the 2025 non-Asyncify fallback as an OOM workaround, noting Safari's
+lack of WebGPU at that time. The installed standard MJS lacks `webgpuInit`,
+whereas the WebGPU ORT entry expects it for that backend. Current API exposure
+alone does not establish that switching Safari to Asyncify is safe:
+[WebKit bug 304810](https://bugs.webkit.org/show_bug.cgi?id=304810) reports high
+WASM compilation memory usage. That report is not proof that every Safari
+version, including 26.6.2, has the same failure. Runtime asset selection,
+compile-byte transport and backend initialization require separate native
+controls; the queue correction does not establish their success.
+
+### Planning runtime control binding and byte evidence
+
+Planning controls use the same `onnxruntime-web/webgpu` entry and WASM
+environment that Transformers.js configures. The package-root browser entry
+has a separate environment; importing it for controls could test an unconfigured
+runtime while the preflight fingerprints the selected runtime successfully.
+A connected regression keeps those actual module identities distinct, executes
+the Planning entry and preflight, and substitutes only native session creation.
+
+The selected WASM buffer is supplied explicitly after its transport, complete
+fingerprint and magic checks succeed. Invalid, short or fingerprint-mismatched
+responses cannot start a control session or silently trigger a second fetch.
+The optional `runtime-control-binding-v1` receipt records constructor binding,
+whether configured URLs match the existing selected-asset evidence, and supplied
+byte length, SHA-256 and eight header
+bytes. It does not retain the WASM body, arbitrary URLs or additional environment
+inventory. Configured URLs are not duplicated in this receipt; mismatches are
+recorded without exporting their contents. Observation failures do not replace
+native results.
+
+"Supplied" does not prove compiler consumption: ORT can retain an initialized
+instance. MJS fingerprinting and the configured native-import URL also remain
+distinct observations; the receipt does not claim a verified-byte import lease.
+These limits are retained in the UI's expandable control-input details and in
+`runtime-assets/preflight.json` or `preflight-partial.json`, including checkpoint
+exports through the Evidence Worker. Missing older receipts stay missing.
+Alternative Asyncify capability probes are not automatically run, and diagnostic
+results do not change Production variant or candidate selection.

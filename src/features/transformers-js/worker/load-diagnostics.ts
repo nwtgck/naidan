@@ -3,6 +3,11 @@ import { productionLoadReceiptOwnerSchema, type ProductionLoadReceiptOwner } fro
 
 const count = z.number().int().nonnegative().safe();
 const errorName = z.enum(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AbortError', 'unknown']);
+// Optional for old observations: absent is unobserved, not a classified failure.
+// Stored/transported labels stay strict: evidence verification can return its
+// original serialized bytes, so dropping invalid labels only while decoding
+// would incorrectly certify the original arbitrary text for re-export.
+const errorCategory = z.enum(['missing-webgpu-entrypoint', 'invalid-wasm-magic', 'prior-initialization-failure', 'unclassified']).optional();
 const incompleteReason = z.enum(['event-limit', 'invalid-event', 'resource-limit', 'transport-failed', 'unobserved-load', 'load-not-settled']);
 const resource = z.string().min(1).max(256).regex(/^[A-Za-z0-9_./-]+\.onnx(?:_data(?:_[0-9]+)?)?$/u)
   .refine(value => !value.startsWith('/') && !value.split('/').includes('..'));
@@ -13,7 +18,7 @@ export const loadDiagnosticEventSchema = z.object({
     'session-preparing', 'session-entering', 'session-fulfilled', 'session-rejected',
     'resource-cleanup-start', 'resource-cleanup-finished', 'resource-cleanup-failed', 'candidate-finished', 'load-finished', 'load-failed', 'diagnostic-incomplete']),
   resource: resource.optional(), readOrdinal: count.max(128).optional(), requestedBytes: count.optional(),
-  errorName: errorName.optional(), device: z.enum(['webgpu', 'wasm']).optional(), dtype: z.string().max(32).optional(),
+  errorName: errorName.optional(), errorCategory, device: z.enum(['webgpu', 'wasm']).optional(), dtype: z.string().max(32).optional(),
   priorRuntime: z.enum(['present', 'absent']).optional(),
   revision: z.string().max(128).regex(/^(?:[a-f0-9]{40}|main)$/u).optional(),
   candidateScopeAllocatedBytes: count, returnedReadBufferBytes: count, activeReadCount: count.max(128),
@@ -40,7 +45,7 @@ export const loadDiagnosticsSchema = z.object({
 export type LoadDiagnostics = z.infer<typeof loadDiagnosticsSchema>;
 // eslint-disable-next-line local-rules-named-args/require-named-args -- The reviewed third-party bundle invokes this callback positionally.
 export type UpstreamLoadDiagnosticObserver = (value: unknown) => void;
-type Details = Partial<Pick<LoadDiagnosticEvent, 'resource' | 'readOrdinal' | 'requestedBytes' | 'errorName' | 'device' | 'dtype' | 'priorRuntime' | 'revision'>>;
+type Details = Partial<Pick<LoadDiagnosticEvent, 'resource' | 'readOrdinal' | 'requestedBytes' | 'errorName' | 'errorCategory' | 'device' | 'dtype' | 'priorRuntime' | 'revision'>>;
 
 export function loadDiagnosticErrorDetails({ error }: { error: unknown }): Pick<LoadDiagnosticEvent, 'errorName'> {
   try {
@@ -154,6 +159,9 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
         const raw = z.object({ token: z.object({}).strict(), kind: z.enum(['read', 'session']), resource: z.string().max(256).optional(),
           phase: z.enum(['allocation-attempt', 'allocation-succeeded', 'allocation-failed', 'read-start', 'read-returned', 'read-failed',
             'session-preparing', 'session-entering', 'session-fulfilled', 'session-rejected']), bytes: count, errorName: z.string().max(64).optional(),
+          // Only raw advisory input is projected before emission: an invalid
+          // category must not discard the otherwise valid native event.
+          errorCategory: errorCategory.catch(undefined),
         }).strict().safeParse(value);
         if (!raw.success) return;
         // Keep the original token identity, not Zod's cloned empty object.
@@ -173,6 +181,7 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
         }
         if (read.candidateOrdinal !== candidateOrdinal) return;
         const { phase, bytes } = raw.data;
+        let categoryDetails: Pick<Details, 'errorCategory'> = {};
         switch (phase) {
         case 'allocation-succeeded': allocated = Math.min(Number.MAX_SAFE_INTEGER, allocated + bytes); break;
         case 'read-start':
@@ -192,11 +201,15 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
           }
           break;
         case 'allocation-attempt': case 'allocation-failed':
-        case 'session-preparing': case 'session-entering': case 'session-fulfilled': case 'session-rejected': break;
+        case 'session-preparing': case 'session-entering': case 'session-fulfilled': break;
+        case 'session-rejected':
+          if (raw.data.errorCategory !== undefined) categoryDetails = { errorCategory: raw.data.errorCategory };
+          break;
         default: { const _ex: never = phase; throw new Error(`Unhandled diagnostic phase: ${_ex}`); }
         }
         const name = errorName.safeParse(raw.data.errorName);
         emit({ kind: phase, details: { resource: read.resource, readOrdinal: read.readOrdinal, requestedBytes: bytes,
+          ...categoryDetails,
           ...(raw.data.errorName === undefined ? {} : { errorName: name.success ? name.data : 'unknown' }) } });
       } catch { /* A malformed observation must not change the original exception. */ }
     },

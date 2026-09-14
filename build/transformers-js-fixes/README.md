@@ -8,7 +8,7 @@ covered by this fix.
 
 ## What changes
 
-Eleven exact web-bundle edits address resource ownership, optional preparation, template parsing and optional Load observation:
+Eleven exact web-bundle edits address resource ownership, optional preparation, session initialization recovery, template parsing and optional Load observation:
 
 1. `getModelDataFiles` no longer uses an async Promise executor. Each external
    file's rejection now reaches the returned Promise instead of leaving an
@@ -44,6 +44,18 @@ Eleven exact web-bundle edits address resource ownership, optional preparation, 
    exceptions and rejected promises cannot change Load settlement. The host
    investigation retains bounded scalar records on the same Worker endpoint as
    RPC completion, including failure followed immediately by Worker retirement.
+   Session rejection optionally records a fixed failure category from at most
+   4096 characters of an own data message (or a thrown string), never message
+   accessors, raw text, stack or cause. Unknown text is `unclassified`; an absent
+   category in an older record remains unobserved. Categories are diagnostic
+   hints, not proof of the underlying cause or a successful runtime repair.
+7. Browser session initialization keeps each caller's result separate from the
+   serialization tail. Rejected session creation still rejects that caller with
+   the original error, but does not skip every subsequent backend attempt.
+   Already queued sessions remain serialized; a held native session still holds
+   the queue. Late sibling successes retain the existing orphan-release owner.
+   This does not reset ORT backend state or add WebGPU support to a WASM-only
+   runtime, and is not a claim that a particular browser backend will initialize.
 
 Allocation records cover `readResponse`, not other `response.arrayBuffer()`
 branches or ORT-internal copies. Successful allocation totals are cumulative
@@ -91,7 +103,7 @@ or alternate unpatched browser path.
 Original web SHA-256:
 `25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff`.
 Transformed web SHA-256:
-`4e017bc8f4e39a2ab6d66deee046fc666d69d49631950c579ed7ffa4c2b8e64c`.
+`3e02fd2fca2997e8a4dae4c38ecd1db5cab0911a01da08d95b33f03387eec50f`.
 
 `buildTransformersJsFixesArtifact` runs a real Vite library build with the same
 plugin, `configFile: false`, and no application plugins. Runtime regression
@@ -113,7 +125,7 @@ extracted at reviewed boundaries; independent SHA-256 values in
 `transform.test.ts` preserve their exact bytes, including trailing newlines.
 Those section identities were verified against the former unmodified copies
 before removing them. `upstream/LICENSE` retains the existing package notice.
-`replacements.ts` contains the eight exact before/after web edits as `String.raw`
+`replacements.ts` contains the eleven exact before/after web edits as `String.raw`
 literals. Their whitespace and trailing newlines are part of the edits; they are
 not trimmed or normalized. This keeps source backslashes readable without JSON
 escaping. The full original web bundle is supplied by the pinned dependency,

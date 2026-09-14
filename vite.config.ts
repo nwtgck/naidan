@@ -24,6 +24,7 @@ import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
+import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
 import { createZipPackages } from './build/zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
 import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
@@ -256,18 +257,10 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     server: {
-      headers: {
-        // Required for SharedArrayBuffer and multi-threaded WebAssembly (Transformers.js)
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
+      headers: DEV_SERVER_ISOLATION_HEADERS,
     },
     preview: {
-      headers: {
-        // Required for SharedArrayBuffer and multi-threaded WebAssembly (Transformers.js)
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
+      headers: DEV_SERVER_ISOLATION_HEADERS,
     },
     // Inject global constants for compile-time conditional logic (tree-shaking)
     define: {
@@ -303,6 +296,7 @@ export default defineConfig(({ mode }) => {
     },
     ...transformersJsFixes,
     plugins: [
+      createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),

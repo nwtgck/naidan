@@ -157,7 +157,8 @@ vi.mock("@huggingface/transformers", () => {
   };
 });
 
-vi.mock("onnxruntime-web", () => ({
+vi.mock("onnxruntime-web/webgpu", () => ({
+  env: { wasm: {} },
   InferenceSession: { create: vi.fn() },
   Tensor: class {
     data: BigInt64Array | Float32Array;

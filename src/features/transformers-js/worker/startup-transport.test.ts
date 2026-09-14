@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProgressInfo } from '@/features/transformers-js/types';
 import type { ToolCall } from '@/01-models/types';
 import { createTransformersJsWorkerClient } from './client-hosted';
+import { createTransformersJsService } from '@/features/transformers-js/index-hosted';
 import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
 import { RequiredDownloadedResourceCleanupError } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
 import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
@@ -75,6 +76,40 @@ afterEach(async () => {
 });
 
 describe('Production startup through real Comlink transport', () => {
+  it('does not create a replacement after the actual client cannot physically retire its Worker', async () => {
+    vi.stubGlobal('Worker', TransportWorker);
+    const owner = createTransformersJsService({ createWorkerClient: createTransformersJsWorkerClient });
+    const physicalFailure = new Error('Synthetic physical Worker termination failure');
+    try {
+      // A public restart creates the first actual client without needing any
+      // model files. Then exercise its ready session over real Comlink.
+      await owner.service.restart();
+      const worker = currentWorker();
+      const resetCache = vi.fn(async () => undefined);
+      expose({ resetCache }, worker.endpoint);
+      worker.publishReady();
+      await owner.service.resetCache();
+      expect(resetCache).toHaveBeenCalledOnce();
+      worker.terminate.mockImplementation(() => {
+        throw physicalFailure;
+      });
+      const retirement = await owner.service.restart().then(
+        () => ({ status: 'fulfilled' as const }),
+        (error: unknown) => ({ status: 'rejected' as const, error }),
+      );
+      expect({ retirement, workerCount: workers.length }).toEqual({
+        retirement: { status: 'rejected', error: physicalFailure }, workerCount: 1,
+      });
+      await expect(owner.service.resetCache()).rejects.toThrow();
+      expect(resetCache).toHaveBeenCalledOnce();
+      expect(worker.terminate).toHaveBeenCalledOnce();
+    } finally {
+      // The fixture owns its MessagePorts even if simulated native termination
+      // fails; afterEach closes them independently of the production owner.
+      await owner.dispose().catch(() => undefined);
+    }
+  });
+
   it('terminates ordinary Load after a cleanup failure crosses real Comlink and blocks reuse', async () => {
     vi.stubGlobal('Worker', TransportWorker);
     const client = createTransformersJsWorkerClient();

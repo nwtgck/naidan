@@ -16,7 +16,7 @@ import {
   type ProgressCallback as TransformersProgressCallback,
   env,
 } from "@huggingface/transformers";
-import { InferenceSession, Tensor as OrtTensor } from "onnxruntime-web";
+import { InferenceSession, Tensor as OrtTensor, env as ortEnv } from "onnxruntime-web/webgpu";
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationGenerationAutoClassName,
@@ -30,6 +30,7 @@ import { exposeWorkerRemote, type WorkerServerApi } from "@/utils/worker-transpo
 import { parseInvestigationJson } from "@/features/transformers-js/model-support-investigation/logic/json-value-schema";
 import { runRuntimeIntegrityPreflight } from "@/features/transformers-js/model-support-investigation/logic/run-runtime-integrity-preflight";
 import { importPlanningRuntimeModule } from "@/features/transformers-js/model-support-investigation/worker/import-planning-runtime-module";
+import { withVerifiedRuntimeControl } from '@/features/transformers-js/model-support-investigation/logic/runtime-control-binding';
 import { runPartialModelSupportInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-partial-model-support-investigation";
 import { toPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
 import { classifyReplayMetadataAccess, collectReplayMetadata, REPLAY_METADATA_TARGET_BYTES, type InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
@@ -412,34 +413,38 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         applicationOrigin: self.location.origin,
         runtimeFetch: investigationFetch,
         importRuntimeModule: importPlanningRuntimeModule,
-        runWasmControl: async () => {
-          const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
-            executionProviders: ["wasm"],
-          });
-          try {
-            const outputs = await session.run({
-              x: new OrtTensor("float32", Float32Array.from([7]), [1]),
+        runWasmControl: async ({ verifiedWasm, observeBinding }) => withVerifiedRuntimeControl({
+          executionProvider: 'wasm', assets, configuredEnvironment: env.backends.onnx.wasm,
+          controlEnvironment: ortEnv.wasm, verifiedWasm, observeBinding,
+          run: async () => {
+            const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
+              executionProviders: ["wasm"],
             });
-            const output = outputs.y;
-            if (output === undefined || output.data.length !== 1) {
-              throw new Error("ONNX Runtime WASM control did not return the expected output tensor");
+            try {
+              const outputs = await session.run({
+                x: new OrtTensor("float32", Float32Array.from([7]), [1]),
+              });
+              const output = outputs.y;
+              if (output === undefined || output.data.length !== 1) {
+                throw new Error("ONNX Runtime WASM control did not return the expected output tensor");
+              }
+              return {
+                fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
+                fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
+                executionProvider: "wasm",
+                status: "passed",
+                inputName: "x",
+                outputName: "y",
+                inputValue: 7,
+                outputValue: Number(output.data[0]),
+                error: undefined,
+              };
+            } finally {
+              await session.release();
             }
-            return {
-              fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
-              fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
-              executionProvider: "wasm",
-              status: "passed",
-              inputName: "x",
-              outputName: "y",
-              inputValue: 7,
-              outputValue: Number(output.data[0]),
-              error: undefined,
-            };
-          } finally {
-            await session.release();
-          }
-        },
-        runWebGpuControl: async () => {
+          },
+        }),
+        runWebGpuControl: async ({ verifiedWasm, observeBinding }) => {
           const hasWebGpu = (navigator as Navigator & { gpu?: unknown }).gpu !== undefined;
           if (!hasWebGpu) {
             return {
@@ -454,35 +459,41 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
               error: undefined,
             };
           }
-          const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
-            executionProviders: ["webgpu"],
+          return withVerifiedRuntimeControl({
+            executionProvider: 'webgpu', assets, configuredEnvironment: env.backends.onnx.wasm,
+            controlEnvironment: ortEnv.wasm, verifiedWasm, observeBinding,
+            run: async () => {
+              const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
+                executionProviders: ["webgpu"],
+              });
+              try {
+                const outputs = await session.run({
+                  x: new OrtTensor("float32", Float32Array.from([7]), [1]),
+                });
+                const output = outputs.y;
+                if (output === undefined || output.data.length !== 1) {
+                  throw new Error("ONNX Runtime WebGPU control did not return the expected output tensor");
+                }
+                const outputValue = Number(output.data[0]);
+                if (outputValue !== 7) {
+                  throw new Error(`ONNX Runtime WebGPU control returned an unexpected value: ${outputValue}`);
+                }
+                return {
+                  fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
+                  fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
+                  executionProvider: "webgpu",
+                  status: "passed",
+                  inputName: "x",
+                  outputName: "y",
+                  inputValue: 7,
+                  outputValue,
+                  error: undefined,
+                };
+              } finally {
+                await session.release();
+              }
+            },
           });
-          try {
-            const outputs = await session.run({
-              x: new OrtTensor("float32", Float32Array.from([7]), [1]),
-            });
-            const output = outputs.y;
-            if (output === undefined || output.data.length !== 1) {
-              throw new Error("ONNX Runtime WebGPU control did not return the expected output tensor");
-            }
-            const outputValue = Number(output.data[0]);
-            if (outputValue !== 7) {
-              throw new Error(`ONNX Runtime WebGPU control returned an unexpected value: ${outputValue}`);
-            }
-            return {
-              fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
-              fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
-              executionProvider: "webgpu",
-              status: "passed",
-              inputName: "x",
-              outputName: "y",
-              inputValue: 7,
-              outputValue,
-              error: undefined,
-            };
-          } finally {
-            await session.release();
-          }
         },
         inspectEnvironment: () => inspectRuntimeEnvironment({
           navigatorValue: navigator,

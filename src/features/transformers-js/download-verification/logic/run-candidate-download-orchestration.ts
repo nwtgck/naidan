@@ -24,6 +24,11 @@ export async function runCandidateDownloadOrchestration({
 }): Promise<DownloadVerificationCandidateOrchestrationResult> {
   const attempts: DownloadVerificationCandidateOrchestrationAttempt[] = [];
 
+  // Some candidates could be identified as unsupported before downloading their
+  // model files. We intentionally do not add runtime capability prechecks here:
+  // the extra candidate-selection logic would add complexity and risk new bugs.
+  // For now, preserving the working fallback path takes priority over avoiding
+  // downloads for candidates that will ultimately be rejected.
   for (const candidate of candidates) {
     signal?.throwIfAborted();
     const preparation = await prepareCandidate({ candidate });

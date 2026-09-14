@@ -101,15 +101,44 @@ describe('Production Worker startup ownership', () => {
   it('preserves ACK failure when physical termination also throws and still revokes', async () => {
     const { worker, session } = fixture();
     const primary = new Error('Fixture ACK post failed');
+    const physicalFailure = new Error('Fixture platform terminate failed');
     worker.postMessage.mockImplementation(() => {
       throw primary;
     });
     worker.terminate.mockImplementation(() => {
-      throw new Error('Fixture platform terminate failed');
+      throw physicalFailure;
     });
     const result = expect(session.run({ operation: async () => 'unsafe' })).rejects.toMatchObject({ reason: 'initialization-failed', message: primary.message });
     worker.startup.start();
     await result;
+    expect(platform.revokeObjectURL).toHaveBeenCalledOnce();
+    expect(platform.blobs.size).toBe(0);
+    expect(() => session.dispose()).toThrow(physicalFailure);
+    expect(() => session.dispose()).toThrow(physicalFailure);
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    sessions.splice(sessions.indexOf(session), 1);
+  });
+
+  it.each([undefined, null])('retains a non-Error physical retirement failure %s without retrying', async physicalFailure => {
+    const worker = new LifecycleWorker();
+    const session = createProductionWorkerSession({ worker: worker as unknown as Worker, startupTimeoutMs: 100 });
+    mocks.wrap.mockReturnValue({});
+    await worker.publishReady();
+    worker.terminate.mockImplementation(() => {
+      throw physicalFailure;
+    });
+    const disposeOutcome = () => {
+      try {
+        session.dispose();
+        return { status: 'fulfilled' as const };
+      } catch (error) {
+        return { status: 'rejected' as const, error };
+      }
+    };
+    expect(disposeOutcome()).toEqual({ status: 'rejected', error: physicalFailure });
+    expect(disposeOutcome()).toEqual({ status: 'rejected', error: physicalFailure });
+    await expect(session.run({ operation: async () => 'late' })).rejects.toMatchObject({ reason: 'disposed' });
+    expect(worker.terminate).toHaveBeenCalledOnce();
     expect(platform.revokeObjectURL).toHaveBeenCalledOnce();
     expect(platform.blobs.size).toBe(0);
   });

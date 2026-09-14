@@ -43,7 +43,32 @@ function naidanCreateModelLoadObserver(kind, resource) {
   const token = {};
   return (phase, bytes, error) => {
     try {
-      const result = sink({ token, kind, resource, phase, bytes, errorName: error === void 0 ? void 0 : error?.name });
+      // Naidan fix: keep only fixed failure labels, never error text, stack or cause.
+      // Message accessors are not executed; unavailable/oversized text is unclassified.
+      let errorName;
+      if (error !== void 0) {
+        errorName = "unknown";
+        try {
+          const name = error?.name;
+          if (["Error", "TypeError", "RangeError", "SyntaxError", "AbortError"].includes(name)) errorName = name;
+        } catch {
+        }
+      }
+      let errorCategory;
+      if (phase === "session-rejected") {
+        errorCategory = "unclassified";
+        try {
+          const descriptor = typeof error === "object" && error !== null ? Object.getOwnPropertyDescriptor(error, "message") : void 0;
+          const message = typeof error === "string" ? error : descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : void 0;
+          if (typeof message === "string" && message.length <= 4096) {
+            if (/webgpuInit is not a function/.test(message)) errorCategory = "missing-webgpu-entrypoint";
+            else if (/module doesn't start with ['"](?:\\0|\0)asm['"]|expected magic word 00 61 73 6d/.test(message)) errorCategory = "invalid-wasm-magic";
+            else if (/previous call to ['"]initWasm\(\)['"] failed/.test(message)) errorCategory = "prior-initialization-failure";
+          }
+        } catch {
+        }
+      }
+      const result = sink({ token, kind, resource, phase, bytes, errorName, ...(errorCategory === void 0 ? {} : { errorCategory }) });
       if (result !== void 0) Promise.resolve(result).catch(() => {});
     } catch {
     }
@@ -130,7 +155,7 @@ async function readResponse(response, progress_callback, expectedSize, diagnosti
   return session;
 }`,
     after: String.raw`async function createInferenceSession(buffer_or_path, session_options, session_config) {
-  // Naidan fix: distinguish session preparation from actual ORT entry without changing its chain.
+  // Naidan fix: distinguish session preparation from actual ORT entry.
   const observe = naidanCreateModelLoadObserver("session");
   observe?.("session-preparing", 0);
   try {
@@ -144,7 +169,11 @@ async function readResponse(response, progress_callback, expectedSize, diagnosti
     ...session_options
   });
   };
-  const session = await (apis.IS_WEB_ENV ? webInitChain = webInitChain.then(load) : load());
+  // Naidan fix: retain this session's rejection, but recover the serialization
+  // tail so a failed backend cannot prevent later queued sessions from entering ORT.
+  const pending = apis.IS_WEB_ENV ? webInitChain.then(load) : load();
+  if (apis.IS_WEB_ENV) webInitChain = pending.then(() => {}, () => {});
+  const session = await pending;
   session.config = session_config;
   observe?.("session-fulfilled", 0);
   return session;

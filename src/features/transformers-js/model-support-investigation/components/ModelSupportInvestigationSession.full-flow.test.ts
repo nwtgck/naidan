@@ -13,6 +13,7 @@ import { createSyntheticModelBody } from '@/features/transformers-js/replay-mode
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE as image } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
 import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { createInvestigationFullFlowTestHttp } from '@/features/transformers-js/model-support-investigation/fixtures/full-flow-test-http';
+import { createRuntimeControlModelBytes } from '@/features/transformers-js/model-support-investigation/fixtures/runtime-control-model';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/production-load-receipt';
 import { productionLoadObservationSchema } from '@/features/transformers-js/worker/load-receipt';
@@ -56,7 +57,6 @@ function artifactsForModel({ modelId, revision, extraShards }: typeof models[num
 
 afterEach(() => {
   vi.doUnmock('@/utils/worker-transport');
-  vi.doUnmock('onnxruntime-web');
   vi.doUnmock('@/features/transformers-js/model-support-investigation/worker/import-planning-runtime-module');
   vi.restoreAllMocks(); vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -197,10 +197,34 @@ describe('complete Full collection through Session and actual Worker transports'
       vi.stubGlobal('navigator', { ...navigator, userAgent: 'Vitest', vendor: '', hardwareConcurrency: 2,
         gpu: { requestAdapter: async () => ({ features: new Set(['shader-f16']), limits: {} }) },
         storage: { getDirectory: async () => fs.root } });
-      vi.doMock('onnxruntime-web', () => ({
-        InferenceSession: { create: async () => ({ run: async () => ({ y: { data: [7] } }), release: async () => undefined }) },
-        Tensor: class {},
-      }));
+      const ort = await import(/* @vite-ignore */ artifact.ortWebGpuUrl) as {
+        InferenceSession: { create: (...args: unknown[]) => Promise<unknown> },
+      };
+      const createModelSession = vi.mocked(ort.InferenceSession.create).getMockImplementation();
+      if (createModelSession === undefined) throw new Error('Expected the owned native model-session substitute');
+      const controlBytes = createRuntimeControlModelBytes();
+      const controlOptions: unknown[] = [];
+      const controlInputs: number[][] = [];
+      let controlReleases = 0;
+      // Planning now shares the real webgpu ORT module/environment with TJS.
+      // Replace only the exact tiny control's native execution; model loads
+      // retain their original constructor substitute and resource observations.
+      vi.mocked(ort.InferenceSession.create).mockImplementation(async (...args) => {
+        const bytes = args[0];
+        if (!(bytes instanceof Uint8Array) || bytes.byteLength !== controlBytes.byteLength
+          || !bytes.every((byte, index) => byte === controlBytes[index])) return createModelSession(...args);
+        controlOptions.push(args[1]);
+        return {
+          run: vi.fn(async (feeds: unknown) => {
+            const { x } = z.object({ x: z.object({ data: z.instanceof(Float32Array) }) }).parse(feeds);
+            controlInputs.push(Array.from(x.data));
+            return { y: { data: Float32Array.from(x.data) } };
+          }),
+          release: async () => {
+            controlReleases++;
+          },
+        };
+      });
       vi.doMock('@/features/transformers-js/model-support-investigation/worker/import-planning-runtime-module', () => ({
         importPlanningRuntimeModule: async ({ url }: { url: string }) => {
           if (url !== assets.mjsUrl) throw new Error('Unexpected native planning module evaluation');
@@ -332,6 +356,18 @@ describe('complete Full collection through Session and actual Worker transports'
       const snapshot = results();
       expect(snapshot.executions.every(item => item.status !== 'running' && item.status !== 'pending')).toBe(true);
       expect(snapshot.executions.map(item => item.status), JSON.stringify({ failures: snapshot.executions.map(item => item.error), unknownHttp: http.unknown, steps: snapshot.runs.map(([, run]) => run.steps.filter(step => step.status === 'failed')) })).toEqual([expectedFirst.status, 'passed']);
+      expect(controlOptions).toEqual([
+        { executionProviders: ['wasm'] }, { executionProviders: ['webgpu'] },
+        { executionProviders: ['wasm'] }, { executionProviders: ['webgpu'] },
+      ]);
+      expect(controlInputs).toEqual([[7], [7], [7], [7]]);
+      expect(controlReleases).toBe(4);
+      for (const [, run] of snapshot.runs) {
+        expect(run.runtimeAssets?.controlRuntimeBindings).toMatchObject({
+          wasm: { constructorModule: 'onnxruntime-web/webgpu', environmentMatchesConfigured: true },
+          webgpu: { constructorModule: 'onnxruntime-web/webgpu', environmentMatchesConfigured: true },
+        });
+      }
       expect(workers.filter(worker => worker.kind === 'planning' || worker.kind === 'production').map(worker => worker.kind)).toEqual(['planning', 'production', 'planning', 'production']);
       expect(workers.filter(worker => worker.kind === 'fresh-metadata')).toHaveLength(preset === 'full' ? 2 : 0);
       expect(workers.filter(worker => worker.kind === 'request-observer')).toHaveLength(preset === 'full' ? 6 : 0);

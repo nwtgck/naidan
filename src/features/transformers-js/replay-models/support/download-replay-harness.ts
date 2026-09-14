@@ -146,7 +146,13 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
       }
     })();
     vi.stubGlobal('fetch', fetchPolicy);
-    vi.stubGlobal('self', { fetch: fetchPolicy, location: new URL('http://localhost/assets/worker.js') });
+    // Upstream checks self.constructor.name when the bundle is evaluated.
+    // A plain object would bypass the real browser session initialization queue.
+    class WorkerGlobalScope extends EventTarget {}
+    class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
+    vi.stubGlobal('WorkerGlobalScope', WorkerGlobalScope);
+    vi.stubGlobal('DedicatedWorkerGlobalScope', DedicatedWorkerGlobalScope);
+    vi.stubGlobal('self', Object.assign(new DedicatedWorkerGlobalScope(), { fetch: fetchPolicy, location: new URL('http://localhost/assets/worker.js') }));
     vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: {}, hardwareConcurrency: 2, locks: lockPlatform.locks, storage: { getDirectory: async () => fs.root } });
     const actualProcess = globalThis.process;
     vi.stubGlobal('process', { ...actualProcess, release: { ...actualProcess.release, name: 'browser-test' } });
@@ -154,6 +160,7 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
     let runtime: Runtime;
     try {
       runtime = await importProductionTransformersArtifact({ moduleUrl: bundleUrl.href }) as Runtime;
+      if (runtime.env.allowLocalModels !== false) throw new Error('Download replay did not enter the upstream web Worker environment');
     } finally {
       vi.stubGlobal('process', actualProcess);
     }

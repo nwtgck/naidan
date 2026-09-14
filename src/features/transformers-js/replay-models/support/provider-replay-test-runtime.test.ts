@@ -111,6 +111,8 @@ describe('Production replay explicit image platform ownership', () => {
   }, 30_000);
 
   it('does not enable local data transport when the image platform option is absent', async () => {
+    const workerKeys = ['self', 'WorkerGlobalScope', 'DedicatedWorkerGlobalScope'];
+    const beforeWorkerGlobals = workerKeys.map(key => Object.getOwnPropertyDescriptor(globalThis, key));
     const parentFetch = vi.fn<typeof fetch>(async () => {
       throw new Error('Parent fetch must remain unused');
     });
@@ -119,12 +121,19 @@ describe('Production replay explicit image platform ownership', () => {
       throw new Error('No inference in absent image test');
     } }));
     try {
+      expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
+      const workerScope = Reflect.get(globalThis, 'WorkerGlobalScope');
+      const dedicatedScope = Reflect.get(globalThis, 'DedicatedWorkerGlobalScope');
+      if (typeof workerScope !== 'function' || typeof dedicatedScope !== 'function') throw new Error('Missing owned Worker scope constructors');
+      expect(globalThis.self).toBeInstanceOf(workerScope);
+      expect(globalThis.self).toBeInstanceOf(dedicatedScope);
       await expect(fetch(dataUrl)).rejects.toThrow('Unprovided replay transport');
       expect(parentFetch).not.toHaveBeenCalled();
       expect(harness.observations.localImageFetchCalls).toEqual([]);
     } finally {
       await harness.close();
       expect(globalThis.fetch).toBe(parentFetch);
+      expect(workerKeys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(beforeWorkerGlobals);
       vi.unstubAllGlobals();
     }
   }, 30_000);

@@ -163,18 +163,20 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     };
     setOwnedGlobal({ key: 'fetch', value: fetchPolicy });
     const workerFields = { fetch: fetchPolicy, location: new URL(identity.workerLocationUrl) };
+    // Text-only replays must enter the same upstream Worker branch as image
+    // replays; otherwise browser session serialization is silently bypassed.
+    class WorkerGlobalScope extends EventTarget {}
+    class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
+    setOwnedGlobal({ key: 'WorkerGlobalScope', value: WorkerGlobalScope });
+    setOwnedGlobal({ key: 'DedicatedWorkerGlobalScope', value: DedicatedWorkerGlobalScope });
     if (imagePlatform === undefined) {
-      setOwnedGlobal({ key: 'self', value: workerFields });
+      setOwnedGlobal({ key: 'self', value: Object.assign(new DedicatedWorkerGlobalScope(), workerFields) });
     } else {
       // Upstream env.js checks self.constructor.name at module evaluation, and
       // RawImage captures these image APIs then. Use a matching instance and
       // owned global constructors, not a later mutation of env or RawImage.
-      class WorkerGlobalScope extends EventTarget {}
-      class DedicatedWorkerGlobalScope extends WorkerGlobalScope {}
       const { ImageData, OffscreenCanvas, createImageBitmap, observations: _observations, ...unhandled } = imagePlatform.platform;
       unhandled satisfies Record<PropertyKey, never>;
-      setOwnedGlobal({ key: 'WorkerGlobalScope', value: WorkerGlobalScope });
-      setOwnedGlobal({ key: 'DedicatedWorkerGlobalScope', value: DedicatedWorkerGlobalScope });
       setOwnedGlobal({ key: 'ImageData', value: ImageData });
       setOwnedGlobal({ key: 'OffscreenCanvas', value: OffscreenCanvas });
       setOwnedGlobal({ key: 'createImageBitmap', value: createImageBitmap });
@@ -199,6 +201,9 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     let runtime: Runtime;
     try {
       runtime = await importProductionTransformersArtifact({ moduleUrl: url.href }) as Runtime;
+      // Check the actual bundle's pre-entry web default, not a manually set
+      // env flag. The Production entry will establish its explicit cache policy.
+      if (runtime.env.allowLocalModels !== false) throw new Error('Provider replay did not enter the upstream web Worker environment');
     } finally {
       Object.defineProperty(globalThis, 'process', { configurable: true, writable: true, value: originalProcess });
     }

@@ -26,6 +26,7 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
 }) {
   let remote: WorkerRemote<ITransformersJsWorker> | undefined;
   let terminalError: Error | undefined;
+  let physicalTerminationFailure: { error: unknown } | undefined;
   let runtimeModuleLease: { requestId: string; objectUrl: string | undefined; acknowledged: boolean } | undefined;
   const pending = new Set<{ start(): void, reject({ error }: { error: Error }): void }>();
 
@@ -49,7 +50,8 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
     } finally {
       try {
         worker.terminate();
-      } catch {
+      } catch (error) {
+        physicalTerminationFailure = { error };
         // A platform termination exception must not replace the primary cause
         // or become an unowned rejection of an asynchronous startup task.
       } finally {
@@ -208,6 +210,9 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
     },
     dispose(): void {
       terminate({ error: new ProductionWorkerLifecycleError({ reason: 'disposed', message: 'Production Worker disposed' }), releaseIdleRemote: true });
+      // RPCs retain their original terminal cause, but the owning service must
+      // not publish a replacement Realm after physical retirement failed.
+      if (physicalTerminationFailure !== undefined) throw physicalTerminationFailure.error;
     },
   };
 }

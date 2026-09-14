@@ -3,6 +3,7 @@ import type { ModelSupportInvestigationRun } from '@/features/transformers-js/mo
 import { investigationJsonObjectSchema } from '@/features/transformers-js/model-support-investigation/logic/json-value-schema';
 import { createProductionProviderCaptureEvidence, readProductionProviderCaptureEvidence, PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-evidence';
 import { createProductionProviderInvestigationSummaryEvidence, readProductionProviderInvestigationSummaryEvidence } from '@/features/transformers-js/model-support-investigation/logic/production-provider-investigation-summary';
+import { validateRuntimeControlBindings } from '@/features/transformers-js/model-support-investigation/logic/runtime-control-binding';
 
 export const encodedEvidenceRunSchema = z.object({
   run: investigationJsonObjectSchema,
@@ -12,6 +13,7 @@ export const encodedEvidenceRunSchema = z.object({
 
 /** Keep this strict capture format out of ordinary JSON's undefined elision. */
 export function encodeEvidenceRun({ run }: { run: ModelSupportInvestigationRun }) {
+  validateRuntimeControlBindings({ run });
   for (const key of ['productionProviderCapture', 'productionProviderInvestigation']) {
     const descriptor = Object.getOwnPropertyDescriptor(run, key);
     if (descriptor !== undefined && !('value' in descriptor)) throw new Error('Invalid Provider capture in Evidence request');
@@ -29,6 +31,7 @@ export function encodeEvidenceRun({ run }: { run: ModelSupportInvestigationRun }
 /** The ordinary Run graph retains its existing JSON validation contract. The
  * host-only Provider field is separately decoded and identity-validated here. */
 export function decodeEvidenceRun({ run, providerCaptureEvidence, providerInvestigationEvidence }: z.infer<typeof encodedEvidenceRunSchema>): ModelSupportInvestigationRun {
+  validateRuntimeControlBindings({ run });
   if (Object.hasOwn(run, 'productionProviderCapture') || Object.hasOwn(run, 'productionProviderInvestigation')) throw new Error('Raw Provider capture is not allowed in Evidence request JSON');
   if (providerCaptureEvidence === undefined && providerInvestigationEvidence === undefined) return run as unknown as ModelSupportInvestigationRun;
   const identity = z.object({ runId: z.string(), modelId: z.string() }).parse(run);

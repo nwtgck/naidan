@@ -1,5 +1,6 @@
 import type { DownloadVerificationModelArtifactRequest } from '@/features/transformers-js/download-verification/types';
 import { sanitizeObservedUrl } from '@/features/transformers-js/download-verification/logic/run-browser-download-verification';
+import { parseHuggingFaceResolveIdentity } from '@/features/transformers-js/runtime/hugging-face-resolve-identity';
 
 export interface ModelArtifactRequestBarrier {
   observe({ request }: { request: DownloadVerificationModelArtifactRequest }): Promise<Response>;
@@ -72,23 +73,7 @@ export function huggingFaceResolveArtifactRequest({ url }: { url: string }): Dow
 }
 
 export function huggingFaceResolveArtifactPath({ url }: { url: string }): string | undefined {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return undefined;
-  }
-  if (parsed.hostname !== 'huggingface.co' && !parsed.hostname.endsWith('.huggingface.co')) return undefined;
-
-  const parts = parsed.pathname.split('/').filter(Boolean);
-  const resolveIndex = parts.indexOf('resolve');
-  if (resolveIndex < 0 || resolveIndex + 2 >= parts.length) return undefined;
-  const artifactParts = parts.slice(resolveIndex + 2);
-  try {
-    return artifactParts.map(part => decodeURIComponent(part)).join('/');
-  } catch {
-    return artifactParts.join('/');
-  }
+  return parseHuggingFaceResolveIdentity({ url })?.path;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

@@ -89,6 +89,42 @@ beforeEach(() => {
 });
 
 describe('prepareProductionModelCandidate', () => {
+  it.each([
+    `https://huggingface.co/other/model/resolve/${REVISION}/onnx/model_q4f16.onnx`,
+    `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/different.onnx`,
+    `https://example.com/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx`,
+    `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model%zz.onnx`,
+  ])('rejects observed URL identity mismatch before creating a transfer client: %s', async url => {
+    const observation = observed();
+    observation.requests[0]!.url = url;
+    vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue(observation);
+    const actual = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
+    expect(actual).toEqual({
+      status: 'failed',
+      error: { name: 'ModelArtifactRequestIdentityMismatch', message: 'Transformers.js model artifact request observation did not match the requested model, revision, or Production candidate' },
+      prefetch: undefined,
+    });
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { modelId: 'resolve/model', path: 'onnx/model_q4f16.onnx' },
+    { modelId: 'org/resolve', path: 'onnx/model_q4f16.onnx' },
+    { modelId: 'org/model', path: 'onnx/resolve/model_q4f16.onnx' },
+  ])('admits exact identity with resolve in $modelId and $path', async ({ modelId, path }) => {
+    const url = `https://huggingface.co/${modelId}/resolve/${REVISION}/${path}`;
+    vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue({
+      ...observed(), modelId, paths: [path], requests: [{ path, url }],
+    });
+    const prefetch = result({ files: [{ status: 'downloaded', url, path: `models/huggingface.co/${modelId}/resolve/${REVISION}/${path}`, byteLength: 4, expectedByteLength: 4 }] });
+    const prefetchUrls = vi.fn(async () => prefetch);
+    const dispose = vi.fn(async () => undefined);
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({ prefetchUrls, dispose });
+    await expect(prepareProductionModelCandidate({ modelId, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: [path] })).resolves.toEqual({ status: 'ready', prefetch });
+    expect(prefetchUrls).toHaveBeenCalledExactlyOnceWith({ urls: [url], progressCallback: expect.any(Function) });
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it('does not let optional measurement assembly replace the original successful result', async () => {
     const prefetch = result({ files: REQUIRED_MODEL_PATHS.map(path => successfulFile({ path })) });
     Object.defineProperty(prefetch, 'timing', { get() {

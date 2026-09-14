@@ -6,6 +6,15 @@ import {
 } from '@/features/transformers-js/download-verification/model-artifact-request-worker/request-barrier';
 
 describe('model artifact request barrier', () => {
+  it.each([
+    { modelId: 'resolve/model', path: 'onnx/model_q4.onnx' },
+    { modelId: 'org/resolve', path: 'onnx/model_q4.onnx' },
+    { modelId: 'org/model', path: 'onnx/resolve/model_q4.onnx' },
+  ])('keeps the fixed resolve separator for $modelId and $path', ({ modelId, path }) => {
+    const url = `https://huggingface.co/${modelId}/resolve/${'a'.repeat(40)}/${path}`;
+    expect(huggingFaceResolveArtifactRequest({ url })).toEqual({ url, path });
+  });
+
   it('extracts only the repository-relative path from a Hugging Face resolve URL', () => {
     expect(huggingFaceResolveArtifactPath({
       url: 'https://huggingface.co/org/model/resolve/0123456789abcdef/onnx/model_q4.onnx_data?download=true',

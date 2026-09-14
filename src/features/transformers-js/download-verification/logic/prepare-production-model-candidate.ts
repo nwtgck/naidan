@@ -6,6 +6,7 @@ import { normalizeTransformersJsProductionModelId } from '@/features/transformer
 import { createTransformersJsDownloadWorkerClient } from '@/features/transformers-js/download-verification/download-worker/client-hosted';
 import { observeDownloadSafely } from '@/features/transformers-js/download-progress';
 import { downloadResourcePath } from '@/features/transformers-js/download-progress';
+import { parseHuggingFaceResolveIdentity } from '@/features/transformers-js/runtime/hugging-face-resolve-identity';
 import { createDownloadMeasurementClock, disposeWithDownloadTiming, publishDownloadTiming, type DownloadTimingCallback, type DownloadPrefetchTiming } from '@/features/transformers-js/download-timing';
 import type {
   TransformersJsPrefetchFileResult,
@@ -13,23 +14,6 @@ import type {
   TransformersJsProgressCallback,
 } from '@/features/transformers-js/types';
 
-
-function requestRevision({ url }: { url: string }): string | undefined {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return undefined;
-  }
-  const parts = parsed.pathname.split('/').filter(Boolean);
-  const resolveIndex = parts.indexOf('resolve');
-  if (resolveIndex < 0 || resolveIndex + 1 >= parts.length) return undefined;
-  try {
-    return decodeURIComponent(parts[resolveIndex + 1]!);
-  } catch {
-    return parts[resolveIndex + 1];
-  }
-}
 
 function serializedError({ error }: { error: unknown }): { name: string; message: string } {
   if (error instanceof Error) {
@@ -116,8 +100,11 @@ export async function prepareProductionModelCandidate({
     && requestObservation.revision === revision
     && requestObservation.candidate.device === candidate.device
     && requestObservation.candidate.dtype === candidate.dtype;
-  const revisionsMatch = requestObservation.requests.every(request => requestRevision({ url: request.url }) === revision);
-  if (!identityMatches || !revisionsMatch) {
+  const requestIdentitiesMatch = requestObservation.requests.every(request => {
+    const identity = parseHuggingFaceResolveIdentity({ url: request.url });
+    return identity?.modelId === normalizedModelId && identity.revision === revision && identity.path === request.path;
+  });
+  if (!identityMatches || !requestIdentitiesMatch) {
     return {
       status: 'failed',
       error: {

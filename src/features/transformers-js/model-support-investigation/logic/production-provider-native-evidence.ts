@@ -329,9 +329,9 @@ function createDescriptorChecks() {
     limits: ({ value }) => record<LoadDiagnostics['limits']>({ value, fields: { maxEvents: scalar, maxResources: scalar }, optional: [] }),
     events: array({ maximum: 512, check: ({ value }) => record<LoadDiagnosticEvent>({ value, fields: {
       loadOrdinal: scalar, sequence: scalar, candidateOrdinal: scalar, kind: scalar, resource: scalar, readOrdinal: scalar, requestedBytes: scalar,
-      errorName: scalar, device: scalar, dtype: scalar, priorRuntime: scalar, revision: scalar,
+      errorName: scalar, errorCategory: scalar, device: scalar, dtype: scalar, priorRuntime: scalar, revision: scalar,
       candidateScopeAllocatedBytes: scalar, returnedReadBufferBytes: scalar, activeReadCount: scalar, scope: scalar,
-    }, optional: ['resource', 'readOrdinal', 'requestedBytes', 'errorName', 'device', 'dtype', 'priorRuntime', 'revision'] }) }),
+    }, optional: ['resource', 'readOrdinal', 'requestedBytes', 'errorName', 'errorCategory', 'device', 'dtype', 'priorRuntime', 'revision'] }) }),
     incompleteReasons: array({ check: scalar, maximum: 6 }),
   }, optional: [] });
   const lifetimeCheck: Check = ({ value }) => record<GenerationCaptureClientLifetime>({ value, fields: { runId: scalar, workerEpoch: scalar, session: scalar, loadDiagnostics: loadDiagnosticCheck, issuedCalls: array({ check: contextCheck, maximum: 32 }), loadRequests: array({ maximum: 32, check: ({ value }) => record<GenerationCaptureClientLifetime['loadRequests'][number]>({ value, fields: { requestedModelId: scalar, requestedRevision: scalar, revisionSelection: revisionSelectionCheck }, optional: ['revisionSelection'] }) }), incompleteReasons: array({ check: scalar, maximum: 5 }) }, optional: ['loadDiagnostics'] });

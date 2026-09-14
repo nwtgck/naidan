@@ -1174,6 +1174,7 @@ import { ModelSupportInvestigationModal__runtime_control_webgpu } from '@/string
 import { ModelSupportInvestigationModal__runtime_no_output } from '@/strings/messages/ModelSupportInvestigationModal__runtime_no_output/de';
 import { ModelSupportInvestigationModal__runtime_bytes } from '@/strings/messages/ModelSupportInvestigationModal__runtime_bytes/de';
 import { ModelSupportInvestigationModal__runtime_control } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control/de';
+import { ModelSupportInvestigationModal__runtime_control_inputs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_inputs/de';
 import { ModelSupportInvestigationModal__runtime_environment } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment/de';
 import { ModelSupportInvestigationModal__runtime_environment_summary } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment_summary/de';
 import { ModelSupportInvestigationModal__runtime_mjs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_mjs/de';
@@ -2886,6 +2887,7 @@ export const catalog = {
   ModelSupportInvestigationModal__runtime_no_output,
   ModelSupportInvestigationModal__runtime_bytes,
   ModelSupportInvestigationModal__runtime_control,
+  ModelSupportInvestigationModal__runtime_control_inputs,
   ModelSupportInvestigationModal__runtime_environment,
   ModelSupportInvestigationModal__runtime_environment_summary,
   ModelSupportInvestigationModal__runtime_mjs,
