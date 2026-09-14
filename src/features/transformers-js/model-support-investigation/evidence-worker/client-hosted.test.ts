@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IModelSupportInvestigationEvidenceWorker } from "@/features/transformers-js/model-support-investigation/evidence-worker/types";
+import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
+import { readOrdinaryDownloadTimingEvidenceFile } from '@/features/transformers-js/model-support-investigation/logic/ordinary-download-timing-evidence';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -24,9 +26,39 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     vi.useRealTimers();
   });
 
+  it('sends retained-only timing as a bounded Blob without starting any investigation method', async () => {
+    const archive = { blob: new Blob(['zip']), fileName: 'timing.zip' };
+    const remote: IModelSupportInvestigationEvidenceWorker = {
+      createRetainedDownloadTimingEvidence: vi.fn(async () => archive),
+      createPartialEvidence: vi.fn(), createBatchEvidence: vi.fn(), createDownloadVerificationEvidence: vi.fn(),
+    };
+    mocks.wrap.mockReturnValue(remote);
+    mocks.release.mockResolvedValue(undefined);
+    const snapshot: DownloadTimingSnapshot = {
+      format: 'transformers-js-download-timing-v1', measurementVersion: 1, source: 'ordinary-download',
+      serviceEpoch: '11111111-1111-4111-8111-111111111111', identityStatus: 'available', sequence: 1,
+      availability: 'recorded', droppedOperations: 0,
+      records: [{ operationId: '11111111-1111-4111-8111-111111111111/1', modelId: 'org/previous', runtimeEpoch: 1,
+        outcome: 'failed', timingStatus: 'measured', wallMs: 100, truncated: false, droppedObservations: 0, observations: [] }],
+    };
+    const { createModelSupportInvestigationEvidenceWorkerClient } = await import('./client-hosted');
+    const client = createModelSupportInvestigationEvidenceWorkerClient();
+    expect(await client.createRetainedDownloadTimingEvidence({ snapshot, exportId: 'export-1' })).toBe(archive);
+    expect(remote.createRetainedDownloadTimingEvidence).toHaveBeenCalledTimes(1);
+    const request = vi.mocked(remote.createRetainedDownloadTimingEvidence).mock.calls[0]![0].request;
+    expect((await readOrdinaryDownloadTimingEvidenceFile({ file: request })).association).toEqual({ kind: 'retained-export', exportId: 'export-1', investigation: 'not-run' });
+    expect((await readOrdinaryDownloadTimingEvidenceFile({ file: request })).snapshot).toEqual(snapshot);
+    expect(remote.createPartialEvidence).not.toHaveBeenCalled();
+    expect(remote.createBatchEvidence).not.toHaveBeenCalled();
+    expect(remote.createDownloadVerificationEvidence).not.toHaveBeenCalled();
+    await client.dispose();
+    expect(mocks.terminate).toHaveBeenCalledTimes(1);
+  });
+
   it("exports Evidence in a dedicated Worker and terminates it after disposal", async () => {
     const archive = { blob: new Blob(["zip"]), fileName: "evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
+      createRetainedDownloadTimingEvidence: vi.fn(async () => ({ blob: new Blob(["timing"]), fileName: "timing.zip" })),
       createPartialEvidence: vi.fn(async () => archive),
       createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn(async () => archive),
@@ -55,6 +87,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
   it("serializes batch Evidence with every requested target through the dedicated Worker", async () => {
     const archive = { blob: new Blob(["zip"]), fileName: "batch-evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
+      createRetainedDownloadTimingEvidence: vi.fn(async () => ({ blob: new Blob(["timing"]), fileName: "timing.zip" })),
       createPartialEvidence: vi.fn(async () => archive),
       createBatchEvidence: vi.fn(async () => archive),
       createDownloadVerificationEvidence: vi.fn(async () => archive),
@@ -93,6 +126,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
   it("serializes Download Verification evidence through the same dedicated Worker", async () => {
     const archive = { blob: new Blob(["zip"]), fileName: "download-evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
+      createRetainedDownloadTimingEvidence: vi.fn(async () => ({ blob: new Blob(["timing"]), fileName: "timing.zip" })),
       createPartialEvidence: vi.fn(async () => archive),
       createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn(async () => archive),
@@ -114,6 +148,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
   it("terminates a hung export at the deadline without trying to release the dead Worker", async () => {
     vi.useFakeTimers();
     const remote: IModelSupportInvestigationEvidenceWorker = {
+      createRetainedDownloadTimingEvidence: vi.fn(async () => ({ blob: new Blob(["timing"]), fileName: "timing.zip" })),
       createPartialEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
       createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
@@ -143,6 +178,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
 
   it("terminates an Evidence Worker that rejects and never awaits a release from it", async () => {
     const remote: IModelSupportInvestigationEvidenceWorker = {
+      createRetainedDownloadTimingEvidence: vi.fn(async () => ({ blob: new Blob(["timing"]), fileName: "timing.zip" })),
       createPartialEvidence: vi.fn(async () => {
         throw new Error("worker export failed");
       }),
@@ -167,6 +203,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
   it("cancels an in-flight Evidence export immediately when the client is disposed", async () => {
     vi.useFakeTimers();
     const remote: IModelSupportInvestigationEvidenceWorker = {
+      createRetainedDownloadTimingEvidence: vi.fn(async () => ({ blob: new Blob(["timing"]), fileName: "timing.zip" })),
       createPartialEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
       createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
@@ -193,6 +230,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
   it("does not block disposal when the best-effort Comlink release never settles", async () => {
     const archive = { blob: new Blob(["zip"]), fileName: "evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
+      createRetainedDownloadTimingEvidence: vi.fn(async () => ({ blob: new Blob(["timing"]), fileName: "timing.zip" })),
       createPartialEvidence: vi.fn(async () => archive),
       createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn(async () => archive),

@@ -33,6 +33,8 @@ import {
 } from "@/features/transformers-js/model-support-investigation/logic/assess-evidence-package";
 import { createDownloadVerificationEvidenceLaneFiles } from '@/features/transformers-js/download-verification/evidence/create-download-verification-evidence';
 import { ordinaryProviderRuntimeCompletionSchema, providerLoadRuntimeCompletion } from './provider-load-runtime-completion';
+import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
+import { createOrdinaryDownloadTimingEvidenceFile, ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, verifyOrdinaryDownloadTimingEvidence } from './ordinary-download-timing-evidence';
 
 async function sha256Hex({ bytes }: { bytes: Uint8Array }): Promise<string> {
   const input = new Uint8Array(bytes.byteLength);
@@ -308,15 +310,19 @@ function toolProtocolProbeErrorRecords({ run }: { run: ModelSupportInvestigation
   });
 }
 
-async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMetadata, nativeEvidence, maximumNativeBinaryBytes, maximumNativeJsonCharacters }: {
+async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming, maximumNativeBinaryBytes, maximumNativeJsonCharacters }: {
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery | undefined,
   replayMetadata?: InvestigationReplayMetadataSidecar[],
   nativeEvidence: ProductionProviderNativeEvidenceSidecar | undefined,
+  ordinaryDownloadTiming: DownloadTimingSnapshot | undefined,
   maximumNativeBinaryBytes: number,
   maximumNativeJsonCharacters: number,
 }): Promise<{ files: Map<string, Blob>, fileName: string, nativeBinaryBytes: number, nativeJsonCharacters: number }> {
   const files = new Map<string, Blob>();
+  if (ordinaryDownloadTiming !== undefined) {
+    setEvidenceFile({ files, path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, content: createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-run', runId: run.runId } }) });
+  }
   const providerCapture = run.productionProviderCapture === undefined ? undefined : createProductionProviderCaptureEvidence({
     capture: run.productionProviderCapture, runId: run.runId, modelId: run.modelId,
   });
@@ -727,13 +733,14 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
   };
 }
 
-export async function createPartialModelSupportEvidence({ run, recovery, replayMetadata, nativeEvidence }: {
+export async function createPartialModelSupportEvidence({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming }: {
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery | undefined,
   replayMetadata?: InvestigationReplayMetadataSidecar[],
   nativeEvidence?: ProductionProviderNativeEvidenceSidecar,
+  ordinaryDownloadTiming?: DownloadTimingSnapshot,
 }): Promise<{ blob: Blob, fileName: string }> {
-  const { files, fileName } = await createPartialModelSupportEvidenceFiles({ run, recovery, replayMetadata, nativeEvidence, maximumNativeBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, maximumNativeJsonCharacters: PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS });
+  const { files, fileName } = await createPartialModelSupportEvidenceFiles({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming, maximumNativeBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, maximumNativeJsonCharacters: PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS });
   await verifyGeneratedEvidenceFiles({ archive: createEvidenceFilesReader({ files }) });
   const blob = await createEvidenceArchive({ files });
   await verifyGeneratedEvidenceArchive({ blob });
@@ -806,9 +813,11 @@ const packagedRunIdentitySchema = z.object({
 export async function createBatchModelSupportEvidence({
   batchId,
   items,
+  ordinaryDownloadTiming,
 }: {
   batchId: string,
   items: readonly ModelSupportInvestigationBatchEvidenceItem[],
+  ordinaryDownloadTiming?: DownloadTimingSnapshot,
 }): Promise<{ blob: Blob, fileName: string }> {
   if (batchId.length === 0) throw new Error("Model Support Investigation batch Evidence requires a batch ID");
   if (items.length === 0) throw new Error("Model Support Investigation batch Evidence requires at least one target");
@@ -831,6 +840,9 @@ export async function createBatchModelSupportEvidence({
   }
 
   const files = new Map<string, Blob>();
+  if (ordinaryDownloadTiming !== undefined) {
+    setEvidenceFile({ files, path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, content: createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-batch', batchId } }) });
+  }
   let remainingNativeBinaryBytes = PRODUCTION_PROVIDER_NATIVE_BATCH_BINARY_BYTES;
   let remainingNativeJsonCharacters = PRODUCTION_PROVIDER_NATIVE_BATCH_JSON_CHARACTERS;
   const generatedAt = new Date().toISOString();
@@ -852,6 +864,7 @@ export async function createBatchModelSupportEvidence({
         recovery: item.recovery,
         replayMetadata: item.replayMetadata,
         nativeEvidence: item.nativeEvidence,
+        ordinaryDownloadTiming: undefined,
         maximumNativeBinaryBytes: remainingNativeBinaryBytes,
         maximumNativeJsonCharacters: remainingNativeJsonCharacters,
       });
@@ -893,6 +906,7 @@ export async function createBatchModelSupportEvidence({
   const blob = await createEvidenceArchive({ files });
   const verification = await openEvidenceArchive({ blob });
   try {
+    await verifyOrdinaryDownloadTimingEvidence({ archive: verification.reader, association: { kind: 'investigation-batch', batchId } });
     const batchFile = await verification.reader.read({ path: "batch.json" });
     if (batchFile === undefined) throw new Error("Batch Evidence archive is missing batch.json");
     const parsedBatch = batchEvidenceIndexSchema.parse(JSON.parse(await batchFile.text()) as unknown);

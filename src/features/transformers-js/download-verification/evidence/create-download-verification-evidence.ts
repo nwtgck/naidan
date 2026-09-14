@@ -8,6 +8,7 @@ import type {
 } from '@/features/transformers-js/download-verification/evidence/types';
 import { verifyGeneratedEvidenceArchive } from '@/features/transformers-js/model-support-investigation/logic/verify-evidence-archive';
 import { downloadRuntimeAcceptanceIdentity } from './runtime-acceptance-identity';
+import { CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH, cacheAcceptanceTimingEvidenceSchema } from './cache-acceptance-timing';
 
 interface DownloadVerificationCandidateEvidence {
   candidate: import('@/features/transformers-js/types').TransformersJsProductionInvestigationCandidate;
@@ -430,6 +431,14 @@ export function createDownloadVerificationEvidenceLaneFiles({ evidence }: {
     'download-lane/events.jsonl': `${events.map(event => JSON.stringify(event)).join('\n')}\n`,
     'download-lane/test-readiness.json': `${JSON.stringify(readiness, undefined, 2)}\n`,
   };
+  if (evidence.runtimeCompletion?.runtimeTiming !== undefined) {
+    const timing = cacheAcceptanceTimingEvidenceSchema.parse(evidence.runtimeCompletion.runtimeTiming);
+    if (timing.runId !== evidence.runId || timing.modelId !== evidence.run.normalizedModelId
+      || !['reused-production-cache', 'cache-only-unavailable', 'cache-reuse-failed'].includes(evidence.runtimeCompletion.source)) {
+      throw new Error('Cache acceptance timing does not match its investigation owner');
+    }
+    files[CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH] = JSON.stringify(timing);
+  }
   return { files, readiness, candidates, runtimeIdentity };
 }
 

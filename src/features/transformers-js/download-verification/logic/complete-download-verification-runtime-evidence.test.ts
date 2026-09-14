@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { completeDownloadVerificationRuntimeEvidence } from '@/features/transformers-js/download-verification/logic/complete-download-verification-runtime-evidence';
 import type { DownloadVerificationEvidenceInput } from '@/features/transformers-js/download-verification/evidence/types';
+import type { DownloadTimingCallback } from '@/features/transformers-js/download-timing';
 
 const safetyMocks = vi.hoisted(() => ({
   runProductionDownloadPreparation: vi.fn(),
@@ -84,6 +85,31 @@ function acceptedReuse(args: {
 }
 
 describe('completeDownloadVerificationRuntimeEvidence', () => {
+  it('retains only the current MSI acceptance timings without inventing an ordinary Download operation', async () => {
+    let lateTiming: DownloadTimingCallback | undefined;
+    const observation = { kind: 'acceptance' as const, version: 1 as const, route: 'revision' as const,
+      revision: REVISION, clockId: '33333333-3333-4333-8333-333333333333', timingStatus: 'measured' as const,
+      hostDurationMs: 23000, loadOutcome: 'accepted' as const, cleanupOutcome: 'completed' as const,
+      hostSettlement: 'fulfilled' as const, attemptCount: 1 };
+    const result = await completeDownloadVerificationRuntimeEvidence({
+      evidence: evidence(), storageRoot: {} as FileSystemDirectoryHandle,
+      reuseRevision: vi.fn(async ({ onTiming }) => {
+        lateTiming = onTiming;
+        onTiming?.({ observation });
+        onTiming?.({ observation: { ...observation, hostDurationMs: -1 } });
+        return acceptedReuse({});
+      }),
+      inspectCachedRevisions: vi.fn(async () => inventory()),
+    });
+    expect(result.runtimeCompletion?.status).toBe('accepted');
+    expect(result.runtimeCompletion?.runtimeTiming).toEqual({
+      format: 'msi-cache-acceptance-timing-v1', source: 'current-msi-cache-acceptance',
+      runId: 'run-1', modelId: 'org/model', droppedObservations: 1, observations: [observation],
+    });
+    lateTiming?.({ observation: { ...observation, hostDurationMs: 90000 } });
+    expect(result.runtimeCompletion?.runtimeTiming?.observations).toHaveLength(1);
+    expect(safetyMocks.runProductionDownloadPreparation).not.toHaveBeenCalled();
+  });
   it('reuses an accepted exact Production cache without any download preparation capability', async () => {
     const result = await completeDownloadVerificationRuntimeEvidence({
       evidence: evidence(),

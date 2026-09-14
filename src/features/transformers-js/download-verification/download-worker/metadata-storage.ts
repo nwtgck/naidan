@@ -1,4 +1,5 @@
 import { urlToPath, writeToOpfs } from '@/features/transformers-js/utils';
+import { readCompletedOpfsSnapshot, withOpfsFileLease } from '@/features/transformers-js/runtime/opfs-access';
 
 export interface RuntimeMetadataStorage {
   read({ url }: { url: string }): Promise<{ byteLength: number, response: Response } | undefined>;
@@ -9,21 +10,8 @@ export interface RuntimeMetadataStorage {
 async function completedFile({ url }: { url: string }): Promise<File | undefined> {
   const path = urlToPath({ url });
   if (!path) throw new Error('Invalid metadata storage identity');
-  const parts = path.split('/');
-  const name = parts.pop();
-  if (!name) throw new Error('Missing metadata filename');
-  try {
-    let directory = await navigator.storage.getDirectory();
-    for (const part of parts) {
-      if (part) directory = await directory.getDirectoryHandle(part, { create: false });
-    }
-    await directory.getFileHandle(`.${name}.complete`, { create: false });
-    const file = await (await directory.getFileHandle(name, { create: false })).getFile();
-    return file.size === 0 ? undefined : file;
-  } catch (error) {
-    if (error instanceof Error && error.name === 'NotFoundError') return undefined;
-    throw error;
-  }
+  return await withOpfsFileLease({ path, mode: 'shared', availability: 'wait', signal: undefined, run: async ({ lease }) =>
+    await readCompletedOpfsSnapshot({ path, lease }) });
 }
 
 /** Strict metadata-only storage. Model-weight cache behavior is unchanged. */

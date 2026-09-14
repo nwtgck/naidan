@@ -39,14 +39,13 @@ const downloadPhaseLabel = computed(() => {
   const phase = downloadProgress.value?.phase;
   switch (phase) {
   case undefined: return undefined;
-  case 'resolving-revision': return lazyStrings.TransformersJsManager__resolving_revision();
-  case 'checking-cache': return lazyStrings.TransformersJsManager__checking_cache();
-  case 'preparing-metadata': return lazyStrings.TransformersJsManager__preparing_metadata();
-  case 'observing-candidate': return lazyStrings.TransformersJsManager__checking_required_files();
-  case 'transferring': return lazyStrings.TransformersJsManager__transferring();
-  case 'saving': return lazyStrings.TransformersJsManager__saving();
+  // Preparation phases track ownership, diagnostics, and progress; they are
+  // intentionally not rendered as separate Download labels, even in details.
+  case 'resolving-revision': case 'checking-cache': case 'preparing-metadata':
+  case 'observing-candidate': case 'transferring': case 'saving':
+    return lazyStrings.TransformersJsManager__transferring();
   case 'checking-runtime': return lazyStrings.TransformersJsManager__checking_runtime();
-  case 'complete': return lazyStrings.TransformersJsManager__complete();
+  case 'complete': return lazyStrings.TransformersJsManager__download_complete();
   case 'failed': return lazyStrings.TransformersJsManager__download_failed();
   default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
   }
@@ -67,9 +66,8 @@ const downloadEtaLabel = computed(() => {
   const eta = downloadProgress.value?.downloadEta;
   if (eta === undefined) return undefined;
   switch (eta.status) {
-  case 'estimating': return lazyStrings.TransformersJsManager__current_candidate_download_time_remaining({ seconds: eta.remainingSeconds });
-  case 'warming-up': return lazyStrings.TransformersJsManager__estimating_download_time();
-  case 'stalled': return lazyStrings.TransformersJsManager__recalculating_download_time();
+  case 'estimating': return lazyStrings.TransformersJsManager__about_time_remaining({ seconds: eta.remainingSeconds });
+  case 'warming-up': case 'stalled':
   case 'unavailable': return undefined;
   default: { const exhaustive: never = eta; throw new Error(String(exhaustive)); }
   }
@@ -92,7 +90,7 @@ const downloadFileStatusLabel = ({ status }: { status: DownloadFileStatus }): st
   case 'queued': return lazyStrings.TransformersJsManager__queued();
   case 'transferring': return lazyStrings.TransformersJsManager__transferring();
   case 'saving': return lazyStrings.TransformersJsManager__saving();
-  case 'cached': return lazyStrings.TransformersJsManager__cached();
+  case 'cached': return lazyStrings.TransformersJsManager__reusing_downloaded_file();
   case 'complete': return lazyStrings.TransformersJsManager__complete();
   case 'failed': return lazyStrings.TransformersJsManager__error();
   default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
@@ -521,10 +519,12 @@ defineExpose({
 
             <!-- Contextual Progress for Download -->
             <div v-if="downloadProgress !== undefined && !isDownloadFailureDismissed" data-testid="download-progress" tw-class="space-y-3 rounded-2xl border border-purple-100 dark:border-purple-900/40 p-4">
-              <div tw-class="flex items-center justify-between gap-3 text-sm font-bold text-purple-700 dark:text-purple-300">
-                <span>{{ downloadPhaseLabel }}</span>
+              <div data-testid="download-progress-heading" tw-class="flex items-center justify-between gap-3 text-sm font-bold text-purple-700 dark:text-purple-300">
+                <span data-testid="download-phase">{{ downloadPhaseLabel }}</span>
                 <div tw-class="flex items-center gap-3">
-                  <span v-if="downloadProgress.overallProgress !== undefined" data-testid="download-overall-progress">{{ downloadProgress.overallProgress }}%</span>
+                  <span tw-class="tabular-nums">
+                    <span v-if="downloadProgress.overallProgress !== undefined" data-testid="download-overall-progress">{{ downloadProgress.overallProgress }}%</span><span v-if="downloadEtaLabel !== undefined"> · <span data-testid="download-eta">{{ downloadEtaLabel }}</span></span>
+                  </span>
                   <button v-if="downloadProgress.phase === 'failed'" data-testid="dismiss-download-failure" :aria-label="lazyStrings.TransformersJsManager__close_error_details()" @click="isDownloadFailureDismissed = true; lastDownloadError = null" tw-class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
                     <XIcon tw-class="w-4 h-4" />
                   </button>
@@ -536,15 +536,13 @@ defineExpose({
               <p v-if="downloadProgress.overallProgress === undefined && downloadProgress.unknownTotalCount > 0 && downloadProgress.phase !== 'failed'" data-testid="download-size-status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.TransformersJsManager__total_size_unknown() }}</p>
               <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.TransformersJsManager__current_candidate_preparation_includes_cached_files() }}</p>
               <p v-if="downloadEstimateRevisionLabel !== undefined" data-testid="download-estimate-revision" :data-estimate-generation="downloadProgress.estimateGeneration" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ downloadEstimateRevisionLabel }}</p>
-              <p v-if="downloadEtaLabel !== undefined" data-testid="download-eta" tw-class="text-xs text-gray-700 dark:text-gray-300 tabular-nums">{{ downloadEtaLabel }}</p>
-              <p v-if="downloadProgress.downloadEta.status === 'estimating'" data-testid="download-eta-scope" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.TransformersJsManager__saving_and_checks_not_included() }}</p>
               <p v-if="isRetryingDownloadCandidate" data-testid="download-candidate-retry" tw-class="text-xs font-medium text-purple-700 dark:text-purple-300">{{ lazyStrings.TransformersJsManager__retrying_with_another_candidate() }}</p>
               <p v-if="downloadProgress.attemptNumber !== undefined" tw-class="text-xs font-medium text-gray-700 dark:text-gray-300">
                 {{ lazyStrings.TransformersJsManager__candidate_number({ number: downloadProgress.attemptNumber, count: downloadProgress.attemptCount }) }}
                 <span v-if="downloadProgress.candidate !== undefined"> · {{ downloadProgress.candidate.device }} / {{ downloadProgress.candidate.dtype }}</span>
               </p>
               <p v-if="downloadProgress.attemptNumber !== undefined" data-testid="download-byte-summary" tw-class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                {{ lazyStrings.TransformersJsManager__current_candidate_received_and_cached_bytes({ received: formatSize({ bytes: downloadProgress.receivedBytes }), cached: formatSize({ bytes: downloadProgress.cachedBytes }) }) }}
+                {{ lazyStrings.TransformersJsManager__received_and_reused_bytes({ received: formatSize({ bytes: downloadProgress.receivedBytes }), reused: formatSize({ bytes: downloadProgress.cachedBytes }) }) }}
               </p>
               <p v-if="downloadProgress.totalFileCount > 0" data-testid="download-file-summary" tw-class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{{ lazyStrings.TransformersJsManager__files_complete({ completed: downloadProgress.completedFileCount, total: downloadProgress.totalFileCount }) }}</p>
               <button v-if="downloadProgress.files.length > 0" @click="isDetailsExpanded = !isDetailsExpanded" :aria-expanded="isDetailsExpanded" tw-class="flex items-center gap-1.5 text-xs font-bold text-gray-500 dark:text-gray-400">

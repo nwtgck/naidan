@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { TransformersJsProgressCallback, TransformersJsWorkerClient } from './types';
 import type { DownloadProgressCallback } from './download-progress';
 import type { RuntimeAcceptanceProgressCallback } from './download-verification/logic/runtime-acceptance-progress';
+import type { DownloadTimingCallback, DownloadAcceptanceTiming } from './download-timing';
 
 const transfer = vi.hoisted(() => ({ resolve: vi.fn(), reuse: vi.fn(), prepare: vi.fn() }));
 vi.mock('./download-verification/logic/resolve-public-hugging-face-revision', () => ({ resolvePublicHuggingFaceRevision: transfer.resolve }));
@@ -10,6 +11,7 @@ vi.mock('./download-verification/logic/reuse-downloaded-production-revision', ()
 vi.mock('./download-verification/logic/run-production-download-preparation', () => ({ runProductionDownloadPreparation: transfer.prepare }));
 
 const owners: Array<{ dispose(): Promise<void> }> = [];
+const acceptanceTiming: DownloadAcceptanceTiming = { kind: 'acceptance', version: 1, route: 'candidate', revision: 'a'.repeat(40), candidate: { device: 'webgpu', dtype: 'q4f16' }, timingStatus: 'measured', hostDurationMs: 23_000, loadOutcome: 'accepted', cleanupOutcome: 'completed', hostSettlement: 'fulfilled', attemptCount: 1 };
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal('fetch', vi.fn(() => {
@@ -44,6 +46,96 @@ it('bounds a held Download subscriber and retains terminal state without waiting
   await vi.waitFor(() => expect(subscriber).toHaveBeenCalledTimes(2));
   expect(subscriber.mock.calls[1]?.[0]).toMatchObject({ status: 'idle' });
 });
+
+it('retains ordinary Download timing in its owning service without mutating a captured snapshot', async () => {
+  const { createTransformersJsService } = await import('./index-hosted');
+  const first = createTransformersJsService({ createWorkerClient: () => {
+    throw new Error('No runtime expected');
+  } });
+  const second = createTransformersJsService({ createWorkerClient: () => {
+    throw new Error('No runtime expected');
+  } });
+  owners.push(first, second);
+  transfer.reuse.mockResolvedValue({ reused: false });
+  transfer.prepare.mockImplementation(async ({ onTiming }: { onTiming: DownloadTimingCallback }) => {
+    onTiming({ observation: acceptanceTiming });
+    return { status: 'accepted' };
+  });
+  const empty = first.service.getDownloadTimingSnapshot();
+  await first.service.downloadModel({ modelId: 'fixture/model' });
+  const snapshot = first.service.getDownloadTimingSnapshot();
+  expect(snapshot.records).toHaveLength(1);
+  expect(snapshot.records[0]).toMatchObject({ modelId: 'fixture/model', outcome: 'completed', observations: [acceptanceTiming] });
+  expect(empty.records).toEqual([]);
+  expect(second.service.getDownloadTimingSnapshot().records).toEqual([]);
+  snapshot.records[0]!.observations.length = 0;
+  expect(first.service.getDownloadTimingSnapshot().records[0]?.observations).toEqual([acceptanceTiming]);
+  expect(transfer.prepare).toHaveBeenCalledOnce();
+});
+
+it('does not record success or late timing while a cancelled Download is still settling', async () => {
+  const { createTransformersJsService } = await import('./index-hosted');
+  const owner = createTransformersJsService({ createWorkerClient: () => {
+    throw new Error('No runtime expected');
+  } });
+  owners.push(owner);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  transfer.reuse.mockResolvedValue({ reused: false });
+  transfer.prepare.mockImplementation(async ({ onTiming }: { onTiming: DownloadTimingCallback }) => {
+    entered.resolve();
+    await release.promise;
+    onTiming({ observation: acceptanceTiming });
+    return { status: 'accepted' };
+  });
+  const running = owner.service.downloadModel({ modelId: 'fixture/model' });
+  const rejected = running.catch((error: unknown) => error);
+  try {
+    await entered.promise;
+    await owner.service.interrupt();
+    const pending = owner.service.getDownloadTimingSnapshot();
+    expect(pending.records[0]?.outcome).toBe('running');
+    expect(pending.records[0]?.wallMs).toBeUndefined();
+    release.resolve();
+    expect(await rejected).toMatchObject({ name: 'AbortError' });
+    expect(owner.service.getDownloadTimingSnapshot().records[0]).toMatchObject({ outcome: 'aborted', observations: [] });
+    expect(pending.records[0]?.outcome).toBe('running');
+  } finally {
+    release.resolve();
+    await rejected;
+  }
+});
+
+it('drops a disposed service owner timing callback without resurrecting retained records', async () => {
+  const { createTransformersJsService } = await import('./index-hosted');
+  const owner = createTransformersJsService({ createWorkerClient: () => {
+    throw new Error('No runtime expected');
+  } });
+  owners.push(owner);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const finished = Promise.withResolvers<void>();
+  transfer.reuse.mockResolvedValue({ reused: false });
+  transfer.prepare.mockImplementation(async ({ onTiming }: { onTiming: DownloadTimingCallback }) => {
+    entered.resolve();
+    await release.promise;
+    onTiming({ observation: acceptanceTiming });
+    finished.resolve();
+    return { status: 'accepted' };
+  });
+  const running = owner.service.downloadModel({ modelId: 'fixture/model' }).catch((error: unknown) => error);
+  try {
+    await entered.promise;
+    await owner.dispose();
+    expect(await running).toMatchObject({ reason: 'disposed' });
+    release.resolve();
+    await finished.promise;
+    expect(owner.service.getDownloadTimingSnapshot().records).toEqual([]);
+  } finally {
+    release.resolve();
+    await running;
+  }
+});
 afterEach(async () => {
   await Promise.all(owners.splice(0).map(owner => owner.dispose()));
   expect(fetch).not.toHaveBeenCalled();
@@ -71,7 +163,7 @@ it('does not let a failing Download progress subscriber prevent cache reuse or c
   owner.service.subscribeModelList({ listener: healthyList });
   await expect(owner.service.downloadModel({ modelId: 'fixture/model' })).resolves.toBeUndefined();
   expect(transfer.resolve).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model' });
-  expect(transfer.reuse).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model', resolvedRevision: 'a'.repeat(40), onProgress: expect.any(Function) });
+  expect(transfer.reuse).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model', resolvedRevision: 'a'.repeat(40), onProgress: expect.any(Function), onTiming: expect.any(Function) });
   expect(transfer.prepare).not.toHaveBeenCalled();
   expect(createWorkerClient).not.toHaveBeenCalled();
   expect(owner.service.getState()).toMatchObject({ status: 'idle', loadingModelId: undefined });
@@ -217,8 +309,8 @@ it('publishes stalled ETA from the display timer and retires that timer after Do
     onDownloadProgress({ event: { kind: 'candidate', index: 0, count: 1, candidate: { device: 'wasm', dtype: 'q4' } } });
     onDownloadProgress({ event: { kind: 'plan', index: 0, paths: ['onnx/a'] } });
     onDownloadProgress({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'onnx/a', bytes: 600 }] } });
-    onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'download', file: 'onnx/a', loaded: 0, downloadTiming: { clockId: 'source', requestId: 1, sequence: 1, observedAtMs: 20_000 } } } });
-    onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'onnx/a', loaded: 300, downloadTiming: { clockId: 'source', requestId: 1, sequence: 2, observedAtMs: 23_000 } } } });
+    onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'download', file: 'onnx/a', loaded: 0, downloadCumulativeTiming: { clockId: 'source', sequence: 1, firstFetchStartedAtMs: 20_000, observedAtMs: 20_000, receivedBytes: 0 } } } });
+    onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'onnx/a', loaded: 300, downloadCumulativeTiming: { clockId: 'source', sequence: 2, firstFetchStartedAtMs: 20_000, observedAtMs: 23_000, receivedBytes: 300 } } } });
     started.resolve(); await release.promise; return { status: 'accepted' };
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/model' });

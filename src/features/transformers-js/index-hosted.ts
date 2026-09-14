@@ -1,12 +1,14 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
 import { cloneChatMessages, cloneLmParameters, cloneWorkerTools } from './inference-input-snapshot';
 import { isOpfsStagingFileName } from './runtime/opfs-staging-file';
+import { withOpfsFileLease, withOpfsModelDeletion, withOpfsRootDeletion } from './runtime/opfs-access';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import { resolvePublicHuggingFaceRevision } from '@/features/transformers-js/download-verification/logic/resolve-public-hugging-face-revision';
 import { runProductionDownloadPreparation } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
+import { createDownloadTimingCollector, type DownloadTimingCallback } from './download-timing';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import { createTransformersJsRuntimeLane, type TransformersJsRuntimeOperation } from './runtime-operation-lane';
 import type { TransformersJsInferenceOperation, TransformersJsInferenceScope } from './inference-operation';
@@ -48,6 +50,7 @@ export function createTransformersJsService({ createWorkerClient }: {
   const downloadedModelRevisionHints = new Map<string, string | undefined>();
   let runtimeLane = createTransformersJsRuntimeLane();
   let runtimeEpoch = 0;
+  const downloadTiming = createDownloadTimingCollector();
   let explicitRestart: Promise<void> | undefined;
   const restartedError = new ProductionWorkerLifecycleError({ reason: 'restarted', message: 'Transformers.js runtime was explicitly restarted; retry the operation' });
 
@@ -349,6 +352,7 @@ export function createTransformersJsService({ createWorkerClient }: {
       channel.latest = undefined;
     });
     downloadListenerChannels.clear();
+    downloadTiming.clear();
     modelListListeners.clear();
     // Includes the old client while restart is awaiting disposal. Termination is
     // started synchronously; no remote unload or advisory ACK delays it.
@@ -751,85 +755,123 @@ export function createTransformersJsService({ createWorkerClient }: {
 
     async importFile({ modelName, fileName, data }: { modelName: string, fileName: string, data: ArrayBuffer | ReadableStream }) {
       ensureOpen();
-      const root = await navigator.storage.getDirectory();
-      const modelsDir = await root.getDirectoryHandle('models', { create: true });
-      const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-      const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
+      const storagePath = `models/user/${modelName}/${fileName.split('/').filter(part => part.length > 0).join('/')}`;
+      await withOpfsFileLease({ path: storagePath, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
+        const root = await navigator.storage.getDirectory();
+        const modelsDir = await root.getDirectoryHandle('models', { create: true });
+        const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+        const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
 
-      const parts = fileName.split('/').filter(p => !!p);
-      let currentDir = modelDir;
-      for (let i = 0; i < parts.length - 1; i++) {
-        currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
-      }
+        const parts = fileName.split('/').filter(p => !!p);
+        let currentDir = modelDir;
+        for (let i = 0; i < parts.length - 1; i++) {
+          currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
+        }
 
-      const lastPart = parts[parts.length - 1]!;
-      const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
+        const lastPart = parts[parts.length - 1]!;
+        const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
 
-      if (!('createWritable' in fileHandle)) {
-        throw new Error('FileSystemFileHandle.createWritable is not supported');
-      }
+        if (!('createWritable' in fileHandle)) {
+          throw new Error('FileSystemFileHandle.createWritable is not supported');
+        }
 
-      const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
+        try {
+          await currentDir.removeEntry(`.${lastPart}.complete`);
+        } catch (error) {
+          if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
+        }
 
-      if (data instanceof ReadableStream) {
-        await data.pipeTo(writable);
-      } else {
-        await writable.write(data);
-        await writable.close();
-      }
+        const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
 
-      // Create per-file completion marker
-      await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
+        try {
+          if (data instanceof ReadableStream) {
+            await data.pipeTo(writable);
+          } else {
+            await writable.write(data);
+            await writable.close();
+          }
+        } catch (error) {
+          try {
+            await writable.abort(error);
+          } catch { /* Preserve the import failure. */ }
+          throw error;
+        }
+
+        // Create per-file completion marker
+        await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
+      } });
       notifyModelListChange();
     },
 
     async deleteModel({ modelId }: { modelId: string }) {
       ensureOpen();
-      const root = await navigator.storage.getDirectory();
-      const modelsDir = await root.getDirectoryHandle('models', { create: true });
-
       if (modelId.startsWith('user/')) {
         const name = modelId.substring(5);
-        try {
-          const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-          await userDir.removeEntry(name, { recursive: true });
-        } catch {
-          // Fallback for old 'local' directory
+        const removed = await withOpfsModelDeletion({ modelPath: `models/user/${name}`, run: async () => {
+          const root = await navigator.storage.getDirectory();
+          const modelsDir = await root.getDirectoryHandle('models', { create: true });
+          try {
+            const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+            await userDir.removeEntry(name, { recursive: true });
+            return true;
+          } catch {
+            return false;
+          }
+        } });
+        if (!removed) await withOpfsModelDeletion({ modelPath: `models/local/${name}`, run: async () => {
+          const root = await navigator.storage.getDirectory();
+          const modelsDir = await root.getDirectoryHandle('models', { create: true });
           try {
             const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
             await localDir.removeEntry(name, { recursive: true });
-          } catch { /* ignore if both fail */ }
-        }
+          } catch { /* Preserve the legacy absent-local fallback. */ }
+        } });
       } else if (modelId.startsWith('hf.co/')) {
-        const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-        const parts = modelId.substring(6).split('/');
-        if (parts.length >= 1) {
-          // We usually want to delete the organization or the specific repo.
-          // For simplicity, if it's org/repo, we delete the repo entry inside the org folder.
-          const [org, repo] = parts;
-          if (org && repo) {
+        const [org, repo] = modelId.substring(6).split('/');
+        if (org && repo) {
+          await withOpfsModelDeletion({ modelPath: `models/huggingface.co/${org}/${repo}`, run: async () => {
+            const root = await navigator.storage.getDirectory();
+            const modelsDir = await root.getDirectoryHandle('models', { create: true });
+            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
             const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
             await orgDir.removeEntry(repo, { recursive: true });
-
-            // Clean up empty org directory
-            let hasMore = false;
-            for await (const _ of orgDir.entries()) {
-              hasMore = true; break;
+          } });
+          // Release model/root shared ownership before acquiring root exclusive.
+          // Re-resolve the directory and recheck emptiness under the parent lease.
+          await withOpfsRootDeletion({ run: async () => {
+            const root = await navigator.storage.getDirectory();
+            try {
+              const modelsDir = await root.getDirectoryHandle('models', { create: false });
+              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
+              const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
+              for await (const _ of orgDir.entries()) return;
+              await hfDir.removeEntry(org);
+            } catch (error) {
+              if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
             }
-            if (!hasMore) await hfDir.removeEntry(org);
-          } else if (org) {
+          } });
+        } else if (org) {
+          await withOpfsRootDeletion({ run: async () => {
+            const root = await navigator.storage.getDirectory();
+            const modelsDir = await root.getDirectoryHandle('models', { create: true });
+            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
             await hfDir.removeEntry(org, { recursive: true });
-          }
+          } });
         }
       } else {
-        // Fallback for clean names without prefix
-        try {
-          const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-          await localDir.removeEntry(modelId, { recursive: true });
-        } catch {
-          const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-          await hfDir.removeEntry(modelId, { recursive: true });
-        }
+        // The legacy spelling can identify an organization, so own its parent
+        // namespace rather than guessing a single model key.
+        await withOpfsRootDeletion({ run: async () => {
+          const root = await navigator.storage.getDirectory();
+          const modelsDir = await root.getDirectoryHandle('models', { create: true });
+          try {
+            const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+            await localDir.removeEntry(modelId, { recursive: true });
+          } catch {
+            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+            await hfDir.removeEntry(modelId, { recursive: true });
+          }
+        } });
       }
       downloadedModelRevisionHints.delete(normalizeTransformersJsProductionModelId({ modelId }));
       notifyModelListChange();
@@ -989,6 +1031,11 @@ export function createTransformersJsService({ createWorkerClient }: {
       }
       }
 
+      const timing = downloadTiming.begin({ modelId: normalizeTransformersJsProductionModelId({ modelId }), runtimeEpoch });
+      let downloadCompleted = false;
+      const onTiming: DownloadTimingCallback = ({ observation }) => {
+        if (isCurrent() && !owner.signal.aborted) timing.observe({ observation });
+      };
       const tracker = createDownloadProgressTracker();
       downloadObservationEpoch++;
       const onDownloadProgress: DownloadProgressCallback = ({ event }) => {
@@ -1037,7 +1084,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         const { resolvedRevision, sizeHints } = await resolvePublicHuggingFaceRevision({ modelId });
         assertCurrent();
         onDownloadProgress({ event: { kind: 'phase', phase: 'checking-cache' } });
-        const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision, onProgress: ({ progress }) => {
+        const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision, onTiming, onProgress: ({ progress }) => {
           // The runtime emits model-session only after admitting a locally
           // complete candidate. Inventory/revision selection alone is not 95%.
           if (progress.phase === 'runtime' && progress.info?.status === 'cache-acceptance-model-session') {
@@ -1054,6 +1101,7 @@ export function createTransformersJsService({ createWorkerClient }: {
             revision: resolvedRevision,
             progressCallback: progress_callback,
             onDownloadProgress,
+            onTiming,
             ...sizeHints === undefined ? {} : { sizeHints },
           });
           assertCurrent();
@@ -1075,6 +1123,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         finishDownloadState();
         // One failed list renderer must not prevent the other views refreshing.
         modelListListeners.forEach(listener => observeDownloadSafely({ observe: listener }));
+        downloadCompleted = true;
       } catch (e) {
         if (!isCurrent() || owner.signal.aborted) throw e;
         console.error('[transformersJsService] Failed to download model:', modelId, e);
@@ -1093,6 +1142,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         notify();
         throw e;
       } finally {
+        timing.finish({ outcome: !isCurrent() ? 'retired' : owner.signal.aborted ? 'aborted' : downloadCompleted ? 'completed' : 'failed' });
         stopEstimate();
         owner.signal.removeEventListener('abort', stopEstimate);
         // Cancellation does not stop Download I/O. Finalize only after it settles,
@@ -1402,6 +1452,9 @@ export function createTransformersJsService({ createWorkerClient }: {
   unhandledRawService satisfies Record<PropertyKey, never>;
   const service = {
     subscribe, subscribeModelList, getState, listCachedModels, importFile, deleteModel,
+    getDownloadTimingSnapshot() {
+      return downloadTiming.snapshot();
+    },
     runInferenceOperation({ signal, operation }: TransformersJsInferenceOperation): Promise<void> {
       return enqueue({ signal, operation: ({ owner }) => runInferenceScope({ owner, operation }) });
     },
@@ -1456,6 +1509,7 @@ export function createTransformersJsService({ createWorkerClient }: {
       const result = Promise.withResolvers<void>();
       explicitRestart = result.promise;
       runtimeEpoch++;
+      downloadTiming.retireActive();
       runtimeLane.close({ error: restartedError });
       clearRuntimeState();
       const pendingRecovery = restartPromise;

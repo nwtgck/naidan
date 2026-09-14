@@ -2,6 +2,7 @@ import type { createOpfsModelCache } from './opfs-model-cache';
 import { downloadedModelResourceUrl } from './downloaded-model-resource-url';
 import { createDownloadedModelCacheScope } from './downloaded-model-cache';
 import { DownloadedModelResourcePlanningError } from './plan-downloaded-model-candidates';
+import { OpfsResourceBusyError } from './opfs-access';
 
 export const REQUIRED_DOWNLOADED_RESOURCE_CLEANUP_ERROR_NAME = 'RequiredDownloadedResourceCleanupError';
 export const REQUIRED_DOWNLOADED_MODEL_RESOURCE_ERROR_NAME = 'RequiredDownloadedModelResourceError';
@@ -74,7 +75,7 @@ export function createRequiredDownloadedResourceOperation({
     }
     }
   }));
-  let failure: RequiredDownloadedModelResourceError | undefined;
+  let failure: RequiredDownloadedModelResourceError | OpfsResourceBusyError | undefined;
   let cleanupFailure: RequiredDownloadedResourceCleanupError | undefined;
   let lifecycle: 'active' | 'closed' = 'active';
   let closing: Promise<void> | undefined;
@@ -92,7 +93,9 @@ export function createRequiredDownloadedResourceOperation({
     }
   }
   function recordFailure({ url, kind, cause }: { url: string, kind: RequiredDownloadedModelResourceError['failure'], cause: unknown }) {
-    failure ??= new RequiredDownloadedModelResourceError({ url, failure: kind, cause });
+    // Busy is not evidence of corrupt/missing bytes. Preserve its top-level
+    // identity across Comlink, while retaining the first owned failure.
+    failure ??= cause instanceof OpfsResourceBusyError ? cause : new RequiredDownloadedModelResourceError({ url, failure: kind, cause });
     return failure;
   }
   function assertHealthy() {
@@ -276,6 +279,7 @@ export function createRequiredDownloadedResourceOperation({
   };
   const guardedFetch: typeof fetch = async (input, init) => {
     assertActive();
+    assertHealthy();
     const url = resourceUrl({ value: typeof input === 'string' ? input : input instanceof URL ? input.href : input.url });
     const resolution = scope.resolve({ request: input instanceof URL ? input.href : input });
     if (resolution.kind === 'admitted' && requiredKeys.has(resolution.resourceKey)) throw recordFailure({ url, kind: 'missing', cause: undefined });

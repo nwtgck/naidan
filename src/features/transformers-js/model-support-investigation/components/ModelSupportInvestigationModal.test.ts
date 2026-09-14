@@ -16,6 +16,14 @@ import type { ProductionProviderInvestigationLiveProgress } from '@/features/tra
 import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
 import { ModelSupportInvestigationUserInterruptedError } from '@/features/transformers-js/model-support-investigation/logic/investigation-interruption';
 import type { ModelSupportInvestigationRun, ModelSupportInvestigationWorkerClient } from '@/features/transformers-js/model-support-investigation/types';
+import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
+
+function retainedTiming(): DownloadTimingSnapshot {
+  return { format: 'transformers-js-download-timing-v1', measurementVersion: 1, source: 'ordinary-download',
+    serviceEpoch: '11111111-1111-4111-8111-111111111111', identityStatus: 'available', sequence: 1, availability: 'recorded', droppedOperations: 1,
+    records: [{ operationId: '11111111-1111-4111-8111-111111111111/1', modelId: 'org/previous', runtimeEpoch: 1, outcome: 'failed',
+      timingStatus: 'measured', wallMs: 23000, truncated: false, droppedObservations: 0, observations: [] }] };
+}
 
 const fixtureToolCallId = toToolCallId({ raw: 'call_fixture' });
 
@@ -27,6 +35,7 @@ const workerMocks = vi.hoisted(() => ({
 }));
 
 const evidenceMocks = vi.hoisted(() => ({
+  createRetainedDownloadTimingEvidence: vi.fn(),
   createPartialEvidence: vi.fn(),
   createBatchEvidence: vi.fn(),
   dispose: vi.fn(),
@@ -516,6 +525,7 @@ describe('ModelSupportInvestigationModal', () => {
       blob: new Blob(["batch-evidence"]),
       fileName: "batch-evidence.zip",
     });
+    evidenceMocks.createRetainedDownloadTimingEvidence.mockResolvedValue({ blob: new Blob(['timing']), fileName: 'timing.zip' });
     evidenceMocks.dispose.mockResolvedValue(undefined);
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
@@ -531,6 +541,65 @@ describe('ModelSupportInvestigationModal', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('keeps retained-only export disabled with an honest missing-session explanation', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-export-retained-timing"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="model-support-retained-timing-unavailable"]').text()).toContain('No Download timing');
+    expect(evidenceMocks.createRetainedDownloadTimingEvidence).not.toHaveBeenCalled();
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('exports a fixed previous Download snapshot without starting any investigation or Load', async () => {
+    const source = retainedTiming();
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '', ordinaryDownloadTiming: source } });
+    await flushPromises();
+    source.records[0]!.outcome = 'completed';
+    await wrapper.setProps({ ordinaryDownloadTiming: { ...retainedTiming(), serviceEpoch: '22222222-2222-4222-8222-222222222222' } });
+    await wrapper.get('[data-testid="model-support-export-retained-timing"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createRetainedDownloadTimingEvidence).toHaveBeenCalledTimes(1);
+    expect(evidenceMocks.createRetainedDownloadTimingEvidence.mock.calls[0]?.[0].snapshot).toEqual(retainedTiming());
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(evidenceMocks.createPartialEvidence).not.toHaveBeenCalled();
+    expect(evidenceMocks.createBatchEvidence).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="model-support-investigation-setup"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-support-retained-timing-truncated"]').exists()).toBe(true);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('does not publish a late retained-only export after its modal owner retires', async () => {
+    const pending = Promise.withResolvers<{ blob: Blob; fileName: string }>();
+    evidenceMocks.createRetainedDownloadTimingEvidence.mockReturnValue(pending.promise);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '', ordinaryDownloadTiming: retainedTiming() } });
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-export-retained-timing"]').trigger('click');
+    wrapper.unmount();
+    await flushPromises();
+    pending.resolve({ blob: new Blob(['late']), fileName: 'late.zip' });
+    await flushPromises();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(evidenceMocks.dispose).toHaveBeenCalled();
+  });
+
+  it('preserves the original Download snapshot when investigation results are reopened', async () => {
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model', ordinaryDownloadTiming: retainedTiming() } });
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    await flushPromises();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model', ordinaryDownloadTiming: { ...retainedTiming(), serviceEpoch: '22222222-2222-4222-8222-222222222222' } } });
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls.at(-1)?.[0].ordinaryDownloadTiming).toEqual(retainedTiming());
+    reopened.unmount();
   });
 
   it.each([

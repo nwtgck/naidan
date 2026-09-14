@@ -5,6 +5,7 @@ import type { GenerationCaptureRequest, GenerationCaptureReadRequest, Generation
 import type { ProductionLoadReceiptOwner } from './worker/load-receipt';
 import type { ProductionLoadReceipt } from './runtime/production-load-receipt';
 import type { DownloadedModelRevisionSelection } from './runtime/downloaded-model-revision-selection';
+import type { DownloadFileTiming, DownloadSourceTiming } from './download-timing';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -19,6 +20,8 @@ export interface ProgressInfo {
   file?: string,
   /** Dedicated Download observation only; absent on ordinary Load progress. */
   downloadTiming?: { clockId: string; requestId: number; sequence: number; observedAtMs: number } | 'unavailable',
+  /** Prefetch-wide source wall time and received bytes; never cached bytes. */
+  downloadCumulativeTiming?: { clockId: string; sequence: number; firstFetchStartedAtMs: number; observedAtMs: number; receivedBytes: number } | 'unavailable',
   /** Display byte-domain, never an input to writer verification. */
   downloadTotalKind?: 'decoded-response' | 'unverified-http',
 }
@@ -132,7 +135,7 @@ export type TransformersJsPrefetchFailureStage =
   | 'write'
   | 'verification';
 
-export type TransformersJsPrefetchFileResult =
+export type TransformersJsPrefetchFileResult = (
   | {
       status: 'cached' | 'downloaded',
       url: string,
@@ -149,7 +152,7 @@ export type TransformersJsPrefetchFileResult =
       error: TransformersJsProductionInvestigationError,
       /** Decoded body bytes observed before a write/verification failure, not saved bytes. */
       transferObservation?: { receivedBytes: number; expectedBytes: number | undefined },
-    };
+    }) & { timing?: DownloadFileTiming };
 
 export interface TransformersJsPrefetchResult {
   requestedCount: number,
@@ -158,6 +161,7 @@ export interface TransformersJsPrefetchResult {
   failedCount: number,
   complete: boolean,
   files: TransformersJsPrefetchFileResult[],
+  timing?: DownloadSourceTiming,
 }
 
 export type TransformersJsProgressCallback = ({ info }: { info: ProgressInfo }) => void;

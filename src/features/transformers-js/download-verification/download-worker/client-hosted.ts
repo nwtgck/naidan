@@ -1,6 +1,7 @@
 import { workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 import { createDedicatedDownloadWorkerSession } from '@/features/transformers-js/download-verification/dedicated-worker-cleanup';
 import { downloadResourcePath, downloadTransferProgressSchema, downloadFailedTransferObservationSchema, observeDownloadSafely } from '@/features/transformers-js/download-progress';
+import { parsePrefetchResult } from './prefetch-result';
 import type {
   ITransformersJsDownloadWorker,
   ProgressInfo,
@@ -38,14 +39,14 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
       const paths = new Set(urls.map(url => downloadResourcePath({ url })).filter(path => path !== undefined));
       const deliveredTerminals = new Map<string, string>();
       function publishProgress({ info }: { info: ProgressInfo }): Promise<void> | undefined {
-        const { status, file, loaded, total, progress, name, downloadTiming, downloadTotalKind, ...unhandled } = info;
+        const { status, file, loaded, total, progress, name, downloadTiming, downloadCumulativeTiming, downloadTotalKind, ...unhandled } = info;
         unhandled satisfies Record<PropertyKey, never>;
         if (file === undefined) return;
         const terminal = status === 'done' || status === 'cached' || status === 'error';
         if (terminal) {
           // Keep only immutable scalars, before invoking an observer that may
           // mutate its input. The RPC result may correct a differing terminal.
-          const signature = JSON.stringify([status, file, loaded, total, progress, name, downloadTiming, downloadTotalKind]);
+          const signature = JSON.stringify([status, file, loaded, total, progress, name, downloadTiming, downloadCumulativeTiming, downloadTotalKind]);
           if (deliveredTerminals.get(file) === signature) return;
           deliveredTerminals.set(file, signature);
         } else if (deliveredTerminals.has(file)) {
@@ -60,7 +61,7 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
         }
       }
       try {
-        const result = await session.run({ operation: ({ remote }) => remote.prefetchUrls(
+        const rawResult = await session.run({ operation: ({ remote }) => remote.prefetchUrls(
           urls,
           // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
           workerProxy({ value: (info: ProgressInfo) => {
@@ -72,6 +73,7 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
             return publishProgress({ info: parsed.data });
           } }),
         ) });
+        const result = parsePrefetchResult({ value: rawResult });
         accepting = false;
         // RPC completion is authoritative; callback ports can still have queued
         // samples. Reconcile every terminal without waiting for a UI observer.

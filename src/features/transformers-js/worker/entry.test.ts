@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ITransformersJsWorker, WorkerToolDefinition } from '@/features/transformers-js/types';
+import type { ITransformersJsWorker, TransformersJsPrefetchResult, WorkerToolDefinition } from '@/features/transformers-js/types';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { MissingDownloadedModelArtifactError } from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
@@ -461,6 +461,96 @@ describe('transformers-js.worker', () => {
       device: 'wasm',
       dtype: 'q4',
     }));
+  });
+
+  it.each(['cache-only-fetch', 'synthetic-success'] as const)('restores swallowed preparation busy after %s without poisoning the next explicit Load', async behavior => {
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    const { createLockQueue } = await import('@/features/transformers-js/replay-models/support/opfs-lock-test-platform');
+    const { withOpfsFileLease } = await import('@/features/transformers-js/runtime/opfs-access');
+    const q = createLockQueue();
+    vi.stubGlobal('navigator', { ...navigator, locks: q.locks });
+    await initializeWorkerEntry();
+    const worker = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const writer = withOpfsFileLease({ path: 'models/huggingface.co/org/repo/resolve/main/config.json', mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
+      entered.resolve();
+      await release.promise;
+    } });
+    await entered.promise;
+    const config = {
+      model_type: 'llama', is_encoder_decoder: false, max_position_embeddings: 4096,
+      'transformers.js_config': {}, normalized_config: {},
+    } satisfies Awaited<ReturnType<typeof AutoConfig.from_pretrained>>;
+    vi.mocked(AutoConfig.from_pretrained).mockImplementationOnce(async () => {
+      // Match the upstream tryCache behavior: it swallows cache lookup errors.
+      await env.customCache!.match('https://huggingface.co/org/repo/resolve/main/config.json').catch(() => undefined);
+      switch (behavior) {
+      case 'cache-only-fetch':
+        if (env.fetch === undefined) throw new Error('Missing offline fetch fixture');
+        await env.fetch('https://huggingface.co/org/repo/resolve/main/config.json');
+        return config;
+      case 'synthetic-success': return config;
+      default: {
+        const exhaustive: never = behavior;
+        throw new Error(`Unhandled synthetic cache behavior: ${exhaustive}`);
+      }
+      }
+    });
+    try {
+      await expect(worker.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toMatchObject({ name: 'OpfsResourceBusyError' });
+      expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+      expect(originalFetchMock).not.toHaveBeenCalled();
+    } finally {
+      release.resolve();
+      await writer;
+    }
+    vi.mocked(AutoModelForCausalLM.from_pretrained).mockResolvedValueOnce({ dispose: vi.fn(), device: 'webgpu' } as never);
+    vi.mocked(AutoTokenizer.from_pretrained).mockResolvedValueOnce({} as never);
+    await expect(worker.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).resolves.toMatchObject({ device: 'webgpu', dtype: 'q4f16' });
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledOnce();
+    expect(originalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('disposes a returned native model exactly once when its loader swallowed an optional cache busy error', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    const { createLockQueue } = await import('@/features/transformers-js/replay-models/support/opfs-lock-test-platform');
+    const { withOpfsFileLease } = await import('@/features/transformers-js/runtime/opfs-access');
+    const q = createLockQueue();
+    vi.stubGlobal('navigator', { ...navigator, locks: q.locks });
+    await initializeWorkerEntry();
+    const worker = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const writer = withOpfsFileLease({ path: 'models/huggingface.co/org/repo/resolve/main/generation_config.json', mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
+      entered.resolve();
+      await release.promise;
+    } });
+    const dispose = vi.fn(async (): Promise<unknown[]> => []);
+    const returned = vi.fn();
+    // Only native model construction is a small controlled stand-in. Cache,
+    // access guard, required-resource ownership and disposal are the real path.
+    vi.mocked(AutoModelForCausalLM.from_pretrained, { partial: true }).mockImplementationOnce(async () => {
+      await env.customCache!.match('https://huggingface.co/org/repo/resolve/main/generation_config.json').catch(() => undefined);
+      returned();
+      return { dispose };
+    });
+    try {
+      await entered.promise;
+      await expect(worker.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toMatchObject({ name: 'OpfsResourceBusyError' });
+      expect(returned).toHaveBeenCalledOnce();
+      expect(dispose).toHaveBeenCalledOnce();
+      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledOnce();
+      expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+      expect(originalFetchMock).not.toHaveBeenCalled();
+      await worker.unloadModel();
+      expect(dispose).toHaveBeenCalledOnce();
+    } finally {
+      release.resolve();
+      await writer;
+    }
   });
 
   it('stops instead of falling back after a planned-complete candidate reaches the cache-miss boundary', async () => {
@@ -2570,9 +2660,14 @@ describe('transformers-js.worker', () => {
     const progressCallback = (info: any) => progressUpdates.push(info);
 
     const url = 'https://huggingface.co/org/repo/resolve/0123456789abcdef0123456789abcdef01234567/model.onnx';
-    const result = await workerObj.prefetchUrls([url], progressCallback);
+    const result: TransformersJsPrefetchResult = await workerObj.prefetchUrls([url], progressCallback);
+    // Separate only the new advisory timing; every current or future core
+    // result field remains subject to the unchanged exact acquisition oracle.
+    const { timing: sourceTiming, files, ...coreResult } = result;
+    const fileTimings = files.map(({ timing }) => timing);
+    const coreFiles = files.map(({ timing: _timing, ...file }) => file);
 
-    expect(result).toEqual({
+    expect({ ...coreResult, files: coreFiles }).toEqual({
       requestedCount: 1,
       cachedCount: 0,
       downloadedCount: 1,
@@ -2586,6 +2681,21 @@ describe('transformers-js.worker', () => {
         expectedByteLength: 4,
       }],
     });
+    expect(sourceTiming).toEqual({
+      version: 1, clockId: expect.any(String), status: 'measured',
+      callMs: expect.any(Number), finalizationMs: expect.any(Number), droppedFiles: 0,
+    });
+    expect(fileTimings).toEqual([{
+      version: 1, clockId: sourceTiming?.clockId, status: 'measured', saveMethod: 'staging-copy',
+      admissionMs: expect.any(Number), responseWaitMs: expect.any(Number),
+      streamMs: expect.any(Number), eofToVerifiedMs: expect.any(Number),
+    }]);
+    expect(sourceTiming?.callMs).toBeGreaterThanOrEqual(0);
+    expect(sourceTiming?.finalizationMs).toBeGreaterThanOrEqual(0);
+    expect(fileTimings[0]?.admissionMs).toBeGreaterThanOrEqual(0);
+    expect(fileTimings[0]?.responseWaitMs).toBeGreaterThanOrEqual(0);
+    expect(fileTimings[0]?.streamMs).toBeGreaterThanOrEqual(0);
+    expect(fileTimings[0]?.eofToVerifiedMs).toBeGreaterThanOrEqual(0);
     expect(originalFetchMock).toHaveBeenCalledWith(url, undefined);
     expect(mockRoot.getDirectoryHandle).toHaveBeenCalledWith('models', { create: true });
     expect(progressUpdates.length).toBeGreaterThan(0);

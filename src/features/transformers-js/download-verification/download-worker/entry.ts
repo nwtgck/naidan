@@ -8,6 +8,7 @@ import {
 } from '@huggingface/transformers';
 import type {
   ITransformersJsDownloadWorker,
+  ProgressInfo,
   TransformersJsPrefetchFailureStage,
   TransformersJsPrefetchFileResult,
   TransformersJsPrefetchResult,
@@ -16,7 +17,8 @@ import type {
 } from '@/features/transformers-js/types';
 import { exposeWorkerRemote, type WorkerServerApi } from '@/utils/worker-transport';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
-import { assertFullResourceResponse, expectedDecodedResponseByteLength, urlToPath, writeToOpfsWithStaging } from '@/features/transformers-js/utils';
+import { assertFullResourceResponse, expectedDecodedResponseByteLength, urlToPath, writeIncompleteOpfsFile, writeToOpfsWithStagingUnderLease } from '@/features/transformers-js/utils';
+import { assertOpfsFileLease, readCompletedOpfsSnapshot, withOpfsFileLease, type OpfsFileLease } from '@/features/transformers-js/runtime/opfs-access';
 import { configureHostedTransformersRuntime } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { createHostedTransformersModelFetch } from '@/features/transformers-js/runtime/model-fetch';
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
@@ -24,6 +26,7 @@ import { prepareRuntimeMetadata } from './prepare-runtime-metadata';
 import { createRuntimeMetadataStorage } from './metadata-storage';
 import { createDownloadProgressEmitter } from '@/features/transformers-js/download-verification/download-progress-emitter';
 import { downloadResourcePath } from '@/features/transformers-js/download-progress';
+import { createDownloadMeasurementClock, type DownloadFileTiming } from '@/features/transformers-js/download-timing';
 
 const originalFetch = self.fetch;
 const { runtimeFetch } = configureHostedTransformersRuntime({
@@ -135,7 +138,8 @@ async function removeIfPresent({ directory, name }: {
   }
 }
 
-async function completedByteLength({ path }: { path: string }): Promise<number | undefined> {
+async function completedByteLength({ path, lease }: { path: string; lease: OpfsFileLease }): Promise<number | undefined> {
+  assertOpfsFileLease({ path, lease, mode: 'exclusive' });
   const parts = path.split('/');
   const fileName = parts.pop();
   if (fileName === undefined || fileName.length === 0) return undefined;
@@ -206,124 +210,201 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
     const progress = createDownloadProgressEmitter({ callback: ({ info }) => progressCallback(info) });
     try {
       const files: TransformersJsPrefetchFileResult[] = [];
-      let clockId: string | undefined;
-      try {
-        clockId = crypto.randomUUID();
-      } catch {
-        // Optional timing must not make otherwise available artifact I/O fail.
+      const measurement = createDownloadMeasurementClock();
+      const callStarted = measurement.read();
+      let lastFileFinished: number | undefined;
+      let fileStarted: number | undefined;
+      let fetchStarted: number | undefined;
+      let responseReceived: number | undefined;
+      let eof: number | undefined;
+      let measuredFiles = 0;
+      let droppedFiles = 0;
+      let saveMethod: DownloadFileTiming['saveMethod'] | undefined;
+      function fileTiming({ verified }: { verified: boolean }): DownloadFileTiming | undefined {
+        const finished = measurement.read();
+        lastFileFinished = finished;
+        if (saveMethod === undefined) return undefined;
+        if (measuredFiles >= 128) {
+          droppedFiles++; return undefined;
+        }
+        measuredFiles++;
+        const admissionMs = measurement.elapsed({ start: fileStarted, end: fetchStarted ?? finished });
+        const responseWaitMs = measurement.elapsed({ start: fetchStarted, end: responseReceived });
+        const streamMs = measurement.elapsed({ start: fetchStarted, end: eof });
+        // EOF is merely the input boundary. Only successful final marker/size
+        // verification permits a completed save residual; failure is not zero.
+        const eofToVerifiedMs = verified ? measurement.elapsed({ start: eof, end: finished }) : undefined;
+        const measured = admissionMs !== undefined && (!verified || (responseWaitMs !== undefined && streamMs !== undefined && eofToVerifiedMs !== undefined));
+        return { version: 1, clockId: measurement.clockId, status: measured ? 'measured' : 'unavailable', saveMethod, admissionMs, responseWaitMs, streamMs, eofToVerifiedMs };
       }
+      let clockId = measurement.clockId;
       let sequence = 0;
       let requestId = 0;
+      let firstFetchStartedAtMs: number | undefined;
+      let receivedBytes = 0;
+      let cumulativeSequence = 0;
+      function cumulativeTiming(): ProgressInfo['downloadCumulativeTiming'] {
+        if (clockId === undefined) return 'unavailable';
+        if (firstFetchStartedAtMs === undefined) return undefined;
+        const observedAtMs = measurement.read();
+        if (observedAtMs === undefined || observedAtMs < firstFetchStartedAtMs
+          || observedAtMs - firstFetchStartedAtMs > 7 * 24 * 60 * 60 * 1_000
+          || !Number.isSafeInteger(receivedBytes) || !Number.isSafeInteger(cumulativeSequence + 1)) {
+          clockId = undefined;
+          return 'unavailable';
+        }
+        // This is deliberately wall time since the first real GET, including
+        // earlier file saves and inter-file waits. Consumers must not add those
+        // saving intervals again. Cached bytes never enter receivedBytes.
+        return { clockId, sequence: ++cumulativeSequence, firstFetchStartedAtMs, observedAtMs, receivedBytes };
+      }
       function recordFailure({ file }: { file: Extract<TransformersJsPrefetchFileResult, { status: 'failed' }> }): void {
-        files.push(file);
+        files.push({ ...file, timing: fileTiming({ verified: false }) });
         // Report the existing failure without waiting for later files or any
         // observer. This does not change its classification or transfer result.
         progress.publish({ info: {
           status: 'error', file: fileNameFromUrl({ url: file.url }),
           loaded: file.transferObservation?.receivedBytes,
           total: file.transferObservation?.expectedBytes,
+          downloadCumulativeTiming: cumulativeTiming(),
         } });
       }
       for (const url of urls) progress.publish({ info: { status: 'queued', file: fileNameFromUrl({ url }), loaded: 0 } });
       for (const originalUrl of urls) {
+        saveMethod = undefined;
+        fileStarted = measurement.read();
+        fetchStarted = undefined;
+        responseReceived = undefined;
+        eof = undefined;
         const url = sanitizeUrl({ url: originalUrl });
         const path = urlToPath({ url: originalUrl });
         if (path === null) {
           recordFailure({ file: prefetchFailure({ url, path: undefined, failureStage: 'resolve-path', error: new Error('The model URL could not be mapped to an OPFS path') }) });
           continue;
         }
-        let cached: number | undefined;
-        try {
-          cached = await completedByteLength({ path });
-        } catch (error) {
-          recordFailure({ file: prefetchFailure({ url, path, failureStage: 'cache-check', error }) });
-          continue;
-        }
-        if (cached !== undefined) {
-          files.push({ status: 'cached', url, path, byteLength: cached, expectedByteLength: undefined });
-          progress.publish({ info: { status: 'cached', file: fileNameFromUrl({ url: originalUrl }), loaded: cached, total: cached, progress: 100 } });
-          continue;
-        }
-        let response: Response;
-        try {
-          response = await downloadFetch(originalUrl);
-        } catch (error) {
-          recordFailure({ file: prefetchFailure({ url, path, failureStage: 'fetch', error }) });
-          continue;
-        }
-        try {
-          await assertFullResourceResponse({ response });
-        } catch (error) {
-          recordFailure({ file: prefetchFailure({
-            url,
-            path,
-            failureStage: 'response-status',
-            httpStatus: response.status,
-            error,
-          }) });
-          continue;
-        }
-        if (response.body === null) {
-          recordFailure({ file: prefetchFailure({ url, path, failureStage: 'fetch', httpStatus: response.status, error: new Error('The model response did not include a readable body') }) });
-          continue;
-        }
-        const expected = expectedDecodedResponseByteLength({ response });
-        requestId++;
-        const currentRequestId = requestId;
-        const downloadTotalKind = response.type === 'cors' && response.headers.get('Content-Encoding')?.trim().toLowerCase() !== 'identity'
-          ? 'unverified-http' as const : 'decoded-response' as const;
-        const timing = () => {
-          if (clockId === undefined) return 'unavailable' as const;
+        const transfer = async ({ lease }: { lease: OpfsFileLease }): Promise<void> => {
+          saveMethod = lease.coordinated ? 'direct' : 'staging-copy';
+          let cached: number | undefined;
           try {
-            const observedAtMs = performance.now();
-            if (!Number.isFinite(observedAtMs) || observedAtMs < 0) throw new Error('Unavailable timing observation');
-            return { clockId, requestId: currentRequestId, sequence: ++sequence, observedAtMs };
-          } catch {
+            cached = await completedByteLength({ path, lease });
+          } catch (error) {
+            recordFailure({ file: prefetchFailure({ url, path, failureStage: 'cache-check', error }) });
+            return;
+          }
+          if (cached !== undefined) {
+            files.push({ status: 'cached', url, path, byteLength: cached, expectedByteLength: undefined, timing: fileTiming({ verified: false }) });
+            progress.publish({ info: { status: 'cached', file: fileNameFromUrl({ url: originalUrl }), loaded: cached, total: cached, progress: 100, downloadCumulativeTiming: cumulativeTiming() } });
+            return;
+          }
+          let response: Response;
+          try {
+            fetchStarted = measurement.read();
+            if (firstFetchStartedAtMs === undefined) {
+              firstFetchStartedAtMs = fetchStarted;
+              if (fetchStarted === undefined) clockId = undefined;
+            }
+            response = await downloadFetch(originalUrl);
+            responseReceived = measurement.read();
+          } catch (error) {
+            recordFailure({ file: prefetchFailure({ url, path, failureStage: 'fetch', error }) });
+            return;
+          }
+          try {
+            await assertFullResourceResponse({ response });
+          } catch (error) {
+            recordFailure({ file: prefetchFailure({
+              url,
+              path,
+              failureStage: 'response-status',
+              httpStatus: response.status,
+              error,
+            }) });
+            return;
+          }
+          if (response.body === null) {
+            recordFailure({ file: prefetchFailure({ url, path, failureStage: 'fetch', httpStatus: response.status, error: new Error('The model response did not include a readable body') }) });
+            return;
+          }
+          const expected = expectedDecodedResponseByteLength({ response });
+          requestId++;
+          const currentRequestId = requestId;
+          const downloadTotalKind = response.type === 'cors' && response.headers.get('Content-Encoding')?.trim().toLowerCase() !== 'identity'
+            ? 'unverified-http' as const : 'decoded-response' as const;
+          const timing = () => {
+            if (clockId === undefined) return 'unavailable' as const;
+            try {
+              const observedAtMs = performance.now();
+              if (!Number.isFinite(observedAtMs) || observedAtMs < 0) throw new Error('Unavailable timing observation');
+              return { clockId, requestId: currentRequestId, sequence: ++sequence, observedAtMs };
+            } catch {
             // Only the timing observation is omitted; fetch/write failures keep
             // their original classification and remain terminal below.
             // Disable timing for this prefetch. Sticky unavailability survives
             // coalescing through later progress and terminal notifications;
             // recovery belongs to the next prefetch, not a growing epoch ledger.
-            clockId = undefined;
-            return 'unavailable' as const;
+              clockId = undefined;
+              return 'unavailable' as const;
+            }
+          };
+          let loaded = 0;
+          progress.publish({ info: { status: 'download', file: fileNameFromUrl({ url: originalUrl }), loaded: 0, total: expected, downloadTotalKind, downloadTiming: timing(), downloadCumulativeTiming: cumulativeTiming() } });
+          const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+              loaded += chunk.byteLength;
+              receivedBytes += chunk.byteLength;
+              progress.publish({ info: { status: 'progress', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected), downloadTotalKind, downloadTiming: timing(), downloadCumulativeTiming: cumulativeTiming() } });
+              controller.enqueue(chunk);
+            },
+            flush() {
+              eof = measurement.read();
+              progress.publish({ info: { status: 'saving', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected), downloadTotalKind, downloadTiming: timing(), downloadCumulativeTiming: cumulativeTiming() } });
+            },
+          }));
+          let written: number;
+          try {
+            ({ byteLength: written } = await (lease.coordinated ? writeIncompleteOpfsFile : writeToOpfsWithStagingUnderLease)({ path, lease, response: new Response(body, {
+              status: response.status, statusText: response.statusText, headers: response.headers,
+            }) }));
+          } catch (error) {
+            recordFailure({ file: { ...prefetchFailure({ url, path, failureStage: 'write', httpStatus: response.status, error }), transferObservation: { receivedBytes: loaded, expectedBytes: expected } } });
+            return;
+          }
+          try {
+            const verified = await completedByteLength({ path, lease });
+            if (verified === undefined || verified !== written) throw new Error(`Final OPFS verification failed for ${path}`);
+            if (expected !== undefined && verified !== expected) {
+              throw new Error(`Final OPFS byte length mismatch for ${path}: expected ${expected}, received ${verified}`);
+            }
+            files.push({ status: 'downloaded', url, path, byteLength: verified, expectedByteLength: expected, timing: fileTiming({ verified: true }) });
+            progress.publish({ info: { status: 'done', file: fileNameFromUrl({ url: originalUrl }), loaded: verified, total: verified, progress: 100, downloadCumulativeTiming: cumulativeTiming(), ...clockId === undefined ? { downloadTiming: 'unavailable' as const } : {} } });
+          } catch (error) {
+            recordFailure({ file: { ...prefetchFailure({ url, path, failureStage: 'verification', httpStatus: response.status, error }), transferObservation: { receivedBytes: loaded, expectedBytes: expected } } });
           }
         };
-        let loaded = 0;
-        progress.publish({ info: { status: 'download', file: fileNameFromUrl({ url: originalUrl }), loaded: 0, total: expected, downloadTotalKind, downloadTiming: timing() } });
-        const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-          transform(chunk, controller) {
-            loaded += chunk.byteLength;
-            progress.publish({ info: { status: 'progress', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected), downloadTotalKind, downloadTiming: timing() } });
-            controller.enqueue(chunk);
-          },
-          flush() {
-            progress.publish({ info: { status: 'saving', file: fileNameFromUrl({ url: originalUrl }), loaded, total: expected, progress: expected === undefined || expected === 0 ? undefined : Math.min(100, 100 * loaded / expected), downloadTotalKind, downloadTiming: timing() } });
-          },
-        }));
-        let written: number;
         try {
-          ({ byteLength: written } = await writeToOpfsWithStaging({ path, response: new Response(body, {
-            status: response.status, statusText: response.statusText, headers: response.headers,
-          }) }));
-        } catch (error) {
-          recordFailure({ file: { ...prefetchFailure({ url, path, failureStage: 'write', httpStatus: response.status, error }), transferObservation: { receivedBytes: loaded, expectedBytes: expected } } });
-          continue;
-        }
-        try {
-          const verified = await completedByteLength({ path });
-          if (verified === undefined || verified !== written) throw new Error(`Final OPFS verification failed for ${path}`);
-          if (expected !== undefined && verified !== expected) {
-            throw new Error(`Final OPFS byte length mismatch for ${path}: expected ${expected}, received ${verified}`);
+          const completed = await withOpfsFileLease({ path, mode: 'shared', availability: 'wait', signal: undefined, run: async ({ lease }) => {
+            if (!lease.coordinated) return undefined;
+            saveMethod = 'direct';
+            return await readCompletedOpfsSnapshot({ path, lease });
+          } });
+          if (completed !== undefined) {
+            const byteLength = completed.size;
+            files.push({ status: 'cached', url, path, byteLength, expectedByteLength: undefined, timing: fileTiming({ verified: false }) });
+            progress.publish({ info: { status: 'cached', file: fileNameFromUrl({ url: originalUrl }), loaded: byteLength, total: byteLength, progress: 100, downloadCumulativeTiming: cumulativeTiming() } });
+          } else {
+            // The shared probe is fully released before requesting exclusive.
+            // Recheck and all cleanup belong to this same-file lease.
+            await withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: transfer });
           }
-          files.push({ status: 'downloaded', url, path, byteLength: verified, expectedByteLength: expected });
-          progress.publish({ info: { status: 'done', file: fileNameFromUrl({ url: originalUrl }), loaded: verified, total: verified, progress: 100, ...clockId === undefined ? { downloadTiming: 'unavailable' as const } : {} } });
         } catch (error) {
-          recordFailure({ file: { ...prefetchFailure({ url, path, failureStage: 'verification', httpStatus: response.status, error }), transferObservation: { receivedBytes: loaded, expectedBytes: expected } } });
+          recordFailure({ file: prefetchFailure({ url, path, failureStage: 'cache-check', error }) });
         }
       }
       const cachedCount = files.filter(file => file.status === 'cached').length;
       const downloadedCount = files.filter(file => file.status === 'downloaded').length;
       const failedCount = files.filter(file => file.status === 'failed').length;
+      const finished = measurement.read();
+      const callMs = measurement.elapsed({ start: callStarted, end: finished });
       return {
         requestedCount: urls.length,
         cachedCount,
@@ -331,6 +412,7 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
         failedCount,
         complete: files.length === urls.length && failedCount === 0,
         files,
+        timing: { version: 1, clockId: measurement.clockId, status: callMs === undefined ? 'unavailable' : 'measured', callMs, finalizationMs: measurement.elapsed({ start: lastFileFinished, end: finished }), droppedFiles },
       };
     } finally {
       progress.close();

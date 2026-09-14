@@ -3,6 +3,7 @@ import type { DownloadVerificationCachedRevisionAcceptanceResult } from '@/featu
 import type { DownloadVerificationProductionDownloadPreparationRun } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 import type { ProductionLoadReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
+import type { CacheAcceptanceTimingEvidence } from './cache-acceptance-timing';
 import type {
   DownloadVerificationModelArtifactRequestObservation,
   DownloadVerificationRun,
@@ -28,6 +29,7 @@ export interface DownloadVerificationRuntimeCompletionEvidence {
   cacheInspectionError: string | undefined;
   error: { name: string; message: string } | undefined;
   receipt?: ProductionLoadReceipt;
+  runtimeTiming?: CacheAcceptanceTimingEvidence;
 }
 
 export interface DownloadVerificationEvidenceInput {

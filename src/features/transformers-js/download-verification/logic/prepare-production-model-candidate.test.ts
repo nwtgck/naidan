@@ -89,6 +89,23 @@ beforeEach(() => {
 });
 
 describe('prepareProductionModelCandidate', () => {
+  it('does not let optional measurement assembly replace the original successful result', async () => {
+    const prefetch = result({ files: REQUIRED_MODEL_PATHS.map(path => successfulFile({ path })) });
+    Object.defineProperty(prefetch, 'timing', { get() {
+      throw new Error('Synthetic invalid advisory property');
+    } });
+    const dispose = vi.fn(async () => undefined);
+    const prefetchUrls = vi.fn(async () => prefetch);
+    const observer = vi.fn();
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({ prefetchUrls, dispose });
+    const actual = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS, onTiming: observer });
+    expect(actual.status).toBe('ready');
+    expect(actual.prefetch).toBe(prefetch);
+    expect(prefetchUrls).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(observer).not.toHaveBeenCalled();
+  });
+
   it('publishes the selected complete plan before prefetch and isolates a throwing plan observer', async () => {
     const order: string[] = [];
     const capturedPlans: string[][] = [];

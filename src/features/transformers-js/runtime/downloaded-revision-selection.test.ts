@@ -47,6 +47,42 @@ function expectReadOnly({ harness }: { harness: Awaited<ReturnType<typeof create
 }
 
 describe('ordinary offline revision selection through the actual Production Worker', () => {
+  it('reports a competing writer as busy over Comlink and permits the next explicit offline Load', async () => {
+    const harness = await createRuntime();
+    const { createLockQueue } = await import('@/features/transformers-js/replay-models/support/opfs-lock-test-platform');
+    const { withOpfsFileLease } = await import('./opfs-access');
+    const q = createLockQueue();
+    const originalLocks = Object.getOwnPropertyDescriptor(navigator, 'locks');
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: q.locks });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const writer = withOpfsFileLease({ path: `${cachePrefix}main/config.json`, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
+      entered.resolve();
+      await release.promise;
+    } });
+    try {
+      await entered.promise;
+      await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toMatchObject({ name: 'OpfsResourceBusyError' });
+      expect(harness.observations.ortCalls).toEqual([]);
+      expect(harness.observations.modelLoadCalls).toEqual([]);
+      expectReadOnly({ harness });
+      release.resolve();
+      await writer;
+      await expect(harness.service.loadDownloadedModel({ modelId })).resolves.toBeUndefined();
+      expect(harness.observations.ortCalls).toHaveLength(1);
+      expect(harness.observations.modelLoadCalls).toEqual(['AutoModelForCausalLM']);
+      expectReadOnly({ harness });
+      expect(q.held.size).toBe(0);
+      expect(q.queued).toEqual([]);
+    } finally {
+      release.resolve();
+      await writer;
+      if (originalLocks === undefined) Reflect.deleteProperty(navigator, 'locks');
+      else Object.defineProperty(navigator, 'locks', originalLocks);
+      await harness.close();
+    }
+  }, 30_000);
+
   it('reports missing pinned legacy config as incomplete without discovering or repairing another namespace', async () => {
     const harness = await createRuntime();
     const { createTransformersJsWorkerClient } = await import('@/features/transformers-js/worker/client-hosted');

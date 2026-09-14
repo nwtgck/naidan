@@ -17,6 +17,7 @@ export function classifyProductionAcceptanceError({ error }: { error: unknown })
   case TRANSFORMERS_JS_OPTIONAL_CONFIGURATION_ERROR_NAME:
   case 'DownloadedModelResourcePlanningError':
   case 'ProductionWorkerLifecycleError':
+  case 'OpfsResourceBusyError':
     return 'terminal';
   case MISSING_DOWNLOADED_MODEL_ARTIFACT_ERROR_NAME:
     return 'incomplete';

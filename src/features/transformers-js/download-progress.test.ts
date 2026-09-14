@@ -1,6 +1,41 @@
 import { expect, it } from 'vitest';
 import { createDownloadProgressTracker, downloadResourcePath } from './download-progress';
 
+it('uses cumulative transfer bytes separately from reused bytes and stops ETA during saving or failed work', () => {
+  const tracker = createDownloadProgressTracker();
+  tracker.observe({ event: { kind: 'candidate', candidate: { device: 'wasm', dtype: 'q4' }, index: 0, count: 1 } });
+  tracker.observe({ event: { kind: 'plan', index: 0, paths: ['cached', 'first', 'second'] } });
+  tracker.observe({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'cached', bytes: 900 }, { path: 'first', bytes: 100 }, { path: 'second', bytes: 100 }] } });
+  tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'cached', file: 'cached', loaded: 900 } } });
+  tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'first', loaded: 50, downloadCumulativeTiming: { clockId: 'worker', sequence: 1, firstFetchStartedAtMs: 1000, observedAtMs: 6000, receivedBytes: 50 } } } });
+  expect(tracker.snapshot()).toMatchObject({ cachedBytes: 900, receivedBytes: 50, downloadEta: { status: 'estimating', bytesPerSecond: 10, remainingSeconds: 15 } });
+  tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'saving', file: 'first', loaded: 100, downloadCumulativeTiming: { clockId: 'worker', sequence: 2, firstFetchStartedAtMs: 1000, observedAtMs: 11000, receivedBytes: 100 } } } });
+  expect(tracker.snapshot()).toMatchObject({ phase: 'saving', downloadEta: { status: 'unavailable' } });
+  tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'error', file: 'first', loaded: 100 } } });
+  tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'second', loaded: 50, downloadCumulativeTiming: { clockId: 'worker', sequence: 3, firstFetchStartedAtMs: 1000, observedAtMs: 16000, receivedBytes: 150 } } } });
+  expect(tracker.snapshot()).toMatchObject({ overallProgress: undefined, downloadEta: { status: 'unavailable' } });
+});
+
+it('does not discard file progress when optional cumulative timing is invalid', () => {
+  const tracker = createDownloadProgressTracker();
+  tracker.observe({ event: { kind: 'candidate', candidate: { device: 'wasm', dtype: 'q4' }, index: 0, count: 1 } });
+  tracker.observe({ event: { kind: 'plan', index: 0, paths: ['a'] } });
+  tracker.observe({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'a', bytes: 100 }] } });
+  tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'a', loaded: 50, downloadCumulativeTiming: { clockId: 'worker', sequence: 1, firstFetchStartedAtMs: 0, observedAtMs: NaN, receivedBytes: 50 } } } });
+  expect(tracker.snapshot()).toMatchObject({ overallProgress: 50, receivedBytes: 50, files: [{ loaded: 50, progress: 50 }], downloadEta: { status: 'unavailable' } });
+});
+
+it('waits for missing file progress to match newer cumulative bytes without dropping a late terminal', () => {
+  const tracker = createDownloadProgressTracker();
+  tracker.observe({ event: { kind: 'candidate', candidate: { device: 'wasm', dtype: 'q4' }, index: 0, count: 1 } });
+  tracker.observe({ event: { kind: 'plan', index: 0, paths: ['a', 'b'] } });
+  tracker.observe({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'a', bytes: 100 }, { path: 'b', bytes: 500 }] } });
+  tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'b', loaded: 50, downloadTiming: { clockId: 'source', requestId: 2, sequence: 5, observedAtMs: 6000 }, downloadCumulativeTiming: { clockId: 'source', sequence: 5, firstFetchStartedAtMs: 1000, observedAtMs: 6000, receivedBytes: 150 } } } });
+  expect(tracker.snapshot()).toMatchObject({ receivedBytes: 50, downloadEta: { status: 'unavailable' } });
+  tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'a', loaded: 100, downloadCumulativeTiming: { clockId: 'source', sequence: 3, firstFetchStartedAtMs: 1000, observedAtMs: 5000, receivedBytes: 100 } } } });
+  expect(tracker.snapshot()).toMatchObject({ receivedBytes: 150, completedFileCount: 1, downloadEta: { status: 'estimating', remainingSeconds: 15, bytesPerSecond: 30 } });
+});
+
 it('publishes the complete current plan while totals are unknown and uses real file bytes independently of work progress', () => {
   const tracker = createDownloadProgressTracker();
   expect(tracker.snapshot().overallProgress).toBe(0);

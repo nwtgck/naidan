@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ProgressInfo, TransformersJsProductionInvestigationCandidate } from './types';
-import { createDownloadEtaEstimator } from './download-eta';
+import { createDownloadEtaEstimator, downloadCumulativeTimingSchema } from './download-eta';
 
 export type DownloadPhase = 'resolving-revision' | 'checking-cache' | 'preparing-metadata' | 'observing-candidate' | 'transferring' | 'saving' | 'checking-runtime' | 'complete' | 'failed';
 export type DownloadFileStatus = 'queued' | 'transferring' | 'saving' | 'cached' | 'complete' | 'failed';
@@ -58,7 +58,10 @@ export function publishDownloadProgress({ callback, event }: { callback: Downloa
     switch (event.kind) {
     case 'candidate': return { ...event, candidate: { ...event.candidate } };
     case 'plan': return { ...event, paths: [...event.paths] };
-    case 'file': return { ...event, info: { ...event.info, ...event.info.downloadTiming === undefined ? {} : { downloadTiming: typeof event.info.downloadTiming === 'object' ? { ...event.info.downloadTiming } : event.info.downloadTiming } } };
+    case 'file': return { ...event, info: { ...event.info,
+      ...event.info.downloadTiming === undefined ? {} : { downloadTiming: typeof event.info.downloadTiming === 'object' ? { ...event.info.downloadTiming } : event.info.downloadTiming },
+      ...event.info.downloadCumulativeTiming === undefined ? {} : { downloadCumulativeTiming: typeof event.info.downloadCumulativeTiming === 'object' ? { ...event.info.downloadCumulativeTiming } : event.info.downloadCumulativeTiming },
+    } };
     case 'sizes': return { ...event, sizes: event.sizes.map(size => ({ ...size })) };
     case 'phase': case 'metadata': case 'acceptance': case 'prefetch-complete': case 'cached-acceptance': return { ...event };
     default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
@@ -77,6 +80,12 @@ export const downloadTransferProgressSchema = z.object({
   progress: z.number().finite().nonnegative().optional(),
   downloadTotalKind: z.enum(['decoded-response', 'unverified-http']).optional(),
   downloadTiming: z.union([z.literal('unavailable'), z.object({ clockId: z.string().min(1), requestId: z.number().int().nonnegative(), sequence: z.number().int().positive(), observedAtMs: z.number().finite().nonnegative() }).strict()]).optional(),
+  // Invalid advisory timing must not discard valid file status/byte progress.
+  downloadCumulativeTiming: z.unknown().transform(value => {
+    if (value === undefined) return undefined;
+    const parsed = downloadCumulativeTimingSchema.safeParse(value);
+    return parsed.success ? parsed.data : 'unavailable' as const;
+  }).optional(),
 }).strict();
 
 export const downloadFailedTransferObservationSchema = z.object({
@@ -230,7 +239,10 @@ export function createDownloadProgressTracker() {
         const terminal = info.status === 'done' || info.status === 'cached';
         if (loaded < previous.loaded) {
           switch (info.status) {
-          case 'download': revise({ reason: 'resource-restarted' }); break;
+          case 'download':
+            revise({ reason: 'resource-restarted' });
+            eta.observe({ info: { status: 'download', downloadCumulativeTiming: 'unavailable' } });
+            break;
           case 'queued': case 'progress': case 'saving': case 'done': case 'cached': case 'error': return;
           default: { const exhaustive: never = info.status; throw new Error(String(exhaustive)); }
           }
@@ -308,7 +320,7 @@ export function createDownloadProgressTracker() {
         estimateGeneration, revisionReason,
         completedFileCount: rows.filter(row => row.status === 'complete' || row.status === 'cached').length,
         totalFileCount: rows.length,
-        downloadEta: eta.snapshot({ remainingBytes: remaining, active: phase === 'transferring' }),
+        downloadEta: eta.snapshot({ remainingBytes: remaining, active: phase === 'transferring' && eta.matchesReceivedBytes({ bytes: receivedBytes }) }),
         attemptCount: count, candidate: candidate === undefined ? undefined : { ...candidate }, files: rows,
         receivedBytes,
         cachedBytes,

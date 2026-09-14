@@ -209,6 +209,30 @@ describe('createDownloadVerificationEvidence', () => {
 });
 
 describe('createDownloadVerificationEvidence runtime-complete mode', () => {
+  it('exports current MSI acceptance timing separately without relabeling failure as a completed ordinary Download', async () => {
+    const evidence = sampleEvidence();
+    evidence.mode = 'runtime-complete';
+    evidence.runtimeCompletion = {
+      schemaVersion: 1, status: 'failed', source: 'cache-reuse-failed',
+      repositoryResolvedRevision: evidence.run.resolvedRevision, cacheRevision: null, loaderRevisionOption: null,
+      selectedCandidate: undefined, cacheReuse: undefined, preparation: undefined, cacheAfter: undefined,
+      cacheInspectionError: undefined, error: { name: 'SyntheticFailure', message: 'No successful Load' },
+      runtimeTiming: {
+        format: 'msi-cache-acceptance-timing-v1', source: 'current-msi-cache-acceptance',
+        runId: evidence.runId, modelId: evidence.run.normalizedModelId, droppedObservations: 0,
+        observations: [{ kind: 'acceptance', version: 1, route: 'revision', revision: evidence.run.resolvedRevision,
+          clockId: '33333333-3333-4333-8333-333333333333', timingStatus: 'measured', hostDurationMs: 23000,
+          loadOutcome: 'failed', cleanupOutcome: 'completed', hostSettlement: 'fulfilled', attemptCount: 'unknown' }],
+      },
+    };
+    const { blob } = await createDownloadVerificationEvidence({ evidence });
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    expect(JSON.parse(await zip.file('download-lane/runtime-timing.json')!.async('text'))).toEqual(evidence.runtimeCompletion.runtimeTiming);
+    expect(JSON.parse(await zip.file('download-lane/cache-acceptance.json')!.async('text')).status).toBe('failed');
+    expect(zip.file('download-lane/ordinary-download-timing.json')).toBeNull();
+    evidence.runtimeCompletion.source = 'production-download-preparation';
+    await expect(createDownloadVerificationEvidence({ evidence })).rejects.toThrow('timing does not match its investigation owner');
+  });
   it('exports accepted cache revision, selected candidate, preparation, and post-run cache without model bodies', async () => {
     const evidence = sampleEvidence();
     evidence.mode = 'runtime-complete';

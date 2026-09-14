@@ -11,6 +11,7 @@ import { TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES } from '@/features/transform
 import { observeDownloadSafely, publishDownloadProgress, type DownloadProgressCallback } from '@/features/transformers-js/download-progress';
 import { createDownloadSizeClient } from '@/features/transformers-js/download-verification/size-worker/client';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
+import type { DownloadTimingCallback } from '@/features/transformers-js/download-timing';
 
 export type DownloadVerificationProductionDownloadPreparationRun =
   | {
@@ -38,6 +39,7 @@ export async function runProductionDownloadPreparation({
   candidateOrder,
   onDownloadProgress,
   sizeHints,
+  onTiming,
 }: {
   modelId: string;
   revision: string;
@@ -46,6 +48,7 @@ export async function runProductionDownloadPreparation({
   candidateOrder?: readonly TransformersJsProductionInvestigationCandidate[];
   onDownloadProgress?: DownloadProgressCallback;
   sizeHints?: readonly { path: string; bytes: number }[];
+  onTiming?: DownloadTimingCallback;
 }): Promise<DownloadVerificationProductionDownloadPreparationRun> {
   const safeProgress: TransformersJsProgressCallback = ({ info }) => observeDownloadSafely({ observe: () => progressCallback({ info }) });
   const runtimeArtifacts = await prepareProductionRuntimeArtifacts({ modelId, revision, progressCallback: safeProgress, signal });
@@ -106,7 +109,7 @@ export async function runProductionDownloadPreparation({
           const prepared = await prepareProductionModelCandidate({ modelId, revision, candidate, progressCallback: ({ info }) => {
             safeProgress({ info });
             publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'file', index, info } });
-          }, signal, requiredModelPaths: plan.paths, onPlan: ({ paths }) => {
+          }, signal, onTiming, requiredModelPaths: plan.paths, onPlan: ({ paths }) => {
             publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'plan', index, paths } });
             observeSizes({ index, paths });
           } });
@@ -128,6 +131,7 @@ export async function runProductionDownloadPreparation({
           candidate,
           progressCallback: safeProgress,
           signal,
+          onTiming,
         });
       },
       signal,

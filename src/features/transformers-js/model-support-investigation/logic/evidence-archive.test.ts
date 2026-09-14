@@ -2,6 +2,7 @@
 import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEvidenceArchive, createEvidenceFilesReader, openEvidenceArchive, setEvidenceFile } from './evidence-archive';
+import { StreamingZipReader } from '@/utils/zip-stream';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => {
@@ -18,6 +19,33 @@ afterEach(() => {
 });
 
 describe('Evidence transport over the shared streaming ZIP core', () => {
+  it('refuses an oversized declared sidecar before opening or decompressing its stream', async () => {
+    const source = new JSZip();
+    source.file('timing.json', '{}');
+    const buffer = await source.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+    const view = new DataView(buffer);
+    const centralOffset = view.getUint32(buffer.byteLength - 22 + 16, true);
+    // Change only size declarations in a tiny fixture, never allocate a large body.
+    view.setUint32(22, 2 * 1024 * 1024, true);
+    view.setUint32(centralOffset + 24, 2 * 1024 * 1024, true);
+    const openEntry = vi.spyOn(StreamingZipReader.prototype, 'openEntry');
+    const archive = await openEvidenceArchive({ blob: new Blob([buffer]) });
+    try {
+      await expect(archive.reader.read({ path: 'timing.json', maximumBytes: 1024 * 1024 })).rejects.toThrow('read byte budget');
+      expect(openEntry).not.toHaveBeenCalled();
+    } finally {
+      await archive.close();
+    }
+  });
+
+  it('applies the same read budget to retained in-memory files', async () => {
+    const file = new Blob(['12345']);
+    const read = vi.spyOn(file, 'arrayBuffer');
+    const reader = createEvidenceFilesReader({ files: new Map([['timing.json', file]]) });
+    await expect(reader.read({ path: 'timing.json', maximumBytes: 4 })).rejects.toThrow('read byte budget');
+    expect(read).not.toHaveBeenCalled();
+    expect(await reader.read({ path: 'timing.json', maximumBytes: 5 })).toBe(file);
+  });
   it('refuses the ZIP64 entry-count marker before reading or compressing any retained file', async () => {
     const body = new Blob(['retained']);
     const files = new Map(Array.from({ length: 65535 }, (_, index) => [`entry-${index}.bin`, body] as const));

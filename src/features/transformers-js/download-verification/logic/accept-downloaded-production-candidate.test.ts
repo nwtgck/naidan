@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptDownloadedProductionCandidate } from '@/features/transformers-js/download-verification/logic/accept-downloaded-production-candidate';
 import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
 
@@ -12,8 +12,54 @@ const CANDIDATE = { device: 'webgpu', dtype: 'q4f16' } as const;
 beforeEach(() => {
   vi.clearAllMocks();
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe('acceptDownloadedProductionCandidate', () => {
+  it('records acceptance host duration only after disposal actually settles', async () => {
+    let now = 100_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const observations: unknown[] = [];
+    vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
+      verifyDownloadedModelCandidate: vi.fn(async () => {
+        now = 120_000; return { device: 'webgpu' };
+      }),
+      verifyDownloadedModelRevision: vi.fn(),
+      dispose: vi.fn(async () => {
+        entered.resolve(); await release.promise; now = 123_000;
+      }),
+    });
+    const running = acceptDownloadedProductionCandidate({ modelId: 'org/model', resolvedRevision: REVISION, candidate: CANDIDATE,
+      onTiming: ({ observation }: { observation: unknown }) => {
+        observations.push(observation);
+      },
+    });
+    await entered.promise;
+    expect(observations).toEqual([]);
+    release.resolve();
+    await expect(running).resolves.toMatchObject({ status: 'accepted' });
+    expect(observations).toEqual([expect.objectContaining({ kind: 'acceptance', hostDurationMs: 23_000, loadOutcome: 'accepted', cleanupOutcome: 'completed', hostSettlement: 'fulfilled', attemptCount: 1 })]);
+  });
+
+  it('does not label a swallowed disposal failure as a complete acceptance sample', async () => {
+    const observations: unknown[] = [];
+    vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
+      verifyDownloadedModelCandidate: vi.fn(async () => ({ device: 'webgpu' })),
+      verifyDownloadedModelRevision: vi.fn(),
+      dispose: vi.fn(async () => {
+        throw new Error('cleanup failure');
+      }),
+    });
+    const result = await acceptDownloadedProductionCandidate({ modelId: 'org/model', resolvedRevision: REVISION, candidate: CANDIDATE,
+      onTiming: ({ observation }: { observation: unknown }) => {
+        observations.push(observation); throw new Error('observer failure');
+      },
+    });
+    expect(result.status).toBe('accepted');
+    expect(observations).toEqual([expect.objectContaining({ loadOutcome: 'accepted', cleanupOutcome: 'failed', hostSettlement: 'fulfilled' })]);
+  });
+
   it('uses one fresh acceptance worker and disposes it after success', async () => {
     const dispose = vi.fn(async () => {});
     const verifyDownloadedModelCandidate = vi.fn(async () => ({ device: 'webgpu' }));

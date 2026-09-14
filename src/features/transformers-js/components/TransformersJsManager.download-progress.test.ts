@@ -68,7 +68,8 @@ it('renders initial zero before revision resolution and every planned row before
   try {
     await flushPromises();
     expect(wrapper.get('[data-testid="download-overall-progress"]').text()).toBe('0%');
-    expect(wrapper.text()).toContain('Resolving revision');
+    expect(wrapper.text()).not.toContain('Resolving revision');
+    expect(wrapper.get('[data-testid="download-progress"]').text()).toContain('Downloading');
     revision.resolve({ resolvedRevision: 'a'.repeat(40) });
     const observe = await entered.promise;
     observe({ event: { kind: 'candidate', index: 0, count: 2, candidate: { device: 'wasm', dtype: 'q4' } } });
@@ -80,7 +81,7 @@ it('renders initial zero before revision resolution and every planned row before
     expect(rows[1]!.text()).toContain('onnx/model.onnx_data');
     expect(rows.every(row => row.text().includes('Queued') && row.text().includes('Unknown'))).toBe(true);
     expect(wrapper.text()).toContain('Candidate 1 of 2');
-    expect(wrapper.text()).toContain('Preparation progress for the current candidate, including cached files.');
+    expect(wrapper.text()).toContain('Preparation progress for the current candidate, including reuse of previously downloaded files.');
     expect(wrapper.find('[data-testid="download-overall-progress"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="download-overall-bar"]').attributes('aria-valuenow')).toBeUndefined();
     expect(wrapper.get('[data-testid="download-size-status"]').text()).toBe('Total size unknown');
@@ -124,9 +125,10 @@ it('keeps actual file percentages separate from overall work and retains saving 
     observe({ event: { kind: 'file', index: 0, info: { status: 'cached', file: 'onnx/model.onnx_data', loaded: 20, total: 20 } } });
     await flushPromises();
     expect(wrapper.findAll('[data-testid="download-file-row"]')[0]!.text()).toContain('Saving');
-    expect(wrapper.findAll('[data-testid="download-file-row"]')[1]!.text()).toContain('Cached');
+    expect(wrapper.findAll('[data-testid="download-file-row"]')[1]!.text()).toContain('Reusing downloaded file');
+    expect(wrapper.get('[data-testid="download-phase"]').text()).toBe('Downloading');
     expect(wrapper.get('[data-testid="download-byte-summary"]').text()).toContain('Received: 10.0 B');
-    expect(wrapper.get('[data-testid="download-byte-summary"]').text()).toContain('Cached: 20.0 B');
+    expect(wrapper.get('[data-testid="download-byte-summary"]').text()).toContain('Reused downloads: 20.0 B');
     expect(wrapper.get('[data-testid="download-overall-progress"]').text()).toBe('94%');
     expect(wrapper.get('[data-testid="download-file-summary"]').text()).toBe('1 of 2 files complete');
     expect(wrapper.find('[data-testid="download-eta"]').exists()).toBe(false);
@@ -141,6 +143,7 @@ it('keeps actual file percentages separate from overall work and retains saving 
     await running;
     await flushPromises();
     expect(wrapper.get('[data-testid="download-overall-progress"]').text()).toBe('100%');
+    expect(wrapper.get('[data-testid="download-phase"]').text()).toBe('Download complete');
     expect(wrapper.findAll('[data-testid="download-file-row"]')).toHaveLength(2);
     expect(wrapper.get('[data-testid="download-file-row"]').text()).toContain('Complete');
   } finally {
@@ -284,9 +287,9 @@ it('does not describe known sizes as unknown when a failed file stops the overal
 it.each<{
   eta: DownloadProgressSnapshot['downloadEta']; expected: string | undefined;
 }>([
-  { eta: { status: 'estimating', remainingSeconds: 65, bytesPerSecond: 100 }, expected: 'Current candidate download: about 2 min remaining' },
-  { eta: { status: 'warming-up' }, expected: 'Estimating download time…' },
-  { eta: { status: 'stalled' }, expected: 'Recalculating download time…' },
+  { eta: { status: 'estimating', remainingSeconds: 65, bytesPerSecond: 100 }, expected: 'About 2 min remaining' },
+  { eta: { status: 'warming-up' }, expected: undefined },
+  { eta: { status: 'stalled' }, expected: undefined },
   { eta: { status: 'unavailable' }, expected: undefined },
 ])('renders the supplied download ETA state $eta.status without using a UI clock', async ({ eta, expected }) => {
   // These typed display fixtures test wording and visibility. They do not
@@ -306,11 +309,24 @@ it.each<{
   } else {
     expect(wrapper.get('[data-testid="download-eta"]').text()).toBe(expected);
   }
-  if (eta.status === 'estimating') {
-    expect(wrapper.get('[data-testid="download-eta-scope"]').text()).toBe('Excludes time for saving and checking model usability.');
-  } else {
-    expect(wrapper.find('[data-testid="download-eta-scope"]').exists()).toBe(false);
-  }
+  expect(wrapper.find('[data-testid="download-eta-scope"]').exists()).toBe(false);
+  if (expected !== undefined) expect(wrapper.get('[data-testid="download-progress-heading"]').text()).toContain(`32% · ${expected}`);
+});
+
+it.each(['resolving-revision', 'checking-cache', 'preparing-metadata', 'observing-candidate', 'saving'] as const)('keeps the internal %s phase without showing a separate preparation or saving heading', async (phase) => {
+  const tracker = createDownloadProgressTracker();
+  tracker.observe({ event: { kind: 'phase', phase } });
+  const snapshot = tracker.snapshot();
+  expect(snapshot.phase).toBe(phase);
+  vi.spyOn(transformersJsService, 'getState').mockReturnValue({
+    ...transformersJsService.getState(), status: 'loading', downloadProgress: snapshot,
+  });
+  wrapper = mount(TransformersJsManager);
+  await flushPromises();
+  expect(wrapper.get('[data-testid="download-phase"]').text()).toBe('Downloading');
+  const text = wrapper.get('[data-testid="download-progress"]').text();
+  for (const hidden of ['Resolving revision', 'Checking cache', 'Preparing metadata', 'Checking required files']) expect(text).not.toContain(hidden);
+  expect(wrapper.find('[data-testid="download-eta"]').exists()).toBe(false);
 });
 
 it('preserves the existing Load view when Download progress is absent', async () => {

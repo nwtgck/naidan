@@ -81,6 +81,16 @@ function createMockDir(entries: Record<string, any> = {}) {
       }
       throw new Error('Not found');
     }),
+    removeEntry: vi.fn(async (name: string, options?: FileSystemRemoveOptions) => {
+      const entry = entries[name];
+      if (entry === undefined) throw new DOMException('Synthetic missing entry', 'NotFoundError');
+      if (entry.kind === 'directory' && !options?.recursive) {
+        for await (const _ of entry.entries()) {
+          throw new DOMException('Synthetic nonempty directory', 'InvalidModificationError');
+        }
+      }
+      delete entries[name];
+    }),
     entries: vi.fn(async function* () {
       for (const [name, handle] of Object.entries(entries)) {
         yield [name, handle];

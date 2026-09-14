@@ -28,6 +28,7 @@ export function downloadedModelPreparationError({ phase, cause }: {
     case REQUIRED_DOWNLOADED_MODEL_RESOURCE_ERROR_NAME:
     case REQUIRED_DOWNLOADED_RESOURCE_CLEANUP_ERROR_NAME:
     case 'ProductionWorkerLifecycleError':
+    case 'OpfsResourceBusyError':
     case DOWNLOADED_MODEL_PREPARATION_ERROR_NAME:
     case TRANSFORMERS_JS_OPTIONAL_CONFIGURATION_ERROR_NAME:
       return cause;

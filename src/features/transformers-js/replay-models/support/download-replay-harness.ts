@@ -1,5 +1,6 @@
 import { expect, vi } from 'vitest';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
+import { createLockQueue } from '@/features/transformers-js/replay-models/support/opfs-lock-test-platform';
 import { createSyntheticModelBody, inspectSyntheticOrtSession, type SyntheticSessionObservation } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { WEB_BUNDLE_SHA256 } from '@/features/transformers-js/replay-models/support/model-runtime-input-helpers';
 import { readModelFixture } from '@/features/transformers-js/replay-models/support/model-runtime-fixture';
@@ -29,6 +30,10 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   const repositoryPaths = new Set(repository.files.map(file => file.path));
   const metadataPaths = new Set<string>(archive.summary.files.map(file => file.path));
   const fs = createMemoryFiles();
+  // All simulated entries share one storage bucket and cooperative lock queue.
+  // This selects direct saving without claiming native Worker/lock semantics.
+  const lockPlatform = createLockQueue();
+  const downloadedSaveMethods: Array<string | undefined> = [];
   const requests: Array<{ phase: string, path: string, revision: string, bytes: number, status: number }> = [];
   const unknown: string[] = [];
   const offlineRequests: string[] = [];
@@ -142,7 +147,7 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
     })();
     vi.stubGlobal('fetch', fetchPolicy);
     vi.stubGlobal('self', { fetch: fetchPolicy, location: new URL('http://localhost/assets/worker.js') });
-    vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: {}, hardwareConcurrency: 2, storage: { getDirectory: async () => fs.root } });
+    vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: {}, hardwareConcurrency: 2, locks: lockPlatform.locks, storage: { getDirectory: async () => fs.root } });
     const actualProcess = globalThis.process;
     vi.stubGlobal('process', { ...actualProcess, release: { ...actualProcess.release, name: 'browser-test' } });
     bundleUrl.searchParams.set('connected-resource-phase', crypto.randomUUID());
@@ -224,7 +229,15 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
       async prefetchUrls({ urls, progressCallback }: { urls: string[], progressCallback: TransformersJsProgressCallback }) {
         downloadCapabilityCalls.push('model-prefetch');
         const api = await boot({ kind: 'download' }) as DownloadApi;
-        return api.prefetchUrls(urls, info => progressCallback({ info }));
+        const result = await api.prefetchUrls(urls, info => progressCallback({ info }));
+        for (const file of result.files) {
+          switch (file.status) {
+          case 'downloaded': downloadedSaveMethods.push(file.timing?.saveMethod); break;
+          case 'cached': case 'failed': break;
+          default: { const exhaustive: never = file; throw new Error(String(exhaustive)); }
+          }
+        }
+        return result;
       },
       async dispose() {},
     }),
@@ -337,7 +350,7 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   function enterServiceOffline() {
     fs.enter({ nextPhase: 'service-load', mutationPolicy: 'read-only' });
     vi.stubGlobal('fetch', forbiddenTransport);
-    vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: {}, hardwareConcurrency: 2, storage: { getDirectory: async () => fs.root } });
+    vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: {}, hardwareConcurrency: 2, locks: lockPlatform.locks, storage: { getDirectory: async () => fs.root } });
   }
   return {
     archive, repository, requests, unknown, offlineRequests, offlineFetchCalls, offlineNonRuntimeFetchCalls, runtimeAssetFetchCalls, sessions, sessionErrors, downloadCapabilityCalls, released, fs, runtimeArtifact, network,
@@ -444,6 +457,13 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
       }
       try {
         expect(runtimePlatform.blobs.size).toBe(0);
+        // Storage mechanics only: model-local tests continue to own required
+        // files, byte identities, selected candidates, and Load expectations.
+        expect(downloadedSaveMethods.every(method => method === 'direct')).toBe(true);
+        expect(fs.activity.filter(item => item.path.includes('.staging-') && (item.operation === 'writer-open' || item.operation === 'body-read'))).toEqual([]);
+        expect(fs.activity.filter(item => item.phase === 'download' && item.path.includes('/onnx/') && item.operation === 'body-read')).toEqual([]);
+        expect(lockPlatform.held.size).toBe(0);
+        expect(lockPlatform.queued).toEqual([]);
         // Lifetime ledger, not only the startup snapshot: later duplicate MJS
         // fetches cannot disappear into the non-runtime/model-only assertions.
         expect(runtimeAssetFetchCalls).toEqual(expectedRuntimeAssetFetchCalls);

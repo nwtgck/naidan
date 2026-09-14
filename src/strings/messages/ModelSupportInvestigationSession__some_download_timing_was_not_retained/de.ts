@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__some_download_timing_was_not_retained = (): string => "Einige Messungen fehlen wegen Aufzeichnungslimits oder nicht verfügbarer Zeitdaten. Der Export weist diese Lücken aus.";

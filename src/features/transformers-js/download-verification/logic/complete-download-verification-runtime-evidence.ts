@@ -4,6 +4,8 @@ import { reuseDownloadedProductionRevision } from '@/features/transformers-js/do
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 import { awaitWithAbort } from './await-with-abort';
 import type { RuntimeAcceptanceProgressCallback } from './runtime-acceptance-progress';
+import { downloadAcceptanceTimingSchema, parseDownloadTiming, type DownloadAcceptanceTiming, type DownloadTimingCallback } from '@/features/transformers-js/download-timing';
+import type { CacheAcceptanceTimingEvidence } from '@/features/transformers-js/download-verification/evidence/cache-acceptance-timing';
 
 function serializedError({ error }: { error: unknown }): { name: string; message: string } {
   if (error instanceof Error) return { name: error.name, message: error.message };
@@ -71,6 +73,21 @@ export async function completeDownloadVerificationRuntimeEvidence({
   };
 
   let runtimeCompletion: DownloadVerificationRuntimeCompletionEvidence;
+  const observations: DownloadAcceptanceTiming[] = [];
+  let droppedObservations = 0;
+  let acceptingTiming = true;
+  const onTiming: DownloadTimingCallback = ({ observation }) => {
+    if (!acceptingTiming || signal?.aborted) return;
+    const measured = parseDownloadTiming({ schema: downloadAcceptanceTimingSchema, value: observation });
+    if (measured === undefined || observations.length === 128) {
+      droppedObservations++; return;
+    }
+    observations.push(measured);
+  };
+  const runtimeTiming = (): CacheAcceptanceTimingEvidence => ({
+    format: 'msi-cache-acceptance-timing-v1', source: 'current-msi-cache-acceptance',
+    runId: evidence.runId, modelId, droppedObservations, observations,
+  });
   try {
     // Model Support Investigation is observational. It must never acquire the
     // full-artifact download capability simply to make later probes runnable.
@@ -78,14 +95,21 @@ export async function completeDownloadVerificationRuntimeEvidence({
     // explicit user model-download flow. Missing model weights or external-data
     // shards are evidence that blocks downstream runtime probes; they are not a
     // reason for MSI to download, resume, repair, or complete the model cache.
-    const reuse = await reuseRevision({
-      modelId,
-      resolvedRevision: repositoryResolvedRevision,
-      storageRoot: resolvedStorageRoot,
-      signal,
-      onProgress: reportProgress,
-      ...(reusableCandidateOrderByRevision === undefined ? {} : { candidateOrderByRevision: reusableCandidateOrderByRevision }),
-    });
+    const reuse = await (async () => {
+      try {
+        return await reuseRevision({
+          modelId,
+          resolvedRevision: repositoryResolvedRevision,
+          storageRoot: resolvedStorageRoot,
+          signal,
+          onProgress: reportProgress,
+          onTiming,
+          ...(reusableCandidateOrderByRevision === undefined ? {} : { candidateOrderByRevision: reusableCandidateOrderByRevision }),
+        });
+      } finally {
+        acceptingTiming = false;
+      }
+    })();
     signal?.throwIfAborted();
     if (reuse.reused) {
       const cacheRevision = reuse.acceptance.selectedRevision?.revision ?? null;
@@ -112,6 +136,7 @@ export async function completeDownloadVerificationRuntimeEvidence({
           })(),
           cacheReuse: reuse.acceptance,
           receipt: reuse.acceptance.attempts.find(attempt => attempt.acceptance.status === 'accepted')?.acceptance.receipt,
+          runtimeTiming: runtimeTiming(),
           preparation: undefined,
           ...cacheObservation,
           error: undefined,
@@ -126,6 +151,7 @@ export async function completeDownloadVerificationRuntimeEvidence({
       schemaVersion: 1,
       status: 'exhausted',
       source: 'cache-only-unavailable',
+      runtimeTiming: runtimeTiming(),
       repositoryResolvedRevision,
       cacheRevision: null,
       loaderRevisionOption: null,
@@ -143,6 +169,7 @@ export async function completeDownloadVerificationRuntimeEvidence({
       schemaVersion: 1,
       status: 'failed',
       source: 'cache-reuse-failed',
+      runtimeTiming: runtimeTiming(),
       repositoryResolvedRevision,
       cacheRevision: null,
       loaderRevisionOption: null,

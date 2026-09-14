@@ -6,6 +6,8 @@ import { PRODUCTION_PROVIDER_INVESTIGATION_SUMMARY_EVIDENCE_PATH, productionProv
 import { ordinaryProviderRuntimeCompletionSchema, providerLoadRuntimeCompletion } from './provider-load-runtime-completion';
 import { downloadRuntimeAcceptanceIdentity, downloadRuntimeAcceptanceIdentityInputSchema } from '@/features/transformers-js/download-verification/evidence/runtime-acceptance-identity';
 import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/production-load-receipt';
+import { ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES, verifyOrdinaryDownloadTimingEvidence } from './ordinary-download-timing-evidence';
+import { CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH, cacheAcceptanceTimingEvidenceSchema } from '@/features/transformers-js/download-verification/evidence/cache-acceptance-timing';
 
 const providerAcceptanceDocumentSchema = z.object({
   schemaVersion: z.literal(1), status: z.enum(['accepted', 'failed', 'exhausted']), source: z.literal('ordinary-provider-load'),
@@ -75,6 +77,7 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
   const manifestFile = await archive.read({ path: "manifest.json" });
   if (manifestFile === undefined) throw new Error("Evidence archive is missing manifest.json");
   const manifest = manifestSchema.parse(JSON.parse(await manifestFile.text()) as unknown);
+  await verifyOrdinaryDownloadTimingEvidence({ archive, association: { kind: 'investigation-run', runId: manifest.runId } });
   const assessmentFile = await archive.read({ path: "package-assessment.json" });
   if (assessmentFile === undefined) throw new Error("Evidence archive is missing package-assessment.json");
   const assessment = packageAssessmentSchema.parse(JSON.parse(await assessmentFile.text()) as unknown);
@@ -107,7 +110,9 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
   }
 
   for (const entry of manifest.files) {
-    const file = await archive.read({ path: entry.path });
+    const maximumBytes = entry.path === ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH ? ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES
+      : entry.path === CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH ? 256 * 1024 : undefined;
+    const file = await archive.read({ path: entry.path, maximumBytes });
     if (file === undefined) throw new Error(`Evidence archive is missing manifest path: ${entry.path}`);
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (bytes.byteLength !== entry.byteLength) {
@@ -170,6 +175,19 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
   const acceptanceFile = await archive.read({ path: 'download-lane/cache-acceptance.json' });
   const acceptanceDocument: unknown = acceptanceFile === undefined ? undefined : JSON.parse(await acceptanceFile.text());
   const acceptanceSource = z.object({ source: z.string().optional() }).optional().parse(acceptanceDocument)?.source;
+  const runtimeTimingFile = await archive.read({ path: CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH, maximumBytes: 256 * 1024 });
+  const runtimeTiming = download?.runtimeCompletion?.runtimeTiming;
+  if (runtimeTimingFile !== undefined || runtimeTiming !== undefined) {
+    if (runtimeTimingFile === undefined || runtimeTimingFile.size > 256 * 1024) throw new Error('Missing or oversized cache acceptance timing');
+    const timing = cacheAcceptanceTimingEvidenceSchema.parse(JSON.parse(await runtimeTimingFile.text()) as unknown);
+    if (run === undefined || timing.runId !== manifest.runId || timing.modelId !== run.modelId
+      || !['reused-production-cache', 'cache-only-unavailable', 'cache-reuse-failed'].includes(acceptanceSource ?? '')) {
+      throw new Error('Cache acceptance timing does not match its investigation owner');
+    }
+    if (download !== undefined && (runtimeTiming === undefined || JSON.stringify(timing) !== JSON.stringify(cacheAcceptanceTimingEvidenceSchema.parse(runtimeTiming)))) {
+      throw new Error('Cache acceptance timing does not match its run snapshot');
+    }
+  }
   if (acceptanceSource === 'ordinary-provider-load' && download?.runtimeCompletion?.source !== 'ordinary-provider-load') {
     throw new Error('Provider Load acceptance document does not match its run owner');
   }

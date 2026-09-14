@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation = (): string => "Exportiert Messungen regulärer Downloads dieser Seitensitzung. Startet keine Untersuchung, kein Laden und keinen Download.";

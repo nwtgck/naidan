@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
@@ -7,6 +7,8 @@ import { useLayout } from '@/composables/useLayout';
 import { usePrint } from '@/composables/usePrint';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { isModelSupportInvestigationAvailable, loadModelSupportInvestigationModal } from '@/features/transformers-js/model-support-investigation';
+import { transformersJsService } from '@/features/transformers-js';
+import { downloadTimingSnapshotSchema, parseDownloadTiming, type DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
 const PrintView = defineAsyncComponent(() => import('@/components/PrintView.vue'));
 const ChatPrintContent = defineAsyncComponent(() => import('@/components/ChatPrintContent.vue'));
@@ -31,6 +33,7 @@ const { isRecentOpen } = useRecentChats();
 const { activePrintMode } = usePrint();
 const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
 const modelSupportInvestigationModelId = ref<string | undefined>(undefined);
+const ordinaryDownloadTiming = shallowRef<DownloadTimingSnapshot | undefined>(undefined);
 let modelSupportInvestigationOpener: HTMLElement | undefined;
 const lastNonSettingsLocation = ref(route.path.startsWith('/settings')
   ? '/'
@@ -48,10 +51,18 @@ function openModelSupportInvestigation({ modelId }: { modelId: string }): void {
     ? document.activeElement
     : undefined;
   modelSupportInvestigationModelId.value = modelId;
+  // Explicitly capture the ordinary service, not MSI's independent service.
+  ordinaryDownloadTiming.value = undefined;
+  try {
+    ordinaryDownloadTiming.value = parseDownloadTiming({ schema: downloadTimingSnapshotSchema, value: transformersJsService.getDownloadTimingSnapshot() });
+  } catch {
+    // Optional observations must not prevent opening an investigation.
+  }
 }
 
 function closeModelSupportInvestigation(): void {
   modelSupportInvestigationModelId.value = undefined;
+  ordinaryDownloadTiming.value = undefined;
   const opener = modelSupportInvestigationOpener;
   modelSupportInvestigationOpener = undefined;
   void nextTick(() => opener?.focus());
@@ -97,6 +108,7 @@ defineExpose({
   <ModelSupportInvestigationModal
     v-if="ModelSupportInvestigationModal !== undefined && modelSupportInvestigationModelId !== undefined"
     :model-id="modelSupportInvestigationModelId"
+    :ordinary-download-timing="ordinaryDownloadTiming"
     @close="closeModelSupportInvestigation"
   />
 

@@ -3,6 +3,7 @@ import { promiseAllKeyed } from '@/utils/promise';
 import type { ModelSupportInvestigationTargetExecution } from './run-investigation-targets-sequentially';
 import type { InvestigationReplayMetadataSidecar } from './collect-replay-metadata';
 import type { ProductionProviderNativeEvidenceSidecar } from './production-provider-native-evidence';
+import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 import { createInvestigationProviderRetentionBudget, investigationProviderRetentionLimits, measureInvestigationProviderRetention, type InvestigationProviderRetentionUsage } from './investigation-provider-retention';
 import type {
   ModelSupportInvestigationRecovery,
@@ -26,6 +27,7 @@ export type InvestigationSessionSnapshot = InvestigationSessionIdentity & ({
   recoveries: Array<[string, ModelSupportInvestigationRecovery | undefined]>;
   replayMetadata: Array<[string, InvestigationReplayMetadataSidecar[]]>;
   nativeEvidence: Array<[string, ProductionProviderNativeEvidenceSidecar]>;
+  ordinaryDownloadTiming?: DownloadTimingSnapshot;
   reservedProviderRetention: InvestigationProviderRetentionUsage;
   selectedTarget: string | undefined;
 });

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS, writeToOpfs, writeToOpfsWithStaging } from './utils';
+import { REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS, writeIncompleteOpfsFile, writeToOpfs, writeToOpfsWithStaging } from './utils';
+import { withOpfsFileLease } from './runtime/opfs-access';
 
 class MemoryFileHandle {
   readonly kind = 'file' as const;
@@ -98,6 +99,127 @@ describe('OPFS writes', () => {
       ...globalThis.crypto,
       randomUUID: vi.fn(() => 'staging-id'),
     });
+  });
+
+  it('keeps an incomplete direct file uncommitted until close and verification settle', async () => {
+    const path = 'models/huggingface.co/org/repo/model.onnx';
+    // Seed an unmarked partial file, not a complete file replacement.
+    let directory = root;
+    for (const name of ['models', 'huggingface.co', 'org', 'repo']) directory = await directory.getDirectoryHandle(name, { create: true });
+    const file = await directory.getFileHandle('model.onnx', { create: true });
+    file.bytes = Uint8Array.of(9);
+    const create = file.createWritable.bind(file);
+    const closeEntered = Promise.withResolvers<void>();
+    const releaseClose = Promise.withResolvers<void>();
+    vi.spyOn(file, 'createWritable').mockImplementation(async () => {
+      const writer = (await create()).getWriter();
+      return new WritableStream<Uint8Array>({
+        write: async chunk => {
+          await writer.write(chunk);
+        },
+        close: async () => {
+          closeEntered.resolve();
+          await releaseClose.promise;
+          await writer.close();
+        },
+        abort: async reason => {
+          await writer.abort(reason);
+        },
+      });
+    });
+    const operation = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) =>
+      await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2, 3), { headers: { 'Content-Length': '3' } }) }) });
+    await closeEntered.promise;
+    expect(directory.files.has('.model.onnx.complete')).toBe(false);
+    expect([...file.bytes]).toEqual([9]);
+    releaseClose.resolve();
+    await expect(operation).resolves.toEqual({ byteLength: 3 });
+    expect([...file.bytes]).toEqual([1, 2, 3]);
+    expect(file.createWritableCalls).toBe(1);
+    expect([...directory.files.keys()].sort()).toEqual(['.model.onnx.complete', 'model.onnx']);
+  });
+
+  it('does not publish a direct completion marker for a short response', async () => {
+    const path = 'models/huggingface.co/org/repo/model.onnx';
+    await expect(withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) =>
+      await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2), { headers: { 'Content-Length': '3' } }) }) })).rejects.toThrow('expected 3, received 2');
+    expect([...modelDirectory({ root }).files.keys()]).toEqual([]);
+  });
+
+  it('preserves a writer setup failure when an unowned response cancellation never acknowledges', async () => {
+    const path = 'models/huggingface.co/org/repo/model.onnx';
+    let directory = root;
+    for (const name of ['models', 'huggingface.co', 'org', 'repo']) directory = await directory.getDirectoryHandle(name, { create: true });
+    const file = await directory.getFileHandle('model.onnx', { create: true });
+    const failure = new DOMException('Synthetic writer setup failure', 'QuotaExceededError');
+    vi.spyOn(file, 'createWritable').mockRejectedValue(failure);
+    const canceled = Promise.withResolvers<void>();
+    const never = Promise.withResolvers<void>();
+    const response = new Response(new ReadableStream<Uint8Array>({
+      cancel() {
+        canceled.resolve();
+        return never.promise;
+      },
+    }));
+    vi.useFakeTimers();
+    try {
+      const operation = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) =>
+        await writeIncompleteOpfsFile({ path, response, lease }) });
+      const outcome = operation.catch(error => error);
+      await canceled.promise;
+      expect(file.createWritableCalls).toBe(0);
+      expect(directory.files.has('.model.onnx.complete')).toBe(false);
+      await vi.advanceTimersByTimeAsync(REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS);
+      expect(await outcome).toBe(failure);
+      expect([...directory.files.keys()]).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      never.resolve();
+      vi.useRealTimers();
+    }
+  });
+
+  it('awaits the owned writable abort after pipe setup fails before releasing the lease', async () => {
+    const path = 'models/huggingface.co/org/repo/model.onnx';
+    let directory = root;
+    for (const name of ['models', 'huggingface.co', 'org', 'repo']) directory = await directory.getDirectoryHandle(name, { create: true });
+    const file = await directory.getFileHandle('model.onnx', { create: true });
+    const abortEntered = Promise.withResolvers<void>();
+    const releaseAbort = Promise.withResolvers<void>();
+    vi.spyOn(file, 'createWritable').mockResolvedValue(new WritableStream<Uint8Array>({ abort: async () => {
+      abortEntered.resolve();
+      await releaseAbort.promise;
+    } }));
+    const response = new Response(Uint8Array.of(1));
+    const reader = response.body!.getReader();
+    let settled = false;
+    let leaseActive = false;
+    const operation = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) => {
+      leaseActive = true;
+      try {
+        return await writeIncompleteOpfsFile({ path, response, lease });
+      } finally {
+        leaseActive = false;
+      }
+    } });
+    const outcome = operation.catch(error => error).finally(() => {
+      settled = true;
+    });
+    try {
+      await abortEntered.promise;
+      expect(settled).toBe(false);
+      expect(leaseActive).toBe(true);
+      expect(directory.files.has('model.onnx')).toBe(true);
+      expect(directory.files.has('.model.onnx.complete')).toBe(false);
+      releaseAbort.resolve();
+      expect(await outcome).toBeInstanceOf(TypeError);
+      expect(leaseActive).toBe(false);
+      expect([...directory.files.keys()]).toEqual([]);
+    } finally {
+      releaseAbort.resolve();
+      reader.releaseLock();
+      await outcome;
+    }
   });
 
   it('keeps the normal cache write path to one final write and creates the completion marker', async () => {

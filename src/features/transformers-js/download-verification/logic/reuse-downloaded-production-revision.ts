@@ -3,6 +3,7 @@ import { acceptReusableDownloadedProductionRevisionsForDownload, type DownloadVe
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 import { awaitWithAbort } from './await-with-abort';
 import type { RuntimeAcceptanceProgressCallback } from './runtime-acceptance-progress';
+import type { DownloadTimingCallback } from '@/features/transformers-js/download-timing';
 
 export type DownloadVerificationReusableRevisionResult =
   | {
@@ -24,6 +25,7 @@ export async function reuseDownloadedProductionRevision({
   candidateOrderByRevision,
   signal,
   onProgress,
+  onTiming,
 }: {
   modelId: string;
   resolvedRevision: string;
@@ -33,6 +35,7 @@ export async function reuseDownloadedProductionRevision({
   candidateOrderByRevision?: Readonly<Record<string, readonly TransformersJsProductionInvestigationCandidate[]>>;
   signal?: AbortSignal;
   onProgress?: RuntimeAcceptanceProgressCallback;
+  onTiming?: DownloadTimingCallback;
 }): Promise<DownloadVerificationReusableRevisionResult> {
   signal?.throwIfAborted();
   onProgress?.({ progress: { phase: 'cache-inventory', revision: resolvedRevision, candidate: undefined, info: undefined } });
@@ -54,7 +57,7 @@ export async function reuseDownloadedProductionRevision({
 
   // The caller's abort must reach the Worker owner; racing only the outer MSI
   // promise leaves an acceptance Worker alive after the UI advances a model.
-  const reuse = await acceptReusableRevisions({ inventory, resolvedRevision, candidateOrderByRevision, signal, onProgress });
+  const reuse = await acceptReusableRevisions({ inventory, resolvedRevision, candidateOrderByRevision, signal, onProgress, onTiming });
   signal?.throwIfAborted();
   switch (reuse.status) {
   case 'accepted':

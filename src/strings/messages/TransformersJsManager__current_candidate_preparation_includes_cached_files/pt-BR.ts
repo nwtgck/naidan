@@ -1,1 +1,1 @@
-export const TransformersJsManager__current_candidate_preparation_includes_cached_files = (): string => "Progresso de preparação do candidato atual, incluindo arquivos em cache.";
+export const TransformersJsManager__current_candidate_preparation_includes_cached_files = (): string => "Progresso de preparação do candidato atual, incluindo a reutilização de arquivos já baixados.";

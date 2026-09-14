@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { classifyProductionAcceptanceError } from '@/features/transformers-js/download-verification/logic/production-acceptance-error';
+import { OpfsResourceBusyError } from './opfs-access';
 import {
   createRequiredDownloadedResourceOperation,
   disposeRejectedDownloadedRuntime,
@@ -25,6 +26,37 @@ function setup({ match }: { match: (request: string | Request) => Promise<Respon
 }
 
 afterEach(() => vi.useRealTimers());
+
+it('retains a busy lookup as a terminal busy error after upstream catches it', async () => {
+  const busy = new OpfsResourceBusyError();
+  const { operation, fetch } = setup({ match: async () => {
+    throw busy;
+  } });
+  try {
+    await expect(operation.cache.match(requiredUrl)).rejects.toBe(busy);
+    expect(operation.assertHealthy).toThrow(busy);
+    await expect(operation.fetch(requiredUrl)).rejects.toBe(busy);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(classifyProductionAcceptanceError({ error: busy })).toBe('terminal');
+  } finally {
+    await operation.close();
+  }
+});
+
+it('does not replace the first required I/O failure with a later busy lookup', async () => {
+  const io = new DOMException('Synthetic first I/O failure', 'NotReadableError');
+  const busy = new OpfsResourceBusyError();
+  const match = vi.fn().mockRejectedValueOnce(io).mockRejectedValueOnce(busy);
+  const { operation } = setup({ match });
+  try {
+    const first = await operation.cache.match(requiredUrl).catch((error: unknown) => error);
+    expect(first).toMatchObject({ name: 'RequiredDownloadedModelResourceError', failure: 'io', cause: io });
+    await expect(operation.cache.match(requiredUrl)).rejects.toBe(first);
+    expect(operation.assertHealthy).toThrow(first as Error);
+  } finally {
+    await operation.close();
+  }
+});
 
 it('retains an own-scope optional metadata lookup I/O failure after the consumer catches it', async () => {
   const url = `https://huggingface.co/${modelId}/resolve/${revision}/generation_config.json`;

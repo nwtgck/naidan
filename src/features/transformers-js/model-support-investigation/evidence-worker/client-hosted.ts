@@ -6,6 +6,7 @@ import type {
 import { createModelSupportInvestigationEvidenceWorkerRequest } from "@/features/transformers-js/model-support-investigation/evidence-worker/request";
 import { createModelSupportInvestigationBatchEvidenceWorkerRequest } from "@/features/transformers-js/model-support-investigation/evidence-worker/batch-request";
 import { createDownloadVerificationEvidenceWorkerRequest } from "@/features/transformers-js/model-support-investigation/evidence-worker/download-verification-request";
+import { createOrdinaryDownloadTimingEvidenceFile } from '@/features/transformers-js/model-support-investigation/logic/ordinary-download-timing-evidence';
 
 export const DEFAULT_EVIDENCE_EXPORT_TIMEOUT_MS = 60 * 1000;
 
@@ -87,7 +88,7 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
   }
 
   return {
-    async createPartialEvidence({ run, recovery, replayMetadata, nativeEvidence }) {
+    async createPartialEvidence({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming }) {
       if (disposed || workerTerminated) {
         throw new Error("Model Support Investigation Evidence Worker client is disposed");
       }
@@ -97,10 +98,11 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
           request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }),
           replayMetadata,
           nativeEvidence,
+          ordinaryDownloadTiming: ordinaryDownloadTiming === undefined ? undefined : createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-run', runId: run.runId } }),
         }),
       });
     },
-    async createBatchEvidence({ batchId, items }) {
+    async createBatchEvidence({ batchId, items, ordinaryDownloadTiming }) {
       if (disposed || workerTerminated) {
         throw new Error("Model Support Investigation Evidence Worker client is disposed");
       }
@@ -110,6 +112,7 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
           request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId, items }),
           replayMetadata: items.map(item => item.replayMetadata),
           nativeEvidence: items.map(item => item.nativeEvidence),
+          ordinaryDownloadTiming: ordinaryDownloadTiming === undefined ? undefined : createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-batch', batchId } }),
         }),
       });
     },
@@ -123,6 +126,12 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
           request: createDownloadVerificationEvidenceWorkerRequest({ evidence }),
         }),
       });
+    },
+    async createRetainedDownloadTimingEvidence({ snapshot, exportId }) {
+      if (disposed || workerTerminated) throw new Error('Model Support Investigation Evidence Worker client is disposed');
+      return await runExportOperation({ operation: remote.createRetainedDownloadTimingEvidence({
+        request: createOrdinaryDownloadTimingEvidenceFile({ snapshot, association: { kind: 'retained-export', exportId, investigation: 'not-run' } }),
+      }) });
     },
     async dispose() {
       if (disposed) return;

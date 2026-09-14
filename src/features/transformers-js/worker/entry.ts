@@ -85,6 +85,7 @@ import {
 } from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
 import { selectProductionModelResources } from '@/features/transformers-js/runtime/production-resource-selector';
 import { createRequiredDownloadedResourceOperation, disposeRejectedDownloadedRuntime, RequiredDownloadedModelResourceError, RequiredDownloadedResourceCleanupError } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
+import { OpfsResourceBusyError } from '@/features/transformers-js/runtime/opfs-access';
 import { isTransformersJsOptionalConfigurationError } from '@/features/transformers-js/runtime/transformers-js-optional-configuration-error';
 import { DOWNLOADED_MODEL_PREPARATION_ERROR_NAME, downloadedModelPreparationError, withDownloadedModelPreparationPhase } from '@/features/transformers-js/runtime/downloaded-model-preparation-error';
 import { promiseAllKeyed } from '@/utils/promise';
@@ -221,7 +222,7 @@ async function withDownloadedModelAccessMode<T>({
   modelCache,
   cacheOnlyFetch = downloadedModelCacheOnlyFetch,
 }: {
-  run: () => Promise<T>,
+  run: ({ assertNotBusy }: { assertNotBusy: () => void }) => Promise<T>,
   modelCache: ReturnType<typeof createOpfsModelCache>,
   cacheOnlyFetch?: typeof fetch,
 }): Promise<T> {
@@ -229,16 +230,54 @@ async function withDownloadedModelAccessMode<T>({
   const previousAllowRemoteModels = env.allowRemoteModels;
   const previousCustomCache = env.customCache;
   const previousFetch = env.fetch;
+  // Upstream tryCache intentionally catches lookup errors. Keep concurrency
+  // failure owned by this invocation, not by a reusable/singleton cache, so a
+  // later explicit Load can succeed after the competing writer releases.
+  let firstLookupFailure: { error: unknown } | undefined;
+  let busyObserved = false;
+  let active = true;
+  function assertNotBusy() {
+    if (busyObserved && firstLookupFailure !== undefined) throw firstLookupFailure.error;
+  }
+  const guardedCache: ReturnType<typeof createOpfsModelCache> = {
+    ...modelCache,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Native Cache-compatible boundary.
+    async match(request) {
+      assertNotBusy();
+      try {
+        return await modelCache.match(request);
+      } catch (error) {
+        if (active && !((error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError')) {
+          firstLookupFailure ??= { error };
+          if (error instanceof OpfsResourceBusyError) busyObserved = true;
+        }
+        assertNotBusy();
+        throw error;
+      }
+    },
+  };
   // Transformers.js 4.2 rejects local_files_only=true before consulting its
   // custom cache when allowLocalModels=false. Keep local lookup enabled so
   // downloaded OPFS entries can be read, then block every cache-miss fetch.
   env.allowLocalModels = true;
   env.allowRemoteModels = false;
-  env.customCache = modelCache;
-  env.fetch = cacheOnlyFetch;
+  env.customCache = guardedCache;
+  env.fetch = async (input, init) => {
+    assertNotBusy();
+    return await cacheOnlyFetch(input, init);
+  };
   try {
-    return await run();
+    const result = await run({ assertNotBusy });
+    assertNotBusy();
+    return result;
+  } catch (error) {
+    // A cleanup timeout requires physical Worker retirement and remains the
+    // controlling failure even when it follows an earlier cache conflict.
+    if (error instanceof RequiredDownloadedResourceCleanupError) throw error;
+    assertNotBusy();
+    throw error;
   } finally {
+    active = false;
     env.allowLocalModels = previousAllowLocalModels;
     env.allowRemoteModels = previousAllowRemoteModels;
     env.customCache = previousCustomCache;
@@ -389,13 +428,14 @@ async function loadDownloadedProductionTokenizerOrProcessor({
 }
 
 /** Metadata and stat-only planning shared by discovery and the selected Load. */
-async function planProductionRuntimeCandidates({ cleanModelId, revision, candidates, modelCache, progressCallback, onRuntimePhase }: {
+async function planProductionRuntimeCandidates({ cleanModelId, revision, candidates, modelCache, progressCallback, onRuntimePhase, assertNotBusy }: {
   cleanModelId: string;
   revision: string | undefined;
   candidates: ProductionLoadCandidate[];
   modelCache: ReturnType<typeof createOpfsModelCache>;
   progressCallback: TransformersJsProgressCallback | undefined;
   onRuntimePhase: (({ phase }: { phase: 'config' | 'candidate-plan' }) => void) | undefined;
+  assertNotBusy: () => void;
 }) {
   onRuntimePhase?.({ phase: 'config' });
   const config = await withDownloadedModelPreparationPhase({
@@ -411,6 +451,9 @@ async function planProductionRuntimeCandidates({ cleanModelId, revision, candida
       });
     },
   });
+  // AutoConfig may catch a busy cache lookup and return a default config.
+  // Stop before planning or opening any native model session in that case.
+  assertNotBusy();
   const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
   let autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId, modelType });
   const entryMetadataPresent = async ({ path }: { path: string }) => {
@@ -477,6 +520,7 @@ async function planProductionRuntimeCandidates({ cleanModelId, revision, candida
     }),
   });
   let candidatePlan = await planCandidates();
+  assertNotBusy();
   // Prefer a complete multimodal route before native loading begins. Old
   // language-only caches remain usable for text without fetching missing
   // vision files. Never downgrade after a native/resource failure.
@@ -484,6 +528,7 @@ async function planProductionRuntimeCandidates({ cleanModelId, revision, candida
     && candidatePlan.every(entry => entry.status === 'checked' && !entry.complete)) {
     autoClass = 'AutoModelForCausalLM';
     candidatePlan = await planCandidates();
+    assertNotBusy();
   }
   return { candidatePlan, autoClass, modelType };
 }
@@ -513,8 +558,8 @@ async function selectDownloadedModelRevision({ modelId, selection, candidates }:
     }));
     if (config === undefined) continue;
     await config.body?.cancel();
-    const { candidatePlan } = await withDownloadedModelAccessMode({ modelCache, run: () => planProductionRuntimeCandidates({
-      cleanModelId, revision, candidates, modelCache, progressCallback: undefined, onRuntimePhase: undefined,
+    const { candidatePlan } = await withDownloadedModelAccessMode({ modelCache, run: ({ assertNotBusy }) => planProductionRuntimeCandidates({
+      cleanModelId, revision, candidates, modelCache, progressCallback: undefined, onRuntimePhase: undefined, assertNotBusy,
     }) });
     if (candidatePlan.some(entry => entry.status === 'checked' && entry.complete)) return revision;
     if (!candidatePlan.some(entry => entry.status === 'checked')) {
@@ -582,10 +627,10 @@ async function loadProductionRuntime({
     const route = await withDownloadedModelAccessMode({
       modelCache: runtimeModelCache,
       cacheOnlyFetch,
-      run: async () => {
+      run: async ({ assertNotBusy }) => {
         const { candidatePlan, autoClass, modelType } = await planProductionRuntimeCandidates({
           cleanModelId, revision, candidates, modelCache: runtimeModelCache,
-          progressCallback: runtimePreparationProgressCallback, onRuntimePhase,
+          progressCallback: runtimePreparationProgressCallback, onRuntimePhase, assertNotBusy,
         });
         const completeCandidates = candidatePlan
           .filter(entry => entry.status === 'checked')
@@ -640,13 +685,19 @@ async function loadProductionRuntime({
             model = await withDownloadedModelAccessMode({
               modelCache: resources.cache,
               cacheOnlyFetch: resources.fetch,
-              run: () => loadDownloadedProductionModelCandidate({
-                cleanModelId,
-                autoClass,
-                candidate,
-                revision,
-                progressCallback: rawProgressCallback,
-              }),
+              run: async () => {
+                // Own native sessions before the access guard checks swallowed
+                // cache failures on return. Its rejection must not lose the
+                // model before the existing candidate cleanup can dispose it.
+                model = await loadDownloadedProductionModelCandidate({
+                  cleanModelId,
+                  autoClass,
+                  candidate,
+                  revision,
+                  progressCallback: rawProgressCallback,
+                });
+                return model;
+              },
             });
             // Upstream tryCache and metadata prepasses may swallow our exception.
             // A returned model is not success until this candidate's reads agree.
@@ -725,7 +776,7 @@ async function loadProductionRuntime({
               },
             });
             loadDiagnostics?.closeCandidate();
-            if (lastError instanceof RequiredDownloadedModelResourceError || lastError instanceof RequiredDownloadedResourceCleanupError
+            if (lastError instanceof RequiredDownloadedModelResourceError || lastError instanceof RequiredDownloadedResourceCleanupError || lastError instanceof OpfsResourceBusyError
             || isTransformersJsOptionalConfigurationError({ error: lastError })) {
               clearLoadedRuntimeState({ loadIdentityOperation });
               throw lastError;
@@ -1181,7 +1232,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       });
       return { device: route.candidate.device, dtype: route.candidate.dtype, ...(route.receipt === undefined ? {} : { receipt: route.receipt }) };
     } catch (error) {
-      if (error instanceof RequiredDownloadedModelResourceError || error instanceof RequiredDownloadedResourceCleanupError
+      if (error instanceof RequiredDownloadedModelResourceError || error instanceof RequiredDownloadedResourceCleanupError || error instanceof OpfsResourceBusyError
         || (error instanceof Error && error.name === DOWNLOADED_MODEL_PREPARATION_ERROR_NAME)
         || isTransformersJsOptionalConfigurationError({ error })) throw error;
       // If no candidate ever loaded, do not let a final missing-artifact error

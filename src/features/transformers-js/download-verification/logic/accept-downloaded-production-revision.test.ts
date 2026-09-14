@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/accept-downloaded-production-revision';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import {
@@ -15,6 +15,7 @@ const REVISION = '0123456789abcdef0123456789abcdef01234567';
 beforeEach(() => {
   vi.clearAllMocks();
 });
+afterEach(() => vi.restoreAllMocks());
 
 function client({ verifyDownloadedModelRevision }: {
   verifyDownloadedModelRevision: DownloadVerificationCandidateAcceptanceWorkerClient['verifyDownloadedModelRevision'];
@@ -27,6 +28,43 @@ function client({ verifyDownloadedModelRevision }: {
 }
 
 describe('acceptDownloadedProductionRevision', () => {
+  it('retains accepted Load separately from a rejecting final disposal', async () => {
+    const worker = client({ verifyDownloadedModelRevision: vi.fn(async () => ({ device: 'webgpu' as const, dtype: 'q4f16' as const })) });
+    const disposalError = new Error('disposal failed');
+    vi.mocked(worker.dispose).mockRejectedValue(disposalError);
+    vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
+    const observations: unknown[] = [];
+    await expect(acceptDownloadedProductionRevision({ modelId: 'org/model', repositoryResolvedRevision: REVISION, cacheRevision: REVISION, loadRevision: REVISION,
+      onTiming: ({ observation }) => {
+        observations.push(observation);
+      },
+    })).rejects.toBe(disposalError);
+    expect(observations).toEqual([expect.objectContaining({ loadOutcome: 'accepted', cleanupOutcome: 'failed', hostSettlement: 'rejected', attemptCount: 'unknown' })]);
+  });
+
+  it('does not turn two constrained candidate attempts into a single-candidate success duration', async () => {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const worker = client({ verifyDownloadedModelRevision: vi.fn() });
+    vi.mocked(worker.verifyDownloadedModelCandidate)
+      .mockImplementationOnce(async () => {
+        now = 10_000; throw new Error('candidate A runtime rejection');
+      })
+      .mockImplementationOnce(async () => {
+        now = 30_000; return { device: 'wasm', dtype: 'q4' };
+      });
+    vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
+    const observations: unknown[] = [];
+    const result = await acceptDownloadedProductionRevision({ modelId: 'org/model', repositoryResolvedRevision: REVISION, cacheRevision: REVISION, loadRevision: REVISION,
+      candidates: [{ device: 'webgpu', dtype: 'q4' }, { device: 'wasm', dtype: 'q4' }],
+      onTiming: ({ observation }) => {
+        observations.push(observation);
+      },
+    });
+    expect(result.status).toBe('accepted');
+    expect(observations).toEqual([expect.objectContaining({ hostDurationMs: 30_000, attemptCount: 2, candidate: undefined, loadOutcome: 'accepted', cleanupOutcome: 'completed' })]);
+  });
+
   it('records Worker initialization failure without rejecting model compatibility or trying another candidate', async () => {
     const worker = client({ verifyDownloadedModelRevision: vi.fn() });
     vi.mocked(worker.verifyDownloadedModelCandidate).mockRejectedValue(new ProductionWorkerLifecycleError({

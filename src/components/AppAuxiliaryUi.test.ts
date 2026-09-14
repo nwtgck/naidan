@@ -3,6 +3,18 @@ import { reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useRoute, useRouter } from 'vue-router';
 import AppAuxiliaryUi from './AppAuxiliaryUi.vue';
+import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
+
+const timingMocks = vi.hoisted(() => ({ snapshot: vi.fn() }));
+vi.mock('@/features/transformers-js', () => ({ transformersJsService: { getDownloadTimingSnapshot: timingMocks.snapshot } }));
+
+function timingSnapshot(): DownloadTimingSnapshot {
+  return { format: 'transformers-js-download-timing-v1', measurementVersion: 1, source: 'ordinary-download',
+    serviceEpoch: '11111111-1111-4111-8111-111111111111', identityStatus: 'available', sequence: 1,
+    availability: 'recorded', droppedOperations: 0,
+    records: [{ operationId: '11111111-1111-4111-8111-111111111111/1', modelId: 'org/previous', runtimeEpoch: 1, outcome: 'failed',
+      timingStatus: 'measured', wallMs: 100, truncated: false, droppedObservations: 0, observations: [] }] };
+}
 
 vi.mock('vue-router', () => ({
   useRoute: vi.fn(),
@@ -47,7 +59,7 @@ vi.mock('@/features/transformers-js/model-support-investigation', () => ({
   isModelSupportInvestigationAvailable: true,
   loadModelSupportInvestigationModal: async () => ({
     name: 'ModelSupportInvestigationModal',
-    props: ['modelId'],
+    props: ['modelId', 'ordinaryDownloadTiming'],
     emits: ['close'],
     template: '<div data-testid="model-support-investigation-modal-stub" :data-model-id="modelId"><button data-testid="model-support-investigation-close-stub" @click="$emit(\'close\')">close</button></div>',
   }),
@@ -112,6 +124,7 @@ describe('AppAuxiliaryUi', () => {
     route.fullPath = '/';
     route.query = {};
     push.mockClear();
+    timingMocks.snapshot.mockReset().mockReturnValue(undefined);
     isSearchOpen.value = false;
     isRecentOpen.value = false;
     vi.mocked(useRoute).mockReturnValue(route as ReturnType<typeof useRoute>);
@@ -176,5 +189,37 @@ describe('AppAuxiliaryUi', () => {
     (wrapper.vm as unknown as { TEST_ONLY: { closeSettings(): void } }).TEST_ONLY.closeSettings();
 
     expect(push).toHaveBeenCalledWith('/chat/chat-1?leaf=message-1');
+  });
+
+  it('passes a detached ordinary-service snapshot at modal admission', async () => {
+    route.query = { settings: 'developer' };
+    const source = timingSnapshot();
+    timingMocks.snapshot.mockReturnValue(source);
+    const wrapper = mount(AppAuxiliaryUi);
+    await flushPromises();
+    await wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').trigger('click');
+    await flushPromises();
+    source.records[0]!.outcome = 'completed';
+    timingMocks.snapshot.mockReturnValue({ ...timingSnapshot(), serviceEpoch: '22222222-2222-4222-8222-222222222222' });
+    const modal = wrapper.findComponent({ name: 'ModelSupportInvestigationModal' });
+    expect(modal.props('ordinaryDownloadTiming')).toEqual(timingSnapshot());
+    expect(timingMocks.snapshot).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it.each(['throws', 'malformed'] as const)('opens the investigation even when optional timing %s', async mode => {
+    route.query = { settings: 'developer' };
+    if (mode === 'throws') timingMocks.snapshot.mockImplementation(() => {
+      throw new Error('Timing unavailable');
+    });
+    else timingMocks.snapshot.mockReturnValue({ format: 'invalid' });
+    const wrapper = mount(AppAuxiliaryUi);
+    await flushPromises();
+    await wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').trigger('click');
+    await flushPromises();
+    const modal = wrapper.findComponent({ name: 'ModelSupportInvestigationModal' });
+    expect(modal.exists()).toBe(true);
+    expect(modal.props('ordinaryDownloadTiming')).toBeUndefined();
+    wrapper.unmount();
   });
 });

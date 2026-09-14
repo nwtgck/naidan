@@ -3,8 +3,9 @@ import { shallowRef } from 'vue';
 import ModelSupportInvestigationSession from './ModelSupportInvestigationSession.vue';
 import { normalizeInvestigationTarget } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import { createInvestigationSessionView, recallInvestigationSession, type InvestigationSessionSnapshot } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
+import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
-const props = defineProps<{ modelId: string }>();
+const props = defineProps<{ modelId: string; ordinaryDownloadTiming?: DownloadTimingSnapshot }>();
 const emit = defineEmits<{ (event: 'close'): void }>();
 const sessionView = shallowRef(createInvestigationSessionView({
   initialSnapshot: recallInvestigationSession({ seededTarget: normalizeInvestigationTarget({ input: props.modelId }) }),
@@ -35,6 +36,7 @@ defineExpose({
     :key="sessionView.viewId"
     :model-id="props.modelId"
     :session-view="sessionView"
+    :ordinary-download-timing="props.ordinaryDownloadTiming"
     @close="emit('close')"
     @new-investigation="replaceSession"
   />

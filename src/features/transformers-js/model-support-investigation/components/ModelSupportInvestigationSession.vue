@@ -66,10 +66,12 @@ import { PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, PRODUCTION_PROVIDER_NATIVE
 import { createInvestigationProviderRetentionBudget, emptyInvestigationProviderRetentionUsage, investigationProviderRetentionLimits, measureInvestigationProviderRetention, type InvestigationProviderRetentionUsage } from '@/features/transformers-js/model-support-investigation/logic/investigation-provider-retention';
 import { createProductionProviderCapturePolicy } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-policy';
 import { validateProductionProviderInvestigationLiveProgress, type ProductionProviderInvestigationLiveProgress } from '@/features/transformers-js/model-support-investigation/logic/production-provider-investigation-summary';
+import { downloadTimingSnapshotSchema, parseDownloadTiming, type DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
 const props = defineProps<{
   modelId: string,
   sessionView: InvestigationSessionView,
+  ordinaryDownloadTiming?: DownloadTimingSnapshot,
 }>();
 
 const emit = defineEmits<{
@@ -80,6 +82,23 @@ const emit = defineEmits<{
 // Every callback and remembered snapshot belongs to this instance, even after
 // the host replaces it. Never look up a mutable current session from callbacks.
 const sessionView = props.sessionView;
+// Retained results keep their original observation, even if a newer Download
+// occurred before reopening this modal. No timing is reconstructed from OPFS.
+const ordinaryDownloadTiming = parseDownloadTiming({ schema: downloadTimingSnapshotSchema, value: toRaw((() => {
+  const snapshot = sessionView.initialSnapshot;
+  if (snapshot === undefined) return props.ordinaryDownloadTiming;
+  switch (snapshot.view) {
+  case 'setup': return props.ordinaryDownloadTiming;
+  case 'results': return snapshot.ordinaryDownloadTiming;
+  default: {
+    const exhaustive: never = snapshot;
+    return exhaustive;
+  }
+  }
+})()) });
+const retainedTimingAvailable = (ordinaryDownloadTiming?.records.length ?? 0) > 0;
+const retainedTimingTruncated = ordinaryDownloadTiming !== undefined && (ordinaryDownloadTiming.droppedOperations > 0 || ordinaryDownloadTiming.records.some(record => record.truncated));
+const retainedTimingExportError = ref<string | undefined>(undefined);
 const sessionReady = ref(sessionView.initialReadiness === 'ready');
 const teardownError = ref<string | undefined>(undefined);
 void sessionView.ready.then(result => {
@@ -1514,6 +1533,7 @@ function rememberCurrentSession(): void {
     recoveries: [...rememberedRecoveries.entries()].map(([target, value]) => [target, value === undefined ? undefined : toRaw(value)]),
     replayMetadata: [...replayMetadataByTarget.entries()],
     nativeEvidence: [...nativeEvidenceByTarget.entries()],
+    ordinaryDownloadTiming,
     reservedProviderRetention: providerRetention.value?.reserved ?? emptyInvestigationProviderRetentionUsage(),
     selectedTarget: selectedTarget.value,
   } });
@@ -1631,6 +1651,7 @@ async function downloadPartialEvidence(): Promise<void> {
             recovery: sourceSnapshot.recovery,
             replayMetadata: sourceSnapshot.replayMetadata,
             nativeEvidence: sourceSnapshot.nativeEvidence,
+            ordinaryDownloadTiming,
           });
         }
 
@@ -1650,6 +1671,7 @@ async function downloadPartialEvidence(): Promise<void> {
         return await evidenceClient.createBatchEvidence({
           batchId,
           items,
+          ordinaryDownloadTiming,
         });
       } finally {
         try {
@@ -1682,6 +1704,42 @@ async function downloadPartialEvidence(): Promise<void> {
     if (!sessionView.isActive()) return;
     updateEvidenceExportPresentation({ status: "failed", detail: failedDetail });
     console.error("[model-support-investigation] Evidence export failed", error);
+  } finally {
+    evidenceExporting.value = false;
+  }
+}
+
+async function downloadRetainedTiming(): Promise<void> {
+  if (!retainedTimingAvailable || ordinaryDownloadTiming === undefined || started.value || evidenceExporting.value || !sessionView.isActive() || !sessionReady.value) return;
+  evidenceExporting.value = true;
+  retainedTimingExportError.value = undefined;
+  try {
+    const client = createModelSupportInvestigationEvidenceWorkerClient();
+    ownedClients.add(client);
+    const archive = await (async () => {
+      try {
+        return await client.createRetainedDownloadTimingEvidence({ snapshot: ordinaryDownloadTiming, exportId: crypto.randomUUID() });
+      } finally {
+        await disposeOwnedClient({ client });
+      }
+    })();
+    if (!sessionView.isActive()) return;
+    const url = URL.createObjectURL(archive.blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = archive.fileName;
+    anchor.style.display = 'none';
+    document.body.append(anchor);
+    try {
+      anchor.click();
+    } finally {
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  } catch (error) {
+    if (!sessionView.isActive()) return;
+    const message = await ensureStrings.ModelSupportInvestigationSession__failed_to_export_retained_download_timing({ error: error instanceof Error ? error.message : String(error) });
+    if (sessionView.isActive()) retainedTimingExportError.value = message;
   } finally {
     evidenceExporting.value = false;
   }
@@ -1783,6 +1841,22 @@ defineExpose({
         tw-class="px-6 py-5 bg-white dark:bg-gray-900 space-y-4 min-h-0 flex-1 overflow-y-auto"
         data-testid="model-support-investigation-setup"
       >
+        <div tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2" data-testid="model-support-retained-download-timing">
+          <p tw-class="text-xs text-gray-500">{{ lazyStrings.ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation() }}</p>
+          <p v-if="!retainedTimingAvailable" tw-class="text-xs text-gray-500" data-testid="model-support-retained-timing-unavailable">{{ lazyStrings.ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session() }}</p>
+          <p v-if="retainedTimingTruncated" tw-class="text-xs text-amber-600 dark:text-amber-400" data-testid="model-support-retained-timing-truncated">{{ lazyStrings.ModelSupportInvestigationSession__some_download_timing_was_not_retained() }}</p>
+          <button
+            type="button"
+            :disabled="!retainedTimingAvailable || evidenceExporting || !sessionReady"
+            tw-class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-bold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            data-testid="model-support-export-retained-timing"
+            @click="downloadRetainedTiming"
+          >
+            <Loader2Icon v-if="evidenceExporting" tw-class="w-4 h-4 animate-spin" />
+            {{ lazyStrings.ModelSupportInvestigationSession__export_retained_download_timing() }}
+          </button>
+          <p v-if="retainedTimingExportError !== undefined" tw-class="text-xs text-red-600" data-testid="model-support-retained-timing-export-error">{{ retainedTimingExportError }}</p>
+        </div>
         <div tw-class="flex items-center justify-between gap-3">
           <div>
             <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">

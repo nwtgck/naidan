@@ -5,68 +5,79 @@ import type { TransformersJsProductionInvestigationCandidate, TransformersJsProg
 
 import { productionAcceptanceFailureStatus, serializeProductionAcceptanceError } from './production-acceptance-error';
 import { readProductionLoadResultReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
+import { measureDownloadAcceptance, type DownloadTimingCallback } from '@/features/transformers-js/download-timing';
 
-export async function acceptDownloadedProductionCandidate({ modelId, resolvedRevision, loadRevision, candidate, progressCallback = () => undefined, signal }: {
+export async function acceptDownloadedProductionCandidate({ modelId, resolvedRevision, loadRevision, candidate, progressCallback = () => undefined, signal, onTiming }: {
   modelId: string;
   resolvedRevision: string;
   loadRevision?: string;
   candidate: TransformersJsProductionInvestigationCandidate;
   progressCallback?: TransformersJsProgressCallback;
   signal?: AbortSignal;
+  onTiming?: DownloadTimingCallback;
 }): Promise<DownloadVerificationCandidateAcceptanceObservation> {
-  signal?.throwIfAborted();
-  const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
-  try {
-    const operation = client.verifyDownloadedModelCandidate({
-      modelId,
-      loadRevision,
-      candidate,
-      progressCallback,
-    });
-    const result = await awaitWithAbort({ operation, signal });
-    if (result.device !== candidate.device) {
+  return await measureDownloadAcceptance({ revision: loadRevision ?? 'main', candidate, route: 'candidate', callback: onTiming, operation: async ({ attempt, cleanup, load }) => {
+    signal?.throwIfAborted();
+    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    try {
+      attempt({ count: 1 });
+      const operation = client.verifyDownloadedModelCandidate({
+        modelId,
+        loadRevision,
+        candidate,
+        progressCallback,
+      });
+      const result = await awaitWithAbort({ operation, signal });
+      if (result.device !== candidate.device) {
+        load({ outcome: 'rejected' });
+        return {
+          modelId,
+          resolvedRevision,
+          loaderRevisionOption: loadRevision ?? null,
+          candidate,
+          status: 'rejected',
+          observationMethod: 'production-cache-only-runtime-preparation',
+          error: {
+            name: 'UnexpectedCandidateDevice',
+            message: `Expected ${candidate.device}, received ${result.device}`,
+          },
+        };
+      }
+      const receipt = readProductionLoadResultReceipt({ value: result, modelId, revision: loadRevision });
+      load({ outcome: 'accepted' });
       return {
         modelId,
         resolvedRevision,
         loaderRevisionOption: loadRevision ?? null,
         candidate,
-        status: 'rejected',
+        status: 'accepted',
         observationMethod: 'production-cache-only-runtime-preparation',
-        error: {
-          name: 'UnexpectedCandidateDevice',
-          message: `Expected ${candidate.device}, received ${result.device}`,
-        },
+        error: undefined,
+        receipt,
       };
-    }
-    return {
-      modelId,
-      resolvedRevision,
-      loaderRevisionOption: loadRevision ?? null,
-      candidate,
-      status: 'accepted',
-      observationMethod: 'production-cache-only-runtime-preparation',
-      error: undefined,
-      receipt: readProductionLoadResultReceipt({ value: result, modelId, revision: loadRevision }),
-    };
-  } catch (error) {
-    if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
-    return {
-      modelId,
-      resolvedRevision,
-      loaderRevisionOption: loadRevision ?? null,
-      candidate,
-      status: productionAcceptanceFailureStatus({ error }),
-      observationMethod: 'production-cache-only-runtime-preparation',
-      error: serializeProductionAcceptanceError({ error }),
-    };
-  } finally {
-    try {
-      await client.dispose();
-    } catch {
+    } catch (error) {
+      if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+      load({ outcome: productionAcceptanceFailureStatus({ error }) });
+      return {
+        modelId,
+        resolvedRevision,
+        loaderRevisionOption: loadRevision ?? null,
+        candidate,
+        status: productionAcceptanceFailureStatus({ error }),
+        observationMethod: 'production-cache-only-runtime-preparation',
+        error: serializeProductionAcceptanceError({ error }),
+      };
+    } finally {
+      try {
+        await client.dispose();
+        cleanup({ outcome: 'completed' });
+      } catch {
+        cleanup({ outcome: 'failed' });
       // The dedicated client terminates its Worker in dispose(). A failed remote release
       // must not replace the actual observation/preparation/acceptance outcome.
+      }
     }
-  }
+  } });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
