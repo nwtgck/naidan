@@ -91,6 +91,7 @@ describe('user-facing Transformers.js download cutover', () => {
       progressCallback: expect.any(Function),
       onDownloadProgress: expect.any(Function),
       onTiming: expect.any(Function),
+      createAcceptanceClient: expect.any(Function),
     });
     expect(mocks.legacyWorkerDownloadModel).not.toHaveBeenCalled();
     expect(mocks.inspectCachedRevisions).toHaveBeenCalledTimes(1);
@@ -203,6 +204,7 @@ describe('user-facing Transformers.js download cutover', () => {
       progressCallback: expect.any(Function),
       onDownloadProgress: expect.any(Function),
       onTiming: expect.any(Function),
+      createAcceptanceClient: expect.any(Function),
     });
   });
 

@@ -163,7 +163,7 @@ it('does not leave a failed new-revision Download hint that would replace a usab
   boundary.prepare.mockRejectedValue(failure);
   const { transformersJsService } = await import('./index-hosted');
   await expect(transformersJsService.downloadModel({ modelId })).rejects.toBe(failure);
-  expect(boundary.prepare).toHaveBeenCalledExactlyOnceWith({ modelId, revision: advancedRevision, progressCallback: expect.any(Function), onDownloadProgress: expect.any(Function), onTiming: expect.any(Function) });
+  expect(boundary.prepare).toHaveBeenCalledExactlyOnceWith({ modelId, revision: advancedRevision, progressCallback: expect.any(Function), onDownloadProgress: expect.any(Function), onTiming: expect.any(Function), createAcceptanceClient: expect.any(Function) });
   expect(boundary.verifyRevision).not.toHaveBeenCalled();
 
   h.repositoryFetch.mockRejectedValue(new Error('No internet during Load'));

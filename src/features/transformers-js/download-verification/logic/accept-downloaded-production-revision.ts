@@ -1,4 +1,4 @@
-import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
+import { createDownloadVerificationCandidateAcceptanceWorkerClient, type DownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
 import { awaitWithAbort } from '@/features/transformers-js/download-verification/logic/await-with-abort';
 import type { DownloadVerificationRevisionAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
@@ -26,6 +26,7 @@ export async function acceptDownloadedProductionRevision({
   signal,
   onProgress,
   onTiming,
+  createAcceptanceClient,
 }: {
   modelId: string;
   repositoryResolvedRevision: string | undefined;
@@ -35,6 +36,7 @@ export async function acceptDownloadedProductionRevision({
   signal?: AbortSignal;
   onProgress?: RuntimeAcceptanceProgressCallback;
   onTiming?: DownloadTimingCallback;
+  createAcceptanceClient?: () => DownloadVerificationCandidateAcceptanceWorkerClient;
 }): Promise<DownloadVerificationRevisionAcceptanceObservation> {
   return await measureDownloadAcceptance({ revision: cacheRevision, candidate: undefined, route: 'revision', callback: onTiming, operation: async ({ attempt, cleanup, load }) => {
     if (loadRevision === undefined && cacheRevision !== 'main') {
@@ -48,7 +50,9 @@ export async function acceptDownloadedProductionRevision({
       if (!signal?.aborted) onProgress?.({ progress });
     };
     reportProgress({ progress: { phase: 'revision-acceptance', revision: cacheRevision, candidate: undefined, info: undefined } });
-    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    const client = createAcceptanceClient === undefined
+      ? createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: signal })
+      : createAcceptanceClient();
     try {
       const result = await (async () => {
         if (candidates === undefined) {

@@ -66,7 +66,7 @@ describe('Download Verification dedicated Worker clients', () => {
     const clients = [
       createDownloadVerificationModelArtifactRequestWorkerClient(),
       createDownloadVerificationRuntimeArtifactPreparationWorkerClient(),
-      createDownloadVerificationCandidateAcceptanceWorkerClient(),
+      createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: undefined }),
       createTransformersJsDownloadWorkerClient(),
     ];
     await MockWorker.production.startup.ready;
@@ -88,7 +88,7 @@ describe('Download Verification dedicated Worker clients', () => {
 
   it('does not send advisory release when the candidate Worker is disposed before ready', async () => {
     const { createDownloadVerificationCandidateAcceptanceWorkerClient } = await import('./candidate-acceptance-worker/client-hosted');
-    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    const client = createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: undefined });
     await client.dispose();
     await client.dispose();
     expect(mocks.wrap).not.toHaveBeenCalled();

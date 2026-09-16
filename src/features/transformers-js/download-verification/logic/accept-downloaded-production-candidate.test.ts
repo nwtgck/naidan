@@ -42,22 +42,23 @@ describe('acceptDownloadedProductionCandidate', () => {
     expect(observations).toEqual([expect.objectContaining({ kind: 'acceptance', hostDurationMs: 23_000, loadOutcome: 'accepted', cleanupOutcome: 'completed', hostSettlement: 'fulfilled', attemptCount: 1 })]);
   });
 
-  it('does not label a swallowed disposal failure as a complete acceptance sample', async () => {
+  it('preserves a disposal rejection even when the timing observer throws', async () => {
     const observations: unknown[] = [];
+    const cleanupFailure = new Error('cleanup failure');
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
       verifyDownloadedModelCandidate: vi.fn(async () => ({ device: 'webgpu' })),
       verifyDownloadedModelRevision: vi.fn(),
       dispose: vi.fn(async () => {
-        throw new Error('cleanup failure');
+        throw cleanupFailure;
       }),
     });
-    const result = await acceptDownloadedProductionCandidate({ modelId: 'org/model', resolvedRevision: REVISION, candidate: CANDIDATE,
+    const running = acceptDownloadedProductionCandidate({ modelId: 'org/model', resolvedRevision: REVISION, candidate: CANDIDATE,
       onTiming: ({ observation }: { observation: unknown }) => {
         observations.push(observation); throw new Error('observer failure');
       },
     });
-    expect(result.status).toBe('accepted');
-    expect(observations).toEqual([expect.objectContaining({ loadOutcome: 'accepted', cleanupOutcome: 'failed', hostSettlement: 'fulfilled' })]);
+    await expect(running).rejects.toBe(cleanupFailure);
+    expect(observations).toEqual([expect.objectContaining({ loadOutcome: 'accepted', cleanupOutcome: 'failed', hostSettlement: 'rejected' })]);
   });
 
   it('uses one fresh acceptance worker and disposes it after success', async () => {
@@ -91,12 +92,13 @@ describe('acceptDownloadedProductionCandidate', () => {
 
 
 
-  it('preserves an accepted candidate when dedicated worker disposal reports a remote release failure', async () => {
+  it('does not infer successful physical retirement from an error mentioning remote release', async () => {
+    const disposalFailure = new Error('remote release failed');
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
       verifyDownloadedModelCandidate: vi.fn(async () => ({ device: 'webgpu' })),
       verifyDownloadedModelRevision: vi.fn(),
       dispose: vi.fn(async () => {
-        throw new Error('remote release failed');
+        throw disposalFailure;
       }),
     });
 
@@ -104,10 +106,7 @@ describe('acceptDownloadedProductionCandidate', () => {
       modelId: 'org/model',
       resolvedRevision: REVISION,
       candidate: CANDIDATE,
-    })).resolves.toMatchObject({
-      status: 'accepted',
-      candidate: CANDIDATE,
-    });
+    })).rejects.toBe(disposalFailure);
   });
 
   it('records a sanitized rejection and still disposes the worker', async () => {

@@ -141,7 +141,7 @@ describe('Production startup through real Comlink transport', () => {
 
   it('terminates cache revision acceptance after transported cleanup failure before a later candidate RPC', async () => {
     vi.stubGlobal('Worker', TransportWorker);
-    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    const client = createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: undefined });
     clients.push(client);
     const worker = currentWorker();
     expose({
@@ -202,7 +202,7 @@ describe('Production startup through real Comlink transport', () => {
 
   it('rejects stop before ready and never sends the delayed candidate RPC', async () => {
     vi.stubGlobal('Worker', TransportWorker);
-    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    const client = createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: undefined });
     clients.push(client);
     const result = client.verifyDownloadedModelCandidate({
       modelId: 'public/model', loadRevision: 'exact',
@@ -223,7 +223,7 @@ describe('Production startup through real Comlink transport', () => {
 
   it('replays the candidate revision RPC after expose and delivers its real proxy callback', async () => {
     vi.stubGlobal('Worker', TransportWorker);
-    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    const client = createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: undefined });
     clients.push(client);
     const progress = vi.fn();
     const result = client.verifyDownloadedModelRevision({
@@ -246,7 +246,7 @@ describe('Production startup through real Comlink transport', () => {
 
   it.each(['error', 'messageerror', 'dispose'] as const)('terminates an active candidate on %s and drops late callbacks', async event => {
     vi.stubGlobal('Worker', TransportWorker);
-    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    const client = createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: undefined });
     clients.push(client);
     const progress = vi.fn();
     const entered = Promise.withResolvers<void>();

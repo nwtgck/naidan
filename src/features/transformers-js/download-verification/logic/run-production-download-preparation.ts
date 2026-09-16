@@ -12,6 +12,7 @@ import { observeDownloadSafely, publishDownloadProgress, type DownloadProgressCa
 import { createDownloadSizeClient } from '@/features/transformers-js/download-verification/size-worker/client';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import type { DownloadTimingCallback } from '@/features/transformers-js/download-timing';
+import type { DownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
 
 export type DownloadVerificationProductionDownloadPreparationRun =
   | {
@@ -40,6 +41,7 @@ export async function runProductionDownloadPreparation({
   onDownloadProgress,
   sizeHints,
   onTiming,
+  createAcceptanceClient,
 }: {
   modelId: string;
   revision: string;
@@ -49,6 +51,7 @@ export async function runProductionDownloadPreparation({
   onDownloadProgress?: DownloadProgressCallback;
   sizeHints?: readonly { path: string; bytes: number }[];
   onTiming?: DownloadTimingCallback;
+  createAcceptanceClient?: () => DownloadVerificationCandidateAcceptanceWorkerClient;
 }): Promise<DownloadVerificationProductionDownloadPreparationRun> {
   const safeProgress: TransformersJsProgressCallback = ({ info }) => observeDownloadSafely({ observe: () => progressCallback({ info }) });
   const runtimeArtifacts = await prepareProductionRuntimeArtifacts({ modelId, revision, progressCallback: safeProgress, signal });
@@ -132,6 +135,7 @@ export async function runProductionDownloadPreparation({
           progressCallback: safeProgress,
           signal,
           onTiming,
+          ...(createAcceptanceClient === undefined ? {} : { createAcceptanceClient }),
         });
       },
       signal,

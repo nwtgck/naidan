@@ -1,13 +1,13 @@
-import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
+import { createDownloadVerificationCandidateAcceptanceWorkerClient, type DownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
 import { awaitWithAbort } from '@/features/transformers-js/download-verification/logic/await-with-abort';
 import type { DownloadVerificationCandidateAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProductionInvestigationCandidate, TransformersJsProgressCallback } from '@/features/transformers-js/types';
 
 import { productionAcceptanceFailureStatus, serializeProductionAcceptanceError } from './production-acceptance-error';
 import { readProductionLoadResultReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
-import { measureDownloadAcceptance, type DownloadTimingCallback } from '@/features/transformers-js/download-timing';
+import { disposeWithDownloadTiming, measureDownloadAcceptance, type DownloadTimingCallback } from '@/features/transformers-js/download-timing';
 
-export async function acceptDownloadedProductionCandidate({ modelId, resolvedRevision, loadRevision, candidate, progressCallback = () => undefined, signal, onTiming }: {
+export async function acceptDownloadedProductionCandidate({ modelId, resolvedRevision, loadRevision, candidate, progressCallback = () => undefined, signal, onTiming, createAcceptanceClient }: {
   modelId: string;
   resolvedRevision: string;
   loadRevision?: string;
@@ -15,10 +15,13 @@ export async function acceptDownloadedProductionCandidate({ modelId, resolvedRev
   progressCallback?: TransformersJsProgressCallback;
   signal?: AbortSignal;
   onTiming?: DownloadTimingCallback;
+  createAcceptanceClient?: () => DownloadVerificationCandidateAcceptanceWorkerClient;
 }): Promise<DownloadVerificationCandidateAcceptanceObservation> {
   return await measureDownloadAcceptance({ revision: loadRevision ?? 'main', candidate, route: 'candidate', callback: onTiming, operation: async ({ attempt, cleanup, load }) => {
     signal?.throwIfAborted();
-    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    const client = createAcceptanceClient === undefined
+      ? createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: signal })
+      : createAcceptanceClient();
     try {
       attempt({ count: 1 });
       const operation = client.verifyDownloadedModelCandidate({
@@ -68,14 +71,7 @@ export async function acceptDownloadedProductionCandidate({ modelId, resolvedRev
         error: serializeProductionAcceptanceError({ error }),
       };
     } finally {
-      try {
-        await client.dispose();
-        cleanup({ outcome: 'completed' });
-      } catch {
-        cleanup({ outcome: 'failed' });
-      // The dedicated client terminates its Worker in dispose(). A failed remote release
-      // must not replace the actual observation/preparation/acceptance outcome.
-      }
+      await disposeWithDownloadTiming({ dispose: () => client.dispose(), onOutcome: cleanup });
     }
   } });
 }

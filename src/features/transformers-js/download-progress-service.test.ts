@@ -163,7 +163,7 @@ it('does not let a failing Download progress subscriber prevent cache reuse or c
   owner.service.subscribeModelList({ listener: healthyList });
   await expect(owner.service.downloadModel({ modelId: 'fixture/model' })).resolves.toBeUndefined();
   expect(transfer.resolve).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model' });
-  expect(transfer.reuse).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model', resolvedRevision: 'a'.repeat(40), onProgress: expect.any(Function), onTiming: expect.any(Function) });
+  expect(transfer.reuse).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/model', resolvedRevision: 'a'.repeat(40), onProgress: expect.any(Function), onTiming: expect.any(Function), createAcceptanceClient: expect.any(Function) });
   expect(transfer.prepare).not.toHaveBeenCalled();
   expect(createWorkerClient).not.toHaveBeenCalled();
   expect(owner.service.getState()).toMatchObject({ status: 'idle', loadingModelId: undefined });

@@ -181,6 +181,7 @@ export async function acceptReusableDownloadedProductionRevisionsForDownload({
   signal,
   onProgress,
   onTiming,
+  createAcceptanceClient,
 }: {
   inventory: DownloadVerificationCachedRevisionInventory;
   resolvedRevision: string;
@@ -188,6 +189,7 @@ export async function acceptReusableDownloadedProductionRevisionsForDownload({
   signal?: AbortSignal;
   onProgress?: RuntimeAcceptanceProgressCallback;
   onTiming?: DownloadTimingCallback;
+  createAcceptanceClient?: Parameters<typeof acceptDownloadedProductionRevision>[0]['createAcceptanceClient'];
 }): Promise<DownloadVerificationCachedRevisionAcceptanceResult> {
   return await runCachedRevisionAcceptanceOrchestration({
     inventory,
@@ -203,6 +205,7 @@ export async function acceptReusableDownloadedProductionRevisionsForDownload({
       signal,
       onProgress,
       onTiming,
+      ...(createAcceptanceClient === undefined ? {} : { createAcceptanceClient }),
     }),
     // Explicit Download is allowed to repair the current exact revision. A
     // missing artifact in one cached revision must not prevent a later, fully

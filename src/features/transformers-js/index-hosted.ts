@@ -8,6 +8,8 @@ import type { DownloadedModelRevisionSelection } from '@/features/transformers-j
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import { resolvePublicHuggingFaceRevision } from '@/features/transformers-js/download-verification/logic/resolve-public-hugging-face-revision';
 import { runProductionDownloadPreparation } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
+import { createDownloadVerificationCandidateAcceptanceWorkerClient, type DownloadVerificationCandidateAcceptanceWorkerClient } from './download-verification/candidate-acceptance-worker/client-hosted';
+import { DownloadAcceptanceWorkerRetirementError } from './download-verification/candidate-acceptance-worker/retirement-error';
 import { createDownloadTimingCollector, type DownloadTimingCallback } from './download-timing';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import { createTransformersJsRuntimeLane, type TransformersJsRuntimeOperation } from './runtime-operation-lane';
@@ -29,7 +31,7 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
 }
 
-/** Owns one service's state and Production clients; explicit Download I/O is not owned here. */
+/** Owns Production and Download acceptance clients, not explicit Download I/O. */
 export function createTransformersJsService({ createWorkerClient }: {
   createWorkerClient: () => TransformersJsWorkerClient,
 }) {
@@ -236,8 +238,8 @@ export function createTransformersJsService({ createWorkerClient }: {
   let restartPromise: Promise<TransformersJsWorkerClient> | undefined;
   let lifetime: 'open' | 'closing' | 'closed' = 'open';
   let disposePromise: Promise<void> | undefined;
-  const ownedClients = new Set<TransformersJsWorkerClient>();
-  const clientDisposals = new WeakMap<TransformersJsWorkerClient, Promise<void>>();
+  const ownedClients = new Set<{ dispose(): Promise<void> }>();
+  const clientDisposals = new WeakMap<{ dispose(): Promise<void> }, Promise<void>>();
   let retirementFailure: { error: unknown } | undefined;
   const disposedError = new ProductionWorkerLifecycleError({ reason: 'disposed', message: 'Transformers.js service owner disposed' });
 
@@ -269,7 +271,7 @@ export function createTransformersJsService({ createWorkerClient }: {
     };
   }
 
-  function disposeOwnedClient({ ownedClient }: { ownedClient: TransformersJsWorkerClient }): Promise<void> {
+  function disposeOwnedClient({ ownedClient }: { ownedClient: { dispose(): Promise<void> } }): Promise<void> {
     const existing = clientDisposals.get(ownedClient);
     if (existing !== undefined) return existing;
     let resolveDisposal!: () => void;
@@ -317,7 +319,7 @@ export function createTransformersJsService({ createWorkerClient }: {
   }
 
   /**
-   * Terminal ownership boundary for Production clients, not unload/restart and
+   * Terminal ownership boundary for Production and Download acceptance clients,
    * not cancellation of separately owned Download or already-started OPFS I/O.
    */
   function dispose(): Promise<void> {
@@ -1033,8 +1035,32 @@ export function createTransformersJsService({ createWorkerClient }: {
 
       const timing = downloadTiming.begin({ modelId: normalizeTransformersJsProductionModelId({ modelId }), runtimeEpoch });
       let downloadCompleted = false;
+      const acceptanceRetirementFailed = () => owner.signal.aborted
+        && owner.signal.reason instanceof DownloadAcceptanceWorkerRetirementError
+        && retirementFailure?.error === owner.signal.reason;
       const onTiming: DownloadTimingCallback = ({ observation }) => {
-        if (isCurrent() && !owner.signal.aborted) timing.observe({ observation });
+        // Closing the lane on a physical retirement failure is not user cancel.
+        // Keep its final cleanup sample, but never revive a retired operation.
+        if (isCurrent() && (!owner.signal.aborted || acceptanceRetirementFailed())) timing.observe({ observation });
+      };
+      const createAcceptanceClient = (): DownloadVerificationCandidateAcceptanceWorkerClient => {
+        // Metadata or file I/O can settle after restart. Such an old Download
+        // must not create an acceptance Worker outside the retirement snapshot.
+        assertCurrent();
+        if (retirementFailure !== undefined) throw retirementFailure.error;
+        const created = createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: owner.signal });
+        ownedClients.add(created);
+        return {
+          verifyDownloadedModelCandidate: ({ modelId, loadRevision, candidate, progressCallback, ...unhandled }) => {
+            unhandled satisfies Record<PropertyKey, never>;
+            return created.verifyDownloadedModelCandidate({ modelId, loadRevision, candidate, progressCallback });
+          },
+          verifyDownloadedModelRevision: ({ modelId, loadRevision, progressCallback, ...unhandled }) => {
+            unhandled satisfies Record<PropertyKey, never>;
+            return created.verifyDownloadedModelRevision({ modelId, loadRevision, progressCallback });
+          },
+          dispose: () => disposeOwnedClient({ ownedClient: created }),
+        };
       };
       const tracker = createDownloadProgressTracker();
       downloadObservationEpoch++;
@@ -1084,7 +1110,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         const { resolvedRevision, sizeHints } = await resolvePublicHuggingFaceRevision({ modelId });
         assertCurrent();
         onDownloadProgress({ event: { kind: 'phase', phase: 'checking-cache' } });
-        const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision, onTiming, onProgress: ({ progress }) => {
+        const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision, onTiming, createAcceptanceClient, onProgress: ({ progress }) => {
           // The runtime emits model-session only after admitting a locally
           // complete candidate. Inventory/revision selection alone is not 95%.
           if (progress.phase === 'runtime' && progress.info?.status === 'cache-acceptance-model-session') {
@@ -1102,6 +1128,7 @@ export function createTransformersJsService({ createWorkerClient }: {
             progressCallback: progress_callback,
             onDownloadProgress,
             onTiming,
+            createAcceptanceClient,
             ...sizeHints === undefined ? {} : { sizeHints },
           });
           assertCurrent();
@@ -1125,6 +1152,19 @@ export function createTransformersJsService({ createWorkerClient }: {
         modelListListeners.forEach(listener => observeDownloadSafely({ observe: listener }));
         downloadCompleted = true;
       } catch (e) {
+        // disposeOwnedClient has already closed admission, including when a
+        // restart/dispose retired this owner. Never fatal-recover another client.
+        if (e instanceof DownloadAcceptanceWorkerRetirementError) {
+          if (isCurrent()) {
+            tracker.observe({ event: { kind: 'phase', phase: 'failed' } });
+            downloadProgress = tracker.snapshot();
+            loadingStatus = 'error';
+            loadingError = e.message;
+            loadingModelId = undefined;
+            notify();
+          }
+          throw e;
+        }
         if (!isCurrent() || owner.signal.aborted) throw e;
         console.error('[transformersJsService] Failed to download model:', modelId, e);
         const errorMsg = e instanceof Error ? e.message : String(e);
@@ -1142,7 +1182,7 @@ export function createTransformersJsService({ createWorkerClient }: {
         notify();
         throw e;
       } finally {
-        timing.finish({ outcome: !isCurrent() ? 'retired' : owner.signal.aborted ? 'aborted' : downloadCompleted ? 'completed' : 'failed' });
+        timing.finish({ outcome: !isCurrent() ? 'retired' : acceptanceRetirementFailed() ? 'failed' : owner.signal.aborted ? 'aborted' : downloadCompleted ? 'completed' : 'failed' });
         stopEstimate();
         owner.signal.removeEventListener('abort', stopEstimate);
         // Cancellation does not stop Download I/O. Finalize only after it settles,
