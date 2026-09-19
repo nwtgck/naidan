@@ -1,224 +1,161 @@
-import { z } from 'zod';
-import { LlamaCppBrowserError, modelSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
-import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
+import { LlamaCppBrowserError, modelSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
+import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
 
-const directoryName = 'llama-cpp-browser-models';
-const legacyDirectoryName = 'llama-cpp-browser-models-v1';
-const lockName = 'naidan-llama-cpp-browser-model-store';
+const directoryName = "llama-cpp-browser-models";
+const lockName = "naidan-llama-cpp-browser-model-store";
 
-async function directory(): Promise<FileSystemDirectoryHandle> {
-  if (!navigator.storage?.getDirectory) throw new LlamaCppBrowserError({ code: 'unavailable' });
-  const storageRoot = await navigator.storage.getDirectory();
-  const root = await storageRoot.getDirectoryHandle(directoryName, { create: true });
-  await migrateLegacyModels({ storageRoot, root });
-  return root;
+function isMissing({ error }: { error: unknown }): boolean {
+  return error instanceof DOMException && (error.name === "NotFoundError" || error.name === "TypeMismatchError");
 }
-function isNotFound({ error }: { error: unknown }): boolean {
-  return error instanceof DOMException && error.name === 'NotFoundError';
+function modelPath({ name }: { name: string }): { directory: string, file: string, marker: string, id: string } {
+  // Model storage is a regular file tree, not the transactional naidan-storage
+  // database. No metadata JSON, UUID registry or hashed directory is required.
+  // Keep the original filename so a future external filesystem reader can use
+  // an existing GGUF without copying it into an application-owned container.
+  if (!/^.+\.gguf$/i.test(name) || (name.includes("/") || name.includes("\\") || Array.from(name).some(character => character.charCodeAt(0) < 32))
+    || new TextEncoder().encode(name).byteLength > 245) {
+    throw new LlamaCppBrowserError({ code: "invalid-gguf" });
+  }
+  const directory = `${name.slice(0, -5)}-GGUF`;
+  return { directory, file: name, marker: `.${name}.complete`, id: `user/${directory}/${name}` };
 }
-async function readMetadata({ folder }: { folder: FileSystemDirectoryHandle }): Promise<LocalModel | undefined> {
-  try {
-    const file = await (await folder.getFileHandle('metadata.json')).getFile();
-    if (file.size === 0 || file.size > 4096) return undefined;
-    const parsed = modelSchema.safeParse(JSON.parse(await file.text()));
-    return parsed.success ? parsed.data : undefined;
-  } catch (error) {
-    if (isNotFound({ error }) || error instanceof SyntaxError) return undefined;
-    throw error;
-  }
+async function userDirectory(): Promise<FileSystemDirectoryHandle> {
+  if (!navigator.storage?.getDirectory) throw new LlamaCppBrowserError({ code: "unavailable" });
+  const root = await navigator.storage.getDirectory();
+  const models = await root.getDirectoryHandle(directoryName, { create: true });
+  return models.getDirectoryHandle("user", { create: true });
 }
-async function writeMetadata({ folder, model }: { folder: FileSystemDirectoryHandle, model: LocalModel }): Promise<void> {
-  const writer = await (await folder.getFileHandle('metadata.json', { create: true })).createWritable();
-  try {
-    await writer.write(JSON.stringify(model)); await writer.close();
-  } catch (error) {
-    await writer.abort().catch(() => {}); throw error;
-  }
+async function validHeader({ file }: { file: File }): Promise<boolean> {
+  if (!Number.isSafeInteger(file.size) || file.size < 24) return false;
+  const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  return bytes.length === 8 && bytes[0] === 71 && bytes[1] === 71 && bytes[2] === 85 && bytes[3] === 70
+    && [2, 3].includes(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4, true));
 }
-async function copyModelFile({ source, destination }: { source: File, destination: FileSystemFileHandle }): Promise<void> {
-  const writer = await destination.createWritable();
-  const reader = source.stream().getReader(); let completed = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      await writer.write(value); completed += value.byteLength;
-    }
-    if (completed !== source.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
-    await writer.close();
-  } catch (error) {
-    await reader.cancel().catch(() => {}); await writer.abort().catch(() => {}); throw error;
-  } finally {
-    reader.releaseLock();
-  }
-}
-/** Migrate under the same exclusive lock used by readers, imports and inference.
- * Publish metadata before transferring a legacy file, so an interrupted move is
- * recoverable from either side. Never delete the source before the target is valid.
- */
-async function migrateLegacyModels({ storageRoot, root }: {
-  storageRoot: FileSystemDirectoryHandle, root: FileSystemDirectoryHandle,
-}): Promise<void> {
-  let legacy: FileSystemDirectoryHandle;
-  try {
-    legacy = await storageRoot.getDirectoryHandle(legacyDirectoryName);
-  } catch (error) {
-    if (isNotFound({ error })) return;
-    throw error;
-  }
-  for await (const [id, entry] of legacy.entries()) {
-    if (entry.kind !== 'directory' || !z.uuid().safeParse(id).success) continue;
-    const model = await readMetadata({ folder: entry });
-    if (!model || model.id !== id) continue; // Do not guess ownership of damaged/foreign entries.
-    const target = await root.getDirectoryHandle(id, { create: true });
-    const existing = await readMetadata({ folder: target });
-    if (existing && (existing.id !== model.id || existing.name !== model.name || existing.size !== model.size || existing.importedAt !== model.importedAt)) {
-      throw new LlamaCppBrowserError({ code: 'storage-error' });
-    }
-    if (!existing) {
-      // Only an empty metadata file can be a recoverable previous write here.
-      // Do not overwrite populated data with an invalid or missing manifest.
-      for await (const [name, child] of target.entries()) {
-        if (name !== 'metadata.json' || child.kind !== 'file' || (await child.getFile()).size !== 0) {
-          throw new LlamaCppBrowserError({ code: 'storage-error' });
-        }
-      }
-    }
-    let transferred = false;
-    if (existing) {
-      try {
-        transferred = (await (await target.getFileHandle('model.gguf')).getFile()).size === model.size;
-      } catch (error) {
-        if (!isNotFound({ error })) throw error;
-      }
-    }
-    if (!transferred) {
-      const sourceHandle = await entry.getFileHandle('model.gguf');
-      const source = await sourceHandle.getFile();
-      if (source.size !== model.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
-      await writeMetadata({ folder: target, model });
-      const movable = sourceHandle as FileSystemFileHandle & {
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Optional native OPFS move overload uses positional arguments.
-        move?: (destination: FileSystemDirectoryHandle, name: string) => Promise<void>,
-      };
-      if (movable.move) {
-        try {
-          // Avoid making a second model-sized copy on implementations with OPFS move.
-          await movable.move(target, 'model.gguf'); transferred = true;
-        } catch (error) {
-          if (!(error instanceof TypeError) && !(error instanceof DOMException && error.name === 'NotSupportedError')) throw error;
-        }
-      }
-      if (!transferred) {
-        await copyModelFile({ source, destination: await target.getFileHandle('model.gguf', { create: true }) });
-      }
-      if ((await (await target.getFileHandle('model.gguf')).getFile()).size !== model.size) {
-        throw new LlamaCppBrowserError({ code: 'storage-error' });
-      }
-    }
-    for (const name of ['model.gguf', 'metadata.json']) {
-      try {
-        await entry.removeEntry(name);
-      } catch (error) {
-        if (!isNotFound({ error })) throw error;
-      }
-    }
-    // Only remove now-empty legacy containers, never extra user-created entries.
-    try {
-      await legacy.removeEntry(id);
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === 'InvalidModificationError')) throw error;
-    }
-  }
-  try {
-    await storageRoot.removeEntry(legacyDirectoryName);
-  } catch (error) {
-    if (!(error instanceof DOMException && error.name === 'InvalidModificationError')) throw error;
-  }
+function describe({ file }: { file: File }): LocalModel {
+  return modelSchema.parse({ id: modelPath({ name: file.name }).id, name: file.name, size: file.size, importedAt: file.lastModified });
 }
 export async function withModelStoreLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
-  if (!navigator.locks) throw new LlamaCppBrowserError({ code: 'unavailable' });
+  if (!navigator.locks) throw new LlamaCppBrowserError({ code: "unavailable" });
   return navigator.locks.request(lockName, operation);
 }
 export async function listStoredModels(): Promise<LocalModel[]> {
-  const root = await directory(); const result: LocalModel[] = [];
-  for await (const [name, handle] of root.entries()) {
-    if (handle.kind !== 'directory' || !z.uuid().safeParse(name).success) continue;
-    try {
-      let metadataHandle: FileSystemFileHandle;
+  const root = await userDirectory(); const result: LocalModel[] = [];
+  for await (const [directory, folder] of root.entries()) {
+    switch (folder.kind) {
+    case "file": continue;
+    case "directory": break;
+    default: throw new Error(`Unexpected entry kind: ${((folder satisfies never) as { readonly kind: string }).kind}`);
+    }
+    for await (const [name, entry] of folder.entries()) {
+      switch (entry.kind) {
+      case "directory": continue;
+      case "file": break;
+      default: throw new Error(`Unexpected entry kind: ${((entry satisfies never) as { readonly kind: string }).kind}`);
+      }
+      let path: ReturnType<typeof modelPath>;
       try {
-        metadataHandle = await handle.getFileHandle('metadata.json');
+        path = modelPath({ name });
+      } catch {
+        continue;
+      }
+      if (path.directory !== directory) continue;
+      try {
+        await folder.getFileHandle(path.marker);
+        const file = await entry.getFile();
+        if (await validHeader({ file })) result.push(describe({ file }));
       } catch (error) {
-        // The exclusive model-store lock prevents racing a live import. Without
-        // a published manifest this is a terminated import owned by this feature.
-        if (!(error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
-        await root.removeEntry(name, { recursive: true });
-        continue;
+        if (!isMissing({ error })) throw error;
       }
-      const metadata = await metadataHandle.getFile();
-      // createWritable publishes on close. Terminating the Worker between
-      // creating the metadata handle and closing it leaves an empty manifest.
-      if (metadata.size === 0) {
-        await root.removeEntry(name, { recursive: true });
-        continue;
-      }
-      if (metadata.size > 4096) continue;
-      const model = modelSchema.parse(JSON.parse(await metadata.text()));
-      const file = await (await handle.getFileHandle('model.gguf')).getFile();
-      if (model.id === name && file.size === model.size) result.push(model);
-    } catch (error) {
-      // Corrupt published metadata must not expose an invalid entry or delete data.
-      if (error instanceof DOMException && error.name !== 'NotFoundError') throw error;
     }
   }
+  // A read never repairs, migrates or deletes files. Incomplete imports remain
+  // unlisted; only an explicit import retry or deletion may modify this tree.
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 export async function importStoredModel({ file, onProgress }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
-  if (!Number.isSafeInteger(file.size) || file.size < 24 || file.name.length === 0 || file.name.length > 512) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-  const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
-  if (header[0] !== 71 || header[1] !== 71 || header[2] !== 85 || header[3] !== 70 || ![2, 3].includes(new DataView(header.buffer).getUint32(4, true))) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-  if ((await listStoredModels()).some(model => model.name === file.name)) throw new LlamaCppBrowserError({ code: 'duplicate-model' });
-  const model = modelSchema.parse({ id: crypto.randomUUID(), name: file.name, size: file.size, importedAt: Date.now() });
-  const root = await directory(); const target = await root.getDirectoryHandle(model.id, { create: true });
+  const path = modelPath({ name: file.name });
+  if (!await validHeader({ file })) throw new LlamaCppBrowserError({ code: "invalid-gguf" });
+  const root = await userDirectory();
+  const folder = await root.getDirectoryHandle(path.directory, { create: true });
+  // Only retry our exact incomplete file. Never overwrite a completed import or
+  // recursively remove extra files placed here through another filesystem UI.
+  for await (const [name, entry] of folder.entries()) {
+    if (name !== path.file || entry.kind !== "file") throw new LlamaCppBrowserError({ code: "duplicate-model" });
+  }
   let writer: FileSystemWritableFileStream | undefined;
+  let published = false;
   const started = performance.now();
-  logDiagnostic({ diagnostic: { event: 'import-start', bytes: file.size } });
+  logDiagnostic({ diagnostic: { event: "import-start", bytes: file.size } });
   try {
-    writer = await (await target.getFileHandle('model.gguf', { create: true })).createWritable();
+    const destination = await folder.getFileHandle(path.file, { create: true });
+    writer = await destination.createWritable();
     const reader = file.stream().getReader(); let completed = 0; let lastProgress = 0;
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (completed + value.byteLength > file.size) throw new LlamaCppBrowserError({ code: "storage-error" });
         await writer.write(value); completed += value.byteLength;
         if (performance.now() - lastProgress > 150) {
-          onProgress({ progress: { phase: 'importing', completed, total: file.size } }); lastProgress = performance.now();
+          onProgress({ progress: { phase: "importing", completed, total: file.size } }); lastProgress = performance.now();
         }
       }
+    } catch (error) {
+      await reader.cancel().catch(() => {}); throw error;
     } finally {
       reader.releaseLock();
     }
-    if (completed !== file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
+    if (completed !== file.size) throw new LlamaCppBrowserError({ code: "storage-error" });
     await writer.close(); writer = undefined;
-    await writeMetadata({ folder: target, model });
-    onProgress({ progress: { phase: 'importing', completed, total: file.size } });
-    logDiagnostic({ diagnostic: { event: 'import-complete', bytes: completed, elapsedMs: performance.now() - started } });
-    return model;
+    const stored = await destination.getFile();
+    if (stored.size !== file.size || !await validHeader({ file: stored })) throw new LlamaCppBrowserError({ code: "storage-error" });
+    // Publication marker, not model metadata: create only after the GGUF writer
+    // is closed and its stored size/header checked. It does not certify inference.
+    await folder.getFileHandle(path.marker, { create: true });
+    published = true;
+    onProgress({ progress: { phase: "importing", completed, total: file.size } });
+    logDiagnostic({ diagnostic: { event: "import-complete", bytes: completed, elapsedMs: performance.now() - started } });
+    return describe({ file: stored });
   } catch (error) {
     await writer?.abort().catch(() => {});
-    await root.removeEntry(model.id, { recursive: true }).catch(() => {});
+    if (!published) {
+      await folder.removeEntry(path.file).catch(() => {});
+      await root.removeEntry(path.directory).catch(() => {});
+    }
     throw error;
   }
 }
 export async function removeStoredModel({ id }: { id: string }): Promise<void> {
-  const safeId = z.uuid().parse(id);
-  await (await directory()).removeEntry(safeId, { recursive: true });
+  const name = id.split("/")[2];
+  if (name === undefined) throw new LlamaCppBrowserError({ code: "missing-model" });
+  const path = modelPath({ name });
+  if (id !== path.id) throw new LlamaCppBrowserError({ code: "missing-model" });
+  const root = await userDirectory(); const folder = await root.getDirectoryHandle(path.directory);
+  for (const name of [path.marker, path.file]) {
+    try {
+      await folder.removeEntry(name);
+    } catch (error) {
+      if (!isMissing({ error })) throw error;
+    }
+  }
+  try {
+    await root.removeEntry(path.directory);
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === "InvalidModificationError")) throw error;
+  }
 }
 export async function storedModelHandle({ name }: { name: string }): Promise<FileSystemFileHandle> {
-  const model = (await listStoredModels()).find(item => item.name === name);
-  if (!model) throw new LlamaCppBrowserError({ code: 'missing-model' });
-  const folder = await (await directory()).getDirectoryHandle(model.id);
-  return folder.getFileHandle('model.gguf');
+  const path = modelPath({ name });
+  try {
+    const folder = await (await userDirectory()).getDirectoryHandle(path.directory);
+    await folder.getFileHandle(path.marker);
+    const handle = await folder.getFileHandle(path.file);
+    if (!await validHeader({ file: await handle.getFile() })) throw new LlamaCppBrowserError({ code: "missing-model" });
+    return handle;
+  } catch (error) {
+    if (isMissing({ error })) throw new LlamaCppBrowserError({ code: "missing-model" });
+    throw error;
+  }
 }
 export const TEST_ONLY = {
 };

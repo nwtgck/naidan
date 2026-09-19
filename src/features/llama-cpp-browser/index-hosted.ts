@@ -45,7 +45,11 @@ async function run<T>({ signal, operation }: {
       const result = await operation({ worker: client, signal: controller.signal });
       publish({ next: { status: 'idle' } }); return result;
     } catch (error) {
-      client?.dispose(); client = undefined;
+      const failure = errorCode({ error });
+      const reusable = (failure === 'aborted' || failure === 'context-full' || failure === 'template-unsupported') && client?.canReuse();
+      if (!reusable) {
+        client?.dispose(); client = undefined;
+      }
       const code = controller.signal.aborted ? 'aborted' : errorCode({ error });
       switch (code) {
       case 'aborted':
@@ -115,7 +119,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     // Snapshot accepted inputs before waiting in the queue; Vue proxies never cross RPC.
     const request = generateInputSchema.parse({ ...input, options: { ...options } });
     return run({ signal, operation: async ({ worker, signal }) => {
-      progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+      // Only the Worker knows whether weights/context actually need preparation.
+      progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
       await worker.generate({ request, onChunk, onProgress: progress, signal });
     } });
   },

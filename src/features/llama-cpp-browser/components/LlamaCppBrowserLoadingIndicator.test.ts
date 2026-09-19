@@ -1,3 +1,4 @@
+import AssistantWaitingIndicator from '@/components/AssistantWaitingIndicator.vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -18,6 +19,7 @@ beforeEach(async () => {
 });
 describe('scoped inline loading status', () => {
   it.each<EngineState>([{ status: 'idle' }, { status: 'unavailable' }, { status: 'error', code: 'runtime-error' },
+    { status: 'working', progress: { phase: 'prefill', completed: 30, total: 100 } },
     { status: 'working', progress: { phase: 'generating', completed: 15, total: 100 } }])('renders no persistent label or bar for $status', state => {
     vi.mocked(llamaCppBrowserService.getState).mockReturnValue(state);
     const wrapper = mount(LlamaCppBrowserLoadingIndicator, { props: { scope: 'inference' } });
@@ -46,5 +48,29 @@ describe('scoped inline loading status', () => {
     expect(chat.find('[role="progressbar"]').exists()).toBe(false);
     expect(importer.find('[role="status"]').exists()).toBe(false);
     chat.unmount(); importer.unmount();
+  });
+  it('uses the ordinary response wait after loading, including prefill, without overlapping bars', async () => {
+    vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'working', progress: { phase: 'loading', completed: 0.96, total: 1 } });
+    const wrapper = mount(LlamaCppBrowserLoadingIndicator, { props: { scope: 'inference', waiting: true, isNested: true } });
+    expect(wrapper.findComponent(AssistantWaitingIndicator).exists()).toBe(false);
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('96');
+    for (const phase of ['prefill', 'generating'] as const) {
+      for (const listener of listeners) listener({ state: { status: 'working', progress: { phase, completed: 5, total: 10 } } });
+      await flushPromises();
+      expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
+      expect(wrapper.find('[role="status"]').exists()).toBe(false);
+      expect(wrapper.getComponent(AssistantWaitingIndicator).props('isNested')).toBe(true);
+    }
+    await wrapper.setProps({ waiting: false });
+    expect(wrapper.findComponent(AssistantWaitingIndicator).exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it('keeps an ordinary wait before a reused model starts decoding and shows no idle label', () => {
+    vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'idle' });
+    const wrapper = mount(LlamaCppBrowserLoadingIndicator, { props: { scope: 'inference', waiting: true } });
+    expect(wrapper.findComponent(AssistantWaitingIndicator).exists()).toBe(true);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 });

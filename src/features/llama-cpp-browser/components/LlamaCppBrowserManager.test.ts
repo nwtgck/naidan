@@ -27,7 +27,7 @@ vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
   release: vi.fn(), cancel: vi.fn(),
 } }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: notifications.confirm }) }));
-const storedModel: LocalModel = { id: '21dd0191-7623-4371-928f-98912f68a4a1', name: 'local.gguf', size: 16384, importedAt: 1 };
+const storedModel: LocalModel = { id: 'user/local-GGUF/local.gguf', name: 'local.gguf', size: 16384, importedAt: 1 };
 const wrappers: VueWrapper[] = [];
 function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserManager); wrappers.push(wrapper); return wrapper;

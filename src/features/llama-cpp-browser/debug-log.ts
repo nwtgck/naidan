@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const diagnosticSchema = z.object({
   event: z.enum(['import-start', 'import-complete', 'runtime-ready', 'load-complete',
-    'generation-start', 'generation-complete', 'cancelled', 'released', 'failed']),
+    'load-start', 'model-reused', 'context-start', 'context-ready', 'prefill-start', 'prefill-complete', 'generation-start', 'generation-complete', 'cancelled', 'released', 'failed']),
   elapsedMs: z.number().finite().nonnegative().optional(),
   bytes: z.number().finite().nonnegative().optional(),
   tokens: z.number().int().nonnegative().optional(),

@@ -1,46 +1,24 @@
-import type { Core } from 'llama-cpp-browser-core';
-import { mountReadOnlyFile } from 'llama-cpp-browser-core';
-import { LlamaCppBrowserError, usesWebGpu, type Progress } from '@/features/llama-cpp-browser/types';
-import { storedModelHandle } from '@/features/llama-cpp-browser/runtime/model-store';
-import { loadRuntime } from '@/features/llama-cpp-browser/runtime/load-runtime';
-import { resolveRuntimeProfile } from '@/features/llama-cpp-browser/runtime/detect-profile';
+import { LlamaCppBrowserError, type Progress } from '@/features/llama-cpp-browser/types';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
 import { createOutputStream } from './output-stream';
+import { prepareSession } from './session';
 
-let cachedRuntime: { profile: Awaited<ReturnType<typeof resolveRuntimeProfile>>, assetBaseURL: string, core: Core } | undefined;
-
-/** A request owns its model/context and file handle. A new request never reuses stale KV. */
-export async function generate({ request, onChunk, onProgress }: {
+/** Request-local tokens/sampling; weights and the context allocation stay resident. */
+export async function generate({ request, onChunk, onProgress, signal }: {
   request: WorkerGenerateInput,
+  signal: AbortSignal | undefined,
   onChunk: ({ chunk }: { chunk: string }) => void,
   onProgress: ({ progress }: { progress: Progress }) => void,
 }): Promise<void> {
   const started = performance.now();
   const progress = ({ phase, completed, total }: Progress): void => onProgress({ progress: { phase, completed, total } });
-  progress({ phase: 'initializing', completed: 0, total: 0 });
-  const profile = await resolveRuntimeProfile({ profile: request.options.profile });
-  if (!cachedRuntime || cachedRuntime.profile !== profile || cachedRuntime.assetBaseURL !== request.assetBaseURL) {
-    if (cachedRuntime) await cachedRuntime.core.api.llama_backend_free();
-    cachedRuntime = undefined;
-    cachedRuntime = { profile, assetBaseURL: request.assetBaseURL, core: await loadRuntime({ profile, assetBaseURL: request.assetBaseURL }) };
-  }
-  const core = cachedRuntime.core; const api = core.api;
-  const handle = await storedModelHandle({ name: request.model });
-  // This API is deliberately Worker-only and is not in lib.dom.d.ts.
-  const syncHandle = handle as FileSystemFileHandle & {
-    createSyncAccessHandle?: () => Promise<{
-      getSize(): number,
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Native FileSystemSyncAccessHandle signature is positional.
-      read(destination: Uint8Array, options: { at: number }): number,
-      close(): void,
-    }>,
+  const checkCancelled = (): void => {
+    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  if (!syncHandle.createSyncAccessHandle) throw new LlamaCppBrowserError({ code: 'unavailable' });
-  const access = await syncHandle.createSyncAccessHandle();
-  const allocations: bigint[] = []; let model = 0n; let context = 0n; let sampler = 0n;
-  let callback: number | bigint | undefined;
-  let mounted: ReturnType<typeof mountReadOnlyFile> | undefined;
+  const { core, model, context } = await prepareSession({ request, onProgress, signal });
+  const api = core.api;
+  const allocations: bigint[] = []; let sampler = 0n; let abortCallback: number | bigint | undefined;
   const alloc = ({ bytes }: { bytes: number | bigint }): bigint => {
     const p = core.alloc(bytes); allocations.push(p); return p;
   };
@@ -51,34 +29,14 @@ export async function generate({ request, onChunk, onProgress }: {
     const p = core.utf8(text); allocations.push(p); return p;
   };
   try {
-    mounted = mountReadOnlyFile(core, '/models/model.gguf', {
-      size: access.getSize(), read(destination, offset) {
-        return access.read(destination, { at: offset });
-      },
-    }, { maxChunkBytes: 8 * 1024 * 1024 });
-    const params = record({ name: 'llama_model_params' }); await api.llama_model_default_params(params);
-    for (const [field, value] of Object.entries({ n_gpu_layers: usesWebGpu({ profile }) ? 999 : 0,
-      load_mode: core.constant('LLAMA_LOAD_MODE_NONE'), lazy_mode: core.constant('LLAMA_LAZY_MODE_OFF'), check_tensors: 0 })) {
-      core.setField('llama_model_params', params, field, value);
-    }
-    let lastProgress = 0;
-    callback = core.module.addFunction((amount: number) => {
-      if (performance.now() - lastProgress > 150) {
-        progress({ phase: 'loading', completed: Math.max(0, Math.min(1, amount)), total: 1 }); lastProgress = performance.now();
-      }
-      return 1;
-    }, core.pointerBytes === 8 ? 'ifj' : 'ifi');
-    core.setField('llama_model_params', params, 'progress_callback', BigInt(callback));
-    progress({ phase: 'loading', completed: 0, total: 1 });
-    model = await api.llama_model_load_from_file(string({ text: mounted.path }), params);
-    if (model === 0n) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-    logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: performance.now() - started, profile } });
-    const cp = record({ name: 'llama_context_params' }); await api.llama_context_default_params(cp);
-    for (const [field, value] of Object.entries({ n_ctx: request.options.contextSize, n_batch: 128, n_ubatch: 128, n_threads: 1, n_threads_batch: 1 })) {
-      core.setField('llama_context_params', cp, field, value);
-    }
-    context = await api.llama_init_from_model(model, cp);
-    if (context === 0n) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+    checkCancelled();
+    // Prompt preparation is an ordinary response wait, not another model load.
+    progress({ phase: 'prefill', completed: 0, total: 0 });
+    logDiagnostic({ diagnostic: { event: 'prefill-start' } });
+    const memory = await api.llama_get_memory(context);
+    if (memory !== 0n) await api.llama_memory_clear(memory, 1);
+    abortCallback = core.module.addFunction(() => signal?.aborted ? 1 : 0, core.pointerBytes === 8 ? 'ij' : 'ii');
+    await api.llama_set_abort_callback(context, BigInt(abortCallback), 0n);
     const template = await api.llama_model_chat_template(model, 0n);
     if (template === 0n) throw new LlamaCppBrowserError({ code: 'template-unsupported' });
     const messageSize = core.recordSize('llama_chat_message');
@@ -104,12 +62,17 @@ export async function generate({ request, onChunk, onProgress }: {
     if (await api.llama_tokenize(vocab, prompt, promptLength, tokens, tokenCount, 1, 1) !== tokenCount) throw new LlamaCppBrowserError({ code: 'runtime-error' });
     const batch = record({ name: 'llama_batch' });
     for (let offset = 0; offset < tokenCount; offset += 128) {
+      checkCancelled();
       const count = Math.min(128, tokenCount - offset);
       await api.llama_batch_get_one(batch, tokens + BigInt(offset * 4), count);
-      if (await api.llama_decode(context, batch) !== 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      const status = await api.llama_decode(context, batch);
+      checkCancelled();
+      if (status !== 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });
       progress({ phase: 'prefill', completed: offset + count, total: tokenCount });
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
+    checkCancelled();
+    logDiagnostic({ diagnostic: { event: 'prefill-complete', tokens: tokenCount } });
     const sp = record({ name: 'llama_sampler_chain_params' }); await api.llama_sampler_chain_default_params(sp);
     sampler = await api.llama_sampler_chain_init(sp);
     if (sampler === 0n) throw new LlamaCppBrowserError({ code: 'runtime-error' });
@@ -149,7 +112,9 @@ export async function generate({ request, onChunk, onProgress }: {
     const maximum = Math.min(request.maxTokens, capacity - tokenCount);
     logDiagnostic({ diagnostic: { event: 'generation-start', tokens: tokenCount } });
     for (; generated < maximum; generated++) {
+      checkCancelled();
       const token = await api.llama_sampler_sample(sampler, context, -1);
+      checkCancelled();
       if (await api.llama_vocab_is_eog(vocab, token)) break;
       let length = await api.llama_token_to_piece(vocab, token, piece, pieceCapacity, 0, 1);
       if (length < 0) {
@@ -159,32 +124,31 @@ export async function generate({ request, onChunk, onProgress }: {
       }
       if (length < 0 || length > pieceCapacity) throw new LlamaCppBrowserError({ code: 'runtime-error' });
       const rendered = stream.push({ text: decoder.decode(core.bytes(piece, length), { stream: true }) });
+      checkCancelled();
       if (rendered.text) onChunk({ chunk: rendered.text });
       if (rendered.done) break;
       const tokenBytes = core.bytes(nextToken, 4); new DataView(tokenBytes.buffer, tokenBytes.byteOffset, 4).setInt32(0, token, true);
       await api.llama_batch_get_one(batch, nextToken, 1);
-      if (await api.llama_decode(context, batch) !== 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      const status = await api.llama_decode(context, batch);
+      checkCancelled();
+      if (status !== 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });
       progress({ phase: 'generating', completed: generated + 1, total: maximum });
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
+    checkCancelled();
     const tail = stream.push({ text: decoder.decode() }).text + stream.finish();
     if (tail) onChunk({ chunk: tail });
     logDiagnostic({ diagnostic: { event: 'generation-complete', tokens: generated, elapsedMs: performance.now() - started } });
   } finally {
     try {
+      await api.llama_set_abort_callback(context, 0n, 0n);
       if (sampler !== 0n) await api.llama_sampler_free(sampler);
-      if (context !== 0n) await api.llama_free(context);
-      if (model !== 0n) await api.llama_model_free(model);
-      if (callback !== undefined) core.module.removeFunction(callback);
-      for (const pointer of allocations.reverse()) core.free(pointer);
     } finally {
-      try {
-        mounted?.remove();
-      } finally {
-        access.close();
-      }
+      if (abortCallback !== undefined) core.module.removeFunction(abortCallback);
+      for (const pointer of allocations.reverse()) core.free(pointer);
     }
-    logDiagnostic({ diagnostic: { event: 'released' } });
+    // Do not free model/context here: the next request clears KV before prefill.
+    // The owning Worker or a model/profile/context change releases these resources.
   }
 }
 export const TEST_ONLY = {

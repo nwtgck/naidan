@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
+import { LlamaCppBrowserError } from './types';
 import type { LlamaCppBrowserService } from './service-contract';
-const worker = vi.hoisted(() => ({ listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), dispose: vi.fn() }));
+const worker = vi.hoisted(() => ({ listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => worker));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
 let service: LlamaCppBrowserService;
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks();
+  worker.canReuse.mockReturnValue(true);
   worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue();
   service = (await import('./index-hosted')).llamaCppBrowserService;
   vi.spyOn(console, 'debug').mockImplementation(() => {});
@@ -69,10 +71,37 @@ describe('serialized hosted model service', () => {
     const unsubscribe = service.subscribeModelList({ listener: () => {
       throw new Error('private observer details');
     } });
-    await expect(service.removeModel({ id: 'c3112de4-3bd6-42a5-9f17-a1b91e591727', signal: undefined })).resolves.toBeUndefined();
+    await expect(service.removeModel({ id: 'user/local-GGUF/local.gguf', signal: undefined })).resolves.toBeUndefined();
     expect(worker.dispose).not.toHaveBeenCalled();
     expect(service.getState()).toEqual({ status: 'idle' });
     expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private observer');
     unsubscribe();
+  });
+});
+
+describe('resident Worker reuse at the service boundary', () => {
+  it('keeps a cleanly cancelled Worker and does not claim to reload on every request', async () => {
+    worker.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'aborted' }));
+    const states: string[] = [];
+    const stop = service.subscribe({ listener: ({ state }) => {
+      if (state.status === 'working') states.push(state.progress.phase);
+    } });
+    await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('aborted');
+    expect(worker.dispose).not.toHaveBeenCalled(); expect(service.getState()).toEqual({ status: 'idle' });
+    await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    expect(factory).toHaveBeenCalledOnce(); expect(states).toEqual(['prefill', 'prefill']); stop();
+  });
+  it('recreates a physically terminated Worker after cancellation timeout', async () => {
+    worker.canReuse.mockReturnValue(false); worker.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'aborted' }));
+    await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('aborted');
+    expect(worker.dispose).toHaveBeenCalledOnce();
+    worker.canReuse.mockReturnValue(true); await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+  it('keeps weights after a prompt exceeds the allocated context', async () => {
+    worker.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'context-full' }));
+    await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('context-full');
+    await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    expect(worker.dispose).not.toHaveBeenCalled(); expect(factory).toHaveBeenCalledOnce();
   });
 });

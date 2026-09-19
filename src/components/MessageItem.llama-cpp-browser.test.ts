@@ -5,6 +5,7 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import type { MessageNode } from '@/01-models/types';
 import MessageItem from './MessageItem.vue';
+import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import LlamaCppBrowserLoadingIndicator from '@/features/llama-cpp-browser/components/LlamaCppBrowserLoadingIndicator.vue';
 
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: ref({}) }) }));
@@ -35,6 +36,16 @@ describe('message-local llama.cpp preparation status', () => {
     expect(wrapper.findComponent(LlamaCppBrowserLoadingIndicator).exists()).toBe(false);
     await wrapper.setProps({ endpointType: 'llama_cpp_browser', showGeneratingIndicator: false });
     expect(wrapper.findComponent(LlamaCppBrowserLoadingIndicator).exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it('delegates waiting and preparation to one status owner without duplicate waiters', async () => {
+    const wrapper = shallowMount(MessageItem, { props: { chatId: toChatId({ raw: 'local-chat' }), message,
+      endpointType: 'llama_cpp_browser', mode: 'waiting', isGenerating: true, showGeneratingIndicator: true } });
+    expect(wrapper.getComponent(LlamaCppBrowserLoadingIndicator).props('waiting')).toBe(true);
+    expect(wrapper.findComponent(AssistantWaitingIndicator).exists()).toBe(false);
+    await wrapper.setProps({ endpointType: 'openai' });
+    expect(wrapper.findComponent(LlamaCppBrowserLoadingIndicator).exists()).toBe(false);
+    expect(wrapper.findComponent(AssistantWaitingIndicator).exists()).toBe(true);
     wrapper.unmount();
   });
 });

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, shallowRef } from 'vue';
+import AssistantWaitingIndicator from '@/components/AssistantWaitingIndicator.vue';
 import { Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import type { EngineState } from '@/features/llama-cpp-browser/types';
 
-const props = defineProps<{ scope: 'import' | 'inference' }>();
+const props = defineProps<{ scope: 'import' | 'inference', waiting?: boolean, isNested?: boolean }>();
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 let unsubscribe: (() => void) | undefined;
 onMounted(() => {
@@ -31,9 +32,9 @@ const progress = computed(() => {
   const value = current.progress;
   switch (value.phase) {
   case 'importing': return importScope.value ? value : undefined;
-  case 'initializing': case 'loading': case 'prefill': return importScope.value ? undefined : value;
+  case 'initializing': case 'loading': return importScope.value ? undefined : value;
   // The chat already has a streaming indicator. maxTokens is not a completion estimate.
-  case 'generating': return undefined;
+  case 'prefill': case 'generating': return undefined;
   default: { const exhaustive: never = value.phase; throw new Error(`Unhandled phase: ${exhaustive}`); }
   }
 });
@@ -60,4 +61,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div v-if="percentage !== undefined" role="progressbar" :aria-label="phase" :aria-valuenow="percentage" :aria-valuemin="0" :aria-valuemax="100" tw-class="h-1.5 rounded-full overflow-hidden bg-purple-100 dark:bg-purple-900/30"><div tw-class="h-full rounded-full bg-purple-600 dark:bg-purple-400 transition-all duration-300 ease-out" :style="{ width: `${percentage}%` }"></div></div>
     </div>
   </div>
+  <!-- Input processing and token waits are not model loading. The same existing
+       waiting UI remains visible until text/thinking arrives, without a bar. -->
+  <AssistantWaitingIndicator v-else-if="scope === 'inference' && waiting" :is-nested="isNested" data-testid="loading-indicator" />
 </template>

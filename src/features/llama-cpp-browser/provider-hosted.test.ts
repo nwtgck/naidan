@@ -12,7 +12,7 @@ function request(): Parameters<LmProvider['chat']>[0] {
 }
 describe('text-only local model provider', () => {
   it('maps model identity and text messages without normalizing away content', async () => {
-    service.listModels.mockResolvedValue([{ id: 'c3112de4-3bd6-42a5-9f17-a1b91e591727', name: 'local.gguf', size: 100, importedAt: 1 }]);
+    service.listModels.mockResolvedValue([{ id: 'user/local-GGUF/local.gguf', name: 'local.gguf', size: 100, importedAt: 1 }]);
     const provider = new LlamaCppBrowserProvider();
     expect(await provider.listModels({})).toEqual(['local.gguf']);
     const input = request(); input.messages = [{ role: 'system', content: 'rules' }, { role: 'user', content: [{ type: 'text', text: 'first ' }, { type: 'text', text: 'second' }] }];
