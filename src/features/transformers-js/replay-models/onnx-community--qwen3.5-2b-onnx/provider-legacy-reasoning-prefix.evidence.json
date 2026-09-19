@@ -1,0 +1,346 @@
+{
+  "schemaVersion": 1,
+  "sourceMemberSha256": "e8bb944bc4dceb2b8c73530f3fa8dd1ef4f506c3b29268c91e9b7de4d783d198",
+  "source": "existing-production-strategy",
+  "strategy": "qwen3_5",
+  "disabledEffort": "none",
+  "enabledEffort": "high",
+  "disabled": {
+    "sourceFacts": {
+      "inputKeys": [
+        "attention_mask",
+        "input_ids"
+      ],
+      "fullConversationInput": {
+        "status": "observed",
+        "inputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271,
+          248069,
+          1358
+        ]
+      },
+      "cacheDecision": {
+        "status": "not-reused",
+        "reason": "qwen3_5-missing-conversation-state"
+      },
+      "pastKeyValuesProvided": false,
+      "inputPastKeyValuesSummary": {
+        "kind": "nullish",
+        "valueType": "null",
+        "ownKeyCount": 0,
+        "ownKeys": [],
+        "truncated": false
+      }
+    },
+    "streamChunks": [
+      "I"
+    ],
+    "replay": {
+      "schemaVersion": 1,
+      "identity": {
+        "modelId": "onnx-community/Qwen3.5-2B-ONNX",
+        "resolvedRevision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+        "investigationRunId": "18926c5f-50e7-4da8-8395-dd5f4ee5556a",
+        "transformersJsVersion": "4.2.0"
+      },
+      "scenario": {
+        "id": "recorded-qwen-reasoning-none-prefix",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Template probe user message."
+          }
+        ],
+        "tools": [],
+        "lmParameters": {
+          "temperature": 0,
+          "topP": 1,
+          "maxCompletionTokens": 1
+        },
+        "boundary": {
+          "kind": "natural-prefix",
+          "lengthRelation": "equals-requested-budget",
+          "stopCause": "not-recorded"
+        }
+      },
+      "inputContract": {
+        "inputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271,
+          248069,
+          1358
+        ],
+        "inputTensorFacts": [
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "dims": [
+              1,
+              17
+            ],
+            "location": "cpu"
+          },
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "dims": [
+              1,
+              17
+            ],
+            "location": "cpu"
+          }
+        ],
+        "effectiveGenerationConfig": {
+          "maxNewTokens": 1,
+          "temperature": 0,
+          "topP": 1,
+          "doSample": false
+        }
+      },
+      "modelReplay": {
+        "source": "production-lane",
+        "sourceInputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271,
+          248069,
+          1358
+        ],
+        "sourceInputSha256": "2a2c88502e25c445d13058deb1c3eccccb321c9005d29a2fcd5cb286f89ca861",
+        "generatedTokenIds": [
+          40
+        ],
+        "generatedSequenceTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271,
+          248069,
+          1358,
+          40
+        ],
+        "generatedText": "I"
+      },
+      "expectedProviderSemantic": {
+        "basis": "production-positive-control",
+        "captureScope": "prefix",
+        "visibleContent": "I"
+      }
+    }
+  },
+  "enabled": {
+    "sourceFacts": {
+      "inputKeys": [
+        "attention_mask",
+        "input_ids"
+      ],
+      "fullConversationInput": {
+        "status": "observed",
+        "inputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271
+        ]
+      },
+      "cacheDecision": {
+        "status": "not-reused",
+        "reason": "qwen3_5-missing-conversation-state"
+      },
+      "pastKeyValuesProvided": false,
+      "inputPastKeyValuesSummary": {
+        "kind": "nullish",
+        "valueType": "null",
+        "ownKeyCount": 0,
+        "ownKeys": [],
+        "truncated": false
+      }
+    },
+    "streamChunks": [
+      "</think>"
+    ],
+    "replay": {
+      "schemaVersion": 1,
+      "identity": {
+        "modelId": "onnx-community/Qwen3.5-2B-ONNX",
+        "resolvedRevision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+        "investigationRunId": "18926c5f-50e7-4da8-8395-dd5f4ee5556a",
+        "transformersJsVersion": "4.2.0"
+      },
+      "scenario": {
+        "id": "recorded-qwen-reasoning-high-prefix",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Template probe user message."
+          }
+        ],
+        "tools": [],
+        "lmParameters": {
+          "temperature": 0,
+          "topP": 1,
+          "maxCompletionTokens": 1
+        },
+        "boundary": {
+          "kind": "natural-prefix",
+          "lengthRelation": "equals-requested-budget",
+          "stopCause": "not-recorded"
+        }
+      },
+      "inputContract": {
+        "inputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271
+        ],
+        "inputTensorFacts": [
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "dims": [
+              1,
+              15
+            ],
+            "location": "cpu"
+          },
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "dims": [
+              1,
+              15
+            ],
+            "location": "cpu"
+          }
+        ],
+        "effectiveGenerationConfig": {
+          "maxNewTokens": 1,
+          "temperature": 0,
+          "topP": 1,
+          "doSample": false
+        }
+      },
+      "modelReplay": {
+        "source": "production-lane",
+        "sourceInputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271
+        ],
+        "sourceInputSha256": "c0e444dba19a0da45f717efc252c5b2bed790aa9430a0597fac70b679c17f1ca",
+        "generatedTokenIds": [
+          248069
+        ],
+        "generatedSequenceTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          271,
+          248069
+        ],
+        "generatedText": "</think>"
+      },
+      "expectedProviderSemantic": {
+        "basis": "production-positive-control",
+        "captureScope": "prefix",
+        "visibleContent": "</think>"
+      }
+    }
+  }
+}

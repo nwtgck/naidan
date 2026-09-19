@@ -2,19 +2,24 @@ import type { ToolCall } from '@/01-models/types';
 import { z } from 'zod';
 import type { ToolCallId } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
+import type { WorkerToolDefinition, WorkerToolJsonValue } from '@/features/transformers-js/types';
 
 const TOOL_CALL_OPEN = '<tool_call>';
 const TOOL_CALL_CLOSE = '</tool_call>';
 const relaxedIdentifierPattern = /^[A-Za-z_$][A-Za-z0-9_$.-]*$/;
+const finiteJsonValueSchema = z.json();
 const toolCallPayloadSchema = z.object({
   name: z.string(),
-  arguments: z.record(z.string(), z.unknown()),
+  // Both parsers produce local JSON-shaped values. Validate the dictionary
+  // without a record clone that silently removes a legitimate __proto__ key.
+  arguments: z.custom<Record<string, unknown>>(value => typeof value === 'object' && value !== null && !Array.isArray(value)),
 });
 
 function buildToolCall({ name, parameters }: {
   name: string,
   parameters: Record<string, unknown>,
 }): ToolCall {
+  if (!finiteJsonValueSchema.safeParse(parameters).success) throw new Error('Non-finite Qwen tool argument');
   return {
     id: generateId<ToolCallId>(),
     type: 'function',
@@ -25,8 +30,77 @@ function buildToolCall({ name, parameters }: {
   };
 }
 
-function tryParseQwen3_5ToolCall({ content }: {
+type XmlParameterType = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
+
+function xmlParameterTypes({ schema, depth }: { schema: WorkerToolJsonValue | undefined; depth: number }): Set<XmlParameterType> | undefined {
+  if (depth > 16 || schema === null || typeof schema !== 'object' || Array.isArray(schema)
+    || schema.$ref !== undefined || schema.allOf !== undefined
+    || (schema.anyOf !== undefined && schema.oneOf !== undefined)) return undefined;
+  const branches = schema.anyOf ?? schema.oneOf;
+  if (branches !== undefined) {
+    if (!Array.isArray(branches) || branches.length === 0 || schema.type !== undefined) return undefined;
+    const types = new Set<XmlParameterType>();
+    for (const branch of branches) {
+      const branchTypes = xmlParameterTypes({ schema: branch, depth: depth + 1 });
+      if (branchTypes === undefined) return undefined;
+      for (const type of branchTypes) types.add(type);
+    }
+    return types;
+  }
+  const types = new Set<XmlParameterType>();
+  for (const type of Array.isArray(schema.type) ? schema.type : [schema.type]) {
+    switch (type) {
+    case 'integer': types.add('number'); break;
+    case 'string': case 'number': case 'boolean': case 'null': case 'object': case 'array': types.add(type); break;
+    default: return undefined;
+    }
+  }
+  return types.size > 0 ? types : undefined;
+}
+
+function decodeXmlParameter({ value, name, parameterName, tools }: {
+  value: string; name: string; parameterName: string; tools: readonly WorkerToolDefinition[] | undefined;
+}): unknown {
+  const properties = tools?.find(tool => tool.function.name === name)?.function.parameters.properties;
+  const schema = properties !== null && typeof properties === 'object' && !Array.isArray(properties)
+    && Object.hasOwn(properties, parameterName) ? properties[parameterName] : undefined;
+  const types = xmlParameterTypes({ schema, depth: 0 });
+  if (types !== undefined) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(value) as unknown;
+      // JSON numeric syntax can overflow to Infinity, including in containers.
+      // Never let JSON.stringify silently turn it into an executable null.
+      if (!finiteJsonValueSchema.safeParse(decoded).success) return value;
+    } catch {
+      return value;
+    }
+    const decodedType = decoded === null ? 'null' : Array.isArray(decoded) ? 'array' : typeof decoded;
+    const acceptsDecodedType = [...types].some(type => type === decodedType);
+    if (types.has('string')) {
+      if (decodedType !== 'string' && acceptsDecodedType) {
+        // The native XML template renders strings and JSON values identically.
+        // Neither syntax nor branch order can establish which value was meant.
+        throw new Error('Ambiguous Qwen XML parameter type');
+      }
+      return value;
+    }
+    return acceptsDecodedType ? decoded : value;
+  }
+  // Unknown tools still reach the Provider's existing unknown-tool handling.
+  // Unresolved schemas retain legacy scalar decoding, but never guess that a
+  // JSON-looking string is an object/array. Final tool validation stays in Zod.
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (value === 'null') return null;
+  const numericValue = Number(value);
+  if (!Number.isNaN(numericValue) && `${numericValue}` === value) return numericValue;
+  return value;
+}
+
+function tryParseQwen3_5ToolCall({ content, tools }: {
   content: string,
+  tools: readonly WorkerToolDefinition[] | undefined,
 }): ToolCall | null {
   const trimmed = content.trim();
   const jsonToolCall = tryParseJsonLikeToolCall({ content: trimmed });
@@ -37,7 +111,7 @@ function tryParseQwen3_5ToolCall({ content }: {
 
   const [, name, body] = functionMatch;
   if (!name || body === undefined) return null;
-  const parameters: Record<string, unknown> = {};
+  const parameters = Object.create(null) as Record<string, unknown>;
   const parameterPattern = /<parameter=([^\n>]+)>\s*([\s\S]*?)\s*<\/parameter>/g;
 
   let match: RegExpExecArray | null;
@@ -46,31 +120,7 @@ function tryParseQwen3_5ToolCall({ content }: {
     if (!parameterName || rawValue === undefined) continue;
     const value = rawValue.trim();
 
-    if (value === '') {
-      parameters[parameterName] = '';
-      continue;
-    }
-
-    if (value === 'true') {
-      parameters[parameterName] = true;
-      continue;
-    }
-    if (value === 'false') {
-      parameters[parameterName] = false;
-      continue;
-    }
-    if (value === 'null') {
-      parameters[parameterName] = null;
-      continue;
-    }
-
-    const numericValue = Number(value);
-    if (!Number.isNaN(numericValue) && `${numericValue}` === value) {
-      parameters[parameterName] = numericValue;
-      continue;
-    }
-
-    parameters[parameterName] = value;
+    parameters[parameterName] = decodeXmlParameter({ value, name, parameterName, tools });
   }
 
   return buildToolCall({ name, parameters });
@@ -141,7 +191,7 @@ class RelaxedJsonValueParser {
 
   private parseObject(): Record<string, unknown> {
     this.consume({ expected: '{' });
-    const result: Record<string, unknown> = {};
+    const result = Object.create(null) as Record<string, unknown>;
     this.skipWhitespace();
     if (this.peek() === '}') {
       this.consume({ expected: '}' });
@@ -340,11 +390,13 @@ class RelaxedJsonValueParser {
 
 export class Qwen3_5ToolCallParser {
   private readonly onText: ({ text }: { text: string }) => void;
+  private readonly tools: readonly WorkerToolDefinition[] | undefined;
   private pending = '';
   private parsedToolCalls: ToolCall[] = [];
 
-  constructor({ onText }: { onText: ({ text }: { text: string }) => void }) {
+  constructor({ onText, tools }: { onText: ({ text }: { text: string }) => void; tools: readonly WorkerToolDefinition[] | undefined }) {
     this.onText = onText;
+    this.tools = tools;
   }
 
   feed({ output }: { output: string }): void {
@@ -387,7 +439,7 @@ export class Qwen3_5ToolCallParser {
       const inner = this.pending.slice(TOOL_CALL_OPEN.length, endIdx);
       this.pending = this.pending.slice(endIdx + TOOL_CALL_CLOSE.length);
 
-      const parsed = tryParseQwen3_5ToolCall({ content: inner });
+      const parsed = tryParseQwen3_5ToolCall({ content: inner, tools: this.tools });
       if (parsed) {
         this.parsedToolCalls.push(parsed);
       } else {

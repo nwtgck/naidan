@@ -109,6 +109,7 @@ describe("runRuntimeIntegrityPreflight", () => {
       "not-run",
       "not-run",
       "not-run",
+      "not-run",
     ]);
     expect(importRuntimeModule).toHaveBeenCalledWith({ url: ASSETS.mjsUrl });
     expect(run.runtimeAssets?.webGpuControl.status).toBe('passed');

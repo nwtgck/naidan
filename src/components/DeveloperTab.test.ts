@@ -19,6 +19,11 @@ vi.mock('../composables/useSampleChat', () => ({
   useSampleChat: vi.fn(),
 }));
 
+
+vi.mock('@/features/transformers-js/model-support-investigation', () => ({
+  isModelSupportInvestigationAvailable: true,
+}));
+
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     replace: vi.fn(),
@@ -74,6 +79,16 @@ describe('DeveloperTab', () => {
     expect(wrapper.find('[data-testid="setting-create-long-sample-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="data-deletion-factory-reset-preset-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="fake-lm-debug-mode-toggle"]').exists()).toBe(false);
+  });
+
+
+  it('requests the app-level model support investigation host with an empty target', async () => {
+    const wrapper = mountDeveloperTab();
+
+    await wrapper.find('[data-testid="open-model-support-investigation-button"]').trigger('click');
+
+    expect(wrapper.emitted('openModelSupportInvestigation')).toEqual([['']]);
+    expect(wrapper.find('[data-testid="model-support-investigation-stub"]').exists()).toBe(false);
   });
 
   it('creates a long sample chat when the long sample button is clicked', async () => {

@@ -9,7 +9,7 @@ import type {
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
   ITransformersJsWorker,
-  TransformersJsProgressCallback,
+  TransformersJsProductionInvestigationProgressCallback,
 } from "@/features/transformers-js/types";
 
 async function releaseRemote({ remote, ports }: {
@@ -67,16 +67,19 @@ describe("Transformers.js Comlink transport contracts", () => {
     };
 
     const exposedWorker: IModelSupportInvestigationWorker = {
-      async runPartialInvestigation(modelId, onEvent, onRunCheckpoint) {
+      async runPartialInvestigation(request, onEvent, onRunCheckpoint) {
         onEvent({ event: planningEvent });
-        onRunCheckpoint({ run: { modelId } as never });
-        return { modelId } as never;
+        onRunCheckpoint({ run: { modelId: request.modelId } as never });
+        return { modelId: request.modelId } as never;
+      },
+      async inspectDownloadedTemplateBehavior() {
+        return {} as never;
       },
       async runCandidateAttempt(
         _repository,
         _declarations,
         _templateBehavior,
-        _cacheRevisionAliases,
+        _loaderRevisionOption,
         _candidate,
         onEvent,
         onAttemptEvent,
@@ -97,15 +100,18 @@ describe("Transformers.js Comlink transport contracts", () => {
 
     try {
       const planningResult = await remote.runPartialInvestigation(
-        "org/model",
+        { runId: "host-run", modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
         Comlink.proxy(onEvent),
         Comlink.proxy(onRunCheckpoint),
+        Comlink.proxy(async () => {
+          throw new Error('Fresh metadata was not requested by this transport fixture');
+        }),
       );
       await remote.runCandidateAttempt(
         {} as never,
         {} as never,
         {} as never,
-        [] as never,
+        {} as never,
         {} as never,
         Comlink.proxy(onEvent),
         Comlink.proxy(onAttemptEvent),
@@ -133,13 +139,13 @@ describe("Transformers.js Comlink transport contracts", () => {
     type ProductionRemote = Pick<ITransformersJsWorker, "runModelSupportInvestigationScenario">;
     const exposedWorker: ProductionRemote = {
       async runModelSupportInvestigationScenario(scenario, progressCallback) {
-        progressCallback({ info: { status: "model-support-production-model-load" } });
+        progressCallback({ event: { kind: "stage", status: "model-support-production-model-load" } });
         return { modelId: scenario.modelId } as never;
       },
     };
     Comlink.expose(exposedWorker, ports.port1 as unknown as Comlink.Endpoint);
     const remote = Comlink.wrap<ProductionRemote>(ports.port2 as unknown as Comlink.Endpoint);
-    const progressCallback = vi.fn<TransformersJsProgressCallback>();
+    const progressCallback = vi.fn<TransformersJsProductionInvestigationProgressCallback>();
 
     try {
       const result = await remote.runModelSupportInvestigationScenario(
@@ -153,7 +159,7 @@ describe("Transformers.js Comlink transport contracts", () => {
         expect(progressCallback).toHaveBeenCalledTimes(1);
       });
       expect(progressCallback).toHaveBeenCalledWith({
-        info: { status: "model-support-production-model-load" },
+        event: { kind: "stage", status: "model-support-production-model-load" },
       });
     } finally {
       await releaseRemote({ remote, ports });

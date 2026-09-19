@@ -47,6 +47,14 @@ function run(): ModelSupportInvestigationRun {
       control: { status: "passed", inputValue: 7, outputValue: 7 },
     },
     repository: { resolvedRevision: "a".repeat(40) },
+    runtimeTarget: {
+      normalizedModelId: "org/model",
+      evidenceRevision: "a".repeat(40),
+      loaderRevisionOption: null,
+      source: "repository",
+      revisionIdentity: "exact-resolved-revision",
+      pipelineTag: undefined,
+    },
     cache: {
       revisionProvenanceReason: "Completion markers do not independently prove file bytes",
       provenance: {
@@ -158,6 +166,59 @@ function run(): ModelSupportInvestigationRun {
 }
 
 describe("evaluateEvidenceReadiness", () => {
+  it("marks scope-excluded runtime domains not applicable instead of unobserved", () => {
+    const scopedRun = run();
+    scopedRun.executionPlan = {
+      repositoryDownload: true,
+      modelLoad: false,
+      generation: false,
+      continuity: false,
+      capabilityProbes: false,
+    };
+
+    const report = evaluateEvidenceReadiness({ run: scopedRun });
+    for (const domainId of [
+      "runtime-load",
+      "template-tokenizer",
+      "plain-text",
+      "production-routing",
+      "continuity-kv-cache",
+      "tools",
+      "reasoning",
+      "multimodal",
+    ] as const) {
+      const domain = report.domains.find(item => item.domainId === domainId);
+      expect(domain).toMatchObject({
+        status: "not-applicable",
+        questions: [{ status: "not-applicable", answer: "Not applicable to the selected investigation scope", evidencePaths: [] }],
+      });
+    }
+    expect(report.domains.find(item => item.domainId === "repository")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "download")?.status).not.toBe("not-applicable");
+  });
+
+  it("keeps required Continuity domains active while excluding unselected capability probes", () => {
+    const scopedRun = run();
+    scopedRun.executionPlan = {
+      repositoryDownload: false,
+      modelLoad: true,
+      generation: true,
+      continuity: true,
+      capabilityProbes: false,
+    };
+
+    const report = evaluateEvidenceReadiness({ run: scopedRun });
+    expect(report.domains.find(item => item.domainId === "repository")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "download")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "template-tokenizer")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "plain-text")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "continuity-kv-cache")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "tools")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "reasoning")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "multimodal")?.status).toBe("not-applicable");
+  });
+
   it("marks observed implementation domains ready without claiming unobserved capabilities", () => {
     const report = evaluateEvidenceReadiness({ run: run() });
 
@@ -180,6 +241,156 @@ describe("evaluateEvidenceReadiness", () => {
     expect(renderEvidenceReadinessMarkdown({ report })).toContain("Evidence: load-attempts/index.json");
   });
 
+
+  it("ties Download Evidence readiness to the same frozen repository revision", () => {
+    const value = run();
+    value.downloadEvidence = {
+      schemaVersion: 1,
+      runId: "download-run",
+      mode: "probe-only",
+      run: {
+        modelId: "org/model",
+        normalizedModelId: "org/model",
+        requestedRevision: "main",
+        resolvedRevision: "a".repeat(40),
+        repositoryFileCount: 1,
+        repositoryFiles: [{ path: "onnx/model_q4.onnx", size: 100, blobId: undefined, lfsOid: undefined, lfsSha256: undefined, lfsSize: undefined }],
+        transportObservations: [{
+          path: "onnx/model_q4.onnx", method: "HEAD", status: 200, redirected: false,
+          finalUrl: "https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx",
+          finalOrigin: "https://huggingface.co", contentLength: 100, contentRange: undefined,
+          acceptRanges: "bytes", contentType: "application/octet-stream", etag: undefined,
+          rangeHonored: undefined, bytesConsumed: 0, abortedByByteBudget: false, error: undefined,
+        }],
+        skippedModelArtifactCount: 0, bytesConsumed: 0, maximumBytes: 2 * 1024 * 1024,
+        startedAt: "2026-09-04T00:00:00.000Z", finishedAt: "2026-09-04T00:00:01.000Z",
+      },
+      modelArtifactObservations: [{
+        modelId: "org/model", revision: "a".repeat(40), autoClass: "AutoModelForCausalLM",
+        candidate: { device: "webgpu", dtype: "q4" }, status: "observed",
+        observationMethod: "held-model-artifact-fetch-quiescence", quiescenceMs: 100, timeoutMs: 1000,
+        paths: ["onnx/model_q4.onnx"],
+        requests: [{ path: "onnx/model_q4.onnx", url: "https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx" }],
+        error: undefined,
+      }],
+      modelArtifactObservationError: undefined, cacheBefore: undefined, cacheInspectionError: undefined,
+    };
+
+    const ready = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(ready?.status).toBe("implementation-ready");
+    expect(ready?.questions[0]?.answer).toContain(`revision=${"a".repeat(40)}`);
+    expect(ready?.questions[0]?.evidencePaths).toContain("download-lane/test-readiness.json");
+
+    value.downloadEvidence.mode = "runtime-complete";
+    value.downloadEvidence.runtimeCompletion = {
+      schemaVersion: 1,
+      status: "accepted",
+      source: "production-download-preparation",
+      receipt: {
+        format: 'production-offline-load-receipt-v1', modelId: 'org/model',
+        loaderRevisionOption: { status: 'provided', value: 'a'.repeat(40) },
+        autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'webgpu', dtype: 'q4' },
+        plannedRequiredPaths: ['config.json', 'onnx/model_q4.onnx'],
+        cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'a'.repeat(40), hitPaths: ['config.json', 'onnx/model_q4.onnx'] },
+        completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+        limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
+      },
+      repositoryResolvedRevision: "a".repeat(40),
+      cacheRevision: "a".repeat(40),
+      loaderRevisionOption: "a".repeat(40),
+      selectedCandidate: { device: "webgpu", dtype: "q4" },
+      cacheReuse: undefined,
+      preparation: undefined,
+      cacheAfter: undefined,
+      cacheInspectionError: undefined,
+      error: undefined,
+    };
+    const runtimeReady = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(runtimeReady?.status).toBe("implementation-ready");
+    expect(runtimeReady?.summary).toContain("Production cache-only runtime acceptance succeeded");
+    expect(runtimeReady?.questions[0]?.evidencePaths).toContain("download-lane/cache-acceptance.json");
+
+    value.downloadEvidence.runtimeCompletion = {
+      ...value.downloadEvidence.runtimeCompletion,
+      source: "reused-production-cache",
+      cacheRevision: "main",
+      loaderRevisionOption: null,
+      receipt: { ...value.downloadEvidence.runtimeCompletion.receipt!, loaderRevisionOption: { status: 'omitted' },
+        cacheLookup: { ...value.downloadEvidence.runtimeCompletion.receipt!.cacheLookup, revision: 'main' } },
+    };
+    const legacyMainReport = evaluateEvidenceReadiness({ run: value });
+    const legacyDownload = legacyMainReport.domains.find(item => item.domainId === "download");
+    expect(legacyDownload?.status).toBe("partial");
+    expect(legacyDownload?.summary).toContain("exact identity");
+    expect(legacyDownload?.questions[0]?.answer).toContain("revisionIdentity=legacy-main-unverified");
+    expect(legacyMainReport.domains.find(item => item.domainId === "template-tokenizer")?.status).toBe("partial");
+    expect(legacyMainReport.domains.find(item => item.domainId === "runtime-load")?.status).toBe("partial");
+    expect(legacyMainReport.domains.find(item => item.domainId === "plain-text")?.status).toBe("partial");
+
+    value.downloadEvidence.runtimeCompletion = {
+      ...value.downloadEvidence.runtimeCompletion,
+      status: "failed",
+      source: "cache-reuse-failed",
+      cacheRevision: null,
+      loaderRevisionOption: null,
+      selectedCandidate: undefined,
+      error: { name: "RuntimeRejected", message: "runtime rejected cached artifacts" },
+    };
+    const runtimeFailed = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(runtimeFailed?.status).toBe("insufficient");
+    expect(runtimeFailed?.summary).toContain("runtime rejected cached artifacts");
+
+    value.downloadEvidence.run.resolvedRevision = "b".repeat(40);
+    const mismatch = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(mismatch?.status).toBe("insufficient");
+    expect(mismatch?.summary).toContain("same frozen repository revision");
+  });
+
+
+  it("treats intentional offline repository skipping as partial when an immutable local runtime target is available", () => {
+    const value = run();
+    value.repository = undefined;
+    value.downloadEvidence = undefined;
+    value.runtimeTarget = {
+      normalizedModelId: "org/model",
+      evidenceRevision: "b".repeat(40),
+      loaderRevisionOption: "b".repeat(40),
+      source: "local-cache",
+      revisionIdentity: "local-immutable-revision",
+      pipelineTag: undefined,
+    };
+    value.steps = [{ id: "repository-information", status: "skipped", detail: "External network denied" }];
+
+    const report = evaluateEvidenceReadiness({ run: value });
+    expect(report.overall).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "repository")?.status).toBe("not-observed");
+    expect(report.domains.find(item => item.domainId === "execution-target")).toMatchObject({
+      status: "implementation-ready",
+      questions: [expect.objectContaining({ evidencePaths: ["runtime-target/target.json"] })],
+    });
+  });
+
+  it("downgrades runtime observations for an offline legacy main target without inventing an immutable revision", () => {
+    const value = run();
+    value.repository = undefined;
+    value.downloadEvidence = undefined;
+    value.runtimeTarget = {
+      normalizedModelId: "org/model",
+      evidenceRevision: "main",
+      loaderRevisionOption: null,
+      source: "local-cache",
+      revisionIdentity: "legacy-main-unverified",
+      pipelineTag: undefined,
+    };
+    value.steps = [{ id: "repository-information", status: "skipped", detail: "External network denied" }];
+
+    const report = evaluateEvidenceReadiness({ run: value });
+    expect(report.overall).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "execution-target")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "plain-text")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.summary).toContain("exact immutable model revision was not proven");
+  });
 
   it("keeps runtime readiness insufficient when runtime asset identity is unavailable", () => {
     const value = run();
@@ -610,63 +821,6 @@ TypeError: fixture inspection failed
     const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === 'continuity-kv-cache');
     expect(continuity).toMatchObject({ status: 'insufficient' });
     expect(continuity?.summary).toContain('changed model-visible synthetic history');
-  });
-
-  it("marks continuity implementation-ready when exact prefix and persistence serialization evidence agree", () => {
-    const value = run();
-    value.persistenceRoundTrip = {
-      status: "observed", fixtureId: "tool-call-history-v1", method: "chat-content-dto-json-roundtrip-v1",
-      modelVisibleProjectionMethod: "build-chat-generation-messages-v1",
-      serializedByteLength: 128, serializedSha256: "b".repeat(64),
-      originalMessages: [{ role: "user", content: "fixture", tool_calls: undefined, tool_call_id: undefined }],
-      restoredMessages: [{ role: "user", content: "fixture", tool_calls: undefined, tool_call_id: undefined }],
-      exactModelVisibleMatch: true, firstMismatchIndex: undefined,
-    };
-    value.productionLane = {
-      status: "running", observation: undefined,
-      partialObservation: {
-        route: { autoClass: "AutoModelForCausalLM", processor: "processor", strategy: "qwen3_5", modelType: "qwen3_5" },
-        continuity: {
-          status: "passed",
-          secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: "not-reused", reason: "qwen3_5-message-count-mismatch" } },
-          prefixComparison: { mode: "full-input-prefix", comparisonInputSource: "reconstructed-full-conversation", exactPrefixMatch: true, firstMismatchIndex: undefined },
-        },
-      } as never,
-      error: undefined,
-    };
-
-    const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "continuity-kv-cache");
-    expect(continuity).toMatchObject({ status: "implementation-ready" });
-    expect(continuity?.questions[0]?.answer).toContain("preserved 1 model-visible synthetic messages exactly");
-    expect(continuity?.questions[0]?.evidencePaths).toContain("continuity/persistence-roundtrip.json");
-  });
-
-  it("marks continuity insufficient when persistence serialization changes model-visible history", () => {
-    const value = run();
-    value.persistenceRoundTrip = {
-      status: "observed", fixtureId: "tool-call-history-v1", method: "chat-content-dto-json-roundtrip-v1",
-      modelVisibleProjectionMethod: "build-chat-generation-messages-v1",
-      serializedByteLength: 128, serializedSha256: "b".repeat(64),
-      originalMessages: [{ role: "assistant", content: "before", tool_calls: undefined, tool_call_id: undefined }],
-      restoredMessages: [{ role: "assistant", content: "after", tool_calls: undefined, tool_call_id: undefined }],
-      exactModelVisibleMatch: false, firstMismatchIndex: 0,
-    };
-    value.productionLane = {
-      status: "running", observation: undefined,
-      partialObservation: {
-        route: { autoClass: "AutoModelForCausalLM", processor: "processor", strategy: "qwen3_5", modelType: "qwen3_5" },
-        continuity: {
-          status: "passed",
-          secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: "not-reused", reason: "qwen3_5-message-count-mismatch" } },
-          prefixComparison: { mode: "full-input-prefix", comparisonInputSource: "reconstructed-full-conversation", exactPrefixMatch: true, firstMismatchIndex: undefined },
-        },
-      } as never,
-      error: undefined,
-    };
-
-    const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "continuity-kv-cache");
-    expect(continuity).toMatchObject({ status: "insufficient" });
-    expect(continuity?.summary).toContain("changed model-visible synthetic history");
   });
 
   it("marks continuity insufficient when the strategy cache decision contradicts the model.generate handoff", () => {

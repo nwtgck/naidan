@@ -51,9 +51,26 @@ function declarationPath(type) {
   return declaration?.getSourceFile().fileName.replace(/\\/g, "/");
 }
 
-function isKnownAtomic(type, checker) {
+function isKnownAtomic({ type, checker }) {
   const name = getTypeName(type, checker);
-  return /^(Date|RegExp|Blob|File|ArrayBuffer|DataView|Error|Uint8Array|Uint8ClampedArray|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array)$/.test(name);
+  if (/^(Date|RegExp|Blob|File|ArrayBuffer|DataView|Error|Uint8Array|Uint8ClampedArray|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array)$/.test(name)) return true;
+
+  // Modern TypeScript gives native views an explicit backing-buffer argument.
+  // Review the native declaration and its concrete ArrayBuffer argument, not
+  // merely a similarly named user object. Shared/unknown buffers stay denied.
+  const symbol = type.getSymbol();
+  if (!/^(DataView|Uint8Array|Uint8ClampedArray|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array)$/.test(symbol?.getName() ?? "")) return false;
+  if (!isTypeScriptLibSymbol({ symbol }) || !(type.objectFlags & ts.ObjectFlags.Reference)) return false;
+  const args = checker.getTypeArguments(type);
+  return args.length === 1 && args[0].getSymbol()?.getName() === "ArrayBuffer"
+    && isTypeScriptLibSymbol({ symbol: args[0].getSymbol() });
+}
+
+function isTypeScriptLibSymbol({ symbol }) {
+  const declarations = symbol?.declarations;
+  return declarations?.length > 0 && declarations.every(declaration =>
+    /\/typescript\/lib\/lib\.[^/]+\.d\.ts$/.test(declaration.getSourceFile().fileName.replace(/\\/g, "/"))
+  );
 }
 
 function firstReturnViolation({ type, checker, path, depth = 24, seen = new Set(), analysis = { remaining: DEFAULT_ANALYSIS_BUDGET } }) {
@@ -222,7 +239,7 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
     return { path, reason: "function-must-be-proxied" };
   }
 
-  if (isKnownAtomic(type, checker)) return undefined;
+  if (isKnownAtomic({ type, checker })) return undefined;
 
   const name = getTypeName(type, checker);
   if (name === "MessagePort") {

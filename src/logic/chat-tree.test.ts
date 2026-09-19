@@ -1,9 +1,49 @@
 import { describe, it, expect } from 'vitest';
-import { createBranchFromMessages, getChatBranchIterator, type HistoryItem } from './chat-tree';
+import { createBranchFromMessages, getChatBranchIterator, processThinking, type HistoryItem } from './chat-tree';
 import { toAttachmentId, toBinaryObjectId, toMessageId } from '@/01-models/ids';
 import type { ChatContent, MessageNode } from '@/01-models/types';
 
 describe('chat-tree utils', () => {
+  describe('stored ordinary assistant thinking', () => {
+    it.each([
+      { content: undefined, thinking: undefined, expectedContent: undefined, expectedThinking: undefined },
+      { content: '', thinking: undefined, expectedContent: '', expectedThinking: undefined },
+      { content: '  visible  ', thinking: 'existing', expectedContent: '  visible  ', expectedThinking: 'existing' },
+      { content: '  <think>partial', thinking: undefined, expectedContent: '  <think>partial', expectedThinking: undefined },
+      { content: '<think> only thought </think>', thinking: undefined, expectedContent: '', expectedThinking: 'only thought' },
+      { content: ' <think> </think> visible ', thinking: undefined, expectedContent: 'visible', expectedThinking: '' },
+      { content: '<think> </think>', thinking: 'existing', expectedContent: '', expectedThinking: `\
+existing
+
+---
+
+` },
+      { content: ' <THINK> first </THINK>visible<think>second</think> ', thinking: 'existing', expectedContent: 'visible', expectedThinking: `\
+existing
+
+---
+
+first
+
+---
+
+second` },
+    ])('preserves the storage policy for $content with prior thinking $thinking', ({ content, thinking, expectedContent, expectedThinking }) => {
+      const node: MessageNode = content === undefined ? {
+        id: toMessageId({ raw: 'synthetic-tool' }), role: 'tool',
+        content: undefined, thinking: undefined, timestamp: 0, replies: { items: [] },
+        results: [], attachments: undefined, error: undefined,
+        modelId: undefined, lmParameters: undefined, toolCalls: undefined,
+      } : {
+        id: toMessageId({ raw: 'synthetic-assistant' }), role: 'assistant',
+        content, thinking, timestamp: 0, replies: { items: [] },
+      };
+      processThinking({ node });
+      expect(node.content).toBe(expectedContent);
+      expect(node.thinking).toBe(expectedThinking);
+    });
+  });
+
   describe('getChatBranchIterator', () => {
     it('should resolve a deeply nested current branch without recursion', () => {
       const depth = 10_000;

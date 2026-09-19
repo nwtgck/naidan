@@ -1,0 +1,2075 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "natural-tool-minimal",
+  "contextSha256": "8d2c0aa1fcc6194b4ac2afeb5131431a76da9f1be670a7b59b297aee5a495456",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        }
+      ],
+      "tools": [
+        {
+          "fixtureId": "model-support-weather-v1",
+          "name": "lookup_weather",
+          "description": "Return deterministic weather fixture data.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 128,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "<think>"
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "We "
+      },
+      {
+        "sequence": 3,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "need "
+      },
+      {
+        "sequence": 4,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 5,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "call "
+      },
+      {
+        "sequence": 6,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 7,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "function."
+      },
+      {
+        "sequence": 8,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "</think>"
+      },
+      {
+        "sequence": 9,
+        "phase": "before-settlement",
+        "kind": "tool-call",
+        "toolCallId": "tool-1",
+        "toolName": "lookup_weather",
+        "modelVisibleArguments": "{\"city\":\"Tokyo\"}"
+      },
+      {
+        "sequence": 10,
+        "phase": "before-settlement",
+        "kind": "tool-success",
+        "toolCallId": "tool-1",
+        "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+      },
+      {
+        "sequence": 11,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 12,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Here’s "
+      },
+      {
+        "sequence": 13,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 14,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 15,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "for "
+      },
+      {
+        "sequence": 16,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Tokyo:\n\n"
+      },
+      {
+        "sequence": 17,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "- "
+      },
+      {
+        "sequence": 18,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "**Temperature:** "
+      },
+      {
+        "sequence": 19,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "20 °C  \n"
+      },
+      {
+        "sequence": 20,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "- "
+      },
+      {
+        "sequence": 21,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "**Condition:** "
+      },
+      {
+        "sequence": 22,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Clear\n\n"
+      },
+      {
+        "sequence": 23,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Let "
+      },
+      {
+        "sequence": 24,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "me "
+      },
+      {
+        "sequence": 25,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "know "
+      },
+      {
+        "sequence": 26,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "if "
+      },
+      {
+        "sequence": 27,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "you’d "
+      },
+      {
+        "sequence": 28,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "like "
+      },
+      {
+        "sequence": 29,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "more "
+      },
+      {
+        "sequence": 30,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "details "
+      },
+      {
+        "sequence": 31,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "or "
+      },
+      {
+        "sequence": 32,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "a "
+      },
+      {
+        "sequence": 33,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "forecast!"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              110
+            ],
+            "byteLength": 880,
+            "sha256": "7bfd28a93a1af1911145fa24906fdfe35dcedb11480f4ec6aa487a39610b1d36"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              110
+            ],
+            "byteLength": 880,
+            "sha256": "77c058f568cbb171ce4f5c556433b034dea59a73a9d7620e78c9e0e13e13ac19"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              110
+            ],
+            "byteLength": 880,
+            "sha256": "7bfd28a93a1af1911145fa24906fdfe35dcedb11480f4ec6aa487a39610b1d36"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              110
+            ],
+            "byteLength": 880,
+            "sha256": "77c058f568cbb171ce4f5c556433b034dea59a73a9d7620e78c9e0e13e13ac19"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 131072,
+          "promptTokenCount": 110,
+          "usedContextTokenCount": 110
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200006",
+              "17360",
+              "200008",
+              "3575",
+              "553",
+              "17554",
+              "162016",
+              "11",
+              "261",
+              "4410",
+              "6439",
+              "2359",
+              "22203",
+              "656",
+              "7788",
+              "17527",
+              "558",
+              "87447",
+              "100594",
+              "25",
+              "220",
+              "1323",
+              "19",
+              "12",
+              "3218",
+              "198",
+              "6576",
+              "3521",
+              "25",
+              "220",
+              "1323",
+              "21",
+              "12",
+              "3114",
+              "12",
+              "702",
+              "279",
+              "30377",
+              "289",
+              "25",
+              "14093",
+              "279",
+              "2",
+              "13888",
+              "18403",
+              "25",
+              "8450",
+              "11",
+              "49159",
+              "11",
+              "1721",
+              "13",
+              "21030",
+              "2804",
+              "413",
+              "7360",
+              "395",
+              "1753",
+              "3176",
+              "13",
+              "200007",
+              "200006",
+              "77944",
+              "200008",
+              "2",
+              "68406",
+              "279",
+              "4797",
+              "9964",
+              "10168",
+              "6318",
+              "164009",
+              "11122",
+              "25272",
+              "1238",
+              "558",
+              "2493",
+              "37342",
+              "170154",
+              "314",
+              "11350",
+              "25",
+              "405",
+              "220",
+              "5030",
+              "25",
+              "1621",
+              "412",
+              "9263",
+              "871",
+              "1062",
+              "502",
+              "92",
+              "602",
+              "9819",
+              "9964",
+              "200007",
+              "200006",
+              "1428",
+              "200008",
+              "8470",
+              "290",
+              "11122",
+              "4584",
+              "395",
+              "40510",
+              "13",
+              "200007",
+              "200006",
+              "173781"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200005"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "35644"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200008"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2167"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1309"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "316"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2421"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "290"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1114"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "13"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200007"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200006"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "173781"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200005"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "12606"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "815"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "316"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "44580"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "76043"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "170154"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "220"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200003"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4108"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200008"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "10848"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "17500"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7534"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "173844"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "18583"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200012"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "<|channel|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "analysis",
+          "streamEnd": false
+        },
+        {
+          "text": "<|message|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "We ",
+          "streamEnd": false
+        },
+        {
+          "text": "need ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "call ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "function.",
+          "streamEnd": false
+        },
+        {
+          "text": "<|end|>",
+          "streamEnd": false
+        },
+        {
+          "text": "<|start|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "assistant",
+          "streamEnd": false
+        },
+        {
+          "text": "<|channel|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "commentary ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "to=functions.lookup_weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "<|constrain|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "json",
+          "streamEnd": false
+        },
+        {
+          "text": "<|message|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "{\"city\":\"Tokyo\"}",
+          "streamEnd": false
+        },
+        {
+          "text": "<|call|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          141
+        ],
+        "byteLength": 1128,
+        "sha256": "1bbb8ca4c710de65a4490d713b1ba5b74506f2e0132c6bfff4b3881c1944df98",
+        "tokens": [
+          "200006",
+          "17360",
+          "200008",
+          "3575",
+          "553",
+          "17554",
+          "162016",
+          "11",
+          "261",
+          "4410",
+          "6439",
+          "2359",
+          "22203",
+          "656",
+          "7788",
+          "17527",
+          "558",
+          "87447",
+          "100594",
+          "25",
+          "220",
+          "1323",
+          "19",
+          "12",
+          "3218",
+          "198",
+          "6576",
+          "3521",
+          "25",
+          "220",
+          "1323",
+          "21",
+          "12",
+          "3114",
+          "12",
+          "702",
+          "279",
+          "30377",
+          "289",
+          "25",
+          "14093",
+          "279",
+          "2",
+          "13888",
+          "18403",
+          "25",
+          "8450",
+          "11",
+          "49159",
+          "11",
+          "1721",
+          "13",
+          "21030",
+          "2804",
+          "413",
+          "7360",
+          "395",
+          "1753",
+          "3176",
+          "13",
+          "200007",
+          "200006",
+          "77944",
+          "200008",
+          "2",
+          "68406",
+          "279",
+          "4797",
+          "9964",
+          "10168",
+          "6318",
+          "164009",
+          "11122",
+          "25272",
+          "1238",
+          "558",
+          "2493",
+          "37342",
+          "170154",
+          "314",
+          "11350",
+          "25",
+          "405",
+          "220",
+          "5030",
+          "25",
+          "1621",
+          "412",
+          "9263",
+          "871",
+          "1062",
+          "502",
+          "92",
+          "602",
+          "9819",
+          "9964",
+          "200007",
+          "200006",
+          "1428",
+          "200008",
+          "8470",
+          "290",
+          "11122",
+          "4584",
+          "395",
+          "40510",
+          "13",
+          "200007",
+          "200006",
+          "173781",
+          "200005",
+          "35644",
+          "200008",
+          "2167",
+          "1309",
+          "316",
+          "2421",
+          "290",
+          "1114",
+          "13",
+          "200007",
+          "200006",
+          "173781",
+          "200005",
+          "12606",
+          "815",
+          "316",
+          "28",
+          "44580",
+          "76043",
+          "170154",
+          "220",
+          "200003",
+          "4108",
+          "200008",
+          "10848",
+          "17500",
+          "7534",
+          "173844",
+          "18583",
+          "200012"
+        ]
+      }
+    },
+    {
+      "localOrdinal": 2,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              162
+            ],
+            "byteLength": 1296,
+            "sha256": "d0d2a9c80e8b92737420697d09a0154e23c379c780145e17def3de1f84da8082"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              162
+            ],
+            "byteLength": 1296,
+            "sha256": "cea177d4a54bfc7a63e890aef3fc06461d61c7d752bdcfed6c8228a38c825e98"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              162
+            ],
+            "byteLength": 1296,
+            "sha256": "d0d2a9c80e8b92737420697d09a0154e23c379c780145e17def3de1f84da8082"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              162
+            ],
+            "byteLength": 1296,
+            "sha256": "cea177d4a54bfc7a63e890aef3fc06461d61c7d752bdcfed6c8228a38c825e98"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 140,
+          "maxNewTokens": 128,
+          "contextLimit": 131072,
+          "promptTokenCount": 162,
+          "usedContextTokenCount": 162
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200006",
+              "17360",
+              "200008",
+              "3575",
+              "553",
+              "17554",
+              "162016",
+              "11",
+              "261",
+              "4410",
+              "6439",
+              "2359",
+              "22203",
+              "656",
+              "7788",
+              "17527",
+              "558",
+              "87447",
+              "100594",
+              "25",
+              "220",
+              "1323",
+              "19",
+              "12",
+              "3218",
+              "198",
+              "6576",
+              "3521",
+              "25",
+              "220",
+              "1323",
+              "21",
+              "12",
+              "3114",
+              "12",
+              "702",
+              "279",
+              "30377",
+              "289",
+              "25",
+              "14093",
+              "279",
+              "2",
+              "13888",
+              "18403",
+              "25",
+              "8450",
+              "11",
+              "49159",
+              "11",
+              "1721",
+              "13",
+              "21030",
+              "2804",
+              "413",
+              "7360",
+              "395",
+              "1753",
+              "3176",
+              "13",
+              "200007",
+              "200006",
+              "77944",
+              "200008",
+              "2",
+              "68406",
+              "279",
+              "4797",
+              "9964",
+              "10168",
+              "6318",
+              "164009",
+              "11122",
+              "25272",
+              "1238",
+              "558",
+              "2493",
+              "37342",
+              "170154",
+              "314",
+              "11350",
+              "25",
+              "405",
+              "220",
+              "5030",
+              "25",
+              "1621",
+              "412",
+              "9263",
+              "871",
+              "1062",
+              "502",
+              "92",
+              "602",
+              "9819",
+              "9964",
+              "200007",
+              "200006",
+              "1428",
+              "200008",
+              "8470",
+              "290",
+              "11122",
+              "4584",
+              "395",
+              "40510",
+              "13",
+              "200007",
+              "200006",
+              "173781",
+              "200005",
+              "35644",
+              "200008",
+              "2167",
+              "1309",
+              "316",
+              "2421",
+              "290",
+              "1114",
+              "13",
+              "200007",
+              "200006",
+              "173781",
+              "200005",
+              "12606",
+              "815",
+              "316",
+              "28",
+              "44580",
+              "76043",
+              "170154",
+              "220",
+              "200003",
+              "4108",
+              "200008",
+              "10848",
+              "17500",
+              "7534",
+              "173844",
+              "18583",
+              "200012",
+              "200006",
+              "29712",
+              "170154",
+              "316",
+              "28",
+              "173781",
+              "200005",
+              "12606",
+              "815",
+              "200008",
+              "10848",
+              "54267",
+              "34",
+              "1243",
+              "455",
+              "3532",
+              "15688",
+              "7534",
+              "14994",
+              "18583",
+              "200007"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200006"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "173781"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200005"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "17196"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200008"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "12253"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "802"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "290"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "11122"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "395"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "40510"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1402"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "12"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6240"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "49836"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "142760"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "220"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "455"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "35971"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "26557"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4066"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "12"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6240"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "14232"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "142760"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22550"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "279"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "12845"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "668"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1761"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "538"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "481"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "8471"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1299"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "945"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4878"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "503"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "261"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22888"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "0"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200002"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "<|start|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "assistant",
+          "streamEnd": false
+        },
+        {
+          "text": "<|channel|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "final",
+          "streamEnd": false
+        },
+        {
+          "text": "<|message|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Here’s ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "for ",
+          "streamEnd": false
+        },
+        {
+          "text": "Tokyo:\n\n",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "- ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "**Temperature:** ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "20 °C  \n",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "- ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "**Condition:** ",
+          "streamEnd": false
+        },
+        {
+          "text": "Clear\n\n",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Let ",
+          "streamEnd": false
+        },
+        {
+          "text": "me ",
+          "streamEnd": false
+        },
+        {
+          "text": "know ",
+          "streamEnd": false
+        },
+        {
+          "text": "if ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "you’d ",
+          "streamEnd": false
+        },
+        {
+          "text": "like ",
+          "streamEnd": false
+        },
+        {
+          "text": "more ",
+          "streamEnd": false
+        },
+        {
+          "text": "details ",
+          "streamEnd": false
+        },
+        {
+          "text": "or ",
+          "streamEnd": false
+        },
+        {
+          "text": "a ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "forecast!",
+          "streamEnd": false
+        },
+        {
+          "text": "<|return|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          203
+        ],
+        "byteLength": 1624,
+        "sha256": "b35823846c57a5ecd426a8a648be654b92e0c05a1aa7f625fcfb9cba0e05d3a5",
+        "tokens": [
+          "200006",
+          "17360",
+          "200008",
+          "3575",
+          "553",
+          "17554",
+          "162016",
+          "11",
+          "261",
+          "4410",
+          "6439",
+          "2359",
+          "22203",
+          "656",
+          "7788",
+          "17527",
+          "558",
+          "87447",
+          "100594",
+          "25",
+          "220",
+          "1323",
+          "19",
+          "12",
+          "3218",
+          "198",
+          "6576",
+          "3521",
+          "25",
+          "220",
+          "1323",
+          "21",
+          "12",
+          "3114",
+          "12",
+          "702",
+          "279",
+          "30377",
+          "289",
+          "25",
+          "14093",
+          "279",
+          "2",
+          "13888",
+          "18403",
+          "25",
+          "8450",
+          "11",
+          "49159",
+          "11",
+          "1721",
+          "13",
+          "21030",
+          "2804",
+          "413",
+          "7360",
+          "395",
+          "1753",
+          "3176",
+          "13",
+          "200007",
+          "200006",
+          "77944",
+          "200008",
+          "2",
+          "68406",
+          "279",
+          "4797",
+          "9964",
+          "10168",
+          "6318",
+          "164009",
+          "11122",
+          "25272",
+          "1238",
+          "558",
+          "2493",
+          "37342",
+          "170154",
+          "314",
+          "11350",
+          "25",
+          "405",
+          "220",
+          "5030",
+          "25",
+          "1621",
+          "412",
+          "9263",
+          "871",
+          "1062",
+          "502",
+          "92",
+          "602",
+          "9819",
+          "9964",
+          "200007",
+          "200006",
+          "1428",
+          "200008",
+          "8470",
+          "290",
+          "11122",
+          "4584",
+          "395",
+          "40510",
+          "13",
+          "200007",
+          "200006",
+          "173781",
+          "200005",
+          "35644",
+          "200008",
+          "2167",
+          "1309",
+          "316",
+          "2421",
+          "290",
+          "1114",
+          "13",
+          "200007",
+          "200006",
+          "173781",
+          "200005",
+          "12606",
+          "815",
+          "316",
+          "28",
+          "44580",
+          "76043",
+          "170154",
+          "220",
+          "200003",
+          "4108",
+          "200008",
+          "10848",
+          "17500",
+          "7534",
+          "173844",
+          "18583",
+          "200012",
+          "200006",
+          "29712",
+          "170154",
+          "316",
+          "28",
+          "173781",
+          "200005",
+          "12606",
+          "815",
+          "200008",
+          "10848",
+          "54267",
+          "34",
+          "1243",
+          "455",
+          "3532",
+          "15688",
+          "7534",
+          "14994",
+          "18583",
+          "200007",
+          "200006",
+          "173781",
+          "200005",
+          "17196",
+          "200008",
+          "12253",
+          "802",
+          "290",
+          "11122",
+          "395",
+          "40510",
+          "1402",
+          "12",
+          "6240",
+          "49836",
+          "142760",
+          "220",
+          "455",
+          "35971",
+          "26557",
+          "4066",
+          "12",
+          "6240",
+          "14232",
+          "142760",
+          "22550",
+          "279",
+          "12845",
+          "668",
+          "1761",
+          "538",
+          "481",
+          "8471",
+          "1299",
+          "945",
+          "4878",
+          "503",
+          "261",
+          "22888",
+          "0",
+          "200002"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "a662f5bc2a7f0d94392309992c4124d705d1a6c4958f1d9f5a51b7844f8b17e4"
+}

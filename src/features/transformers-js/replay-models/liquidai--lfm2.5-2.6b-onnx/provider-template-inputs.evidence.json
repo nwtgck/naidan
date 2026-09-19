@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "source": "reference-template-behavior-matrix",
+  "sourceMemberSha256": "a8217db0966688e510df7388d343187710be5b84bc291acf384586b15166bc32",
+  "modelId": "LiquidAI/LFM2.5-2.6B-ONNX",
+  "revision": "66826372fd4fa166f53be0371c9315745c07cace",
+  "cases": [
+    {
+      "caseId": "system-user-generation",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Template probe system instruction."
+        },
+        {
+          "role": "user",
+          "content": "Template probe user message."
+        }
+      ],
+      "addGenerationPrompt": true,
+      "selectedTemplateSha256": "8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c",
+      "renderedText": "<|startoftext|><|im_start|>system\nTemplate probe system instruction.<|im_end|>\n<|im_start|>user\nTemplate probe user message.<|im_end|>\n<|im_start|>assistant\n<think>",
+      "inputTokenIds": [
+        124894,
+        124899,
+        23630,
+        207,
+        23108,
+        22355,
+        1177,
+        10996,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        23108,
+        22355,
+        4695,
+        5781,
+        22,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901
+      ]
+    },
+    {
+      "caseId": "multi-turn-generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Template probe first user message."
+        },
+        {
+          "role": "assistant",
+          "content": "Template probe assistant response."
+        },
+        {
+          "role": "user",
+          "content": "Template probe second user message."
+        }
+      ],
+      "addGenerationPrompt": true,
+      "selectedTemplateSha256": "8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c",
+      "renderedText": "<|startoftext|><|im_start|>user\nTemplate probe first user message.<|im_end|>\n<|im_start|>assistant\nTemplate probe assistant response.<|im_end|>\n<|im_start|>user\nTemplate probe second user message.<|im_end|>\n<|im_start|>assistant\n<think>",
+      "inputTokenIds": [
+        124894,
+        124899,
+        5922,
+        207,
+        23108,
+        22355,
+        1008,
+        4695,
+        5781,
+        22,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        23108,
+        22355,
+        16200,
+        3715,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        23108,
+        22355,
+        1840,
+        4695,
+        5781,
+        22,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901
+      ]
+    }
+  ]
+}

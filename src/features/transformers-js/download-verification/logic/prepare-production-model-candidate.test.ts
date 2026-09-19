@@ -1,0 +1,341 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { prepareProductionModelCandidate } from '@/features/transformers-js/download-verification/logic/prepare-production-model-candidate';
+import { observeProductionModelArtifactCandidateRequests } from '@/features/transformers-js/download-verification/logic/observe-production-model-artifact-requests';
+import { createTransformersJsDownloadWorkerClient } from '@/features/transformers-js/download-verification/download-worker/client-hosted';
+import type {
+  DownloadVerificationModelArtifactRequestObservation,
+} from '@/features/transformers-js/download-verification/types';
+import type {
+  TransformersJsPrefetchFileResult,
+  TransformersJsPrefetchResult,
+  TransformersJsProductionInvestigationCandidate,
+} from '@/features/transformers-js/types';
+
+vi.mock('@/features/transformers-js/download-verification/logic/observe-production-model-artifact-requests', () => ({
+  observeProductionModelArtifactCandidateRequests: vi.fn(),
+}));
+vi.mock('@/features/transformers-js/download-verification/download-worker/client-hosted', () => ({
+  createTransformersJsDownloadWorkerClient: vi.fn(),
+}));
+
+const MODEL_ID = 'org/model';
+const REVISION = '0123456789abcdef0123456789abcdef01234567';
+const CANDIDATE: TransformersJsProductionInvestigationCandidate = { device: 'webgpu', dtype: 'q4f16' };
+const REQUIRED_MODEL_PATHS = ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'];
+
+function observed(): DownloadVerificationModelArtifactRequestObservation {
+  return {
+    modelId: MODEL_ID,
+    revision: REVISION,
+    autoClass: 'AutoModelForCausalLM',
+    candidate: CANDIDATE,
+    status: 'observed',
+    observationMethod: 'held-model-artifact-fetch-quiescence',
+    quiescenceMs: 500,
+    timeoutMs: 10_000,
+    paths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
+    requests: [
+      {
+        path: 'onnx/model_q4f16.onnx',
+        url: `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx`,
+      },
+      {
+        path: 'onnx/model_q4f16.onnx_data',
+        url: `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx_data`,
+      },
+    ],
+    error: undefined,
+  };
+}
+
+function successfulFile({ path }: { path: string }): TransformersJsPrefetchFileResult {
+  return {
+    status: 'downloaded',
+    url: `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/${path}`,
+    path: `models/huggingface.co/${MODEL_ID}/resolve/${REVISION}/${path}`,
+    byteLength: 1024,
+    expectedByteLength: 1024,
+  };
+}
+
+function result({ files }: { files: TransformersJsPrefetchFileResult[] }): TransformersJsPrefetchResult {
+  const failedCount = files.filter(file => file.status === 'failed').length;
+  const downloadedCount = files.filter(file => file.status === 'downloaded').length;
+  const cachedCount = files.filter(file => file.status === 'cached').length;
+  return {
+    requestedCount: files.length,
+    cachedCount,
+    downloadedCount,
+    failedCount,
+    complete: failedCount === 0,
+    files,
+  };
+}
+
+function failedFile({ path, status, message }: { path: string; status: number; message: string }): TransformersJsPrefetchFileResult {
+  return {
+    status: 'failed',
+    url: `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/${path}`,
+    path: `models/huggingface.co/${MODEL_ID}/resolve/${REVISION}/${path}`,
+    failureStage: 'response-status',
+    httpStatus: status,
+    error: { name: 'Error', message },
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue(observed());
+});
+
+describe('prepareProductionModelCandidate', () => {
+  it.each([
+    `https://huggingface.co/other/model/resolve/${REVISION}/onnx/model_q4f16.onnx`,
+    `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/different.onnx`,
+    `https://example.com/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx`,
+    `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model%zz.onnx`,
+  ])('rejects observed URL identity mismatch before creating a transfer client: %s', async url => {
+    const observation = observed();
+    observation.requests[0]!.url = url;
+    vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue(observation);
+    const actual = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
+    expect(actual).toEqual({
+      status: 'failed',
+      error: { name: 'ModelArtifactRequestIdentityMismatch', message: 'Transformers.js model artifact request observation did not match the requested model, revision, or Production candidate' },
+      prefetch: undefined,
+    });
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { modelId: 'resolve/model', path: 'onnx/model_q4f16.onnx' },
+    { modelId: 'org/resolve', path: 'onnx/model_q4f16.onnx' },
+    { modelId: 'org/model', path: 'onnx/resolve/model_q4f16.onnx' },
+  ])('admits exact identity with resolve in $modelId and $path', async ({ modelId, path }) => {
+    const url = `https://huggingface.co/${modelId}/resolve/${REVISION}/${path}`;
+    vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue({
+      ...observed(), modelId, paths: [path], requests: [{ path, url }],
+    });
+    const prefetch = result({ files: [{ status: 'downloaded', url, path: `models/huggingface.co/${modelId}/resolve/${REVISION}/${path}`, byteLength: 4, expectedByteLength: 4 }] });
+    const prefetchUrls = vi.fn(async () => prefetch);
+    const dispose = vi.fn(async () => undefined);
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({ prefetchUrls, dispose });
+    await expect(prepareProductionModelCandidate({ modelId, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: [path] })).resolves.toEqual({ status: 'ready', prefetch });
+    expect(prefetchUrls).toHaveBeenCalledExactlyOnceWith({ urls: [url], progressCallback: expect.any(Function) });
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it('does not let optional measurement assembly replace the original successful result', async () => {
+    const prefetch = result({ files: REQUIRED_MODEL_PATHS.map(path => successfulFile({ path })) });
+    Object.defineProperty(prefetch, 'timing', { get() {
+      throw new Error('Synthetic invalid advisory property');
+    } });
+    const dispose = vi.fn(async () => undefined);
+    const prefetchUrls = vi.fn(async () => prefetch);
+    const observer = vi.fn();
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({ prefetchUrls, dispose });
+    const actual = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS, onTiming: observer });
+    expect(actual.status).toBe('ready');
+    expect(actual.prefetch).toBe(prefetch);
+    expect(prefetchUrls).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(observer).not.toHaveBeenCalled();
+  });
+
+  it('publishes the selected complete plan before prefetch and isolates a throwing plan observer', async () => {
+    const order: string[] = [];
+    const capturedPlans: string[][] = [];
+    const expectedResult = result({ files: REQUIRED_MODEL_PATHS.map(path => successfulFile({ path })) });
+    const prefetchUrls = vi.fn(async () => {
+      order.push('prefetch'); return expectedResult;
+    });
+    const dispose = vi.fn(async () => undefined);
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({ prefetchUrls, dispose });
+    const actual = await prepareProductionModelCandidate({
+      modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS,
+      onPlan: ({ paths }) => {
+        order.push('plan'); capturedPlans.push([...paths]); throw new Error('Broken plan display');
+      },
+    });
+    expect(order).toEqual(['plan', 'prefetch']);
+    expect(capturedPlans).toEqual([['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data']]);
+    expect(prefetchUrls).toHaveBeenCalledExactlyOnceWith({ urls: REQUIRED_MODEL_PATHS.map(path => `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/${path}`), progressCallback: expect.any(Function) });
+    expect(actual).toEqual({ status: 'ready', prefetch: expectedResult });
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+  it('refuses to turn an observation into a complete plan when no selector plan was supplied', async () => {
+    await expect(prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE }))
+      .resolves.toMatchObject({ status: 'failed', error: { name: 'MissingProductionResourcePlan' } });
+    expect(observeProductionModelArtifactCandidateRequests).not.toHaveBeenCalled();
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
+  });
+
+  it('stops before transfer when the real loader asks for a resource outside the completed plan', async () => {
+    const observation = observed();
+    observation.requests.push({ path: 'onnx/unplanned_q4f16.onnx', url: `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/unplanned_q4f16.onnx` });
+    vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue(observation);
+    await expect(prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS }))
+      .resolves.toMatchObject({ status: 'failed', error: { name: 'ProductionResourcePlanMismatch' } });
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
+  });
+
+  it('prefetches only the exact plan URLs after the loader observation agrees', async () => {
+    const dispose = vi.fn(async () => {});
+    const prefetchUrls = vi.fn(async ({ urls }: { urls: string[] }) => result({
+      files: urls.map(url => successfulFile({ path: new URL(url).pathname.split(`/resolve/${REVISION}/`)[1]! })),
+    }));
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({
+      prefetchUrls,
+      dispose,
+    } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
+
+    await expect(prepareProductionModelCandidate({
+      modelId: MODEL_ID,
+      revision: REVISION,
+      candidate: CANDIDATE,
+      requiredModelPaths: REQUIRED_MODEL_PATHS,
+    })).resolves.toMatchObject({
+      status: 'ready',
+      prefetch: { requestedCount: 2, downloadedCount: 2, failedCount: 0, complete: true },
+    });
+
+    expect(prefetchUrls).toHaveBeenCalledWith({
+      urls: observed().requests.map(request => request.url),
+      progressCallback: expect.any(Function),
+    });
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('transfers the completed selector plan even when observation exposes only a prefix', async () => {
+    const dispose = vi.fn(async () => {});
+    const prefetchUrls = vi.fn(async ({ urls }: { urls: string[] }) => result({
+      files: urls.map(url => successfulFile({ path: new URL(url).pathname.split(`/resolve/${REVISION}/`)[1]! })),
+    }));
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({
+      prefetchUrls,
+      dispose,
+    } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
+
+    await expect(prepareProductionModelCandidate({
+      modelId: MODEL_ID,
+      revision: REVISION,
+      candidate: CANDIDATE,
+      requiredModelPaths: [
+        'onnx/model_q4f16.onnx',
+        'onnx/model_q4f16.onnx_data',
+        'onnx/vision_encoder_q4f16.onnx',
+        'onnx/vision_encoder_q4f16.onnx_data',
+      ],
+    })).resolves.toMatchObject({
+      status: 'ready',
+      prefetch: { requestedCount: 4, downloadedCount: 4, failedCount: 0, complete: true },
+    });
+
+    expect(prefetchUrls).toHaveBeenCalledWith({
+      urls: [
+        `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx`,
+        `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx_data`,
+        `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/vision_encoder_q4f16.onnx`,
+        `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/vision_encoder_q4f16.onnx_data`,
+      ],
+      progressCallback: expect.any(Function),
+    });
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies a missing required repository artifact as candidate unavailability', async () => {
+    const dispose = vi.fn(async () => {});
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({
+      prefetchUrls: vi.fn(async () => result({
+        files: [
+          successfulFile({ path: 'onnx/model_q4f16.onnx' }),
+          failedFile({ path: 'onnx/model_q4f16.onnx_data', status: 404, message: 'HTTP 404' }),
+        ],
+      })),
+      dispose,
+    } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
+
+    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
+
+    expect(preparation.status).toBe('unavailable');
+    if (preparation.status === 'unavailable') {
+      expect(preparation.reason).toContain(`models/huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx_data`);
+      expect(preparation.prefetch.files).toContainEqual(expect.objectContaining({
+        status: 'failed',
+        failureStage: 'response-status',
+        httpStatus: 404,
+      }));
+    }
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not turn network or server failures into candidate unavailability', async () => {
+    const dispose = vi.fn(async () => {});
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({
+      prefetchUrls: vi.fn(async () => result({
+        files: [failedFile({
+          path: 'onnx/model_q4f16.onnx',
+          status: 503,
+          message: `HTTP 503 at https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx?token=secret`,
+        })],
+      })),
+      dispose,
+    } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
+
+    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
+
+    expect(preparation).toMatchObject({
+      status: 'failed',
+      error: {
+        name: 'Error',
+        message: `HTTP 503 at https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx`,
+      },
+    });
+    if (preparation.status === 'failed') {
+      expect(preparation.error.message).not.toContain('secret');
+      expect(preparation.prefetch?.files).toContainEqual(expect.objectContaining({
+        status: 'failed',
+        failureStage: 'response-status',
+        httpStatus: 503,
+      }));
+    }
+  });
+
+  it('fails closed when observed artifact URLs do not belong to the requested immutable revision', async () => {
+    vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue({
+      ...observed(),
+      requests: [{
+        path: 'onnx/model_q4f16.onnx',
+        url: `https://huggingface.co/${MODEL_ID}/resolve/main/onnx/model_q4f16.onnx`,
+      }],
+    });
+
+    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
+
+    expect(preparation).toMatchObject({
+      status: 'failed',
+      error: { name: 'ModelArtifactRequestIdentityMismatch' },
+      prefetch: undefined,
+    });
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
+  });
+
+  it('stops before prefetch when the actual-loader request observation fails', async () => {
+    vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue({
+      ...observed(),
+      status: 'failed',
+      paths: [],
+      requests: [],
+      error: { name: 'ObserverError', message: 'could not observe requests' },
+    });
+
+    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
+
+    expect(preparation).toEqual({
+      status: 'failed',
+      error: { name: 'ObserverError', message: 'could not observe requests' },
+      prefetch: undefined,
+    });
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
+  });
+});

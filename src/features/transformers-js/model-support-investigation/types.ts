@@ -1,9 +1,22 @@
+import type { ModelSupportInvestigationConfiguration, ModelSupportInvestigationExecutionPlan } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
+import type { InvestigationReplayMetadataSummary, InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
+import type { FreshMetadataRequest, FreshMetadataResult, FreshMetadataSummary } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
+import type {
+  DownloadVerificationEvidenceInput,
+  DownloadVerificationProbeEvidenceInput,
+} from '@/features/transformers-js/download-verification/evidence/types';
 import type {
   TransformersJsProductionInvestigationError,
   TransformersJsProductionInvestigationObservation,
   TransformersJsProductionInvestigationPartialObservation,
+  TransformersJsModelLoadProgressObservation,
 } from '@/features/transformers-js/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
+import type { ProductionProviderCaptureSnapshot } from './logic/production-provider-capture-owner';
+import type { ProductionProviderNativeEvidenceSidecar } from './logic/production-provider-native-evidence';
+import type { ProductionProviderInvestigationResult } from './logic/run-production-provider-investigation';
+import type { ProductionProviderInvestigationLiveProgress } from './logic/production-provider-investigation-summary';
+import type { RuntimeControlBinding } from './logic/runtime-control-binding';
 
 export type ModelSupportInvestigationJsonValue =
   | string
@@ -20,6 +33,7 @@ export interface ModelSupportInvestigationJsonObject {
 export type ModelSupportInvestigationStepId =
   | "runtime-assets"
   | "repository-information"
+  | "download-evidence"
   | "existing-model-data"
   | "model-declarations"
   | "template-behavior"
@@ -33,7 +47,8 @@ export type ModelSupportInvestigationStepStatus =
   | "running"
   | "passed"
   | "failed"
-  | "blocked";
+  | "blocked"
+  | "skipped";
 
 export interface ModelSupportInvestigationStep {
   id: ModelSupportInvestigationStepId,
@@ -144,6 +159,7 @@ export interface ModelSupportInvestigationRuntimeAssets {
   applicationOrigin: string,
   environment: ModelSupportInvestigationRuntimeEnvironment,
   threading?: ModelSupportInvestigationWasmThreadingObservation,
+  controlRuntimeBindings?: { wasm?: RuntimeControlBinding, webgpu?: RuntimeControlBinding },
   control: ModelSupportInvestigationRuntimeControl,
   webGpuControl: ModelSupportInvestigationWebGpuRuntimeControl,
 }
@@ -189,6 +205,7 @@ export interface ModelSupportInvestigationRuntimeAssetsPartial {
   physicalWasmOrigin: string | undefined,
   environment: ModelSupportInvestigationRuntimeEnvironment | undefined,
   threading?: ModelSupportInvestigationWasmThreadingObservation,
+  controlRuntimeBindings?: { wasm?: RuntimeControlBinding, webgpu?: RuntimeControlBinding },
   wasmByteLength: number | undefined,
   control: ModelSupportInvestigationRuntimeControl | undefined,
   webGpuControl: ModelSupportInvestigationWebGpuRuntimeControl | undefined,
@@ -216,6 +233,38 @@ export interface ModelSupportInvestigationRepository {
   libraryName: string | undefined,
   metadata: ModelSupportInvestigationJsonObject,
 }
+
+
+export type ModelSupportInvestigationRuntimeTargetRevisionIdentity =
+  | "exact-resolved-revision"
+  | "local-immutable-revision"
+  | "legacy-main-unverified";
+
+export interface ModelSupportInvestigationRuntimeTarget {
+  normalizedModelId: string,
+  evidenceRevision: string,
+  loaderRevisionOption: string | null,
+  source: "repository" | "local-cache",
+  revisionIdentity: ModelSupportInvestigationRuntimeTargetRevisionIdentity,
+  pipelineTag: string | undefined,
+}
+
+export type ModelSupportInvestigationLocalCacheRevisionSelection =
+  | {
+      status: "selected",
+      revision: string,
+      revisionIdentity: Exclude<ModelSupportInvestigationRuntimeTargetRevisionIdentity, "exact-resolved-revision">,
+      loaderRevisionOption: string | null,
+    }
+  | {
+      status: "unavailable",
+      reason: string,
+    }
+  | {
+      status: "ambiguous",
+      revisions: string[],
+      reason: string,
+    };
 
 
 export type ModelSupportInvestigationAutoClassName =
@@ -322,6 +371,7 @@ export type ModelSupportInvestigationToolTemplateProvenance =
 export interface ModelSupportInvestigationTemplateBehavior {
   normalizedModelId: string,
   resolvedRevision: string,
+  loaderRevisionOption?: string | null,
   tokenizerClass: string,
   declaredChatTemplate: ModelSupportInvestigationJsonValue | undefined,
   cases: ModelSupportInvestigationTemplateCase[],
@@ -356,7 +406,7 @@ export interface ModelSupportInvestigationPlannedFile {
   path: string,
   kind: ModelSupportInvestigationPlannedFileKind,
   requirement: "required" | "optional",
-  repositoryObservation: "present" | "missing" | "zero-byte",
+  repositoryObservation: "present" | "missing" | "zero-byte" | "not-observed",
   repositorySize: number | undefined,
   repositoryBlobId: string | undefined,
   repositoryLfsOid: string | undefined,
@@ -390,6 +440,11 @@ export type ModelSupportInvestigationGenerationAutoClassName =
   | "AutoModelForImageTextToText"
   | "AutoModelForAudioTextToText"
   | "AutoModelForSpeechSeq2Seq";
+
+export interface ModelSupportInvestigationCandidateExecutionOptions {
+  generation: boolean,
+  capabilityProbes: boolean,
+}
 
 export type ModelSupportInvestigationLoadAttemptStage =
   | "worker-start"
@@ -631,8 +686,13 @@ export interface ModelSupportInvestigationLoadAttempt {
   dtype: ModelSupportInvestigationCandidateDtype,
   autoClass: ModelSupportInvestigationGenerationAutoClassName | undefined,
   resolvedRevision: string,
+  loaderRevisionOption?: string | null,
   startedAt: string,
   completedAt: string,
+  /** Wall-clock time spent in the model from_pretrained/load operation for this candidate. */
+  modelLoadDurationMs?: number,
+  /** Final bounded summary of raw Transformers.js model-load progress callbacks. */
+  modelLoadProgress?: ModelSupportInvestigationProgressObservation,
   status: "passed" | "failed" | "blocked",
   failureStage: ModelSupportInvestigationLoadAttemptStage | undefined,
   events: ModelSupportInvestigationLoadAttemptEvent[],
@@ -659,8 +719,11 @@ export interface ModelSupportInvestigationLoadAttemptCheckpoint {
   dtype: ModelSupportInvestigationCandidateDtype,
   autoClass: ModelSupportInvestigationGenerationAutoClassName | undefined,
   resolvedRevision: string,
+  loaderRevisionOption?: string | null,
   startedAt: string,
   checkpointedAt: string,
+  modelLoadDurationMs?: number,
+  modelLoadProgress?: ModelSupportInvestigationProgressObservation,
   status: "running",
   currentStage: ModelSupportInvestigationLoadAttemptStage,
   events: ModelSupportInvestigationLoadAttemptEvent[],
@@ -803,9 +866,15 @@ export interface ModelSupportInvestigationCacheInventory {
 }
 
 export interface ModelSupportInvestigationRun {
+  productionProviderInvestigation?: ProductionProviderInvestigationResult['summary'],
+  productionProviderCapture?: ProductionProviderCaptureSnapshot,
+  freshMetadata?: FreshMetadataSummary,
+  replayMetadata?: InvestigationReplayMetadataSummary,
   schemaVersion: 1,
   runId: string,
   modelId: string,
+  requestedConfiguration?: ModelSupportInvestigationConfiguration,
+  executionPlan?: ModelSupportInvestigationExecutionPlan,
   scope:
     | "partial-runtime-preflight"
     | "partial-runtime-repository-cache"
@@ -822,6 +891,8 @@ export interface ModelSupportInvestigationRun {
   runtimeAssets: ModelSupportInvestigationRuntimeAssets | undefined,
   runtimeAssetsPartial?: ModelSupportInvestigationRuntimeAssetsPartial,
   repository: ModelSupportInvestigationRepository | undefined,
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget | undefined,
+  downloadEvidence: DownloadVerificationEvidenceInput | undefined,
   cache: ModelSupportInvestigationCacheInventory | undefined,
   declarations: ModelSupportInvestigationModelDeclarations | undefined,
   templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
@@ -837,18 +908,23 @@ export interface ModelSupportInvestigationRun {
 
 export type ModelSupportInvestigationPlanningWorkerRun = Omit<
   ModelSupportInvestigationRun,
-  'loadAttempts' | 'activeLoadAttempt' | 'productionLane' | 'laneComparison'
->;
+  'downloadEvidence' | 'loadAttempts' | 'activeLoadAttempt' | 'productionLane' | 'laneComparison' | 'productionProviderCapture' | 'productionProviderInvestigation'
+> & {
+  downloadEvidence: DownloadVerificationProbeEvidenceInput | undefined,
+};
 
 export type ModelSupportInvestigationEvidenceReadinessStatus =
   | "implementation-ready"
   | "partial"
   | "insufficient"
-  | "not-observed";
+  | "not-observed"
+  | "not-applicable";
 
 export type ModelSupportInvestigationEvidenceDomainId =
   | "runtime-assets"
   | "repository"
+  | "execution-target"
+  | "download"
   | "cache"
   | "model-declarations"
   | "template-tokenizer"
@@ -863,7 +939,7 @@ export type ModelSupportInvestigationEvidenceDomainId =
 
 export interface ModelSupportInvestigationEvidenceQuestion {
   questionId: string,
-  status: "answered" | "unobserved" | "contradictory",
+  status: "answered" | "unobserved" | "contradictory" | "not-applicable",
   answer: string,
   evidencePaths: string[],
 }
@@ -924,31 +1000,14 @@ export interface ModelSupportInvestigationEvidencePackageAssessment {
   limitations: string[],
 }
 
-export interface ModelSupportInvestigationProgressObservation {
-  kind: "model-load",
-  candidateId: string,
-  sourceStatus: string,
-  currentFile: string | undefined,
-  fileLoaded: number | undefined,
-  fileTotal: number | undefined,
-  fileProgress: number | undefined,
-  aggregateLoaded: number | undefined,
-  aggregateTotal: number | undefined,
-  aggregateProgress: number | undefined,
-  eventCount: number,
-  progressEventCount: number,
-  progressTotalEventCount: number,
-  forwardProgressCount: number,
-  repeatedWithoutForwardProgressCount: number,
-  lastActivityAt: string,
-  lastForwardProgressAt: string | undefined,
-}
+export type ModelSupportInvestigationProgressObservation = TransformersJsModelLoadProgressObservation;
 
 export interface ModelSupportInvestigationEvent {
   stepId: ModelSupportInvestigationStepId,
   status: ModelSupportInvestigationStepStatus,
   detail: string,
   progress?: ModelSupportInvestigationProgressObservation,
+  productionProviderProgress?: ProductionProviderInvestigationLiveProgress,
 }
 
 export interface ModelSupportInvestigationRecordedEvent extends ModelSupportInvestigationEvent {
@@ -961,6 +1020,8 @@ export interface ModelSupportInvestigationRecovery {
   status: "running" | "completed" | "interrupted",
   checkpointSequence: number,
   checkpointedAt: string,
+  totalEventCount: number,
+  droppedEventCount: number,
   lastEvent: ModelSupportInvestigationRecordedEvent | undefined,
   events: ModelSupportInvestigationRecordedEvent[],
   interruption: {
@@ -970,25 +1031,57 @@ export interface ModelSupportInvestigationRecovery {
   } | undefined,
 }
 
+export type ModelSupportInvestigationBatchTargetStatus =
+  | "pending"
+  | "running"
+  | "passed"
+  | "failed"
+  | "skipped"
+  | "interrupted";
+
+export interface ModelSupportInvestigationBatchEvidenceItem {
+  replayMetadata?: InvestigationReplayMetadataSidecar[],
+  nativeEvidence?: ProductionProviderNativeEvidenceSidecar,
+  target: string,
+  status: ModelSupportInvestigationBatchTargetStatus,
+  run: ModelSupportInvestigationRun | undefined,
+  recovery: ModelSupportInvestigationRecovery | undefined,
+  error: string | undefined,
+}
+
 export interface ModelSupportInvestigationCheckpoint {
+  nativeEvidence?: ProductionProviderNativeEvidenceSidecar,
+  replayMetadata?: InvestigationReplayMetadataSidecar[],
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery,
+}
+
+export interface ModelSupportInvestigationPlanningRequest {
+  replayMetadataBudgetBytes?: number,
+  runId: string,
+  modelId: string,
+  externalNetworkPolicy: ModelSupportInvestigationConfiguration['externalNetworkPolicy'],
+  executionPlan: ModelSupportInvestigationExecutionPlan,
 }
 
 export interface IModelSupportInvestigationWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runPartialInvestigation(
-    modelId: string,
+    request: ModelSupportInvestigationPlanningRequest,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
-    onRunCheckpoint: WorkerProxy<({ run }: { run: ModelSupportInvestigationPlanningWorkerRun }) => void>,
+    onRunCheckpoint: WorkerProxy<({ run, replayMetadata }: { run: ModelSupportInvestigationPlanningWorkerRun, replayMetadata?: InvestigationReplayMetadataSidecar[] }) => void>,
+    collectFreshMetadata: WorkerProxy<({ request }: { request: FreshMetadataRequest }) => Promise<FreshMetadataResult>>,
   ): Promise<ModelSupportInvestigationPlanningWorkerRun>,
+  inspectDownloadedTemplateBehavior({ runtimeTarget }: {
+    runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  }): Promise<ModelSupportInvestigationTemplateBehavior>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runCandidateAttempt(
-    repository: ModelSupportInvestigationRepository,
+    runtimeTarget: ModelSupportInvestigationRuntimeTarget,
     declarations: ModelSupportInvestigationModelDeclarations,
     templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
-    cacheRevisionAliases: import('@/features/transformers-js/types').TransformersJsCacheRevisionAlias[],
     candidate: ModelSupportInvestigationCandidateFilePlan,
+    executionOptions: ModelSupportInvestigationCandidateExecutionOptions,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
     onAttemptEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void>,
     onAttemptCheckpoint: WorkerProxy<({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void>,
@@ -996,12 +1089,16 @@ export interface IModelSupportInvestigationWorker {
 }
 
 export interface ModelSupportInvestigationWorkerClient {
-  runPartialInvestigation({ modelId, onEvent, onCheckpoint }: {
+  runPartialInvestigation({ modelId, configuration, onEvent, onCheckpoint, replayMetadataBudgetBytes }: {
+    replayMetadataBudgetBytes?: number,
     modelId: string,
+    configuration: ModelSupportInvestigationConfiguration,
     onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
     onCheckpoint: ({ checkpoint }: { checkpoint: ModelSupportInvestigationCheckpoint }) => void,
   }): Promise<ModelSupportInvestigationRun>,
+  interrupt(): Promise<void>,
   dispose(): Promise<void>,
+  waitForEvidenceRelease(): Promise<void>,
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

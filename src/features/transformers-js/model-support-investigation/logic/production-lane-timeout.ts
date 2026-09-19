@@ -3,6 +3,7 @@ export const DEFAULT_PRODUCTION_LANE_TIMEOUT_MS = 30 * 60 * 1000;
 export type ModelSupportInvestigationProductionLaneStage =
   | "worker-start"
   | "model-load"
+  | "runtime-preparation"
   | "first-turn"
   | "continuity"
   | "tool-result-continuation"

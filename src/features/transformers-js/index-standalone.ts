@@ -1,5 +1,8 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
 import type { ProgressInfo, WorkerToolDefinition, TransformersJsChunkCallback, TransformersJsToolCallsCallback } from './types';
+import type { TransformersJsInferenceOperation } from './inference-operation';
+import type { DownloadProgressSnapshot } from './download-progress';
+import { createDownloadTimingCollector } from './download-timing';
 
 type ProgressListener = ({
   status,
@@ -24,8 +27,12 @@ type ModelListListener = () => void;
 const unsupportedError = () => new Error('Transformers.js is not available in standalone mode');
 
 const progressItems = new Map<string, ProgressInfo>();
+const downloadTiming = createDownloadTimingCollector();
 
 export const transformersJsService = {
+  getDownloadTimingSnapshot() {
+    return downloadTiming.snapshot();
+  },
   subscribe({ listener }: { listener: ProgressListener }) {
     listener({ status: 'idle', progress: 0, error: undefined, isCached: false, isLoadingFromCache: false, progressItems, loadingModelId: undefined });
     return () => {};
@@ -48,10 +55,15 @@ export const transformersJsService = {
       progressItems,
       totalLoadedAmount: 0,
       totalSizeAmount: 0,
+      downloadProgress: undefined as DownloadProgressSnapshot | undefined,
     };
   },
 
   async restart() {},
+
+  async runInferenceOperation({ signal: _signal, operation: _operation }: TransformersJsInferenceOperation): Promise<void> {
+    throw unsupportedError();
+  },
 
   async listCachedModels(): Promise<Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }>> {
     return [];
@@ -69,7 +81,7 @@ export const transformersJsService = {
     throw unsupportedError();
   },
 
-  async loadModel({ modelId: _modelId }: { modelId: string }) {
+  async loadDownloadedModel({ modelId: _modelId }: { modelId: string }) {
     throw unsupportedError();
   },
 

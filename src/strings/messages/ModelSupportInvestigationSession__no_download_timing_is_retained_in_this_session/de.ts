@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session = (): string => "In dieser Dienstsitzung sind keine Download-Messungen gespeichert. Beim Neuladen der Seite gehen die Aufzeichnungen verloren.";

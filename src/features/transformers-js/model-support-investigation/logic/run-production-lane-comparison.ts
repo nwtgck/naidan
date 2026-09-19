@@ -11,7 +11,7 @@ import type {
 import { compareInvestigationLanes } from "@/features/transformers-js/model-support-investigation/logic/compare-investigation-lanes";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from "@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image";
-import { createCacheRevisionAliases } from "@/features/transformers-js/model-support-investigation/logic/create-cache-revision-aliases";
+import { isModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
 
 function updateLaneStep({ run, status, detail }: {
   run: ModelSupportInvestigationRun,
@@ -24,6 +24,7 @@ function updateLaneStep({ run, status, detail }: {
       return { ...step, status, detail };
     case "runtime-assets":
     case "repository-information":
+    case "download-evidence":
     case "existing-model-data":
     case "model-declarations":
     case "template-behavior":
@@ -44,6 +45,8 @@ export async function runProductionLaneComparison({
   runProductionScenario,
   onEvent,
   onRunUpdate,
+  runContinuity = true,
+  runCapabilityProbes = true,
   now,
 }: {
   run: ModelSupportInvestigationRun,
@@ -53,6 +56,8 @@ export async function runProductionLaneComparison({
   }) => Promise<TransformersJsProductionInvestigationObservation>,
   onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
   onRunUpdate?: ({ run }: { run: ModelSupportInvestigationRun }) => void,
+  runContinuity?: boolean,
+  runCapabilityProbes?: boolean,
   now: () => string,
 }): Promise<ModelSupportInvestigationRun> {
   const updatedRun: ModelSupportInvestigationRun = {
@@ -74,27 +79,43 @@ export async function runProductionLaneComparison({
   const observedCandidate = loadedAttempt === undefined
     ? undefined
     : { device: loadedAttempt.device, dtype: loadedAttempt.dtype };
-  const orderedCandidates = observedCandidate === undefined
-    ? eligibleCandidates.map(candidate => ({ device: candidate.device, dtype: candidate.dtype }))
-    : [
-      observedCandidate,
-      ...eligibleCandidates
-        .filter(candidate => candidate.device !== observedCandidate.device || candidate.dtype !== observedCandidate.dtype)
-        .map(candidate => ({ device: candidate.device, dtype: candidate.dtype })),
-    ];
-  const firstCandidate = orderedCandidates[0];
-  const productionCandidates = firstCandidate === undefined
-    ? undefined
-    : [
-      firstCandidate,
-      ...orderedCandidates.slice(1),
-    ] as const;
+  const runtimeCompletion = updatedRun.downloadEvidence?.runtimeCompletion;
+  const productionCandidates = (() => {
+    if (runtimeCompletion !== undefined) {
+      switch (runtimeCompletion.status) {
+      case 'accepted': {
+        if (observedCandidate !== undefined) return [observedCandidate] as const;
+        const selected = runtimeCompletion.selectedCandidate;
+        return selected === undefined ? undefined : [selected] as const;
+      }
+      case 'failed':
+      case 'exhausted':
+        return undefined;
+      default: {
+        const _ex: never = runtimeCompletion.status;
+        throw new Error(`Unhandled runtime completion status: ${_ex}`);
+      }
+      }
+    }
+    const orderedCandidates = observedCandidate === undefined
+      ? eligibleCandidates.map(candidate => ({ device: candidate.device, dtype: candidate.dtype }))
+      : [
+        observedCandidate,
+        ...eligibleCandidates
+          .filter(candidate => candidate.device !== observedCandidate.device || candidate.dtype !== observedCandidate.dtype)
+          .map(candidate => ({ device: candidate.device, dtype: candidate.dtype })),
+      ];
+    const firstCandidate = orderedCandidates[0];
+    return firstCandidate === undefined
+      ? undefined
+      : [firstCandidate, ...orderedCandidates.slice(1)] as const;
+  })();
   const templateCase = updatedRun.templateBehavior?.cases.find(item => item.caseId === "user-generation");
-  const repository = updatedRun.repository;
-  if (productionCandidates === undefined || repository === undefined) {
+  const runtimeTarget = updatedRun.runtimeTarget;
+  if (productionCandidates === undefined || runtimeTarget === undefined) {
     const missingPrerequisites = [
       productionCandidates === undefined ? "eligible Production Lane candidate" : undefined,
-      repository === undefined ? "resolved repository revision" : undefined,
+      runtimeTarget === undefined ? "runtime target" : undefined,
     ].filter((item): item is string => item !== undefined);
     const detail = `Blocked because these prerequisites are unavailable: ${missingPrerequisites.join(", ")}`;
     emit({ status: "blocked", detail });
@@ -145,13 +166,12 @@ export async function runProductionLaneComparison({
   try {
     const observation = await runProductionScenario({
       scenario: {
-        modelId: repository.normalizedModelId,
-        resolvedRevision: repository.resolvedRevision,
-        cacheRevisionAliases: createCacheRevisionAliases({
-          repository,
-          provenance: updatedRun.cache?.provenance,
-        }),
+        modelId: runtimeTarget.normalizedModelId,
+        resolvedRevision: runtimeTarget.evidenceRevision,
+        loadRevision: runtimeTarget.loaderRevisionOption ?? undefined,
         candidates: [...productionCandidates],
+        runContinuity,
+        runCapabilityProbes,
         messages: (templateCase?.messages ?? [{ role: "user" as const, content: "Template probe user message." }]).map(message => ({
           role: message.role,
           content: message.content,
@@ -214,6 +234,7 @@ export async function runProductionLaneComparison({
         ? "Production Lane evidence collected; Reference comparison unavailable"
         : "Reference and Production Lane evidence collected";
   } catch (error) {
+    if (isModelSupportInvestigationUserInterruptedError({ error })) throw error;
     const serialized = serializeInvestigationError({ error });
     updatedRun.productionLane = {
       status: "failed",

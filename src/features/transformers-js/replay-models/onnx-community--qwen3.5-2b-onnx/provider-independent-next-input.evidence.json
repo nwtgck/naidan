@@ -1,0 +1,245 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "independent-next-input",
+  "contextSha256": "bb445f61eb23247bc1128b4ec52443c1227a8e0dea1ce99725ea3dfac8c090b7",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "A separate synthetic capture conversation."
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 1,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              18
+            ],
+            "byteLength": 144,
+            "sha256": "ee61c98b6d4a3b20b01632a64a95694838d98a3d702b7e642cd7d54110434ee8"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              18
+            ],
+            "byteLength": 144,
+            "sha256": "b7a5c529a858e3298e329587d07a7f81f5d6d443c3ac2b7a550ecd0544e238e2"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              18
+            ],
+            "byteLength": 144,
+            "sha256": "ee61c98b6d4a3b20b01632a64a95694838d98a3d702b7e642cd7d54110434ee8"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              18
+            ],
+            "byteLength": 144,
+            "sha256": "b7a5c529a858e3298e329587d07a7f81f5d6d443c3ac2b7a550ecd0544e238e2"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 1,
+          "contextLimit": 262144,
+          "promptTokenCount": 18,
+          "usedContextTokenCount": 18
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "248045",
+              "846",
+              "198",
+              "32",
+              "8387",
+              "26388",
+              "11969",
+              "10125",
+              "13",
+              "248046",
+              "198",
+              "248045",
+              "74455",
+              "198",
+              "248068",
+              "271",
+              "248069",
+              "271"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "40"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "I",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          19
+        ],
+        "byteLength": 152,
+        "sha256": "0994dda1b6fa2f42a8f3d84302267fb5c025412a8fab68184a65d3bf3814783d",
+        "tokens": [
+          "248045",
+          "846",
+          "198",
+          "32",
+          "8387",
+          "26388",
+          "11969",
+          "10125",
+          "13",
+          "248046",
+          "198",
+          "248045",
+          "74455",
+          "198",
+          "248068",
+          "271",
+          "248069",
+          "271",
+          "40"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "b827420dd390d0b56c94686427208edc41309643c5b5c27c41f3a16d095190b6"
+}

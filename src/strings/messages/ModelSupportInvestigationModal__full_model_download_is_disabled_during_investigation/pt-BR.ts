@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation = (): string => 'Downloads completos do modelo ficam desativados durante a investigação, mesmo quando o acesso à rede externa é permitido.';

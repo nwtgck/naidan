@@ -1,0 +1,449 @@
+{
+  "modelId": "onnx-community/Qwen3.5-2B-ONNX",
+  "revision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+  "repositoryFiles": [
+    {
+      "path": ".gitattributes",
+      "size": 3037
+    },
+    {
+      "path": "chat_template.jinja",
+      "size": 7755
+    },
+    {
+      "path": "config.json",
+      "size": 2993
+    },
+    {
+      "path": "generation_config.json",
+      "size": 248
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx",
+      "size": 939847
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx_data",
+      "size": 2092384256
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx_data_1",
+      "size": 1672351744
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4.onnx",
+      "size": 885982
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4.onnx_data",
+      "size": 1209126912
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4f16.onnx",
+      "size": 1046438
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4f16.onnx_data",
+      "size": 1089777664
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx",
+      "size": 875561
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx_data",
+      "size": 1591156736
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx_data_1",
+      "size": 588021760
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx",
+      "size": 779998
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data",
+      "size": 2067165184
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_1",
+      "size": 2066960384
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_2",
+      "size": 1360695296
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_3",
+      "size": 2034237440
+    },
+    {
+      "path": "onnx/embed_tokens_fp16.onnx",
+      "size": 638
+    },
+    {
+      "path": "onnx/embed_tokens_fp16.onnx_data",
+      "size": 1017118720
+    },
+    {
+      "path": "onnx/embed_tokens_q4.onnx",
+      "size": 857
+    },
+    {
+      "path": "onnx/embed_tokens_q4.onnx_data",
+      "size": 325795840
+    },
+    {
+      "path": "onnx/embed_tokens_q4f16.onnx",
+      "size": 1064
+    },
+    {
+      "path": "onnx/embed_tokens_q4f16.onnx_data",
+      "size": 294010880
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx",
+      "size": 880
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx_data",
+      "size": 588021760
+    },
+    {
+      "path": "onnx/embed_tokens.onnx",
+      "size": 435
+    },
+    {
+      "path": "onnx/embed_tokens.onnx_data",
+      "size": 2034237440
+    },
+    {
+      "path": "onnx/vision_encoder_fp16.onnx",
+      "size": 345412
+    },
+    {
+      "path": "onnx/vision_encoder_fp16.onnx_data",
+      "size": 667748352
+    },
+    {
+      "path": "onnx/vision_encoder_q4.onnx",
+      "size": 338758
+    },
+    {
+      "path": "onnx/vision_encoder_q4.onnx_data",
+      "size": 217952256
+    },
+    {
+      "path": "onnx/vision_encoder_q4f16.onnx",
+      "size": 393718
+    },
+    {
+      "path": "onnx/vision_encoder_q4f16.onnx_data",
+      "size": 196945920
+    },
+    {
+      "path": "onnx/vision_encoder_quantized.onnx",
+      "size": 342579
+    },
+    {
+      "path": "onnx/vision_encoder_quantized.onnx_data",
+      "size": 392318976
+    },
+    {
+      "path": "onnx/vision_encoder.onnx",
+      "size": 290506
+    },
+    {
+      "path": "onnx/vision_encoder.onnx_data",
+      "size": 1325666304
+    },
+    {
+      "path": "preprocessor_config.json",
+      "size": 336
+    },
+    {
+      "path": "processor_config.json",
+      "size": 1300
+    },
+    {
+      "path": "README.md",
+      "size": 85
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 9161
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 19226111
+    }
+  ],
+  "declarations": [
+    {
+      "path": "config.json",
+      "originalByteLength": 2993,
+      "value": {
+        "architectures": [
+          "Qwen3_5ForConditionalGeneration"
+        ],
+        "image_token_id": 248056,
+        "model_type": "qwen3_5",
+        "text_config": {
+          "attention_bias": false,
+          "attention_dropout": 0,
+          "attn_output_gate": true,
+          "bos_token_id": null,
+          "dtype": "bfloat16",
+          "eos_token_id": 248044,
+          "full_attention_interval": 4,
+          "head_dim": 256,
+          "hidden_act": "silu",
+          "hidden_size": 2048,
+          "initializer_range": 0.02,
+          "intermediate_size": 6144,
+          "layer_types": [
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention"
+          ],
+          "linear_conv_kernel_dim": 4,
+          "linear_key_head_dim": 128,
+          "linear_num_key_heads": 16,
+          "linear_num_value_heads": 16,
+          "linear_value_head_dim": 128,
+          "mamba_ssm_dtype": "float32",
+          "max_position_embeddings": 262144,
+          "mlp_only_layers": [],
+          "model_type": "qwen3_5_text",
+          "mtp_num_hidden_layers": 1,
+          "mtp_use_dedicated_embeddings": false,
+          "num_attention_heads": 8,
+          "num_hidden_layers": 24,
+          "num_key_value_heads": 2,
+          "pad_token_id": null,
+          "partial_rotary_factor": 0.25,
+          "rms_norm_eps": 0.000001,
+          "rope_parameters": {
+            "mrope_interleaved": true,
+            "mrope_section": [
+              11,
+              11,
+              10
+            ],
+            "partial_rotary_factor": 0.25,
+            "rope_theta": 10000000,
+            "rope_type": "default"
+          },
+          "tie_word_embeddings": true,
+          "use_cache": true,
+          "vocab_size": 248320
+        },
+        "tie_word_embeddings": true,
+        "transformers_version": "5.3.0.dev0",
+        "video_token_id": 248057,
+        "vision_config": {
+          "deepstack_visual_indexes": [],
+          "depth": 24,
+          "hidden_act": "gelu_pytorch_tanh",
+          "hidden_size": 1024,
+          "in_channels": 3,
+          "initializer_range": 0.02,
+          "intermediate_size": 4096,
+          "model_type": "qwen3_5",
+          "num_heads": 16,
+          "num_position_embeddings": 2304,
+          "out_hidden_size": 2048,
+          "patch_size": 16,
+          "spatial_merge_size": 2,
+          "temporal_patch_size": 2
+        },
+        "vision_end_token_id": 248054,
+        "vision_start_token_id": 248053,
+        "transformers.js_config": {
+          "use_external_data_format": {
+            "vision_encoder": 1,
+            "embed_tokens": 1,
+            "decoder_model_merged.onnx": 4,
+            "decoder_model_merged_fp16.onnx": 2,
+            "decoder_model_merged_quantized.onnx": 2,
+            "decoder_model_merged_q4.onnx": 1,
+            "decoder_model_merged_q4f16.onnx": 1
+          },
+          "kv_cache_dtype": {
+            "q4f16": "float16",
+            "fp16": "float16"
+          }
+        }
+      }
+    },
+    {
+      "path": "tokenizer_config.json",
+      "originalByteLength": 9161,
+      "value": {
+        "add_prefix_space": false,
+        "audio_bos_token": "<|audio_start|>",
+        "audio_eos_token": "<|audio_end|>",
+        "audio_token": "<|audio_pad|>",
+        "backend": "tokenizers",
+        "bos_token": null,
+        "clean_up_tokenization_spaces": false,
+        "eos_token": "<|im_end|>",
+        "errors": "replace",
+        "image_token": "<|image_pad|>",
+        "is_local": false,
+        "model_max_length": 262144,
+        "model_specific_special_tokens": {
+          "audio_bos_token": "<|audio_start|>",
+          "audio_eos_token": "<|audio_end|>",
+          "audio_token": "<|audio_pad|>",
+          "image_token": "<|image_pad|>",
+          "video_token": "<|video_pad|>",
+          "vision_bos_token": "<|vision_start|>",
+          "vision_eos_token": "<|vision_end|>"
+        },
+        "pad_token": "<|endoftext|>",
+        "pretokenize_regex": "(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?[\\p{L}\\p{M}]+|\\p{N}| ?[^\\s\\p{L}\\p{M}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+",
+        "processor_class": "Qwen3VLProcessor",
+        "split_special_tokens": false,
+        "tokenizer_class": "TokenizersBackend",
+        "unk_token": null,
+        "video_token": "<|video_pad|>",
+        "vision_bos_token": "<|vision_start|>",
+        "vision_eos_token": "<|vision_end|>",
+        "chat_template": "{%- set image_count = namespace(value=0) %}\n{%- set video_count = namespace(value=0) %}\n{%- macro render_content(content, do_vision_count, is_system_content=false) %}\n    {%- if content is string %}\n        {{- content }}\n    {%- elif content is iterable and content is not mapping %}\n        {%- for item in content %}\n            {%- if 'image' in item or 'image_url' in item or item.type == 'image' %}\n                {%- if is_system_content %}\n                    {{- raise_exception('System message cannot contain images.') }}\n                {%- endif %}\n                {%- if do_vision_count %}\n                    {%- set image_count.value = image_count.value + 1 %}\n                {%- endif %}\n                {%- if add_vision_id %}\n                    {{- 'Picture ' ~ image_count.value ~ ': ' }}\n                {%- endif %}\n                {{- '<|vision_start|><|image_pad|><|vision_end|>' }}\n            {%- elif 'video' in item or item.type == 'video' %}\n                {%- if is_system_content %}\n                    {{- raise_exception('System message cannot contain videos.') }}\n                {%- endif %}\n                {%- if do_vision_count %}\n                    {%- set video_count.value = video_count.value + 1 %}\n                {%- endif %}\n                {%- if add_vision_id %}\n                    {{- 'Video ' ~ video_count.value ~ ': ' }}\n                {%- endif %}\n                {{- '<|vision_start|><|video_pad|><|vision_end|>' }}\n            {%- elif 'text' in item %}\n                {{- item.text }}\n            {%- else %}\n                {{- raise_exception('Unexpected item type in content.') }}\n            {%- endif %}\n        {%- endfor %}\n    {%- elif content is none or content is undefined %}\n        {{- '' }}\n    {%- else %}\n        {{- raise_exception('Unexpected content type.') }}\n    {%- endif %}\n{%- endmacro %}\n{%- if not messages %}\n    {{- raise_exception('No messages provided.') }}\n{%- endif %}\n{%- if tools and tools is iterable and tools is not mapping %}\n    {{- '<|im_start|>system\\n' }}\n    {{- \"# Tools\\n\\nYou have access to the following functions:\\n\\n<tools>\" }}\n    {%- for tool in tools %}\n        {{- \"\\n\" }}\n        {{- tool | tojson }}\n    {%- endfor %}\n    {{- \"\\n</tools>\" }}\n    {{- '\\n\\nIf you choose to call a function ONLY reply in the following format with NO suffix:\\n\\n<tool_call>\\n<function=example_function_name>\\n<parameter=example_parameter_1>\\nvalue_1\\n</parameter>\\n<parameter=example_parameter_2>\\nThis is the value for the second parameter\\nthat can span\\nmultiple lines\\n</parameter>\\n</function>\\n</tool_call>\\n\\n<IMPORTANT>\\nReminder:\\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\\n- Required parameters MUST be specified\\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\\n</IMPORTANT>' }}\n    {%- if messages[0].role == 'system' %}\n        {%- set content = render_content(messages[0].content, false, true)|trim %}\n        {%- if content %}\n            {{- '\\n\\n' + content }}\n        {%- endif %}\n    {%- endif %}\n    {{- '<|im_end|>\\n' }}\n{%- else %}\n    {%- if messages[0].role == 'system' %}\n        {%- set content = render_content(messages[0].content, false, true)|trim %}\n        {{- '<|im_start|>system\\n' + content + '<|im_end|>\\n' }}\n    {%- endif %}\n{%- endif %}\n{%- set ns = namespace(multi_step_tool=true, last_query_index=messages|length - 1) %}\n{%- for message in messages[::-1] %}\n    {%- set index = (messages|length - 1) - loop.index0 %}\n    {%- if ns.multi_step_tool and message.role == \"user\" %}\n        {%- set content = render_content(message.content, false)|trim %}\n        {%- if not(content.startswith('<tool_response>') and content.endswith('</tool_response>')) %}\n            {%- set ns.multi_step_tool = false %}\n            {%- set ns.last_query_index = index %}\n        {%- endif %}\n    {%- endif %}\n{%- endfor %}\n{%- if ns.multi_step_tool %}\n    {{- raise_exception('No user query found in messages.') }}\n{%- endif %}\n{%- for message in messages %}\n    {%- set content = render_content(message.content, true)|trim %}\n    {%- if message.role == \"system\" %}\n        {%- if not loop.first %}\n            {{- raise_exception('System message must be at the beginning.') }}\n        {%- endif %}\n    {%- elif message.role == \"user\" %}\n        {{- '<|im_start|>' + message.role + '\\n' + content + '<|im_end|>' + '\\n' }}\n    {%- elif message.role == \"assistant\" %}\n        {%- set reasoning_content = '' %}\n        {%- if message.reasoning_content is string %}\n            {%- set reasoning_content = message.reasoning_content %}\n        {%- else %}\n            {%- if '</think>' in content %}\n                {%- set reasoning_content = content.split('</think>')[0].rstrip('\\n').split('<think>')[-1].lstrip('\\n') %}\n                {%- set content = content.split('</think>')[-1].lstrip('\\n') %}\n            {%- endif %}\n        {%- endif %}\n        {%- set reasoning_content = reasoning_content|trim %}\n        {%- if loop.index0 > ns.last_query_index %}\n            {{- '<|im_start|>' + message.role + '\\n<think>\\n' + reasoning_content + '\\n</think>\\n\\n' + content }}\n        {%- else %}\n            {{- '<|im_start|>' + message.role + '\\n' + content }}\n        {%- endif %}\n        {%- if message.tool_calls and message.tool_calls is iterable and message.tool_calls is not mapping %}\n            {%- for tool_call in message.tool_calls %}\n                {%- if tool_call.function is defined %}\n                    {%- set tool_call = tool_call.function %}\n                {%- endif %}\n                {%- if loop.first %}\n                    {%- if content|trim %}\n                        {{- '\\n\\n<tool_call>\\n<function=' + tool_call.name + '>\\n' }}\n                    {%- else %}\n                        {{- '<tool_call>\\n<function=' + tool_call.name + '>\\n' }}\n                    {%- endif %}\n                {%- else %}\n                    {{- '\\n<tool_call>\\n<function=' + tool_call.name + '>\\n' }}\n                {%- endif %}\n                {%- if tool_call.arguments is defined %}\n                    {%- for args_name, args_value in tool_call.arguments|items %}\n                        {{- '<parameter=' + args_name + '>\\n' }}\n                        {%- set args_value = args_value | tojson | safe if args_value is mapping or (args_value is sequence and args_value is not string) else args_value | string %}\n                        {{- args_value }}\n                        {{- '\\n</parameter>\\n' }}\n                    {%- endfor %}\n                {%- endif %}\n                {{- '</function>\\n</tool_call>' }}\n            {%- endfor %}\n        {%- endif %}\n        {{- '<|im_end|>\\n' }}\n    {%- elif message.role == \"tool\" %}\n        {%- if loop.previtem and loop.previtem.role != \"tool\" %}\n            {{- '<|im_start|>user' }}\n        {%- endif %}\n        {{- '\\n<tool_response>\\n' }}\n        {{- content }}\n        {{- '\\n</tool_response>' }}\n        {%- if not loop.last and loop.nextitem.role != \"tool\" %}\n            {{- '<|im_end|>\\n' }}\n        {%- elif loop.last %}\n            {{- '<|im_end|>\\n' }}\n        {%- endif %}\n    {%- else %}\n        {{- raise_exception('Unexpected message role.') }}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{- '<|im_start|>assistant\\n' }}\n    {%- if enable_thinking is defined and enable_thinking is true %}\n        {{- '<think>\\n' }}\n    {%- else %}\n        {{- '<think>\\n\\n</think>\\n\\n' }}\n    {%- endif %}\n{%- endif %}"
+      }
+    },
+    {
+      "path": "processor_config.json",
+      "originalByteLength": 1300,
+      "value": {
+        "image_processor": {
+          "data_format": "channels_first",
+          "do_convert_rgb": true,
+          "do_normalize": true,
+          "do_rescale": true,
+          "do_resize": true,
+          "image_mean": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "image_processor_type": "Qwen2VLImageProcessorFast",
+          "image_std": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "merge_size": 2,
+          "patch_size": 16,
+          "resample": 3,
+          "rescale_factor": 0.00392156862745098,
+          "size": {
+            "longest_edge": 16777216,
+            "shortest_edge": 65536
+          },
+          "temporal_patch_size": 2
+        },
+        "processor_class": "Qwen3VLProcessor",
+        "video_processor": {
+          "data_format": "channels_first",
+          "default_to_square": true,
+          "do_convert_rgb": true,
+          "do_normalize": true,
+          "do_rescale": true,
+          "do_resize": true,
+          "do_sample_frames": true,
+          "fps": 2,
+          "image_mean": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "image_std": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "max_frames": 768,
+          "merge_size": 2,
+          "min_frames": 4,
+          "patch_size": 16,
+          "resample": 3,
+          "rescale_factor": 0.00392156862745098,
+          "return_metadata": false,
+          "size": {
+            "longest_edge": 25165824,
+            "shortest_edge": 4096
+          },
+          "temporal_patch_size": 2,
+          "video_processor_type": "Qwen3VLVideoProcessor"
+        }
+      }
+    },
+    {
+      "path": "preprocessor_config.json",
+      "originalByteLength": 336,
+      "value": {
+        "size": {
+          "longest_edge": 16777216,
+          "shortest_edge": 65536
+        },
+        "patch_size": 16,
+        "temporal_patch_size": 2,
+        "merge_size": 2,
+        "image_mean": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "image_std": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "processor_class": "Qwen3VLProcessor",
+        "image_processor_type": "Qwen2VLImageProcessorFast"
+      }
+    },
+    {
+      "path": "generation_config.json",
+      "originalByteLength": 248,
+      "value": {
+        "bos_token_id": 248044,
+        "do_sample": true,
+        "eos_token_id": [
+          248046,
+          248044
+        ],
+        "pad_token_id": 248044,
+        "temperature": 0.6,
+        "top_k": 20,
+        "top_p": 0.95,
+        "transformers_version": "5.3.0.dev0",
+        "trust_remote_code": false
+      }
+    }
+  ]
+}

@@ -1,7 +1,20 @@
-import { releaseWorkerRemote, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
+import { workerProxy } from '@/utils/worker-transport';
+import { createProductionWorkerSession } from './production-worker-session';
+import { generationCaptureLimitsSchema } from './generation-capture';
+import { createLoadDiagnosticLedger, type LoadDiagnosticPacket } from './load-diagnostics';
+import { downloadedModelRevisionSelectionSchema, type DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
+import {
+  generationCaptureReadRequestSchema,
+  generationCaptureReadResultSchema,
+  generationCaptureRequestSchema,
+  type GenerationCaptureRequest,
+  type GenerationCaptureReadRequest,
+  type GenerationCaptureReadResult,
+  type GenerationCaptureClient,
+  type GenerationCaptureClientLifetime,
+} from './generation-capture-protocol';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import type {
-  ITransformersJsWorker,
   TransformersJsWorkerClient,
   WorkerToolDefinition,
   ProgressInfo,
@@ -9,7 +22,6 @@ import type {
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
   TransformersJsToolCallsCallback,
-  TransformersJsPrefetchResult,
 } from '@/features/transformers-js/types';
 
 function createUnavailableEnvironmentError(): Error {
@@ -17,15 +29,130 @@ function createUnavailableEnvironmentError(): Error {
 }
 
 export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
+  return createWorkerClientCore({ capture: undefined }).client;
+}
+
+/** Recording is opt-in for a synthetic investigation owner, never ordinary chat. */
+export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch, limits: rawLimits, getActiveRequest }: {
+  runId: string,
+  workerEpoch: number,
+  limits: GenerationCaptureRequest['limits'],
+  getActiveRequest: () => { runId: string; requestId: string } | undefined,
+}): GenerationCaptureClient {
+  const identity = generationCaptureReadRequestSchema.parse({ runId, workerEpoch });
+  const limits = generationCaptureLimitsSchema.parse(rawLimits);
+  const loadDiagnostics = createLoadDiagnosticLedger({ owner: identity });
+  const issuedCalls: GenerationCaptureRequest['context'][] = [];
+  const loadRequests: GenerationCaptureClientLifetime['loadRequests'] = [];
+  const incompleteReasons = new Set<GenerationCaptureClientLifetime['incompleteReasons'][number]>();
+  const core = createWorkerClientCore({ capture: {
+    loadReceiptOwner: identity,
+    observeLoad({ packet }) {
+      loadDiagnostics.observe({ packet });
+    },
+    createRequest() {
+      // Read the owner once, before startup/session awaits. A tool loop may
+      // issue several calls for one Provider request, each with its own ID.
+      if (issuedCalls.length >= limits.maxCalls) {
+        incompleteReasons.add('call-limit');
+        return undefined;
+      }
+      try {
+        const active = getActiveRequest();
+        if (active === undefined) {
+          incompleteReasons.add('request-unavailable');
+          return undefined;
+        }
+        const parsed = generationCaptureRequestSchema.safeParse({
+          context: { ...identity, runId: active.runId, requestId: active.requestId, generationCallId: issuedCalls.length + 1 },
+          limits,
+        });
+        if (!parsed.success || parsed.data.context.runId !== identity.runId) {
+          incompleteReasons.add('request-invalid');
+          return undefined;
+        }
+        issuedCalls.push({ ...parsed.data.context });
+        return parsed.data;
+      } catch {
+        // No diagnostic getter/schema failure may reject actual generation.
+        incompleteReasons.add('request-invalid');
+        return undefined;
+      }
+    },
+    recordLoad({ modelId, revisionSelection }) {
+      const revision = (() => {
+        switch (revisionSelection.kind) {
+        case 'pinned': return revisionSelection.revision;
+        case 'discover-cached': return undefined;
+        default: {
+          const _ex: never = revisionSelection;
+          throw new Error(`Unhandled revision selection: ${_ex}`);
+        }
+        }
+      })();
+      if (loadRequests.length >= limits.maxCalls) {
+        incompleteReasons.add('load-limit');
+      } else if (modelId.length > 256 || (revision !== undefined && revision.length > 128)) {
+        incompleteReasons.add('load-identity-limit');
+      } else {
+        // These are requested identities, not proof of resolved revision or
+        // successful Load. Do not wrap Load settlement just to record them.
+        loadRequests.push({ requestedModelId: modelId, requestedRevision: revision, revisionSelection: { ...revisionSelection } });
+      }
+    },
+  } });
+  return {
+    client: core.client,
+    async takeGenerationCapture(): Promise<GenerationCaptureReadResult> {
+      // The coordinator calls this after all Provider requests, not between
+      // turns or before propagating a generation error. Never drain or retry.
+      const parsed = generationCaptureReadResultSchema.safeParse(await core.takeGenerationCapture({ identity }));
+      if (!parsed.success) throw new Error('Invalid generation capture response');
+      switch (parsed.data.status) {
+      case 'captured': {
+        const { capture } = parsed.data;
+        if (capture.runId !== identity.runId || capture.workerEpoch !== identity.workerEpoch
+          || !generationCaptureLimitsSchema.keyof().options.every(key => capture.limits[key] === limits[key])) {
+          throw new Error('Invalid generation capture response');
+        }
+        break;
+      }
+      case 'not-started': case 'invalid-context': case 'wrong-run': case 'busy': case 'already-taken': break;
+      default: {
+        const _ex: never = parsed.data;
+        throw new Error(`Unhandled generation capture status: ${String(_ex)}`);
+      }
+      }
+      return parsed.data;
+    },
+    getCaptureLifetime() {
+      return {
+        ...identity,
+        session: core.isActive() ? 'active' as const : 'inactive' as const,
+        loadDiagnostics: loadDiagnostics.snapshot({ expectedLoadCount: loadRequests.length }),
+        issuedCalls: issuedCalls.map(context => ({ ...context })),
+        loadRequests: loadRequests.map(request => ({ ...request, revisionSelection: request.revisionSelection === undefined ? undefined : { ...request.revisionSelection } })),
+        incompleteReasons: [...incompleteReasons],
+      };
+    },
+  };
+}
+
+function createWorkerClientCore({ capture }: {
+  capture: {
+    loadReceiptOwner: GenerationCaptureReadRequest,
+    observeLoad({ packet }: { packet: LoadDiagnosticPacket }): void,
+    createRequest(): GenerationCaptureRequest | undefined,
+    recordLoad({ modelId, revisionSelection }: { modelId: string; revisionSelection: DownloadedModelRevisionSelection }): void,
+  } | undefined,
+}): {
+  client: TransformersJsWorkerClient,
+  isActive(): boolean,
+  takeGenerationCapture({ identity }: { identity: GenerationCaptureReadRequest }): Promise<GenerationCaptureReadResult>,
+} {
   if (typeof Worker === 'undefined') {
-    return {
-      async downloadModel({ modelId: _modelId, progressCallback: _progressCallback }) {
-        throw createUnavailableEnvironmentError();
-      },
-      async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }) {
-        throw createUnavailableEnvironmentError();
-      },
-      async loadModel({ modelId: _modelId, progressCallback: _progressCallback }) {
+    const client: TransformersJsWorkerClient = {
+      async loadDownloadedModel({ modelId: _modelId, revisionSelection: _revisionSelection, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError();
       },
       async unloadModel() {
@@ -43,68 +170,90 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
       async dispose() {
       },
     };
+    return {
+      client,
+      isActive: () => false,
+      async takeGenerationCapture() {
+        throw createUnavailableEnvironmentError();
+      },
+    };
   }
 
   const worker = new Worker(
-    new URL('./entry.ts', import.meta.url),
+    new URL('./bootstrap.ts', import.meta.url),
     { type: 'module' },
   );
 
-  const remote = wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker });
-  return {
-    async downloadModel({ modelId, progressCallback }: {
+  const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined,
+    observeLoadDiagnostic: capture === undefined ? undefined : ({ packet }) => capture.observeLoad({ packet }),
+  });
+  const client: TransformersJsWorkerClient = {
+    async loadDownloadedModel({ modelId, revisionSelection: rawSelection, progressCallback }: {
       modelId: string,
-      progressCallback: TransformersJsProgressCallback,
-    }): Promise<void> {
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-      return remote.downloadModel(modelId, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
-    },
-    async prefetchUrls({ urls, progressCallback }: {
-      urls: string[],
-      progressCallback: TransformersJsProgressCallback,
-    }): Promise<TransformersJsPrefetchResult> {
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-      return remote.prefetchUrls(urls, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
-    },
-    async loadModel({ modelId, progressCallback }: {
-      modelId: string,
+      revisionSelection: DownloadedModelRevisionSelection,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-      return remote.loadModel(modelId, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
+      const revisionSelection = downloadedModelRevisionSelectionSchema.parse(rawSelection);
+      capture?.recordLoad({ modelId, revisionSelection });
+      return session.run({ operation: ({ remote }) => remote.loadDownloadedModel(
+        modelId, revisionSelection,
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+        workerProxy({ value: (info: ProgressInfo) => {
+          if (session.isActive()) return progressCallback({ info });
+        } }),
+        ...(capture === undefined ? [] as const : [capture.loadReceiptOwner] as const),
+      ) });
     },
     async unloadModel(): Promise<void> {
-      return remote.unloadModel();
+      return session.run({ operation: ({ remote }) => remote.unloadModel() });
     },
     async interrupt(): Promise<void> {
-      return remote.interrupt();
+      return session.run({ operation: ({ remote }) => remote.interrupt() });
     },
     async resetCache(): Promise<void> {
-      return remote.resetCache();
+      return session.run({ operation: ({ remote }) => remote.resetCache() });
     },
-    async generateText({ messages, onChunk, onToolCalls, params, tools }: {
+    async generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner }: {
       messages: ChatMessage[],
       onChunk: TransformersJsChunkCallback,
       onToolCalls: TransformersJsToolCallsCallback,
       params?: LmParameters,
       tools?: WorkerToolDefinition[],
+      continuationOwner?: string,
     }): Promise<void> {
-      return remote.generateText(
-        messages,
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-        workerProxy({ value: (chunk: string) => onChunk({ chunk }) }),
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-        workerProxy({ value: (toolCalls: ToolCall[]) => onToolCalls({ toolCalls }) }),
-        params,
-        tools,
-      );
+      const request = capture?.createRequest();
+      let acceptingCallbacks = true;
+      try {
+        return await session.run({ operation: ({ remote }) => remote.generateText(
+          messages,
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+          workerProxy({ value: (chunk: string) => {
+            if (acceptingCallbacks && session.isActive()) return onChunk({ chunk });
+          } }),
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+          workerProxy({ value: (toolCalls: ToolCall[]) => {
+            if (acceptingCallbacks && session.isActive()) return onToolCalls({ toolCalls });
+          } }),
+          params,
+          tools,
+          request,
+          continuationOwner,
+        ) });
+      } finally {
+        // A failed or disposed RPC cannot deliver into a later request, even
+        // when its callback MessagePort still has queued messages.
+        acceptingCallbacks = false;
+      }
     },
     async dispose(): Promise<void> {
-      try {
-        await releaseWorkerRemote({ remote });
-      } finally {
-        worker.terminate();
-      }
+      session.dispose();
+    },
+  };
+  return {
+    client,
+    isActive: session.isActive,
+    takeGenerationCapture({ identity }) {
+      return session.run<GenerationCaptureReadResult>({ operation: ({ remote }) => remote.takeGenerationCapture(identity) });
     },
   };
 }

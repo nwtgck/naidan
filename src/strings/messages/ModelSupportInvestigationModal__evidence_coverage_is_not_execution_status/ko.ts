@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status = ({ notApplicableCount }: { notApplicableCount: number }): string => `증거의 검증 범위와 실행 상태는 다릅니다. 범위 밖 항목: ${notApplicableCount}개(실행 대기 아님).`;

@@ -4,6 +4,7 @@ import type {
   ModelSupportInvestigationRun,
 } from '@/features/transformers-js/model-support-investigation/types';
 import { runPartialModelSupportInvestigation } from './run-partial-model-support-investigation';
+import { collectReplayMetadata } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 
 function cacheProvenance({ resolvedRevision = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }: {
   resolvedRevision?: string,
@@ -34,6 +35,7 @@ function runtimeRun(): ModelSupportInvestigationRun {
     steps: [
       { id: 'runtime-assets', status: 'passed', detail: 'runtime passed' },
       { id: 'repository-information', status: 'not-run', detail: undefined },
+      { id: 'download-evidence', status: 'not-run', detail: undefined },
       { id: 'existing-model-data', status: 'not-run', detail: undefined },
       { id: 'model-declarations', status: 'not-run', detail: undefined },
       { id: 'template-behavior', status: 'not-run', detail: undefined },
@@ -44,6 +46,8 @@ function runtimeRun(): ModelSupportInvestigationRun {
     ],
     runtimeAssets: undefined,
     repository: undefined,
+    runtimeTarget: undefined,
+    downloadEvidence: undefined,
     cache: undefined,
     declarations: undefined,
     templateBehavior: undefined,
@@ -55,7 +59,72 @@ function runtimeRun(): ModelSupportInvestigationRun {
   };
 }
 
+function downloadEvidence({ repository, runId = 'run-1' }: {
+  repository: {
+    requestedModelId: string;
+    normalizedModelId: string;
+    resolvedRevision: string;
+  };
+  runId?: string;
+}): NonNullable<ModelSupportInvestigationRun['downloadEvidence']> {
+  return {
+    schemaVersion: 1,
+    runId,
+    mode: 'probe-only',
+    run: {
+      modelId: repository.requestedModelId,
+      normalizedModelId: repository.normalizedModelId,
+      requestedRevision: 'main',
+      resolvedRevision: repository.resolvedRevision,
+      repositoryFileCount: 0,
+      repositoryFiles: [],
+      transportObservations: [],
+      skippedModelArtifactCount: 0,
+      bytesConsumed: 0,
+      maximumBytes: 2 * 1024 * 1024,
+      startedAt: '2026-08-06T00:00:01.100Z',
+      finishedAt: '2026-08-06T00:00:01.200Z',
+    },
+    modelArtifactObservations: [],
+    modelArtifactObservationError: undefined,
+    cacheBefore: { modelId: repository.normalizedModelId, normalizedModelId: repository.normalizedModelId, revisions: [] },
+    cacheInspectionError: undefined,
+  };
+}
+
+
 describe('runPartialModelSupportInvestigation', () => {
+
+  it.each([false, true])('collects the same replay evidence in short and Full scopes and preserves it after later planning failure (modelLoad=%s)', async modelLoad => {
+    const repository = {
+      requestedModelId: 'org/model', normalizedModelId: 'org/model', requestedRevision: 'main' as const,
+      resolvedRevision: 'a'.repeat(40), apiUrl: 'https://huggingface.co/api/models/org/model', responseUrl: 'https://huggingface.co/api/models/org/model',
+      fileCount: 1, files: [{ path: 'config.json', size: 2, blobId: undefined, lfsOid: undefined }],
+      pipelineTag: undefined, libraryName: undefined, metadata: {},
+    };
+    const replay = vi.fn<NonNullable<Parameters<typeof runPartialModelSupportInvestigation>[0]['collectReplayMetadata']>>(async ({ run, onSummary }) => {
+      await collectReplayMetadata({
+        modelId: repository.normalizedModelId, revision: run.repository!.resolvedRevision, files: repository.files,
+        budgetBytes: 100, fileTimeoutMs: 1000, modelAccess: 'public-request', localRead: async () => undefined, remoteFetch: async () => new Response('{}'),
+        onSnapshot: ({ snapshot }) => onSummary({ summary: snapshot.summary }),
+      });
+    });
+    const checkpoints: ModelSupportInvestigationRun[] = [];
+    const failure = vi.fn(async () => {
+      throw new Error('Deliberate later planning failure');
+    });
+    const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow', executionPlan: { repositoryDownload: true, modelLoad, generation: false, continuity: false, capabilityProbes: false },
+      runRuntimePreflight: async () => runtimeRun(), inspectRepository: async () => repository,
+      inspectPersistenceRoundTrip: failure, collectDownloadEvidence: failure, inspectCache: failure, verifyCacheProvenance: failure,
+      inspectDeclarations: failure, inspectTemplateBehavior: failure, inspectModelFilePlan: failure,
+      collectReplayMetadata: replay, onEvent: vi.fn(), onRunUpdate: ({ run }) => checkpoints.push(run), now: () => '2026-09-08T00:00:00.000Z',
+    });
+    expect(result.status).toBe('failed');
+    expect(replay).toHaveBeenCalledTimes(1);
+    expect(result.replayMetadata?.retainedBytes).toBe(2);
+    expect(checkpoints.some(run => run.replayMetadata?.status === 'collecting')).toBe(true);
+  });
 
   it('collects resolved declarations and public Auto class evidence after repository and cache inspection', async () => {
     const repository = {
@@ -136,6 +205,8 @@ describe('runPartialModelSupportInvestigation', () => {
     const verifyCacheProvenance = vi.fn().mockResolvedValue(cacheProvenance());
 
     const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow',
+      executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
       inspectPersistenceRoundTrip: async () => ({
         status: 'observed',
         fixtureId: 'tool-call-history-v1',
@@ -149,6 +220,7 @@ describe('runPartialModelSupportInvestigation', () => {
       }),
       runRuntimePreflight: async () => runtimeRun(),
       inspectRepository: async () => repository,
+      collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
       inspectCache: async () => ({
         normalizedModelId: 'org/model',
         rootPath: 'models/huggingface.co/org/model',
@@ -184,15 +256,20 @@ describe('runPartialModelSupportInvestigation', () => {
     });
     expect(verifyCacheProvenance).toHaveBeenCalledWith({ repository, cache: result.cache });
     expect(result.cache?.provenance).toEqual(cacheProvenance());
-    expect(inspectDeclarations).toHaveBeenCalledWith({ repository });
-    expect(inspectTemplateBehavior).toHaveBeenCalledWith({ repository });
+    expect(inspectDeclarations).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository, cache: result.cache });
+    expect(inspectTemplateBehavior).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository });
     expect(inspectModelFilePlan).toHaveBeenCalledWith({
+      runtimeTarget: result.runtimeTarget,
       repository,
       declarations: expect.objectContaining({ modelType: 'new_chat_model' }),
       cache: result.cache,
     });
     expect(result.templateBehavior?.tokenizerClass).toBe('ProbeTokenizer');
-    expect(events).toHaveLength(10);
+    expect(result.steps.find(step => step.id === 'download-evidence')).toMatchObject({
+      status: 'blocked',
+      detail: '0 actual candidate artifact-request observations and 0 bounded transport probes collected; 0 observation errors; no successful artifact-request observation; bounded probe collection ended; Production runtime cache acceptance is a separate observation',
+    });
+    expect(events).toHaveLength(12);
   });
 
   it('checkpoints the cache inventory before bounded provenance verification starts', async () => {
@@ -247,6 +324,8 @@ describe('runPartialModelSupportInvestigation', () => {
     });
 
     const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow',
+      executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
       inspectPersistenceRoundTrip: async () => ({
         status: 'observed',
         fixtureId: 'tool-call-history-v1',
@@ -260,6 +339,7 @@ describe('runPartialModelSupportInvestigation', () => {
       }),
       runRuntimePreflight: async () => runtimeRun(),
       inspectRepository: async () => repository,
+      collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
       inspectCache: async () => cache,
       verifyCacheProvenance,
       inspectDeclarations: async () => ({
@@ -291,6 +371,8 @@ describe('runPartialModelSupportInvestigation', () => {
     const inspectTemplateBehavior = vi.fn();
     const inspectModelFilePlan = vi.fn();
     const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow',
+      executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
       inspectPersistenceRoundTrip: async () => ({
         status: 'observed',
         fixtureId: 'tool-call-history-v1',
@@ -306,6 +388,7 @@ describe('runPartialModelSupportInvestigation', () => {
       inspectRepository: async () => {
         throw new Error('repository unavailable', { cause: new TypeError('repository returned invalid content') });
       },
+      collectDownloadEvidence: vi.fn(),
       inspectCache: async () => ({
         normalizedModelId: 'org/model',
         rootPath: 'models/huggingface.co/org/model',
@@ -354,7 +437,334 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(inspectTemplateBehavior).not.toHaveBeenCalled();
     expect(inspectModelFilePlan).not.toHaveBeenCalled();
     expect(inspectModelFilePlan).not.toHaveBeenCalled();
-    expect(events).toHaveLength(7);
+    expect(events).toHaveLength(8);
+  });
+
+  it('treats external-network denial as an intentional skip while preserving local cache evidence', async () => {
+    const inspectRepository = vi.fn();
+    const collectDownloadEvidence = vi.fn();
+    const verifyCacheProvenance = vi.fn();
+    const inspectDeclarations = vi.fn();
+    const inspectTemplateBehavior = vi.fn();
+    const inspectModelFilePlan = vi.fn();
+
+    const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'deny',
+      executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
+      inspectPersistenceRoundTrip: async () => ({
+        status: 'observed',
+        fixtureId: 'tool-call-history-v1',
+        method: 'chat-content-dto-json-roundtrip-v1',
+        serializedByteLength: 128,
+        serializedSha256: 'b'.repeat(64),
+        originalMessages: [],
+        restoredMessages: [],
+        exactModelVisibleMatch: true,
+        firstMismatchIndex: undefined,
+      }),
+      runRuntimePreflight: async () => runtimeRun(),
+      inspectRepository,
+      collectDownloadEvidence,
+      inspectCache: async () => ({
+        normalizedModelId: 'org/model',
+        rootPath: 'models/huggingface.co/org/model',
+        exists: true,
+        revisionProvenance: 'unknown',
+        revisionProvenanceReason: 'Local cache evidence only',
+        totalBytes: 64,
+        fileCount: 1,
+        completionMarkerCount: 1,
+        incompleteFileCount: 0,
+        orphanCompletionMarkerCount: 0,
+        orphanCompletionMarkerPaths: [],
+        zeroByteFileCount: 0,
+        weightFileCount: 1,
+        allFilesHaveCompletionMarkers: true,
+        files: [],
+      }),
+      verifyCacheProvenance,
+      inspectDeclarations,
+      inspectTemplateBehavior,
+      inspectModelFilePlan,
+      onEvent: vi.fn(),
+      now: () => '2026-08-06T00:00:02.000Z',
+    });
+
+    expect(result.status).toBe('passed');
+    expect(result.repository).toBeUndefined();
+    expect(result.cache).toMatchObject({ exists: true, totalBytes: 64 });
+    expect(result.steps.find(step => step.id === 'repository-information')).toMatchObject({
+      status: 'skipped',
+      detail: 'Skipped because external network access is disabled by investigation policy',
+    });
+    expect(result.steps.find(step => step.id === 'download-evidence')).toMatchObject({ status: 'skipped' });
+    expect(result.steps.find(step => step.id === 'existing-model-data')).toMatchObject({ status: 'passed' });
+    expect(result.steps.find(step => step.id === 'model-declarations')).toMatchObject({
+      status: 'blocked',
+      detail: expect.stringContaining('local RuntimeTarget is unavailable'),
+    });
+    expect(inspectRepository).not.toHaveBeenCalled();
+    expect(collectDownloadEvidence).not.toHaveBeenCalled();
+    expect(verifyCacheProvenance).not.toHaveBeenCalled();
+    expect(inspectDeclarations).not.toHaveBeenCalled();
+    expect(inspectTemplateBehavior).not.toHaveBeenCalled();
+    expect(inspectModelFilePlan).not.toHaveBeenCalled();
+  });
+
+  it('continues with completed local cache evidence after remote repository inspection fails', async () => {
+    const revision = 'e'.repeat(40);
+    const inspectRepository = vi.fn(async () => {
+      throw new Error('repository unavailable');
+    });
+    const collectDownloadEvidence = vi.fn();
+    const inspectDeclarations = vi.fn().mockResolvedValue({
+      normalizedModelId: 'org/model', resolvedRevision: revision, files: [], fileFailures: [], config: { model_type: 'local_model' },
+      modelType: 'local_model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+      classCapabilities: [{ autoClass: 'AutoModelForCausalLM', supports: true, notEvaluatedReason: undefined }],
+    });
+    const inspectTemplateBehavior = vi.fn().mockResolvedValue({
+      normalizedModelId: 'org/model', resolvedRevision: revision, loaderRevisionOption: revision, tokenizerClass: 'LocalTokenizer',
+      declaredChatTemplate: undefined, cases: [], toolTemplateProvenance: undefined,
+    });
+    const inspectModelFilePlan = vi.fn().mockResolvedValue({
+      normalizedModelId: 'org/model', resolvedRevision: revision, modelType: 'local_model',
+      registrySource: 'ModelRegistry.get_model_files', cacheRevisionProvenance: 'unknown', cacheRevisionProvenanceReason: 'local cache only',
+      candidates: [],
+    });
+    const cache = {
+      normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: true,
+      revisionProvenance: 'unknown' as const, revisionProvenanceReason: 'Local cache evidence only', totalBytes: 128, fileCount: 1,
+      completionMarkerCount: 1, incompleteFileCount: 0, orphanCompletionMarkerCount: 0, orphanCompletionMarkerPaths: [],
+      zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: true,
+      files: [{
+        path: `resolve/${revision}/config.json`, repositoryPath: 'config.json', cacheRevision: revision, size: 128, lastModified: 1,
+        hasCompletionMarker: true, isWeightFile: false,
+      }],
+    };
+
+    const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow',
+      executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
+      inspectPersistenceRoundTrip: async () => ({
+        status: 'observed', fixtureId: 'tool-call-history-v1', method: 'chat-content-dto-json-roundtrip-v1',
+        serializedByteLength: 1, serializedSha256: 'f'.repeat(64), originalMessages: [], restoredMessages: [],
+        exactModelVisibleMatch: true, firstMismatchIndex: undefined,
+      }),
+      runRuntimePreflight: async () => runtimeRun(),
+      inspectRepository,
+      collectDownloadEvidence,
+      inspectCache: async () => cache,
+      verifyCacheProvenance: vi.fn(),
+      inspectDeclarations,
+      inspectTemplateBehavior,
+      inspectModelFilePlan,
+      deferTemplateBehavior: true,
+      onEvent: vi.fn(),
+      now: () => '2026-08-06T00:00:02.000Z',
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.repository).toBeUndefined();
+    expect(result.runtimeTarget).toMatchObject({
+      normalizedModelId: 'org/model', evidenceRevision: revision, loaderRevisionOption: revision, source: 'local-cache',
+      revisionIdentity: 'local-immutable-revision',
+    });
+    expect(result.steps.find(step => step.id === 'repository-information')?.status).toBe('failed');
+    expect(result.steps.find(step => step.id === 'download-evidence')?.status).toBe('blocked');
+    expect(result.steps.find(step => step.id === 'model-declarations')?.status).toBe('passed');
+    expect(result.steps.find(step => step.id === 'model-file-plan')?.status).toBe('passed');
+    expect(result.steps.find(step => step.id === 'template-behavior')?.status).toBe('blocked');
+    expect(collectDownloadEvidence).not.toHaveBeenCalled();
+    expect(inspectDeclarations).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository: undefined, cache });
+    expect(inspectTemplateBehavior).not.toHaveBeenCalled();
+    expect(inspectModelFilePlan).toHaveBeenCalledWith({
+      runtimeTarget: result.runtimeTarget, repository: undefined, declarations: result.declarations, cache,
+    });
+  });
+
+  it('uses completed local cache evidence when external network access is denied', async () => {
+    const revision = 'c'.repeat(40);
+    const inspectRepository = vi.fn();
+    const collectDownloadEvidence = vi.fn();
+    const inspectDeclarations = vi.fn().mockResolvedValue({
+      normalizedModelId: 'org/model', resolvedRevision: revision, files: [], fileFailures: [], config: { model_type: 'local_model' },
+      modelType: 'local_model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+      classCapabilities: [{ autoClass: 'AutoModelForCausalLM', supports: true, notEvaluatedReason: undefined }],
+    });
+    const inspectTemplateBehavior = vi.fn().mockResolvedValue({
+      normalizedModelId: 'org/model', resolvedRevision: revision, loaderRevisionOption: revision, tokenizerClass: 'LocalTokenizer',
+      declaredChatTemplate: undefined, cases: [], toolTemplateProvenance: undefined,
+    });
+    const inspectModelFilePlan = vi.fn().mockResolvedValue({
+      normalizedModelId: 'org/model', resolvedRevision: revision, modelType: 'local_model',
+      registrySource: 'ModelRegistry.get_model_files', cacheRevisionProvenance: 'unknown', cacheRevisionProvenanceReason: 'local cache only',
+      candidates: [],
+    });
+    const cache = {
+      normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: true,
+      revisionProvenance: 'unknown' as const, revisionProvenanceReason: 'Local cache evidence only', totalBytes: 128, fileCount: 1,
+      completionMarkerCount: 1, incompleteFileCount: 0, orphanCompletionMarkerCount: 0, orphanCompletionMarkerPaths: [],
+      zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: true,
+      files: [{
+        path: `resolve/${revision}/config.json`, repositoryPath: 'config.json', cacheRevision: revision, size: 128, lastModified: 1,
+        hasCompletionMarker: true, isWeightFile: false,
+      }],
+    };
+
+    const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'deny',
+      executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
+      inspectPersistenceRoundTrip: async () => ({
+        status: 'observed', fixtureId: 'tool-call-history-v1', method: 'chat-content-dto-json-roundtrip-v1',
+        serializedByteLength: 1, serializedSha256: 'd'.repeat(64), originalMessages: [], restoredMessages: [],
+        exactModelVisibleMatch: true, firstMismatchIndex: undefined,
+      }),
+      runRuntimePreflight: async () => runtimeRun(),
+      inspectRepository,
+      collectDownloadEvidence,
+      inspectCache: async () => cache,
+      verifyCacheProvenance: vi.fn(),
+      inspectDeclarations,
+      inspectTemplateBehavior,
+      inspectModelFilePlan,
+      deferTemplateBehavior: true,
+      onEvent: vi.fn(),
+      now: () => '2026-08-06T00:00:02.000Z',
+    });
+
+    expect(result.status).toBe('passed');
+    expect(result.repository).toBeUndefined();
+    expect(result.runtimeTarget).toEqual({
+      normalizedModelId: 'org/model', evidenceRevision: revision, loaderRevisionOption: revision, source: 'local-cache',
+      revisionIdentity: 'local-immutable-revision', pipelineTag: undefined,
+    });
+    expect(result.steps.find(step => step.id === 'repository-information')?.status).toBe('skipped');
+    expect(result.steps.find(step => step.id === 'download-evidence')?.status).toBe('skipped');
+    expect(result.steps.find(step => step.id === 'model-declarations')?.status).toBe('passed');
+    expect(result.steps.find(step => step.id === 'model-file-plan')?.status).toBe('passed');
+    expect(result.steps.find(step => step.id === 'template-behavior')?.status).toBe('blocked');
+    expect(inspectRepository).not.toHaveBeenCalled();
+    expect(collectDownloadEvidence).not.toHaveBeenCalled();
+    expect(inspectDeclarations).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository: undefined, cache });
+    expect(inspectTemplateBehavior).not.toHaveBeenCalled();
+    expect(inspectModelFilePlan).toHaveBeenCalledWith({
+      runtimeTarget: result.runtimeTarget, repository: undefined, declarations: result.declarations, cache,
+    });
+  });
+
+  it('keeps download-focused planning to repository, cache, declarations, and ModelRegistry without template work', async () => {
+    const repository = {
+      requestedModelId: 'hf.co/org/model',
+      normalizedModelId: 'org/model',
+      requestedRevision: 'main',
+      resolvedRevision: 'a'.repeat(40),
+      apiUrl: 'https://huggingface.co/api/models/org/model/revision/main?blobs=true',
+      responseUrl: 'https://huggingface.co/api/models/org/model/revision/main?blobs=true',
+      fileCount: 0,
+      files: [],
+      pipelineTag: 'text-generation',
+      libraryName: 'transformers',
+      metadata: {},
+    } as never;
+    const inspectCache = vi.fn(async () => ({
+      normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: false,
+      revisionProvenance: 'unknown' as const, revisionProvenanceReason: 'not observed', totalBytes: 0, fileCount: 0,
+      completionMarkerCount: 0, incompleteFileCount: 0, orphanCompletionMarkerCount: 0, orphanCompletionMarkerPaths: [],
+      zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: false, files: [],
+    }));
+    const inspectDeclarations = vi.fn(async () => ({
+      normalizedModelId: 'org/model', resolvedRevision: 'a'.repeat(40), files: [], fileFailures: [], config: { model_type: 'model' },
+      modelType: 'model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+      classCapabilities: [{ autoClass: 'AutoModelForCausalLM' as const, supports: true, notEvaluatedReason: undefined }],
+    }));
+    const inspectModelFilePlan = vi.fn(async () => ({
+      normalizedModelId: 'org/model', resolvedRevision: 'a'.repeat(40), modelType: 'model',
+      registrySource: 'ModelRegistry.get_model_files' as const, cacheRevisionProvenance: 'not-observed' as const, cacheRevisionProvenanceReason: 'not observed',
+      candidates: [],
+    }));
+    const inspectTemplateBehavior = vi.fn();
+    const inspectPersistenceRoundTrip = vi.fn();
+
+    const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow',
+      executionPlan: { repositoryDownload: true, modelLoad: false, generation: false, continuity: false, capabilityProbes: false },
+      inspectPersistenceRoundTrip,
+      runRuntimePreflight: async () => runtimeRun(),
+      inspectRepository: async () => repository,
+      collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
+      inspectCache,
+      verifyCacheProvenance: vi.fn(),
+      inspectDeclarations,
+      inspectTemplateBehavior,
+      inspectModelFilePlan,
+      onEvent: vi.fn(),
+      now: () => '2026-08-06T00:00:02.000Z',
+    });
+
+    expect(inspectCache).toHaveBeenCalledOnce();
+    expect(inspectDeclarations).toHaveBeenCalledOnce();
+    expect(inspectModelFilePlan).toHaveBeenCalledOnce();
+    expect(inspectPersistenceRoundTrip).not.toHaveBeenCalled();
+    expect(inspectTemplateBehavior).not.toHaveBeenCalled();
+    expect(result.steps.find(step => step.id === 'model-file-plan')?.status).toBe('passed');
+    expect(result.steps.find(step => step.id === 'template-behavior')?.status).toBe('skipped');
+  });
+
+  it('skips tokenizer/template and persistence work when Model Load is selected without Generation or Continuity', async () => {
+    const repository = {
+      requestedModelId: 'hf.co/org/model',
+      normalizedModelId: 'org/model',
+      requestedRevision: 'main',
+      resolvedRevision: 'a'.repeat(40),
+      apiUrl: 'https://huggingface.co/api/models/org/model/revision/main?blobs=true',
+      responseUrl: 'https://huggingface.co/api/models/org/model/revision/main?blobs=true',
+      fileCount: 0,
+      files: [],
+      pipelineTag: 'text-generation',
+      libraryName: 'transformers',
+      metadata: {},
+    } as never;
+    const inspectPersistenceRoundTrip = vi.fn();
+    const inspectTemplateBehavior = vi.fn();
+
+    const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow',
+      executionPlan: { repositoryDownload: true, modelLoad: true, generation: false, continuity: false, capabilityProbes: false },
+      inspectPersistenceRoundTrip,
+      runRuntimePreflight: async () => runtimeRun(),
+      inspectRepository: async () => repository,
+      collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
+      inspectCache: async () => ({
+        normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: false,
+        revisionProvenance: 'unknown', revisionProvenanceReason: 'not observed', totalBytes: 0, fileCount: 0,
+        completionMarkerCount: 0, incompleteFileCount: 0, orphanCompletionMarkerCount: 0, orphanCompletionMarkerPaths: [],
+        zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: false, files: [],
+      }),
+      verifyCacheProvenance: vi.fn(),
+      inspectDeclarations: async () => ({
+        normalizedModelId: 'org/model', resolvedRevision: 'a'.repeat(40), files: [], fileFailures: [], config: { model_type: 'model' },
+        modelType: 'model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+        classCapabilities: [{ autoClass: 'AutoModelForCausalLM', supports: true, notEvaluatedReason: undefined }],
+      }),
+      inspectTemplateBehavior,
+      inspectModelFilePlan: async () => ({
+        normalizedModelId: 'org/model', resolvedRevision: 'a'.repeat(40), modelType: 'model',
+        registrySource: 'ModelRegistry.get_model_files', cacheRevisionProvenance: 'not-observed', cacheRevisionProvenanceReason: 'not observed',
+        candidates: [],
+      }),
+      onEvent: vi.fn(),
+      now: () => '2026-08-06T00:00:02.000Z',
+    });
+
+    expect(inspectPersistenceRoundTrip).not.toHaveBeenCalled();
+    expect(inspectTemplateBehavior).not.toHaveBeenCalled();
+    expect(result.persistenceRoundTrip).toBeUndefined();
+    expect(result.templateBehavior).toBeUndefined();
+    expect(result.steps.find(step => step.id === 'template-behavior')).toMatchObject({
+      status: 'skipped',
+      detail: 'Skipped because Generation is not selected by investigation scope',
+    });
+    expect(result.steps.find(step => step.id === 'model-file-plan')?.status).toBe('passed');
   });
 
   it('continues independent planning after a runtime integrity failure', async () => {
@@ -397,6 +807,8 @@ describe('runPartialModelSupportInvestigation', () => {
     });
 
     const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow',
+      executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
       inspectPersistenceRoundTrip: async () => ({
         status: 'observed',
         fixtureId: 'tool-call-history-v1',
@@ -408,7 +820,9 @@ describe('runPartialModelSupportInvestigation', () => {
         exactModelVisibleMatch: true,
         firstMismatchIndex: undefined,
       }),
-      runRuntimePreflight: async () => failed, inspectRepository, inspectCache,
+      runRuntimePreflight: async () => failed, inspectRepository,
+      collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
+      inspectCache,
       verifyCacheProvenance: async () => cacheProvenance(), inspectDeclarations, inspectTemplateBehavior, inspectModelFilePlan,
       onEvent: vi.fn(), now: () => '2026-08-06T00:00:02.000Z',
     });
@@ -417,8 +831,8 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(result.error).toContain('runtime control failed');
     expect(inspectRepository).toHaveBeenCalledOnce();
     expect(inspectCache).toHaveBeenCalledOnce();
-    expect(inspectDeclarations).toHaveBeenCalledWith({ repository });
-    expect(inspectTemplateBehavior).toHaveBeenCalledWith({ repository });
+    expect(inspectDeclarations).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository, cache: result.cache });
+    expect(inspectTemplateBehavior).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository });
     expect(inspectModelFilePlan).toHaveBeenCalledOnce();
     expect(result.repository?.resolvedRevision).toBe(repository.resolvedRevision);
     expect(result.steps.find(step => step.id === 'model-file-plan')?.status).toBe('passed');

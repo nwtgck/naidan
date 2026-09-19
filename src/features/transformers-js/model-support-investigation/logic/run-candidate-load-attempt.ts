@@ -1,4 +1,5 @@
 import type {
+  ModelSupportInvestigationCandidateExecutionOptions,
   ModelSupportInvestigationCandidateFilePlan,
   ModelSupportInvestigationGenerationAutoClassName,
   ModelSupportInvestigationLoadAttempt,
@@ -10,7 +11,8 @@ import type {
   ModelSupportInvestigationLoadedModelObservation,
   ModelSupportInvestigationNaturalGenerationObservation,
   ModelSupportInvestigationModelDeclarations,
-  ModelSupportInvestigationRepository,
+  ModelSupportInvestigationProgressObservation,
+  ModelSupportInvestigationRuntimeTarget,
   ModelSupportInvestigationTemplateBehavior,
   ModelSupportInvestigationTextInputStrategy,
   ModelSupportInvestigationToolProtocolProbe,
@@ -57,12 +59,14 @@ function detail({ candidate, stage }: {
 }
 
 export async function runCandidateLoadAttempt<TModel, TInput>({
-  repository,
+  runtimeTarget,
   declarations,
   templateBehavior,
   candidate,
+  executionOptions = { generation: true, capabilityProbes: true },
+  loaderRevisionOption,
   autoClass,
-  loadModel,
+  loadDownloadedModel,
   observeLoadedModel,
   buildInput,
   generateMinimumToken,
@@ -73,14 +77,23 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   onAttemptEvent,
   onAttemptUpdate = () => undefined,
   now,
+  monotonicNowMs = () => performance.now(),
   createAttemptId,
 }: {
-  repository: ModelSupportInvestigationRepository,
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
   declarations: ModelSupportInvestigationModelDeclarations,
   templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
   candidate: ModelSupportInvestigationCandidateFilePlan,
+  executionOptions?: ModelSupportInvestigationCandidateExecutionOptions,
+  loaderRevisionOption?: string | null,
   autoClass: ModelSupportInvestigationGenerationAutoClassName | undefined,
-  loadModel: () => Promise<TModel>,
+  /**
+   * Loads only from already-downloaded artifacts. This callback MUST NOT start,
+   * resume, repair, or otherwise perform a model download.
+   */
+  loadDownloadedModel: ({ onProgressObservation }: {
+    onProgressObservation: ({ progress }: { progress: ModelSupportInvestigationProgressObservation }) => void,
+  }) => Promise<TModel>,
   observeLoadedModel: ({ model }: { model: TModel }) => ModelSupportInvestigationLoadedModelObservation,
   buildInput: ({ inputIds, strategy }: {
     inputIds: number[],
@@ -110,6 +123,7 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   onAttemptEvent: ({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void,
   onAttemptUpdate?: ({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void,
   now: () => string,
+  monotonicNowMs?: () => number,
   createAttemptId: () => string,
 }): Promise<ModelSupportInvestigationLoadAttempt> {
   const startedAt = now();
@@ -131,8 +145,13 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
     device: candidate.device,
     dtype: candidate.dtype,
     autoClass,
-    resolvedRevision: repository.resolvedRevision,
+    resolvedRevision: runtimeTarget.evidenceRevision,
+    loaderRevisionOption: loaderRevisionOption === undefined
+      ? runtimeTarget.loaderRevisionOption
+      : loaderRevisionOption,
     startedAt,
+    modelLoadDurationMs: undefined,
+    modelLoadProgress: undefined,
   };
 
   emit({ stage: "worker-start", status: "passed" });
@@ -215,6 +234,8 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   let result: { generatedTokenIds: number[], generatedText: string, modelType: string | undefined } | undefined;
   let naturalGeneration: ModelSupportInvestigationNaturalGenerationObservation | undefined;
   let toolProtocolProbe: ModelSupportInvestigationToolProtocolProbe | undefined;
+  let modelLoadDurationMs: number | undefined;
+  let modelLoadProgress: ModelSupportInvestigationProgressObservation | undefined;
   let failureStage: ModelSupportInvestigationLoadAttemptStage | undefined;
   let failure: ModelSupportInvestigationLoadAttempt["error"];
   let activeInputStrategy: ModelSupportInvestigationTextInputStrategy | undefined;
@@ -224,6 +245,8 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   const publishAttemptCheckpoint = (): void => {
     const checkpoint: ModelSupportInvestigationLoadAttemptCheckpoint = {
       ...base,
+      modelLoadDurationMs,
+      modelLoadProgress: modelLoadProgress === undefined ? undefined : structuredClone(modelLoadProgress),
       checkpointedAt: now(),
       status: "running",
       currentStage: activeStage,
@@ -252,11 +275,43 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   };
   try {
     emit({ stage: "model-load", status: "running" });
-    model = await loadModel();
+    const modelLoadStartedAtMs = monotonicNowMs();
+    try {
+      model = await loadDownloadedModel({
+        onProgressObservation: ({ progress }) => {
+          modelLoadProgress = structuredClone(progress);
+          publishAttemptCheckpoint();
+        },
+      });
+    } finally {
+      modelLoadDurationMs = Math.max(0, monotonicNowMs() - modelLoadStartedAtMs);
+    }
     loadedModel = observeLoadedModel({ model });
     emit({ stage: "model-load", status: "passed" });
     publishAttemptCheckpoint();
-    if (!supportsGenericTextOnlyInput({ autoClass })) {
+    if (!executionOptions.generation) {
+      emit({
+        stage: "input-build",
+        status: "skipped",
+        eventDetail: `${candidate.candidateId}: generation was not selected by investigation scope`,
+      });
+      emit({
+        stage: "first-generation",
+        status: "skipped",
+        eventDetail: `${candidate.candidateId}: generation was not selected by investigation scope`,
+      });
+      emit({
+        stage: "natural-generation",
+        status: "skipped",
+        eventDetail: `${candidate.candidateId}: generation was not selected by investigation scope`,
+      });
+      emit({
+        stage: "tool-protocol-probe",
+        status: "skipped",
+        eventDetail: `${candidate.candidateId}: capability probes were not selected by investigation scope`,
+      });
+      publishAttemptCheckpoint();
+    } else if (!supportsGenericTextOnlyInput({ autoClass })) {
       failureStage = "input-build";
       failure = {
         name: "ReferenceInputBuilderUnavailableError",
@@ -446,70 +501,79 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
           });
         }
         publishAttemptCheckpoint();
-        const toolProbePlan = planToolProtocolProbe({
-          provenance: templateBehavior?.toolTemplateProvenance,
-          isEncoderDecoder: loadedModel.isEncoderDecoder,
-          maximumForcedTokenCount: MAXIMUM_FORCED_TOOL_PROTOCOL_TOKENS,
-        });
-        switch (toolProbePlan.status) {
-        case "unavailable":
-          toolProtocolProbe = {
-            status: "unavailable",
-            forced: false,
-            source: "chat-template-render",
-            generationCaseId: "tools-generation",
-            assistantToolCallCaseId: "assistant-tool-call-history",
-            toolResultContinuationCaseId: "tool-result-continuation",
-            reason: toolProbePlan.reason,
-          };
+        if (!executionOptions.capabilityProbes) {
           emit({
             stage: "tool-protocol-probe",
             status: "skipped",
-            eventDetail: `${candidate.candidateId}: tool protocol probe unavailable: ${toolProbePlan.reason}`,
+            eventDetail: `${candidate.candidateId}: capability probes were not selected by investigation scope`,
           });
-          break;
-        case "eligible":
-          emit({ stage: "tool-protocol-probe", status: "running" });
-          try {
-            toolProtocolProbe = await generateToolProtocolProbe({
-              model,
-              inputTokenIds: toolProbePlan.inputTokenIds,
-              forcedTokenIds: toolProbePlan.forcedTokenIds,
-              inputStrategy: selectedInputStrategy,
-            });
-            emit({
-              stage: "tool-protocol-probe",
-              status: "passed",
-              eventDetail: toolProtocolProbe.exactMatch
-                ? `${candidate.candidateId}: forced ${toolProtocolProbe.generatedTokenIds.length} template-derived tool protocol tokens`
-                : `${candidate.candidateId}: tool protocol generation first differed at index ${toolProtocolProbe.firstMismatchIndex ?? 0}`,
-            });
-          } catch (error) {
-            const serialized = serializeInvestigationError({ error });
+          publishAttemptCheckpoint();
+        } else {
+          const toolProbePlan = planToolProtocolProbe({
+            provenance: templateBehavior?.toolTemplateProvenance,
+            isEncoderDecoder: loadedModel.isEncoderDecoder,
+            maximumForcedTokenCount: MAXIMUM_FORCED_TOOL_PROTOCOL_TOKENS,
+          });
+          switch (toolProbePlan.status) {
+          case "unavailable":
             toolProtocolProbe = {
-              status: "failed",
-              forced: true,
+              status: "unavailable",
+              forced: false,
               source: "chat-template-render",
               generationCaseId: "tools-generation",
               assistantToolCallCaseId: "assistant-tool-call-history",
               toolResultContinuationCaseId: "tool-result-continuation",
-              inputTokenIds: toolProbePlan.inputTokenIds,
-              forcedTokenIds: toolProbePlan.forcedTokenIds,
-              error: serialized,
+              reason: toolProbePlan.reason,
             };
             emit({
               stage: "tool-protocol-probe",
-              status: "failed",
-              eventDetail: `${candidate.candidateId}: tool protocol probe failed: ${serialized.message}`,
+              status: "skipped",
+              eventDetail: `${candidate.candidateId}: tool protocol probe unavailable: ${toolProbePlan.reason}`,
             });
+            break;
+          case "eligible":
+            emit({ stage: "tool-protocol-probe", status: "running" });
+            try {
+              toolProtocolProbe = await generateToolProtocolProbe({
+                model,
+                inputTokenIds: toolProbePlan.inputTokenIds,
+                forcedTokenIds: toolProbePlan.forcedTokenIds,
+                inputStrategy: selectedInputStrategy,
+              });
+              emit({
+                stage: "tool-protocol-probe",
+                status: "passed",
+                eventDetail: toolProtocolProbe.exactMatch
+                  ? `${candidate.candidateId}: forced ${toolProtocolProbe.generatedTokenIds.length} template-derived tool protocol tokens`
+                  : `${candidate.candidateId}: tool protocol generation first differed at index ${toolProtocolProbe.firstMismatchIndex ?? 0}`,
+              });
+            } catch (error) {
+              const serialized = serializeInvestigationError({ error });
+              toolProtocolProbe = {
+                status: "failed",
+                forced: true,
+                source: "chat-template-render",
+                generationCaseId: "tools-generation",
+                assistantToolCallCaseId: "assistant-tool-call-history",
+                toolResultContinuationCaseId: "tool-result-continuation",
+                inputTokenIds: toolProbePlan.inputTokenIds,
+                forcedTokenIds: toolProbePlan.forcedTokenIds,
+                error: serialized,
+              };
+              emit({
+                stage: "tool-protocol-probe",
+                status: "failed",
+                eventDetail: `${candidate.candidateId}: tool protocol probe failed: ${serialized.message}`,
+              });
+            }
+            break;
+          default: {
+            const _ex: never = toolProbePlan;
+            return _ex;
           }
-          break;
-        default: {
-          const _ex: never = toolProbePlan;
-          return _ex;
+          }
+          publishAttemptCheckpoint();
         }
-        }
-        publishAttemptCheckpoint();
       }
     }
   } catch (error) {
@@ -550,6 +614,8 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
 
   return {
     ...base,
+    modelLoadDurationMs,
+    modelLoadProgress,
     completedAt: now(),
     status: failure === undefined ? "passed" : "failed",
     failureStage,

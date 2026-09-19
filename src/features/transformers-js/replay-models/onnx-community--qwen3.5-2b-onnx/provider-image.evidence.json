@@ -1,0 +1,267 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "image",
+  "contextSha256": "bb445f61eb23247bc1128b4ec52443c1227a8e0dea1ce99725ea3dfac8c090b7",
+  "invocations": [],
+  "inputGaps": [
+    {
+      "localOrdinal": 1,
+      "requestInput": {
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Describe the single synthetic image in one short phrase."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [],
+        "parameters": {
+          "temperature": 0,
+          "topP": 1,
+          "maxCompletionTokens": 1,
+          "presencePenalty": null,
+          "frequencyPenalty": null,
+          "stop": null,
+          "reasoning": {
+            "effort": null
+          }
+        }
+      },
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              88
+            ],
+            "byteLength": 704,
+            "sha256": "28ee83c83e38da602851bb40cc1f2704848cd8c49a1ad317e9c4504a8c4a19c3"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              88
+            ],
+            "byteLength": 704,
+            "sha256": "c190ff373c4e17c9198ee88fdf63da604ff5e318bfcc22f35e407e51ceca57e2"
+          }
+        },
+        {
+          "name": "pixel_values",
+          "value": {
+            "kind": "tensor",
+            "dtype": "float32",
+            "dims": [
+              256,
+              1536
+            ],
+            "byteLength": 1572864,
+            "sha256": "106f0647ae10a6516b1ab2968038161e287ef40d1b22ca047531ed768e594ef1"
+          }
+        },
+        {
+          "name": "image_grid_thw",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              3
+            ],
+            "byteLength": 24,
+            "sha256": "53389fa912f56f81bbbe0669ab378c489b4cfaf9501876dcaec451ae86db735b"
+          }
+        },
+        {
+          "name": "original_sizes",
+          "value": {
+            "kind": "image-sizes",
+            "value": [
+              [
+                1,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "name": "reshaped_input_sizes",
+          "value": {
+            "kind": "image-sizes",
+            "value": [
+              [
+                256,
+                256
+              ]
+            ]
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              88
+            ],
+            "byteLength": 704,
+            "sha256": "28ee83c83e38da602851bb40cc1f2704848cd8c49a1ad317e9c4504a8c4a19c3"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              88
+            ],
+            "byteLength": 704,
+            "sha256": "c190ff373c4e17c9198ee88fdf63da604ff5e318bfcc22f35e407e51ceca57e2"
+          }
+        },
+        {
+          "name": "pixel_values",
+          "value": {
+            "kind": "tensor",
+            "dtype": "float32",
+            "dims": [
+              256,
+              1536
+            ],
+            "byteLength": 1572864,
+            "sha256": "106f0647ae10a6516b1ab2968038161e287ef40d1b22ca047531ed768e594ef1"
+          }
+        },
+        {
+          "name": "image_grid_thw",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              3
+            ],
+            "byteLength": 24,
+            "sha256": "53389fa912f56f81bbbe0669ab378c489b4cfaf9501876dcaec451ae86db735b"
+          }
+        },
+        {
+          "name": "original_sizes",
+          "value": {
+            "kind": "image-sizes",
+            "value": [
+              [
+                1,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "name": "reshaped_input_sizes",
+          "value": {
+            "kind": "image-sizes",
+            "value": [
+              [
+                256,
+                256
+              ]
+            ]
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 14,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "pixel_values",
+              "image_grid_thw",
+              "original_sizes",
+              "reshaped_input_sizes",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 1,
+          "contextLimit": 262144,
+          "promptTokenCount": 88,
+          "usedContextTokenCount": 88
+        }
+      }
+    }
+  ],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "f588e6c79535f19f4ffb8793b9c3a0039037854529c6b8e5dee14fd9cafeca1d"
+}

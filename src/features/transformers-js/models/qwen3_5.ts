@@ -1,14 +1,19 @@
 import type { ChatMessage, ToolCall } from '@/01-models/types';
 import type { WorkerToolDefinition } from '@/features/transformers-js/types';
+import { z } from 'zod';
 
 export type Qwen3_5ReasoningMode = 'default' | 'enabled' | 'disabled';
 
+export interface Qwen3_5TemplateRenderer {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the native tokenizer method and preserves its receiver.
+  apply_chat_template(messages: Array<{ role: string; content: ChatMessage['content']; tool_calls?: unknown[]; tool_call_id?: ChatMessage['tool_call_id'] }>, options: {
+    tokenize: false; add_generation_prompt: true; tools?: WorkerToolDefinition[]; enable_thinking?: boolean;
+  }): string;
+}
+
 export interface Qwen3_5ConversationState {
   modelId: string,
-  promptHistory: string,
   messageCount: number,
-  imageGridThw: unknown,
-  videoGridThw: unknown,
 }
 
 export function sanitizeQwen3_5VisibleText({
@@ -47,87 +52,28 @@ export function buildQwen3_5Prompt({
   messages,
   tools,
   reasoningMode,
+  tokenizer,
 }: {
   messages: ChatMessage[],
   tools: WorkerToolDefinition[] | undefined,
   reasoningMode: Qwen3_5ReasoningMode,
+  tokenizer: Qwen3_5TemplateRenderer,
 }): string {
-  const sections: string[] = [];
-  const firstMessage = messages[0];
-  const firstSystemContent = firstMessage?.role === 'system'
-    ? serializeMessageContent({ message: firstMessage })
-    : '';
-
-  if (tools && tools.length > 0) {
-    sections.push(buildQwen3_5ToolUsePrelude({
-      systemContent: firstSystemContent,
-      tools,
-    }));
-  } else if (firstMessage?.role === 'system') {
-    sections.push(`<|im_start|>system\n${firstSystemContent}<|im_end|>`);
-  }
-
-  const normalizedMessages = tools && firstMessage?.role === 'system'
-    ? messages.slice(1)
-    : messages;
-
-  for (let index = 0; index < normalizedMessages.length; index += 1) {
-    const message = normalizedMessages[index];
-    if (!message) continue;
-
-    if (message.role === 'tool') {
-      if (index === 0 || normalizedMessages[index - 1]?.role !== 'tool') {
-        sections.push('<|im_start|>user');
-      }
-      sections.push(`<tool_response>\n${serializeMessageContent({ message })}\n</tool_response>`);
-      if (index === normalizedMessages.length - 1 || normalizedMessages[index + 1]?.role !== 'tool') {
-        sections.push('<|im_end|>');
-      }
-      continue;
+  const thinking = (() => {
+    switch (reasoningMode) {
+    case 'default': return {};
+    case 'enabled': return { enable_thinking: true };
+    case 'disabled': return { enable_thinking: false };
+    default: { const exhaustive: never = reasoningMode; throw new Error(`Unhandled Qwen reasoning mode: ${exhaustive}`); }
     }
-
-    sections.push(serializeQwen3_5Message({ message }));
-  }
-
-  sections.push(buildQwen3_5AssistantPrefix({ reasoningMode }));
-  return `${sections.join('\n')}\n`;
-}
-
-export function extractQwen3_5ConversationState({
-  modelId,
-  promptHistory,
-  messageCount,
-  imageGridThw,
-  videoGridThw,
-}: {
-  modelId: string,
-  promptHistory: string,
-  messageCount: number,
-  imageGridThw: unknown,
-  videoGridThw: unknown,
-}): Qwen3_5ConversationState {
-  return {
-    modelId,
-    promptHistory,
-    messageCount,
-    imageGridThw,
-    videoGridThw,
-  };
-}
-
-export function buildQwen3_5NoToolContinuationPrompt({
-  promptHistory,
-  message,
-  reasoningMode,
-}: {
-  promptHistory: string,
-  message: ChatMessage,
-  reasoningMode: Qwen3_5ReasoningMode,
-}): string {
-  const trimmedPromptHistory = promptHistory.endsWith('\n')
-    ? promptHistory.slice(0, -1)
-    : promptHistory;
-  return `${trimmedPromptHistory}\n${serializeQwen3_5UserTurnForContinuation({ message, reasoningMode })}`;
+  })();
+  // Undefined effort is intentionally absent: different native model templates
+  // have different defaults. Never add whitespace to the rendered suffix.
+  return tokenizer.apply_chat_template(messages.map(message => ({
+    ...message,
+    role: message.role === 'developer' ? 'system' : message.role,
+    ...(message.tool_calls === undefined ? {} : { tool_calls: normalizeQwen3_5ToolCallsForTemplate({ toolCalls: message.tool_calls }) }),
+  })), { tokenize: false, add_generation_prompt: true, ...thinking, ...(tools?.length ? { tools } : {}) });
 }
 
 export type Qwen3_5NoToolContinuationEligibility =
@@ -139,6 +85,7 @@ export type Qwen3_5NoToolContinuationEligibility =
         | 'model-mismatch'
         | 'message-count-mismatch'
         | 'last-message-is-not-user'
+        | 'preceding-message-is-not-assistant'
         | 'tool-history-present',
     };
 
@@ -157,7 +104,7 @@ export function assessQwen3_5NoToolContinuationEligibility({
   if (conversationState.modelId !== activeModelId) {
     return { status: 'ineligible', reason: 'model-mismatch' };
   }
-  if (messages.length !== conversationState.messageCount + 1) {
+  if (messages.length !== conversationState.messageCount + 2) {
     return { status: 'ineligible', reason: 'message-count-mismatch' };
   }
 
@@ -165,6 +112,7 @@ export function assessQwen3_5NoToolContinuationEligibility({
   if (!lastMessage || lastMessage.role !== 'user') {
     return { status: 'ineligible', reason: 'last-message-is-not-user' };
   }
+  if (messages.at(-2)?.role !== 'assistant') return { status: 'ineligible', reason: 'preceding-message-is-not-assistant' };
 
   const hasToolHistory = messages.some((message, index) => (
     index !== messages.length - 1
@@ -177,176 +125,22 @@ export function assessQwen3_5NoToolContinuationEligibility({
   return { status: 'eligible' };
 }
 
-export function applyQwen3_5ConversationState({
+export function normalizeQwen3_5ProcessorInputs({
   inputs,
-  conversationState,
 }: {
   inputs: Record<string, unknown>,
-  conversationState: Qwen3_5ConversationState | undefined,
 }): Record<string, unknown> {
   const mergedInputs = { ...inputs };
 
-  if (conversationState && !('image_grid_thw' in mergedInputs) && conversationState.imageGridThw !== undefined) {
-    mergedInputs['image_grid_thw'] = conversationState.imageGridThw;
-  }
-  if (conversationState && !('video_grid_thw' in mergedInputs) && conversationState.videoGridThw !== undefined) {
-    mergedInputs['video_grid_thw'] = conversationState.videoGridThw;
-  }
-
-  delete mergedInputs['pixel_values'];
-  delete mergedInputs['pixel_values_videos'];
+  if (mergedInputs['pixel_values'] == null) delete mergedInputs['pixel_values'];
+  if (mergedInputs['pixel_values_videos'] == null) delete mergedInputs['pixel_values_videos'];
   if (mergedInputs['image_grid_thw'] == null) delete mergedInputs['image_grid_thw'];
   if (mergedInputs['video_grid_thw'] == null) delete mergedInputs['video_grid_thw'];
 
   return mergedInputs;
 }
 
-function buildQwen3_5ToolUsePrelude({
-  systemContent,
-  tools,
-}: {
-  systemContent: string,
-  tools: WorkerToolDefinition[],
-}): string {
-  const toolLines = tools.map((tool) => JSON.stringify(tool)).join('\n');
-  const systemPrefix = systemContent ? `${systemContent}\n\n` : '';
-
-  // Match the model's native tool-use template structure so manual prompt
-  // building stays aligned with Qwen's expected serialized history.
-  return `<|im_start|>system
-${systemPrefix}# Tools
-
-You may call one or more functions to assist with the user query.
-
-You are provided with function signatures within <tools></tools> XML tags:
-<tools>
-${toolLines}
-</tools>
-
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call><|im_end|>`;
-}
-
-function serializeQwen3_5Message({
-  message,
-}: {
-  message: ChatMessage,
-}): string {
-  if (message.role === 'user') {
-    return `<|im_start|>user\n${serializeMessageContent({ message })}<|im_end|>`;
-  }
-  if (message.role === 'assistant') {
-    return serializeAssistantMessage({ message });
-  }
-  if (message.role === 'system') {
-    return `<|im_start|>system\n${serializeMessageContent({ message })}<|im_end|>`;
-  }
-  if (message.role === 'developer') {
-    return `<|im_start|>system\n${serializeMessageContent({ message })}<|im_end|>`;
-  }
-  if (message.role === 'tool') {
-    return `<tool_response>\n${serializeMessageContent({ message })}\n</tool_response>`;
-  }
-  throw new Error(`Unhandled Qwen3.5 role: ${String(message.role)}`);
-}
-
-function serializeQwen3_5UserTurnForContinuation({
-  message,
-  reasoningMode,
-}: {
-  message: ChatMessage,
-  reasoningMode: Qwen3_5ReasoningMode,
-}): string {
-  return `<|im_start|>user\n${serializeMessageContent({ message })}<|im_end|>\n${buildQwen3_5AssistantPrefix({ reasoningMode })}`;
-}
-
-function buildQwen3_5AssistantPrefix({
-  reasoningMode,
-}: {
-  reasoningMode: Qwen3_5ReasoningMode,
-}): string {
-  switch (reasoningMode) {
-  case 'enabled':
-    return `\
-<|im_start|>assistant
-<think>
-`;
-  case 'disabled':
-    return `\
-<|im_start|>assistant
-<think>
-
-</think>
-
-`;
-  case 'default':
-    return '<|im_start|>assistant';
-  default: {
-    const exhaustive: never = reasoningMode;
-    throw new Error(`Unhandled Qwen3.5 reasoning mode: ${exhaustive}`);
-  }
-  }
-}
-
-function serializeAssistantMessage({
-  message,
-}: {
-  message: ChatMessage,
-}): string {
-  const parts = [`<|im_start|>assistant`];
-
-  const content = serializeMessageContent({ message });
-  if (content.length > 0) {
-    parts.push(content);
-  }
-
-  if (message.tool_calls?.length) {
-    for (const toolCall of message.tool_calls) {
-      parts.push(serializeToolCall({ toolCall }));
-    }
-  }
-
-  parts.push('<|im_end|>');
-  return parts.join('\n');
-}
-
-function serializeToolCall({
-  toolCall,
-}: {
-  toolCall: ToolCall,
-}): string {
-  const parsedArguments = parseToolArguments({ argumentsText: toolCall.function.arguments });
-  return `<tool_call>\n${JSON.stringify({ name: toolCall.function.name, arguments: parsedArguments })}\n</tool_call>`;
-}
-
-function serializeMessageContent({
-  message,
-}: {
-  message: ChatMessage,
-}): string {
-  return typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
-}
-
-function parseToolArguments({
-  argumentsText,
-}: {
-  argumentsText: string,
-}): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(argumentsText) as unknown;
-    return isPlainObject(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function normalizeQwen3_5ToolCallsForTemplate({
+export function normalizeQwen3_5ToolCallsForTemplate({
   toolCalls,
 }: {
   toolCalls: ToolCall[],
@@ -355,70 +149,12 @@ function normalizeQwen3_5ToolCallsForTemplate({
     ...toolCall,
     function: {
       ...toolCall.function,
-      arguments: parseToolArguments({ argumentsText: toolCall.function.arguments }),
+      arguments: z.custom<Record<string, unknown>>(value => typeof value === 'object' && value !== null && !Array.isArray(value)).parse(JSON.parse(toolCall.function.arguments) as unknown),
     },
   }));
-}
-
-function applyQwen3_5ContinuationState({
-  inputs,
-  continuationState,
-}: {
-  inputs: Record<string, unknown>,
-  continuationState: {
-    modelId: string,
-    pastKeyValues?: unknown,
-    imageGridThw: unknown,
-    videoGridThw: unknown,
-  } | undefined,
-}): Record<string, unknown> {
-  return applyQwen3_5ConversationState({
-    inputs,
-    conversationState: continuationState ? {
-      modelId: continuationState.modelId,
-      promptHistory: '',
-      messageCount: 0,
-      imageGridThw: continuationState.imageGridThw,
-      videoGridThw: continuationState.videoGridThw,
-    } : undefined,
-  });
-}
-
-function shouldRetryQwen3_5WithoutContinuation({
-  error,
-  isQwen3_5ToolContinuation,
-}: {
-  error: unknown,
-  isQwen3_5ToolContinuation: boolean,
-}): boolean {
-  return isQwen3_5ToolContinuation
-    && error instanceof Error
-    && error.message.includes("Cannot read properties of undefined (reading 'inputNames')");
-}
-
-function buildQwen3_5ToolContinuationPrompt({
-  promptHistory,
-  messages,
-}: {
-  promptHistory: string,
-  messages: ChatMessage[],
-}): string {
-  const trimmedPromptHistory = promptHistory.endsWith('\n')
-    ? promptHistory.slice(0, -1)
-    : promptHistory;
-  const serializedToolMessages = messages
-    .filter((message): message is ChatMessage & { role: 'tool' } => message.role === 'tool')
-    .map(message => `<tool_response>\n${serializeMessageContent({ message })}\n</tool_response>`)
-    .join('\n');
-  return `${trimmedPromptHistory}\n${serializedToolMessages}\n${buildQwen3_5AssistantPrefix({ reasoningMode: 'enabled' })}`;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  normalizeQwen3_5ToolCallsForTemplate,
-  applyQwen3_5ContinuationState,
-  shouldRetryQwen3_5WithoutContinuation,
-  buildQwen3_5ToolContinuationPrompt,
-  assessQwen3_5NoToolContinuationEligibility,
 };

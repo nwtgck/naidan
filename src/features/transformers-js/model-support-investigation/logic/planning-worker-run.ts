@@ -1,7 +1,34 @@
+import type { DownloadVerificationProbeEvidenceInput } from '@/features/transformers-js/download-verification/evidence/types';
 import type {
   ModelSupportInvestigationPlanningWorkerRun,
   ModelSupportInvestigationRun,
 } from '@/features/transformers-js/model-support-investigation/types';
+
+function toPlanningDownloadEvidence({
+  evidence,
+}: {
+  evidence: ModelSupportInvestigationRun['downloadEvidence'],
+}): DownloadVerificationProbeEvidenceInput | undefined {
+  if (evidence === undefined) return undefined;
+  switch (evidence.mode) {
+  case 'probe-only':
+    break;
+  case 'runtime-complete':
+    throw new Error('Planning Worker must not return Download Evidence mode runtime-complete');
+  default: {
+    const _ex: never = evidence.mode;
+    throw new Error(`Unhandled Download Evidence mode: ${String(_ex)}`);
+  }
+  }
+  if (evidence.runtimeCompletion !== undefined) {
+    throw new Error('Planning Worker must not return runtime-complete Download Evidence');
+  }
+  return {
+    ...evidence,
+    mode: 'probe-only',
+    runtimeCompletion: undefined,
+  };
+}
 
 export function toPlanningWorkerRun({
   run,
@@ -9,12 +36,18 @@ export function toPlanningWorkerRun({
   run: ModelSupportInvestigationRun,
 }): ModelSupportInvestigationPlanningWorkerRun {
   const {
+    productionProviderCapture,
+    productionProviderInvestigation,
+    downloadEvidence,
     loadAttempts,
     activeLoadAttempt,
     productionLane,
     laneComparison,
     ...planningRun
   } = run;
+  if (productionProviderCapture !== undefined || productionProviderInvestigation !== undefined) {
+    throw new Error('Planning Worker must not return Production Provider capture');
+  }
   if (loadAttempts.length !== 0) {
     throw new Error('Planning Worker must not return model load attempts');
   }
@@ -36,7 +69,10 @@ export function toPlanningWorkerRun({
   if (laneComparison !== undefined) {
     throw new Error('Planning Worker must not return lane comparison evidence');
   }
-  return planningRun;
+  return {
+    ...planningRun,
+    downloadEvidence: toPlanningDownloadEvidence({ evidence: downloadEvidence }),
+  };
 }
 
 export function fromPlanningWorkerRun({
@@ -44,6 +80,11 @@ export function fromPlanningWorkerRun({
 }: {
   run: ModelSupportInvestigationPlanningWorkerRun,
 }): ModelSupportInvestigationRun {
+  // This field belongs to the host-owned Provider capture, never to planning.
+  // Reject presence before spreading so a forged accessor is not evaluated.
+  if (Object.hasOwn(run, 'productionProviderCapture') || Object.hasOwn(run, 'productionProviderInvestigation')) {
+    throw new Error('Planning Worker must not return Production Provider capture');
+  }
   return {
     ...run,
     loadAttempts: [],

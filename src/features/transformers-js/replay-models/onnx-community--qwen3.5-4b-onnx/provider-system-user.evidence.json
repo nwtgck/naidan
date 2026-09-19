@@ -1,0 +1,263 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "system-user",
+  "contextSha256": "caf488216beb48f4dc3452e6eaafcca3be260ea2389cf7e9fdb16fac4534e5b5",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "system",
+          "content": "Template probe system instruction."
+        },
+        {
+          "role": "user",
+          "content": "Template probe user message."
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 1,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Thinking"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              25
+            ],
+            "byteLength": 200,
+            "sha256": "0899cb2910537681ee30e521a831bcdfd53407a89de7c29f692484381cd33e05"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              25
+            ],
+            "byteLength": 200,
+            "sha256": "9060d7baa74e0778cf6c0a534a56f8e914c6e6118c28b9328dfbc42962fa69c5"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              25
+            ],
+            "byteLength": 200,
+            "sha256": "0899cb2910537681ee30e521a831bcdfd53407a89de7c29f692484381cd33e05"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              25
+            ],
+            "byteLength": 200,
+            "sha256": "9060d7baa74e0778cf6c0a534a56f8e914c6e6118c28b9328dfbc42962fa69c5"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 1,
+          "contextLimit": 262144,
+          "promptTokenCount": 25,
+          "usedContextTokenCount": 25
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "248045",
+              "8678",
+              "198",
+              "7048",
+              "21059",
+              "1785",
+              "7359",
+              "13",
+              "248046",
+              "198",
+              "248045",
+              "846",
+              "198",
+              "7048",
+              "21059",
+              "1156",
+              "1876",
+              "13",
+              "248046",
+              "198",
+              "248045",
+              "74455",
+              "198",
+              "248068",
+              "198"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "90700"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Thinking",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          26
+        ],
+        "byteLength": 208,
+        "sha256": "49e6978bd4410a33bc00b8c5898114f8c19177b452f2b6f52a4e7761b09d253f",
+        "tokens": [
+          "248045",
+          "8678",
+          "198",
+          "7048",
+          "21059",
+          "1785",
+          "7359",
+          "13",
+          "248046",
+          "198",
+          "248045",
+          "846",
+          "198",
+          "7048",
+          "21059",
+          "1156",
+          "1876",
+          "13",
+          "248046",
+          "198",
+          "248045",
+          "74455",
+          "198",
+          "248068",
+          "198",
+          "90700"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "43a22d1321c0e0bfb8e032ac1421fce7a2fe267f3706d3e0c988959a7aab1ecf"
+}

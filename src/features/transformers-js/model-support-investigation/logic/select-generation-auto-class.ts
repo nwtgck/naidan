@@ -1,7 +1,7 @@
 import type {
   ModelSupportInvestigationGenerationAutoClassName,
   ModelSupportInvestigationModelDeclarations,
-  ModelSupportInvestigationRepository,
+  ModelSupportInvestigationRuntimeTarget,
 } from "@/features/transformers-js/model-support-investigation/types";
 
 const DEFAULT_PRIORITY = [
@@ -20,15 +20,15 @@ const PIPELINE_PRIORITY: Readonly<Record<string, readonly ModelSupportInvestigat
   "automatic-speech-recognition": ["AutoModelForSpeechSeq2Seq", "AutoModelForAudioTextToText"],
 };
 
-export function selectGenerationAutoClass({ repository, declarations }: {
-  repository: ModelSupportInvestigationRepository,
+export function selectGenerationAutoClass({ runtimeTarget, declarations }: {
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
   declarations: ModelSupportInvestigationModelDeclarations,
 }): ModelSupportInvestigationGenerationAutoClassName | undefined {
   const supported = new Set(declarations.classCapabilities
     .filter(capability => capability.supports === true)
     .map(capability => capability.autoClass));
   const priority = [
-    ...(repository.pipelineTag === undefined ? [] : (PIPELINE_PRIORITY[repository.pipelineTag] ?? [])),
+    ...(runtimeTarget.pipelineTag === undefined ? [] : (PIPELINE_PRIORITY[runtimeTarget.pipelineTag] ?? [])),
     ...DEFAULT_PRIORITY,
   ];
   return priority.find(autoClass => supported.has(autoClass));

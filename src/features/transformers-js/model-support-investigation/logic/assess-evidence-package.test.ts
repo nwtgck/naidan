@@ -61,6 +61,51 @@ describe("assessEvidencePackage", () => {
     expect(renderEvidencePackageAssessmentMarkdown({ assessment })).toContain("Package status: valid-partial");
   });
 
+  it("requires execution policy evidence when the run records a requested configuration", () => {
+    const policyRun = {
+      ...run(),
+      requestedConfiguration: {
+        externalNetworkPolicy: "deny",
+        scope: {
+          "repository-download": "not-selected",
+          "model-load": "not-selected",
+          generation: "selected",
+          continuity: "not-selected",
+          "capability-probes": "not-selected",
+        },
+      },
+      executionPlan: {
+        repositoryDownload: false,
+        modelLoad: true,
+        generation: true,
+        continuity: false,
+        capabilityProbes: false,
+      },
+    } satisfies ModelSupportInvestigationRun;
+
+    const missing = assessEvidencePackage({
+      run: policyRun,
+      recovery: undefined,
+      readiness: readiness(),
+      supportBoundaries: [],
+      filePaths: coreFiles(),
+    });
+    expect(missing).toMatchObject({
+      status: "invalid",
+      missingRequiredCoreFiles: ["execution-policy/policy.json"],
+    });
+
+    const present = assessEvidencePackage({
+      run: policyRun,
+      recovery: undefined,
+      readiness: readiness(),
+      supportBoundaries: [],
+      filePaths: [...coreFiles(), "execution-policy/policy.json"],
+    });
+    expect(present.missingRequiredCoreFiles).toEqual([]);
+    expect(present.status).toBe("valid-partial");
+  });
+
   it("marks missing question evidence paths invalid", () => {
     const assessment = assessEvidencePackage({
       run: run(),

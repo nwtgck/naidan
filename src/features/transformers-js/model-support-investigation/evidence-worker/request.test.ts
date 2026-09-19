@@ -1,0 +1,62 @@
+import { describe, expect, it } from "vitest";
+import type { ModelSupportInvestigationRun } from "@/features/transformers-js/model-support-investigation/types";
+import {
+  createModelSupportInvestigationEvidenceWorkerRequest,
+  readModelSupportInvestigationEvidenceWorkerRequest,
+} from "@/features/transformers-js/model-support-investigation/evidence-worker/request";
+
+describe("Model Support Investigation Evidence Worker request", () => {
+  it("serializes the large run graph into a clone-safe Blob before crossing the Worker boundary", async () => {
+    const run = { runId: "run-1", modelId: "model-1" } as ModelSupportInvestigationRun;
+    const request = createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined });
+
+    expect(request).toBeInstanceOf(Blob);
+    expect(() => structuredClone(request)).not.toThrow();
+    await expect(readModelSupportInvestigationEvidenceWorkerRequest({ request })).resolves.toEqual({
+      schemaVersion: 2,
+      run: { runId: "run-1", modelId: "model-1" },
+    });
+  });
+
+  it("rejects an accidental non-cloneable value before postMessage can see it", () => {
+    const run = {
+      runId: "unsafe-run",
+      accidentalCallback: () => undefined,
+    } as unknown as ModelSupportInvestigationRun;
+
+    expect(() => createModelSupportInvestigationEvidenceWorkerRequest({
+      run,
+      recovery: undefined,
+    })).toThrow();
+  });
+
+  it("rejects malformed serialized requests inside the Evidence Worker", async () => {
+    const request = new Blob([JSON.stringify({ schemaVersion: 999, run: {} })], { type: "application/json" });
+    await expect(readModelSupportInvestigationEvidenceWorkerRequest({ request })).rejects.toThrow(
+      "Invalid Model Support Investigation Evidence Worker request",
+    );
+  });
+
+  it('rejects unvalidated runtime control receipts at both sides of the Evidence boundary', async () => {
+    const run = {
+      runId: 'run-1', modelId: 'fixture/model',
+      runtimeAssets: { controlRuntimeBindings: { wasm: { arbitraryError: 'Do not retain unknown diagnostic payloads' } } },
+    } as unknown as ModelSupportInvestigationRun;
+    expect(() => createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined })).toThrow();
+    const request = new Blob([JSON.stringify({ schemaVersion: 2, run })], { type: 'application/json' });
+    await expect(readModelSupportInvestigationEvidenceWorkerRequest({ request })).rejects.toThrow();
+  });
+
+  it.each(['mjs', 'wasm'] as const)('rejects an injected configured URL in the %s receipt', async field => {
+    const binding = {
+      format: 'runtime-control-binding-v1', executionProvider: 'wasm', constructorModule: 'onnxruntime-web/webgpu', environmentMatchesConfigured: true,
+      mjs: { matchesSelected: true, byteConnection: 'configured-url-not-verified-import-bytes' },
+      wasm: { matchesSelected: true, supplySource: 'preflight-verified-buffer', suppliedByteLength: 8, suppliedSha256: 'a'.repeat(64), suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' },
+    };
+    Reflect.set(binding[field], 'configuredUrl', 'https://private.invalid/path?token=secret');
+    const run = { runId: 'run-1', modelId: 'fixture/model', runtimeAssets: { controlRuntimeBindings: { wasm: binding } } } as unknown as ModelSupportInvestigationRun;
+    expect(() => createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined })).toThrow();
+    const request = new Blob([JSON.stringify({ schemaVersion: 2, run })], { type: 'application/json' });
+    await expect(readModelSupportInvestigationEvidenceWorkerRequest({ request })).rejects.toThrow();
+  });
+});

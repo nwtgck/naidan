@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-imports -- Worker-only GPT-OSS helper intentionally depends on transformers.js stream primitives. */
 import {
   TextStreamer,
+  Tensor,
   type PreTrainedModel,
   type PreTrainedTokenizer,
 } from '@huggingface/transformers';
@@ -10,9 +11,12 @@ import type { WorkerToolDefinition } from '@/features/transformers-js/types';
 import type { ToolCallId } from '@/01-models/ids';
 import { idToRaw } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
+import { exactObject } from '@/utils/exact-object';
+import { prepareGptOssContinuation, retainGptOssContinuation } from './gpt-oss-cache';
 
 interface GenerationResult {
   past_key_values: unknown,
+  sequences?: unknown,
 }
 
 type GptOssInputPreparedObservation = {
@@ -50,6 +54,7 @@ export async function generateGptOss({
   params,
   tools,
   pastKeyValues,
+  continuationOwner,
   stoppingCriteria,
   onInputPrepared,
   generateWithModel,
@@ -62,6 +67,7 @@ export async function generateGptOss({
   params: LmParameters | undefined,
   tools: WorkerToolDefinition[] | undefined,
   pastKeyValues: unknown,
+  continuationOwner?: string,
   stoppingCriteria: {
     reset(): void,
     interrupt(): void,
@@ -80,34 +86,42 @@ export async function generateGptOss({
   }) => Promise<GenerationResult>,
 }): Promise<unknown> {
   const isContinuation = isGptOssToolContinuationRequest({ messages });
-  const hasPastKeyValues = pastKeyValues !== null && pastKeyValues !== undefined;
+  const fullInputs = buildGptOssFullConversationInputs({ messages, tools, tokenizer });
+  const continuation = prepareGptOssContinuation({ cache: pastKeyValues, owner: continuationOwner, model, config: model.config, messages,
+    buildBaseInputs: ({ messages: baseMessages }) => buildGptOssFullConversationInputs({ messages: baseMessages, tools, tokenizer }),
+    buildSuffixInputs: ({ messages: suffixMessages }) => buildGptOssToolResultTokens({ messages: suffixMessages, tokenizer }), tensorClass: Tensor });
 
   let inputs: Record<string, unknown>;
-  let effectivePastKeyValues = pastKeyValues;
-  if (isContinuation && hasPastKeyValues) {
-    inputs = buildGptOssToolResultTokens({ messages, tokenizer });
+  let effectivePastKeyValues: unknown = null;
+  if (continuation !== undefined) {
+    inputs = continuation.inputs;
+    effectivePastKeyValues = continuation.pastKeyValues;
     emitGptOssInputPrepared({
       onInputPrepared,
       prepare: () => ({
-        fullConversationInputs: buildGptOssFullConversationInputs({ messages, tools, tokenizer }),
-        cacheDecision: { status: 'reused', reason: 'gpt-oss-tool-continuation' },
+        fullConversationInputs: fullInputs,
+        cacheDecision: { status: 'reused', reason: 'gpt-oss-owned-tool-continuation' },
       }),
     });
   } else {
     effectivePastKeyValues = null;
-    inputs = buildGptOssFullConversationInputs({ messages, tools, tokenizer });
+    inputs = fullInputs;
     emitGptOssInputPrepared({
       onInputPrepared,
       prepare: () => ({
         fullConversationInputs: inputs,
         cacheDecision: isContinuation
-          ? { status: 'not-reused', reason: 'gpt-oss-past-key-values-unavailable' }
+          ? { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' }
           : { status: 'not-reused', reason: 'gpt-oss-not-tool-continuation' },
       }),
     });
   }
 
   let currentChannel = '';
+  let emittedContent = '';
+  const emitChunk = ({ chunk }: { chunk: string }) => {
+    emittedContent += chunk; onChunk({ chunk });
+  };
   let pendingAnalysisClose = false;
   const parser = new GptOssHarmonyStreamParser();
   const pendingToolCalls: ToolCall[] = [];
@@ -127,20 +141,20 @@ export async function generateGptOss({
 
         if (pendingAnalysisClose) {
           if (visibleChannel !== 'analysis') {
-            onChunk({ chunk: '</think>' });
+            emitChunk({ chunk: '</think>' });
             currentChannel = '';
           }
           pendingAnalysisClose = false;
         }
 
         if (visibleChannel !== currentChannel) {
-          if (currentChannel === 'analysis') onChunk({ chunk: '</think>' });
-          if (visibleChannel === 'analysis') onChunk({ chunk: '<think>' });
+          if (currentChannel === 'analysis') emitChunk({ chunk: '</think>' });
+          if (visibleChannel === 'analysis') emitChunk({ chunk: '<think>' });
           currentChannel = visibleChannel;
         }
 
         if (!isFunctionCallMessage && visibleChannel !== 'commentary') {
-          onChunk({ chunk: delta.textDelta });
+          emitChunk({ chunk: delta.textDelta });
         }
         break;
       }
@@ -154,14 +168,14 @@ export async function generateGptOss({
         case 'call':
         case 'return':
           if (pendingAnalysisClose || currentChannel === 'analysis') {
-            onChunk({ chunk: '</think>' });
+            emitChunk({ chunk: '</think>' });
             pendingAnalysisClose = false;
           }
           currentChannel = '';
           break;
         case 'end':
           if (isFunctionCallMessage && currentChannel === 'analysis') {
-            onChunk({ chunk: '</think>' });
+            emitChunk({ chunk: '</think>' });
             pendingAnalysisClose = false;
             currentChannel = '';
           }
@@ -219,7 +233,9 @@ export async function generateGptOss({
     stoppingCriteria,
   });
   if (pendingToolCalls.length > 0) onToolCalls({ toolCalls: pendingToolCalls });
-  return result.past_key_values;
+  return retainGptOssContinuation({ owner: continuationOwner, model, config: model.config, messages,
+    assistant: { role: 'assistant', content: emittedContent, tool_calls: pendingToolCalls },
+    baseInputs: fullInputs, inputs, sequences: result.sequences, pastKeyValues: result.past_key_values, tensorClass: Tensor });
 }
 
 function jsonSchemaToTsType({ schema }: { schema: Record<string, unknown> }): string {
@@ -332,15 +348,21 @@ function buildGptOssPromptMessages({
 }): Array<{
   role: string,
   content: string,
-  tool_calls: ChatMessage['tool_calls'],
-  tool_call_id: string | undefined,
+  tool_calls?: ChatMessage['tool_calls'],
+  tool_call_id?: string,
 }> {
-  const formattedMessages = messages.map(message => ({
-    role: message.role,
-    content: typeof message.content === 'string' ? message.content : '',
-    tool_calls: message.tool_calls,
-    tool_call_id: message.tool_call_id === undefined ? undefined : idToRaw({ id: message.tool_call_id }),
-  }));
+  const formattedMessages = messages.map(message => {
+    const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+    unhandled satisfies Record<PropertyKey, never>;
+    // The native template checks key membership, so an absent optional field
+    // must not become an own undefined property while formatting history.
+    return exactObject<{ role: string; content: string; tool_calls?: ChatMessage['tool_calls']; tool_call_id?: string }>()({
+      role,
+      content: typeof content === 'string' ? content : '',
+      ...(tool_calls === undefined ? {} : { tool_calls }),
+      ...(tool_call_id === undefined ? {} : { tool_call_id: idToRaw({ id: tool_call_id }) }),
+    });
+  });
 
   // Keep gpt-oss close to the last known-good naidan path: pass the user's
   // existing conversation through with minimal reshaping, and only prepend the
@@ -351,17 +373,10 @@ function buildGptOssPromptMessages({
     formattedMessages.unshift({
       role: 'developer',
       content: formatGptOssToolDefinitions({ tools }),
-      tool_calls: undefined,
-      tool_call_id: undefined,
     });
   }
 
-  return formattedMessages.map(message => ({
-    role: message.role,
-    content: message.content,
-    tool_calls: message.tool_calls,
-    tool_call_id: message.tool_call_id,
-  }));
+  return formattedMessages;
 }
 
 function tryParseGptOssToolArguments({

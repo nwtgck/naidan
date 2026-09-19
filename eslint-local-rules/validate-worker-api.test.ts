@@ -25,6 +25,9 @@ function createEslint({ genericBridgeFileSuffixes = [], analysisBudget }: {
         parserOptions: {
           project: fixtureProject,
           tsconfigRootDir: projectRoot,
+          // Both parser instances share this project. Include Vue from the
+          // first program creation, not only after a TS/TSX fixture cached it.
+          extraFileExtensions: ['.vue'],
         },
       },
       plugins: {
@@ -67,6 +70,27 @@ function createVueEslint() {
 }
 
 describe('validate-worker-api rule', () => {
+  it('accepts native ArrayBuffer-backed views with explicit TypeScript buffer arguments', async () => {
+    const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-arraybuffer-view-probe.ts')]);
+    expect(result.messages).toEqual([]);
+  }, 20_000);
+
+  it('does not extend native view approval to shared or unspecified buffers', async () => {
+    const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-shared-view-probe.ts')]);
+    expect(result.messages.map(message => message.message)).toEqual([
+      expect.stringContaining('external-unreviewed:Uint8Array<SharedArrayBuffer>'),
+      expect.stringContaining('external-unreviewed:Uint8Array<ArrayBufferLike>'),
+    ]);
+  }, 20_000);
+
+  it('does not approve a local callable object with the same generic name as a native view', async () => {
+    const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-impostor-view-probe.ts')]);
+    expect(result.messages.map(message => message.message)).toEqual([
+      expect.stringContaining('function-must-be-proxied'),
+    ]);
+    expect(result.messages[0]!.message).toContain('callback');
+  }, 20_000);
+
   it('classifies unsafe worker API shapes without expanding reviewed-safe structural types', async () => {
     const [result] = await createEslint().lintFiles([
       path.join(fixtureRoot, 'worker-api-semantic-probe.ts'),

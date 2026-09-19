@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IModelSupportInvestigationWorker } from "@/features/transformers-js/model-support-investigation/types";
 import type { WorkerServerApi } from "@/utils/worker-transport";
+import { configurationForPreset, resolveInvestigationExecutionPlan } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 
 const mocks = vi.hoisted(() => ({
   expose: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("comlink", () => ({ expose: mocks.expose }));
 
 vi.mock("@/features/transformers-js/runtime/configure-hosted-runtime", () => ({
+  isModelWeightFileName: ({ fileName }: { fileName: string }) => /\.(?:onnx|data)$/iu.test(fileName) || fileName.includes('_data'),
   configureHostedTransformersRuntime: () => ({
     assets: {
       variant: "asyncify",
@@ -155,7 +157,8 @@ vi.mock("@huggingface/transformers", () => {
   };
 });
 
-vi.mock("onnxruntime-web", () => ({
+vi.mock("onnxruntime-web/webgpu", () => ({
+  env: { wasm: {} },
   InferenceSession: { create: vi.fn() },
   Tensor: class {
     data: BigInt64Array | Float32Array;
@@ -195,28 +198,25 @@ describe("model-support-investigation worker", () => {
     await import("@/features/transformers-js/model-support-investigation/worker/entry");
     const { env } = await import("@huggingface/transformers");
 
-    expect(env.allowLocalModels).toBe(false);
-    expect(env.allowRemoteModels).toBe(true);
+    expect(env.allowLocalModels).toBe(true);
+    expect(env.allowRemoteModels).toBe(false);
     expect(env.useBrowserCache).toBe(false);
     expect(env.useCustomCache).toBe(true);
     expect(env.customCache).toHaveProperty("match");
     expect(env.customCache).toHaveProperty("put");
   });
 
-  it("uses the Production SPA fallback guard for remote model artifacts", async () => {
+  it("blocks model-artifact fetches outside the downloaded OPFS cache", async () => {
     await import("@/features/transformers-js/model-support-investigation/worker/entry");
     const { env } = await import("@huggingface/transformers");
-    mocks.runtimeFetch.mockResolvedValueOnce(new Response("<!doctype html>", {
-      status: 200,
-      headers: { "Content-Type": "text/html" },
-    }));
 
     const configuredFetch = env.fetch;
     if (typeof configuredFetch !== "function") throw new Error("Investigation fetch was not configured");
-    const response = await configuredFetch("https://huggingface.co/org/model/resolve/main/tokenizer.json");
 
-    expect(response.status).toBe(404);
-    expect(response.statusText).toBe("Not Found");
+    await expect(configuredFetch(
+      "https://huggingface.co/org/model/resolve/main/tokenizer.json",
+    )).rejects.toThrow("Model Support Investigation MUST NOT fetch model artifacts while loading");
+    expect(mocks.runtimeFetch).not.toHaveBeenCalled();
   });
 
   beforeEach(async () => {
@@ -249,7 +249,23 @@ describe("model-support-investigation worker", () => {
     await import("./entry");
   });
 
-  it("loads the fixed candidate at the resolved revision and performs one real generate call", async () => {
+  it('retains the host run identity in every preflight checkpoint and planning result', async () => {
+    const onRunCheckpoint = vi.fn();
+    const configuration = configurationForPreset({ preset: 'offline' });
+    const run = await exposedWorker().runPartialInvestigation({
+      runId: 'host-created-run', modelId: 'org/model', externalNetworkPolicy: configuration.externalNetworkPolicy,
+      executionPlan: resolveInvestigationExecutionPlan({ scope: configuration.scope }),
+    }, vi.fn(), onRunCheckpoint, vi.fn(async () => {
+      throw new Error('Offline planning cannot request fresh metadata');
+    }));
+    expect(onRunCheckpoint).toHaveBeenCalled();
+    expect(new Set(onRunCheckpoint.mock.calls.map(([checkpoint]) => checkpoint.run.runId))).toEqual(new Set(['host-created-run']));
+    expect(run.runId).toBe('host-created-run');
+    expect(crypto.randomUUID).not.toHaveBeenCalled();
+    expect(mocks.modelFromPretrained).not.toHaveBeenCalled();
+  });
+
+  it("loads the fixed candidate through the normal Chat main revision and preserves resolved-SHA evidence", async () => {
     const notFoundError = new Error("Not found");
     notFoundError.name = "NotFoundError";
     vi.mocked(navigator.storage.getDirectory).mockResolvedValue({
@@ -260,7 +276,10 @@ describe("model-support-investigation worker", () => {
     const result = await exposedWorker().runCandidateAttempt(
       {
         normalizedModelId: "org/model",
-        resolvedRevision: "a".repeat(40),
+        evidenceRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
         pipelineTag: "text-generation",
       } as never,
       {
@@ -282,7 +301,6 @@ describe("model-support-investigation worker", () => {
           inputIds: [1, 2],
         }],
       } as never,
-      [],
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -291,6 +309,7 @@ describe("model-support-investigation worker", () => {
         ineligibleReasons: [],
         files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
       } as never,
+      { generation: true, capabilityProbes: true },
       onEvent,
       vi.fn(),
       onAttemptCheckpoint,
@@ -298,14 +317,13 @@ describe("model-support-investigation worker", () => {
 
     expect(mocks.configValues).toEqual([{ model_type: "llama" }]);
     expect(mocks.modelFromPretrained).toHaveBeenCalledWith("org/model", expect.objectContaining({
-      revision: "a".repeat(40),
       device: "webgpu",
       dtype: "q4",
       config: expect.objectContaining({ model_type: "llama" }),
+      local_files_only: true,
     }));
-    expect(mocks.tokenizerFromPretrained).toHaveBeenCalledWith("org/model", {
-      revision: "a".repeat(40),
-    });
+    expect(mocks.modelFromPretrained.mock.calls[0]?.[1]).not.toHaveProperty("revision");
+    expect(mocks.tokenizerFromPretrained).toHaveBeenCalledWith("org/model", { local_files_only: true });
     expect(mocks.modelGenerate).toHaveBeenNthCalledWith(1, expect.objectContaining({
       max_new_tokens: 1,
       do_sample: false,
@@ -381,17 +399,28 @@ describe("model-support-investigation worker", () => {
     });
   });
 
-  it("uses the fixed plain-text tokenizer fallback when chat-template evidence is unavailable", async () => {
+  it("records cache miss and blocked remote-fetch evidence when a downloaded candidate artifact is unavailable", async () => {
     const notFoundError = new Error("Not found");
     notFoundError.name = "NotFoundError";
     vi.mocked(navigator.storage.getDirectory).mockResolvedValue({
       getDirectoryHandle: vi.fn().mockRejectedValue(notFoundError),
     } as never);
+    const { env } = await import("@huggingface/transformers");
+    mocks.modelFromPretrained.mockImplementationOnce(async () => {
+      const url = "https://huggingface.co/org/model/resolve/main/onnx/model.onnx";
+      await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url);
+      if (typeof env.fetch !== "function") throw new Error("Investigation cache-only fetch is unavailable");
+      await env.fetch(url);
+      throw new Error("unreachable");
+    });
 
     const result = await exposedWorker().runCandidateAttempt(
       {
         normalizedModelId: "org/model",
-        resolvedRevision: "a".repeat(40),
+        evidenceRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
         pipelineTag: "text-generation",
       } as never,
       {
@@ -404,7 +433,6 @@ describe("model-support-investigation worker", () => {
         }],
       } as never,
       undefined,
-      [],
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -413,6 +441,64 @@ describe("model-support-investigation worker", () => {
         ineligibleReasons: [],
         files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
       } as never,
+      { generation: true, capabilityProbes: true },
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      failureStage: "model-load",
+      modelLoadProgress: {
+        eventCount: 0,
+        cacheMatchRequestCount: 1,
+        cacheHitCount: 0,
+        cacheMissCount: 1,
+        cacheMatchedBytes: 0,
+        remoteFetchAttemptCount: 1,
+      },
+      error: {
+        message: expect.stringContaining("MUST NOT fetch model artifacts while loading"),
+      },
+    });
+  });
+
+  it("uses the fixed plain-text tokenizer fallback when chat-template evidence is unavailable", async () => {
+    const notFoundError = new Error("Not found");
+    notFoundError.name = "NotFoundError";
+    vi.mocked(navigator.storage.getDirectory).mockResolvedValue({
+      getDirectoryHandle: vi.fn().mockRejectedValue(notFoundError),
+    } as never);
+
+    const result = await exposedWorker().runCandidateAttempt(
+      {
+        normalizedModelId: "org/model",
+        evidenceRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
+        pipelineTag: "text-generation",
+      } as never,
+      {
+        config: { model_type: "llama" },
+        modelType: "llama",
+        classCapabilities: [{
+          autoClass: "AutoModelForCausalLM",
+          supports: true,
+          notEvaluatedReason: undefined,
+        }],
+      } as never,
+      undefined,
+      {
+        candidateId: "webgpu-q4",
+        device: "webgpu",
+        dtype: "q4",
+        eligibility: "eligible",
+        ineligibleReasons: [],
+        files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
+      } as never,
+      { generation: true, capabilityProbes: true },
       vi.fn(),
       vi.fn(),
       vi.fn(),
@@ -445,7 +531,10 @@ describe("model-support-investigation worker", () => {
     const result = await exposedWorker().runCandidateAttempt(
       {
         normalizedModelId: "org/model",
-        resolvedRevision: "a".repeat(40),
+        evidenceRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
         pipelineTag: "text-generation",
       } as never,
       {
@@ -487,7 +576,6 @@ describe("model-support-investigation worker", () => {
           assistantToolCallSuffixTokenIds: [9, 10],
         },
       } as never,
-      [],
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -496,6 +584,7 @@ describe("model-support-investigation worker", () => {
         ineligibleReasons: [],
         files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
       } as never,
+      { generation: true, capabilityProbes: true },
       vi.fn(),
       vi.fn(),
       vi.fn(),

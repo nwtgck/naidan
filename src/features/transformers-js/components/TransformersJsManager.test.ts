@@ -12,6 +12,10 @@ vi.mock('../../../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn(),
 }));
 
+vi.mock('@/features/transformers-js/model-support-investigation', () => ({
+  isModelSupportInvestigationAvailable: true,
+}));
+
 vi.mock('@vueuse/core', async () => {
   const actual = await vi.importActual('@vueuse/core') as any;
   return {
@@ -35,7 +39,7 @@ vi.mock('..', () => ({
     subscribe: vi.fn(),
     subscribeModelList: vi.fn().mockReturnValue(() => {}),
     listCachedModels: vi.fn(),
-    loadModel: vi.fn(),
+    loadDownloadedModel: vi.fn(),
     unloadModel: vi.fn(),
     restart: vi.fn(),
     downloadModel: vi.fn(),
@@ -71,6 +75,12 @@ vi.mock('lucide-vue-next', () => ({
   PlusIcon: { template: '<span>Plus</span>' },
   HardDriveDownloadIcon: { template: '<span>HardDriveDownload</span>' },
   XIcon: { template: '<span>X</span>' },
+  CircleIcon: { template: '<span>Circle</span>' },
+  CircleSlash2Icon: { template: '<span>CircleSlash2</span>' },
+  CopyIcon: { template: '<span>Copy</span>' },
+  PlayIcon: { template: '<span>Play</span>' },
+  SearchCheckIcon: { template: '<span>SearchCheck</span>' },
+  SquareIcon: { template: '<span>Square</span>' },
   BrainCircuitIcon: { template: '<span>BrainCircuit</span>' },
   PowerOffIcon: { template: '<span>PowerOff</span>' },
   ExternalLinkIcon: { template: '<span>ExternalLink</span>' },
@@ -151,6 +161,21 @@ describe('TransformersJsManager.vue', () => {
     expect(investigateButton.text()).toBe('Investigate');
   });
 
+  it('requests model support investigation with the selected cached model prefilled', async () => {
+    (transformersJsService.listCachedModels as any).mockResolvedValue([
+      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
+    ]);
+
+    const wrapper = mount(TransformersJsManager);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigate-hf.co/org/model1"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.emitted('openModelSupportInvestigation')).toEqual([['hf.co/org/model1']]);
+    expect(wrapper.find('[data-testid="model-support-investigation-stub"]').exists()).toBe(false);
+  });
+
   it('shows Gemma 4 in the preset model list', async () => {
     const wrapper = mount(TransformersJsManager);
     await flushPromises();
@@ -174,7 +199,45 @@ describe('TransformersJsManager.vue', () => {
     expect(wrapper.text()).toContain('Resume');
   });
 
-  it('calls loadModel when Load button is clicked', async () => {
+  it('revalidates a heuristically complete model through explicit Production download preparation', async () => {
+    (transformersJsService.listCachedModels as any).mockResolvedValue([
+      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
+    ]);
+
+    const wrapper = mount(TransformersJsManager);
+    await flushPromises();
+
+    const input = wrapper.find('input[placeholder*="Hugging Face model ID"]');
+    await input.setValue('hf.co/org/model1');
+    const downloadButton = wrapper.findAll('button').find(button => button.text().includes('Download Model'));
+    expect(downloadButton).toBeDefined();
+    await downloadButton!.trigger('click');
+    await flushPromises();
+
+    expect(transformersJsService.downloadModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
+    expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
+  });
+
+  it('resumes an incomplete model through explicit download before loading it', async () => {
+    (transformersJsService.listCachedModels as any).mockResolvedValue([
+      { id: 'hf.co/org/incomplete', size: 500, fileCount: 2, lastModified: Date.now(), isComplete: false },
+    ]);
+
+    const wrapper = mount(TransformersJsManager);
+    await flushPromises();
+
+    const resumeButton = wrapper.findAll('button').find(button => button.text() === 'Resume');
+    expect(resumeButton).toBeDefined();
+    await resumeButton!.trigger('click');
+    await flushPromises();
+
+    expect(transformersJsService.downloadModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/incomplete' });
+    expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/incomplete' });
+    expect(vi.mocked(transformersJsService.downloadModel).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(transformersJsService.loadDownloadedModel).mock.invocationCallOrder[0]!);
+  });
+
+  it('calls loadDownloadedModel when Load button is clicked', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
@@ -185,7 +248,7 @@ describe('TransformersJsManager.vue', () => {
     const loadBtn = wrapper.find('button.bg-purple-50');
     await loadBtn.trigger('click');
 
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
+    expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
   });
 
   it('calls unloadModel when PowerOff button is clicked', async () => {

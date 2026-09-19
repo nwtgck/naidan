@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "modelId": "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
+    "resolvedRevision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+    "investigationRunId": "e3116bf8-aad5-431a-a9a5-e8056de49896",
+    "transformersJsVersion": "4.2.0"
+  },
+  "scenario": {
+    "id": "no-tools-first-turn-natural-prefix",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Template probe user message."
+      }
+    ],
+    "tools": [],
+    "lmParameters": {
+      "temperature": 0,
+      "topP": 1,
+      "maxCompletionTokens": 16
+    },
+    "boundary": {
+      "kind": "natural-prefix",
+      "lengthRelation": "equals-requested-budget",
+      "stopCause": "not-recorded"
+    }
+  },
+  "inputContract": {
+    "renderedPrompt": "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\nTemplate probe user message.<|im_end|>\n<|im_start|>assistant\n",
+    "inputTokenIds": [
+      1,
+      9690,
+      198,
+      2683,
+      359,
+      253,
+      5356,
+      5646,
+      11173,
+      3365,
+      3511,
+      308,
+      34519,
+      28,
+      7018,
+      411,
+      407,
+      19712,
+      8182,
+      2,
+      198,
+      1,
+      4093,
+      198,
+      29233,
+      14540,
+      2914,
+      3714,
+      30,
+      2,
+      198,
+      1,
+      520,
+      9531,
+      198
+    ],
+    "inputTensorFacts": [
+      {
+        "name": "attention_mask",
+        "dtype": "int64",
+        "dims": [
+          1,
+          35
+        ],
+        "location": "cpu"
+      },
+      {
+        "name": "input_ids",
+        "dtype": "int64",
+        "dims": [
+          1,
+          35
+        ],
+        "location": "cpu"
+      }
+    ],
+    "effectiveGenerationConfig": {
+      "maxNewTokens": 16,
+      "temperature": 0,
+      "topP": 1,
+      "doSample": false
+    }
+  },
+  "modelReplay": {
+    "source": "production-lane",
+    "sourceInputTokenIds": [
+      1,
+      9690,
+      198,
+      2683,
+      359,
+      253,
+      5356,
+      5646,
+      11173,
+      3365,
+      3511,
+      308,
+      34519,
+      28,
+      7018,
+      411,
+      407,
+      19712,
+      8182,
+      2,
+      198,
+      1,
+      4093,
+      198,
+      29233,
+      14540,
+      2914,
+      3714,
+      30,
+      2,
+      198,
+      1,
+      520,
+      9531,
+      198
+    ],
+    "sourceInputSha256": "456b576d4db043adf7b8665940bc428cd436dbc8e31af5e7757ce3eaebb38952",
+    "generatedTokenIds": [
+      18,
+      35097,
+      407,
+      19712,
+      8182,
+      28,
+      198,
+      198,
+      57,
+      3826,
+      451,
+      3714,
+      8284,
+      346,
+      876,
+      30
+    ],
+    "generatedSequenceTokenIds": [
+      1,
+      9690,
+      198,
+      2683,
+      359,
+      253,
+      5356,
+      5646,
+      11173,
+      3365,
+      3511,
+      308,
+      34519,
+      28,
+      7018,
+      411,
+      407,
+      19712,
+      8182,
+      2,
+      198,
+      1,
+      4093,
+      198,
+      29233,
+      14540,
+      2914,
+      3714,
+      30,
+      2,
+      198,
+      1,
+      520,
+      9531,
+      198,
+      18,
+      35097,
+      407,
+      19712,
+      8182,
+      28,
+      198,
+      198,
+      57,
+      3826,
+      451,
+      3714,
+      8284,
+      346,
+      876,
+      30
+    ],
+    "generatedText": "\"Dear Hugging Face,\n\nI hope this message finds you well."
+  },
+  "expectedProviderSemantic": {
+    "basis": "production-positive-control",
+    "captureScope": "prefix",
+    "visibleContent": "\"Dear Hugging Face,\n\nI hope this message finds you well."
+  }
+}

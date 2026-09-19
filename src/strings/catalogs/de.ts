@@ -1116,7 +1116,10 @@ import { TransformersJsLoadingIndicator__loading_model_weights_into_browser_memo
 import { TransformersJsLoadingIndicator__model } from '@/strings/messages/TransformersJsLoadingIndicator__model/de';
 import { TransformersJsLoadingIndicator__on_device_execution } from '@/strings/messages/TransformersJsLoadingIndicator__on_device_execution/de';
 import { TransformersJsLoadingIndicator__transformers_js_error } from '@/strings/messages/TransformersJsLoadingIndicator__transformers_js_error/de';
+import { ModelSupportInvestigationModal__download_verification } from '@/strings/messages/ModelSupportInvestigationModal__download_verification/de';
 import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/de';
+import { ModelSupportInvestigationModal__skipped } from '@/strings/messages/ModelSupportInvestigationModal__skipped/de';
+import { ModelSupportInvestigationModal__stop_this_model_and_continue } from '@/strings/messages/ModelSupportInvestigationModal__stop_this_model_and_continue/de';
 import { ModelSupportInvestigationModal__candidate_eligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_eligible/de';
 import { ModelSupportInvestigationModal__candidate_ineligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_ineligible/de';
 import { ModelSupportInvestigationModal__candidate_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__candidate_plan_summary/de';
@@ -1128,11 +1131,12 @@ import { ModelSupportInvestigationModal__checking_same_origin_runtime_assets } f
 import { ModelSupportInvestigationModal__close } from '@/strings/messages/ModelSupportInvestigationModal__close/de';
 import { ModelSupportInvestigationModal__current_operation } from '@/strings/messages/ModelSupportInvestigationModal__current_operation/de';
 import { ModelSupportInvestigationModal__declaration_files_summary } from '@/strings/messages/ModelSupportInvestigationModal__declaration_files_summary/de';
-import { ModelSupportInvestigationModal__download_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__download_partial_evidence/de';
+import { ModelSupportInvestigationModal__download_evidence_zip } from '@/strings/messages/ModelSupportInvestigationModal__download_evidence_zip/de';
 import { ModelSupportInvestigationModal__evidence_export } from '@/strings/messages/ModelSupportInvestigationModal__evidence_export/de';
 import { ModelSupportInvestigationModal__environment_evidence_disclosure } from '@/strings/messages/ModelSupportInvestigationModal__environment_evidence_disclosure/de';
 import { ModelSupportInvestigationModal__evidence_readiness } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness/de';
 import { ModelSupportInvestigationModal__evidence_readiness_summary } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness_summary/de';
+import { ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status } from '@/strings/messages/ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status/de';
 import { ModelSupportInvestigationModal__existing_model_data } from '@/strings/messages/ModelSupportInvestigationModal__existing_model_data/de';
 import { ModelSupportInvestigationModal__failed } from '@/strings/messages/ModelSupportInvestigationModal__failed/de';
 import { ModelSupportInvestigationModal__findings } from '@/strings/messages/ModelSupportInvestigationModal__findings/de';
@@ -1164,11 +1168,13 @@ import { ModelSupportInvestigationModal__repository } from '@/strings/messages/M
 import { ModelSupportInvestigationModal__repository_information } from '@/strings/messages/ModelSupportInvestigationModal__repository_information/de';
 import { ModelSupportInvestigationModal__repository_summary } from '@/strings/messages/ModelSupportInvestigationModal__repository_summary/de';
 import { ModelSupportInvestigationModal__running } from '@/strings/messages/ModelSupportInvestigationModal__running/de';
+import { ModelSupportInvestigationModal__stop_investigation } from '@/strings/messages/ModelSupportInvestigationModal__stop_investigation/de';
 import { ModelSupportInvestigationModal__runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__runtime_assets/de';
 import { ModelSupportInvestigationModal__runtime_control_webgpu } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_webgpu/de';
 import { ModelSupportInvestigationModal__runtime_no_output } from '@/strings/messages/ModelSupportInvestigationModal__runtime_no_output/de';
 import { ModelSupportInvestigationModal__runtime_bytes } from '@/strings/messages/ModelSupportInvestigationModal__runtime_bytes/de';
 import { ModelSupportInvestigationModal__runtime_control } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control/de';
+import { ModelSupportInvestigationModal__runtime_control_inputs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_inputs/de';
 import { ModelSupportInvestigationModal__runtime_environment } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment/de';
 import { ModelSupportInvestigationModal__runtime_environment_summary } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment_summary/de';
 import { ModelSupportInvestigationModal__runtime_mjs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_mjs/de';
@@ -1183,7 +1189,52 @@ import { ModelSupportInvestigationModal__tool_protocol_probe_summary } from '@/s
 import { ModelSupportInvestigationModal__tool_result_production_continuation_failed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_failed/de';
 import { ModelSupportInvestigationModal__tool_result_production_continuation_passed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_passed/de';
 import { ModelSupportInvestigationModal__tool_template_provenance_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_template_provenance_summary/de';
-import { ModelSupportInvestigationModal__this_is_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__this_is_partial_evidence/de';
+import { ModelSupportInvestigationModal__selected_scope_execution_summary } from '@/strings/messages/ModelSupportInvestigationModal__selected_scope_execution_summary/de';
+import { ModelSupportInvestigationSession__fresh_metadata_preparation_status } from '@/strings/messages/ModelSupportInvestigationSession__fresh_metadata_preparation_status/de';
+import { ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness } from '@/strings/messages/ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness/de';
+import { ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure } from '@/strings/messages/ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure/de';
+import { ModelSupportInvestigationSession__failed_and_not_run_checks } from '@/strings/messages/ModelSupportInvestigationSession__failed_and_not_run_checks/de';
+import { ModelSupportInvestigationSession__feature_check_result } from '@/strings/messages/ModelSupportInvestigationSession__feature_check_result/de';
+import { ModelSupportInvestigationSession__provider_collection_progress } from '@/strings/messages/ModelSupportInvestigationSession__provider_collection_progress/de';
+import { ModelSupportInvestigationSession__maximum_phase_deadlines } from '@/strings/messages/ModelSupportInvestigationSession__maximum_phase_deadlines/de';
+import { ModelSupportInvestigationSession__native_recording_is_not_correctness } from '@/strings/messages/ModelSupportInvestigationSession__native_recording_is_not_correctness/de';
+import { ModelSupportInvestigationSession__export_retained_download_timing } from '@/strings/messages/ModelSupportInvestigationSession__export_retained_download_timing/de';
+import { ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation } from '@/strings/messages/ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation/de';
+import { ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session } from '@/strings/messages/ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session/de';
+import { ModelSupportInvestigationSession__some_download_timing_was_not_retained } from '@/strings/messages/ModelSupportInvestigationSession__some_download_timing_was_not_retained/de';
+import { ModelSupportInvestigationSession__failed_to_export_retained_download_timing } from '@/strings/messages/ModelSupportInvestigationSession__failed_to_export_retained_download_timing/de';
+import { ModelSupportInvestigationSession__recording_retention_budget } from '@/strings/messages/ModelSupportInvestigationSession__recording_retention_budget/de';
+import { ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load } from '@/strings/messages/ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load/de';
+import { ModelSupportInvestigationModal__start_investigation } from '@/strings/messages/ModelSupportInvestigationModal__start_investigation/de';
+import { ModelSupportInvestigationModal__new_investigation } from '@/strings/messages/ModelSupportInvestigationModal__new_investigation/de';
+import { ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another } from '@/strings/messages/ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another/de';
+import { ModelSupportInvestigationModal__replace_results_and_return_to_setup } from '@/strings/messages/ModelSupportInvestigationModal__replace_results_and_return_to_setup/de';
+import { ModelSupportInvestigationModal__ready_to_start } from '@/strings/messages/ModelSupportInvestigationModal__ready_to_start/de';
+import { ModelSupportInvestigationModal__targets } from '@/strings/messages/ModelSupportInvestigationModal__targets/de';
+import { ModelSupportInvestigationModal__one_model_per_line } from '@/strings/messages/ModelSupportInvestigationModal__one_model_per_line/de';
+import { ModelSupportInvestigationModal__copy_model_list } from '@/strings/messages/ModelSupportInvestigationModal__copy_model_list/de';
+import { ModelSupportInvestigationModal__invalid_model_line } from '@/strings/messages/ModelSupportInvestigationModal__invalid_model_line/de';
+import { ModelSupportInvestigationModal__presets } from '@/strings/messages/ModelSupportInvestigationModal__presets/de';
+import { ModelSupportInvestigationModal__full_investigation } from '@/strings/messages/ModelSupportInvestigationModal__full_investigation/de';
+import { ModelSupportInvestigationModal__offline } from '@/strings/messages/ModelSupportInvestigationModal__offline/de';
+import { ModelSupportInvestigationModal__download_focused } from '@/strings/messages/ModelSupportInvestigationModal__download_focused/de';
+import { ModelSupportInvestigationModal__custom } from '@/strings/messages/ModelSupportInvestigationModal__custom/de';
+import { ModelSupportInvestigationModal__execution_policy } from '@/strings/messages/ModelSupportInvestigationModal__execution_policy/de';
+import { ModelSupportInvestigationModal__external_network_access } from '@/strings/messages/ModelSupportInvestigationModal__external_network_access/de';
+import { ModelSupportInvestigationModal__allow } from '@/strings/messages/ModelSupportInvestigationModal__allow/de';
+import { ModelSupportInvestigationModal__deny } from '@/strings/messages/ModelSupportInvestigationModal__deny/de';
+import { ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation } from '@/strings/messages/ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation/de';
+import { ModelSupportInvestigationModal__investigation_scope } from '@/strings/messages/ModelSupportInvestigationModal__investigation_scope/de';
+import { ModelSupportInvestigationModal__repository_and_download } from '@/strings/messages/ModelSupportInvestigationModal__repository_and_download/de';
+import { ModelSupportInvestigationModal__model_load } from '@/strings/messages/ModelSupportInvestigationModal__model_load/de';
+import { ModelSupportInvestigationModal__generation } from '@/strings/messages/ModelSupportInvestigationModal__generation/de';
+import { ModelSupportInvestigationModal__continuity_and_kv_cache } from '@/strings/messages/ModelSupportInvestigationModal__continuity_and_kv_cache/de';
+import { ModelSupportInvestigationModal__capability_probes } from '@/strings/messages/ModelSupportInvestigationModal__capability_probes/de';
+import { ModelSupportInvestigationModal__required_by_selected_scope } from '@/strings/messages/ModelSupportInvestigationModal__required_by_selected_scope/de';
+import { ModelSupportInvestigationModal__setup } from '@/strings/messages/ModelSupportInvestigationModal__setup/de';
+import { ModelSupportInvestigationModal__running_and_results } from '@/strings/messages/ModelSupportInvestigationModal__running_and_results/de';
+import { ModelSupportInvestigationModal__models_are_investigated_sequentially } from '@/strings/messages/ModelSupportInvestigationModal__models_are_investigated_sequentially/de';
+import { ModelSupportInvestigationModal__add_models_placeholder } from '@/strings/messages/ModelSupportInvestigationModal__add_models_placeholder/de';
 import { TransformersJsManager__investigate } from '@/strings/messages/TransformersJsManager__investigate/de';
 import { TransformersJsManager__active } from '@/strings/messages/TransformersJsManager__active/de';
 import { TransformersJsManager__active_model } from '@/strings/messages/TransformersJsManager__active_model/de';
@@ -1203,6 +1254,10 @@ import { TransformersJsManager__download_failed } from '@/strings/messages/Trans
 import { TransformersJsManager__download_failed_check_details_in_the_section_below } from '@/strings/messages/TransformersJsManager__download_failed_check_details_in_the_section_below/de';
 import { TransformersJsManager__download_from_hugging_face } from '@/strings/messages/TransformersJsManager__download_from_hugging_face/de';
 import { TransformersJsManager__download_model } from '@/strings/messages/TransformersJsManager__download_model/de';
+import { TransformersJsManager__reusing_downloaded_file } from '@/strings/messages/TransformersJsManager__reusing_downloaded_file/de';
+import { TransformersJsManager__download_complete } from '@/strings/messages/TransformersJsManager__download_complete/de';
+import { TransformersJsManager__received_and_reused_bytes } from '@/strings/messages/TransformersJsManager__received_and_reused_bytes/de';
+import { TransformersJsManager__about_time_remaining } from '@/strings/messages/TransformersJsManager__about_time_remaining/de';
 import { TransformersJsManager__downloaded_models } from '@/strings/messages/TransformersJsManager__downloaded_models/de';
 import { TransformersJsManager__downloading_and_compiling } from '@/strings/messages/TransformersJsManager__downloading_and_compiling/de';
 import { TransformersJsManager__engine_control } from '@/strings/messages/TransformersJsManager__engine_control/de';
@@ -1234,6 +1289,29 @@ import { TransformersJsManager__no_models_match_your_filter } from '@/strings/me
 import { TransformersJsManager__note } from '@/strings/messages/TransformersJsManager__note/de';
 import { TransformersJsManager__origin_private_file_system_opfs } from '@/strings/messages/TransformersJsManager__origin_private_file_system_opfs/de';
 import { TransformersJsManager__overall_progress } from '@/strings/messages/TransformersJsManager__overall_progress/de';
+import { TransformersJsManager__close_error_details } from '@/strings/messages/TransformersJsManager__close_error_details/de';
+import { TransformersJsManager__resolving_revision } from '@/strings/messages/TransformersJsManager__resolving_revision/de';
+import { TransformersJsManager__checking_cache } from '@/strings/messages/TransformersJsManager__checking_cache/de';
+import { TransformersJsManager__preparing_metadata } from '@/strings/messages/TransformersJsManager__preparing_metadata/de';
+import { TransformersJsManager__checking_required_files } from '@/strings/messages/TransformersJsManager__checking_required_files/de';
+import { TransformersJsManager__transferring } from '@/strings/messages/TransformersJsManager__transferring/de';
+import { TransformersJsManager__saving } from '@/strings/messages/TransformersJsManager__saving/de';
+import { TransformersJsManager__checking_runtime } from '@/strings/messages/TransformersJsManager__checking_runtime/de';
+import { TransformersJsManager__complete } from '@/strings/messages/TransformersJsManager__complete/de';
+import { TransformersJsManager__queued } from '@/strings/messages/TransformersJsManager__queued/de';
+import { TransformersJsManager__cached } from '@/strings/messages/TransformersJsManager__cached/de';
+import { TransformersJsManager__current_candidate_preparation_includes_cached_files } from '@/strings/messages/TransformersJsManager__current_candidate_preparation_includes_cached_files/de';
+import { TransformersJsManager__total_size_unknown } from '@/strings/messages/TransformersJsManager__total_size_unknown/de';
+import { TransformersJsManager__recalculated_after_size_update } from '@/strings/messages/TransformersJsManager__recalculated_after_size_update/de';
+import { TransformersJsManager__recalculated_after_download_restart } from '@/strings/messages/TransformersJsManager__recalculated_after_download_restart/de';
+import { TransformersJsManager__retrying_with_another_candidate } from '@/strings/messages/TransformersJsManager__retrying_with_another_candidate/de';
+import { TransformersJsManager__saving_and_checks_not_included } from '@/strings/messages/TransformersJsManager__saving_and_checks_not_included/de';
+import { TransformersJsManager__estimating_download_time } from '@/strings/messages/TransformersJsManager__estimating_download_time/de';
+import { TransformersJsManager__recalculating_download_time } from '@/strings/messages/TransformersJsManager__recalculating_download_time/de';
+import { TransformersJsManager__files_complete } from '@/strings/messages/TransformersJsManager__files_complete/de';
+import { TransformersJsManager__current_candidate_download_time_remaining } from '@/strings/messages/TransformersJsManager__current_candidate_download_time_remaining/de';
+import { TransformersJsManager__candidate_number } from '@/strings/messages/TransformersJsManager__candidate_number/de';
+import { TransformersJsManager__current_candidate_received_and_cached_bytes } from '@/strings/messages/TransformersJsManager__current_candidate_received_and_cached_bytes/de';
 import { TransformersJsManager__preset_model_paths } from '@/strings/messages/TransformersJsManager__preset_model_paths/de';
 import { TransformersJsManager__refresh } from '@/strings/messages/TransformersJsManager__refresh/de';
 import { TransformersJsManager__restart } from '@/strings/messages/TransformersJsManager__restart/de';
@@ -2751,7 +2829,10 @@ export const catalog = {
   TransformersJsLoadingIndicator__model,
   TransformersJsLoadingIndicator__on_device_execution,
   TransformersJsLoadingIndicator__transformers_js_error,
+  ModelSupportInvestigationModal__download_verification,
   ModelSupportInvestigationModal__blocked,
+  ModelSupportInvestigationModal__skipped,
+  ModelSupportInvestigationModal__stop_this_model_and_continue,
   ModelSupportInvestigationModal__candidate_eligible,
   ModelSupportInvestigationModal__candidate_ineligible,
   ModelSupportInvestigationModal__candidate_plan_summary,
@@ -2763,11 +2844,12 @@ export const catalog = {
   ModelSupportInvestigationModal__close,
   ModelSupportInvestigationModal__current_operation,
   ModelSupportInvestigationModal__declaration_files_summary,
-  ModelSupportInvestigationModal__download_partial_evidence,
+  ModelSupportInvestigationModal__download_evidence_zip,
   ModelSupportInvestigationModal__evidence_export,
   ModelSupportInvestigationModal__environment_evidence_disclosure,
   ModelSupportInvestigationModal__evidence_readiness,
   ModelSupportInvestigationModal__evidence_readiness_summary,
+  ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status,
   ModelSupportInvestigationModal__existing_model_data,
   ModelSupportInvestigationModal__failed,
   ModelSupportInvestigationModal__findings,
@@ -2799,11 +2881,13 @@ export const catalog = {
   ModelSupportInvestigationModal__repository_information,
   ModelSupportInvestigationModal__repository_summary,
   ModelSupportInvestigationModal__running,
+  ModelSupportInvestigationModal__stop_investigation,
   ModelSupportInvestigationModal__runtime_assets,
   ModelSupportInvestigationModal__runtime_control_webgpu,
   ModelSupportInvestigationModal__runtime_no_output,
   ModelSupportInvestigationModal__runtime_bytes,
   ModelSupportInvestigationModal__runtime_control,
+  ModelSupportInvestigationModal__runtime_control_inputs,
   ModelSupportInvestigationModal__runtime_environment,
   ModelSupportInvestigationModal__runtime_environment_summary,
   ModelSupportInvestigationModal__runtime_mjs,
@@ -2818,7 +2902,52 @@ export const catalog = {
   ModelSupportInvestigationModal__tool_result_production_continuation_failed,
   ModelSupportInvestigationModal__tool_result_production_continuation_passed,
   ModelSupportInvestigationModal__tool_template_provenance_summary,
-  ModelSupportInvestigationModal__this_is_partial_evidence,
+  ModelSupportInvestigationModal__selected_scope_execution_summary,
+  ModelSupportInvestigationSession__fresh_metadata_preparation_status,
+  ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness,
+  ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure,
+  ModelSupportInvestigationSession__failed_and_not_run_checks,
+  ModelSupportInvestigationSession__feature_check_result,
+  ModelSupportInvestigationSession__provider_collection_progress,
+  ModelSupportInvestigationSession__maximum_phase_deadlines,
+  ModelSupportInvestigationSession__native_recording_is_not_correctness,
+  ModelSupportInvestigationSession__export_retained_download_timing,
+  ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation,
+  ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session,
+  ModelSupportInvestigationSession__some_download_timing_was_not_retained,
+  ModelSupportInvestigationSession__failed_to_export_retained_download_timing,
+  ModelSupportInvestigationSession__recording_retention_budget,
+  ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load,
+  ModelSupportInvestigationModal__start_investigation,
+  ModelSupportInvestigationModal__new_investigation,
+  ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another,
+  ModelSupportInvestigationModal__replace_results_and_return_to_setup,
+  ModelSupportInvestigationModal__ready_to_start,
+  ModelSupportInvestigationModal__targets,
+  ModelSupportInvestigationModal__one_model_per_line,
+  ModelSupportInvestigationModal__copy_model_list,
+  ModelSupportInvestigationModal__invalid_model_line,
+  ModelSupportInvestigationModal__presets,
+  ModelSupportInvestigationModal__full_investigation,
+  ModelSupportInvestigationModal__offline,
+  ModelSupportInvestigationModal__download_focused,
+  ModelSupportInvestigationModal__custom,
+  ModelSupportInvestigationModal__execution_policy,
+  ModelSupportInvestigationModal__external_network_access,
+  ModelSupportInvestigationModal__allow,
+  ModelSupportInvestigationModal__deny,
+  ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation,
+  ModelSupportInvestigationModal__investigation_scope,
+  ModelSupportInvestigationModal__repository_and_download,
+  ModelSupportInvestigationModal__model_load,
+  ModelSupportInvestigationModal__generation,
+  ModelSupportInvestigationModal__continuity_and_kv_cache,
+  ModelSupportInvestigationModal__capability_probes,
+  ModelSupportInvestigationModal__required_by_selected_scope,
+  ModelSupportInvestigationModal__setup,
+  ModelSupportInvestigationModal__running_and_results,
+  ModelSupportInvestigationModal__models_are_investigated_sequentially,
+  ModelSupportInvestigationModal__add_models_placeholder,
   TransformersJsManager__investigate,
   TransformersJsManager__active,
   TransformersJsManager__active_model,
@@ -2838,6 +2967,10 @@ export const catalog = {
   TransformersJsManager__download_failed_check_details_in_the_section_below,
   TransformersJsManager__download_from_hugging_face,
   TransformersJsManager__download_model,
+  TransformersJsManager__reusing_downloaded_file,
+  TransformersJsManager__download_complete,
+  TransformersJsManager__received_and_reused_bytes,
+  TransformersJsManager__about_time_remaining,
   TransformersJsManager__downloaded_models,
   TransformersJsManager__downloading_and_compiling,
   TransformersJsManager__engine_control,
@@ -2869,6 +3002,29 @@ export const catalog = {
   TransformersJsManager__note,
   TransformersJsManager__origin_private_file_system_opfs,
   TransformersJsManager__overall_progress,
+  TransformersJsManager__close_error_details,
+  TransformersJsManager__resolving_revision,
+  TransformersJsManager__checking_cache,
+  TransformersJsManager__preparing_metadata,
+  TransformersJsManager__checking_required_files,
+  TransformersJsManager__transferring,
+  TransformersJsManager__saving,
+  TransformersJsManager__checking_runtime,
+  TransformersJsManager__complete,
+  TransformersJsManager__queued,
+  TransformersJsManager__cached,
+  TransformersJsManager__current_candidate_preparation_includes_cached_files,
+  TransformersJsManager__total_size_unknown,
+  TransformersJsManager__recalculated_after_size_update,
+  TransformersJsManager__recalculated_after_download_restart,
+  TransformersJsManager__retrying_with_another_candidate,
+  TransformersJsManager__saving_and_checks_not_included,
+  TransformersJsManager__estimating_download_time,
+  TransformersJsManager__recalculating_download_time,
+  TransformersJsManager__files_complete,
+  TransformersJsManager__current_candidate_download_time_remaining,
+  TransformersJsManager__candidate_number,
+  TransformersJsManager__current_candidate_received_and_cached_bytes,
   TransformersJsManager__preset_model_paths,
   TransformersJsManager__refresh,
   TransformersJsManager__restart,

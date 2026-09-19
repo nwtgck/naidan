@@ -7,6 +7,7 @@ import type {
 } from "@/features/transformers-js/model-support-investigation/types";
 import { runModelLoadInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-model-load-investigation";
 import { CandidateAttemptTimeoutError } from "@/features/transformers-js/model-support-investigation/logic/candidate-attempt-timeout";
+import { ModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
 
 function candidate(candidateId: "webgpu-q4f16" | "webgpu-q4" | "wasm-q4"): ModelSupportInvestigationCandidateFilePlan {
   const [device, dtype] = candidateId === "webgpu-q4f16"
@@ -66,6 +67,15 @@ function run({ supportedClass = true, candidates = [candidate("webgpu-q4f16"), c
       libraryName: "transformers",
       metadata: {},
     },
+    runtimeTarget: {
+      normalizedModelId: "org/model",
+      evidenceRevision: "a".repeat(40),
+      loaderRevisionOption: null,
+      source: "repository",
+      revisionIdentity: "exact-resolved-revision",
+      pipelineTag: "text-generation",
+    },
+    downloadEvidence: undefined,
     cache: undefined,
     declarations: {
       normalizedModelId: "org/model",
@@ -217,6 +227,86 @@ describe("runModelLoadInvestigation", () => {
     expect(result.currentOperation).toBe("Minimum real-model generation evidence collected");
   });
 
+  it("reports a load-only failure without claiming generation was expected", async () => {
+    const candidatePlan = candidate("webgpu-q4f16");
+    const partialRun = run({ candidates: [candidatePlan] });
+    partialRun.executionPlan = {
+      repositoryDownload: false,
+      modelLoad: true,
+      generation: false,
+      continuity: false,
+      capabilityProbes: false,
+    };
+    const result = await runModelLoadInvestigation({
+      partialRun,
+      runAttempt: vi.fn(async () => attempt({ candidatePlan, status: "failed" })),
+      onEvent: vi.fn(),
+      now: () => "after",
+      createAttemptId: () => "unexpected",
+    });
+
+    expect(result.steps.find(step => step.id === "loading-investigation")).toMatchObject({
+      status: "failed",
+      detail: "1 eligible candidates failed before model loading completed",
+    });
+    expect(result.currentOperation).toBe("Model load attempts completed without a successful model load");
+  });
+
+  it("reports a load-only success without claiming generation evidence", async () => {
+    const candidatePlan = candidate("webgpu-q4f16");
+    const loadOnlyAttempt: ModelSupportInvestigationLoadAttempt = {
+      ...attempt({ candidatePlan, status: "passed" }),
+      events: [
+        { stage: "model-load", status: "passed", detail: "loaded", at: "during" },
+        { stage: "first-generation", status: "skipped", detail: "generation not selected", at: "during" },
+      ],
+      generatedTokenIds: [],
+      generatedText: undefined,
+    };
+    const result = await runModelLoadInvestigation({
+      partialRun: run({ candidates: [candidatePlan] }),
+      runAttempt: vi.fn(async () => loadOnlyAttempt),
+      onEvent: vi.fn(),
+      now: () => "after",
+      createAttemptId: () => "unexpected",
+    });
+
+    expect(result.steps.find(step => step.id === "loading-investigation")).toMatchObject({
+      status: "passed",
+      detail: "webgpu-q4f16 loaded successfully; generation was skipped by investigation scope",
+    });
+    expect(result.currentOperation).toBe("Model load evidence collected; generation was not requested");
+  });
+
+  it("uses the exact candidate accepted by reused Production cache instead of re-exploring fallback candidates", async () => {
+    const partialRun = run();
+    partialRun.downloadEvidence = {
+      runtimeCompletion: {
+        status: 'accepted',
+        loaderRevisionOption: 'a'.repeat(40),
+        selectedCandidate: { device: 'webgpu', dtype: 'q4' },
+      },
+    } as NonNullable<ModelSupportInvestigationRun['downloadEvidence']>;
+    const runAttempt = vi.fn(async ({ candidate: candidatePlan }: { candidate: ModelSupportInvestigationCandidateFilePlan }) => (
+      attempt({ candidatePlan, status: 'passed' })
+    ));
+
+    const result = await runModelLoadInvestigation({
+      partialRun,
+      runAttempt,
+      onEvent: vi.fn(),
+      now: () => 'after',
+      createAttemptId: () => 'unexpected',
+    });
+
+    expect(runAttempt).toHaveBeenCalledTimes(1);
+    expect(runAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      candidate: expect.objectContaining({ candidateId: 'webgpu-q4', device: 'webgpu', dtype: 'q4' }),
+      loaderRevisionOption: 'a'.repeat(40),
+    }));
+    expect(result.loadAttempts.map(item => item.candidateId)).toEqual(['webgpu-q4']);
+  });
+
   it("still probes the real model when Runtime Integrity Preflight failed", async () => {
     const partialRun = run();
     partialRun.steps = partialRun.steps.map(step => (
@@ -242,6 +332,72 @@ describe("runModelLoadInvestigation", () => {
     expect(result.loadAttempts[0]?.status).toBe("passed");
     expect(result.status).toBe("failed");
     expect(result.error).toBe("runtime failed");
+  });
+
+  it("keeps an intentional external-network policy block out of the failure aggregate", async () => {
+    const partialRun = run();
+    partialRun.repository = undefined;
+    partialRun.runtimeTarget = undefined;
+    partialRun.declarations = undefined;
+    partialRun.modelFilePlan = undefined;
+    partialRun.steps = [
+      { id: "runtime-assets", status: "passed", detail: "runtime passed" },
+      { id: "repository-information", status: "skipped", detail: "policy" },
+      { id: "loading-investigation", status: "not-run", detail: undefined },
+    ];
+    const runAttempt = vi.fn();
+
+    const result = await runModelLoadInvestigation({
+      partialRun,
+      runAttempt,
+      onEvent: vi.fn(),
+      now: () => "after",
+      createAttemptId: () => "unexpected",
+    });
+
+    expect(runAttempt).not.toHaveBeenCalled();
+    expect(result.status).toBe("passed");
+    expect(result.error).toBeUndefined();
+    expect(result.steps.find(step => step.id === "loading-investigation")).toMatchObject({
+      status: "blocked",
+      detail: expect.stringContaining("runtime target"),
+    });
+  });
+
+  it("treats an incomplete local-cache candidate plan as an expected block without downloading or failing the run", async () => {
+    const partialRun = run({ candidates: [{ ...candidate("webgpu-q4"), eligibility: "ineligible" }] });
+    partialRun.repository = undefined;
+    partialRun.runtimeTarget = {
+      normalizedModelId: "org/model",
+      evidenceRevision: "b".repeat(40),
+      loaderRevisionOption: "b".repeat(40),
+      source: "local-cache",
+      revisionIdentity: "local-immutable-revision",
+      pipelineTag: undefined,
+    };
+    partialRun.steps = [
+      { id: "runtime-assets", status: "passed", detail: "runtime passed" },
+      { id: "repository-information", status: "skipped", detail: "policy" },
+      { id: "download-evidence", status: "skipped", detail: "policy" },
+      { id: "loading-investigation", status: "not-run", detail: undefined },
+    ];
+    const runAttempt = vi.fn();
+
+    const result = await runModelLoadInvestigation({
+      partialRun,
+      runAttempt,
+      onEvent: vi.fn(),
+      now: () => "after",
+      createAttemptId: () => "unexpected",
+    });
+
+    expect(runAttempt).not.toHaveBeenCalled();
+    expect(result.status).toBe("passed");
+    expect(result.error).toBeUndefined();
+    expect(result.steps.find(step => step.id === "loading-investigation")).toMatchObject({
+      status: "blocked",
+      detail: expect.stringContaining("does not download missing model artifacts"),
+    });
   });
 
   it("blocks without invoking a Worker when no generative class is supported", async () => {
@@ -279,6 +435,22 @@ describe("runModelLoadInvestigation", () => {
       error: { message: "Worker import failed" },
     });
     expect(result.loadAttempts[1]?.status).toBe("passed");
+  });
+
+  it("propagates an explicit user interruption instead of converting it into a candidate failure", async () => {
+    const runAttempt = vi.fn(async () => {
+      throw new ModelSupportInvestigationUserInterruptedError();
+    });
+
+    await expect(runModelLoadInvestigation({
+      partialRun: run(),
+      runAttempt,
+      onEvent: vi.fn(),
+      now: () => "after",
+      createAttemptId: () => "unexpected",
+    })).rejects.toMatchObject({ name: "ModelSupportInvestigationUserInterruptedError" });
+
+    expect(runAttempt).toHaveBeenCalledTimes(1);
   });
 
   it("still investigates model loading when template evidence is unavailable", async () => {

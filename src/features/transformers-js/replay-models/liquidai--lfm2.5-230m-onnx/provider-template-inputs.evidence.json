@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "source": "reference-template-behavior-matrix",
+  "sourceMemberSha256": "83b2d8884f891fae7de974a20b56d94958bdf02bafac678d4503adf8f302ea42",
+  "modelId": "LiquidAI/LFM2.5-230M-ONNX",
+  "revision": "c6f46e4e3f885ebcad164d14059a49f90e27eb4d",
+  "cases": [
+    {
+      "caseId": "user-generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Template probe user message."
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "failed",
+      "selectedTemplateSha256": "6d65c8804847ad74eea912dd7eca3dc1cf7a457b53a77f47d841a14121910963",
+      "failureStage": "render",
+      "error": {
+        "name": "SyntaxError",
+        "message": "Unknown statement type: generation"
+      }
+    },
+    {
+      "caseId": "system-user-generation",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Template probe system instruction."
+        },
+        {
+          "role": "user",
+          "content": "Template probe user message."
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "failed",
+      "selectedTemplateSha256": "6d65c8804847ad74eea912dd7eca3dc1cf7a457b53a77f47d841a14121910963",
+      "failureStage": "render",
+      "error": {
+        "name": "SyntaxError",
+        "message": "Unknown statement type: generation"
+      }
+    },
+    {
+      "caseId": "multi-turn-generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Template probe first user message."
+        },
+        {
+          "role": "assistant",
+          "content": "Template probe assistant response."
+        },
+        {
+          "role": "user",
+          "content": "Template probe second user message."
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "failed",
+      "selectedTemplateSha256": "6d65c8804847ad74eea912dd7eca3dc1cf7a457b53a77f47d841a14121910963",
+      "failureStage": "render",
+      "error": {
+        "name": "SyntaxError",
+        "message": "Unknown statement type: generation"
+      }
+    },
+    {
+      "caseId": "tools-generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "failed",
+      "selectedTemplateSha256": "6d65c8804847ad74eea912dd7eca3dc1cf7a457b53a77f47d841a14121910963",
+      "failureStage": "render",
+      "error": {
+        "name": "SyntaxError",
+        "message": "Unknown statement type: generation"
+      }
+    },
+    {
+      "caseId": "assistant-tool-call-history",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call_template_probe_1",
+              "type": "function",
+              "function": {
+                "name": "lookup_weather",
+                "arguments": "{\"city\":\"Tokyo\"}"
+              }
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": false,
+      "status": "failed",
+      "selectedTemplateSha256": "6d65c8804847ad74eea912dd7eca3dc1cf7a457b53a77f47d841a14121910963",
+      "failureStage": "render",
+      "error": {
+        "name": "SyntaxError",
+        "message": "Unknown statement type: generation"
+      }
+    },
+    {
+      "caseId": "tool-result-continuation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call_template_probe_1",
+              "type": "function",
+              "function": {
+                "name": "lookup_weather",
+                "arguments": "{\"city\":\"Tokyo\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call_template_probe_1",
+          "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": true,
+      "status": "failed",
+      "selectedTemplateSha256": "6d65c8804847ad74eea912dd7eca3dc1cf7a457b53a77f47d841a14121910963",
+      "failureStage": "render",
+      "error": {
+        "name": "SyntaxError",
+        "message": "Unknown statement type: generation"
+      }
+    }
+  ]
+}

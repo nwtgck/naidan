@@ -1,0 +1,15 @@
+{
+  "format": "provider-sequence-evidence-v1",
+  "contextSha256": "caf488216beb48f4dc3452e6eaafcca3be260ea2389cf7e9fdb16fac4534e5b5",
+  "provenanceSha256": "b0c0422e50cd6890265d71ec7d5fea8eceed423c54f8ebf1c5ddce65517b230d",
+  "cases": [
+    {
+      "caseId": "first-turn",
+      "sha256": "9367dbe4a833516c3edcfcc0aea9bb931c5f66601d846f94d7596536cc7e6eec"
+    },
+    {
+      "caseId": "continuity",
+      "sha256": "f47976554dd6b1e540c1a6602a793ddb01bfa960f9a77c81ed3f193fb5431855"
+    }
+  ]
+}
