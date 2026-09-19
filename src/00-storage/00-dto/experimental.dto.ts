@@ -79,7 +79,7 @@ export type ExperimentalToolConfigsDto = z.infer<typeof ExperimentalToolConfigsS
  */
 export const ExperimentalExperimentalTypeEndpointSchemaDto =
   resolveMissingAsUndefined(z.object({
-    type: missingAsUndefined(z.literal('browser_provided_lm')),
+    type: missingAsUndefined(z.enum(['browser_provided_lm', 'llama_cpp_browser'])),
   }));
 
 export const ExperimentalHttpEndpointSchemaDto = EmptyExperimentalSchemaDto;

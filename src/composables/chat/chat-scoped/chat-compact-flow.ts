@@ -76,6 +76,7 @@ function resolveCompactLmParameters({
     return undefined;
   case 'openai':
   case 'ollama':
+  case 'llama_cpp_browser':
   case 'transformers_js':
     return parameters;
   default: {

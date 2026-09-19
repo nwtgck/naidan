@@ -1712,6 +1712,28 @@ import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__we
 
 import type { Strings } from './en';
 
+import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/ja';
+import { llamaCppBrowser__manage_gguf_models } from '@/strings/messages/llamaCppBrowser__manage_gguf_models/ja';
+import { llamaCppBrowser__import_downloaded_gguf } from '@/strings/messages/llamaCppBrowser__import_downloaded_gguf/ja';
+import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/ja';
+import { llamaCppBrowser__text_chat_only } from '@/strings/messages/llamaCppBrowser__text_chat_only/ja';
+import { llamaCppBrowser__import_gguf } from '@/strings/messages/llamaCppBrowser__import_gguf/ja';
+import { llamaCppBrowser__profile } from '@/strings/messages/llamaCppBrowser__profile/ja';
+import { llamaCppBrowser__context_size } from '@/strings/messages/llamaCppBrowser__context_size/ja';
+import { llamaCppBrowser__no_imported_models } from '@/strings/messages/llamaCppBrowser__no_imported_models/ja';
+import { llamaCppBrowser__delete_model } from '@/strings/messages/llamaCppBrowser__delete_model/ja';
+import { llamaCppBrowser__delete_model_confirmation } from '@/strings/messages/llamaCppBrowser__delete_model_confirmation/ja';
+import { llamaCppBrowser__release_runtime } from '@/strings/messages/llamaCppBrowser__release_runtime/ja';
+import { llamaCppBrowser__refresh_models } from '@/strings/messages/llamaCppBrowser__refresh_models/ja';
+import { llamaCppBrowser__operation_failed } from '@/strings/messages/llamaCppBrowser__operation_failed/ja';
+import { llamaCppBrowser__ready } from '@/strings/messages/llamaCppBrowser__ready/ja';
+import { llamaCppBrowser__importing } from '@/strings/messages/llamaCppBrowser__importing/ja';
+import { llamaCppBrowser__initializing } from '@/strings/messages/llamaCppBrowser__initializing/ja';
+import { llamaCppBrowser__loading } from '@/strings/messages/llamaCppBrowser__loading/ja';
+import { llamaCppBrowser__prefill } from '@/strings/messages/llamaCppBrowser__prefill/ja';
+import { llamaCppBrowser__generating } from '@/strings/messages/llamaCppBrowser__generating/ja';
+import { llamaCppBrowser__import_then_select } from '@/strings/messages/llamaCppBrowser__import_then_select/ja';
+
 export const catalog = {
   SHARED__all_chats,
   SHARED__assistant,
@@ -3422,4 +3444,25 @@ export const catalog = {
   weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
+  llamaCppBrowser__endpoint_label,
+  llamaCppBrowser__manage_gguf_models,
+  llamaCppBrowser__import_downloaded_gguf,
+  llamaCppBrowser__unavailable_in_standalone,
+  llamaCppBrowser__text_chat_only,
+  llamaCppBrowser__import_gguf,
+  llamaCppBrowser__profile,
+  llamaCppBrowser__context_size,
+  llamaCppBrowser__no_imported_models,
+  llamaCppBrowser__delete_model,
+  llamaCppBrowser__delete_model_confirmation,
+  llamaCppBrowser__release_runtime,
+  llamaCppBrowser__refresh_models,
+  llamaCppBrowser__operation_failed,
+  llamaCppBrowser__ready,
+  llamaCppBrowser__importing,
+  llamaCppBrowser__initializing,
+  llamaCppBrowser__loading,
+  llamaCppBrowser__prefill,
+  llamaCppBrowser__generating,
+  llamaCppBrowser__import_then_select,
 } satisfies Strings;

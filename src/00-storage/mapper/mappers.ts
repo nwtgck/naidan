@@ -858,6 +858,8 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     switch (experimentalType) {
     case 'browser_provided_lm':
       return exactObject<Extract<Endpoint, { type: 'browser_provided_lm' }>>()({ type: 'browser_provided_lm' });
+    case 'llama_cpp_browser':
+      return exactObject<Extract<Endpoint, { type: 'llama_cpp_browser' }>>()({ type: 'llama_cpp_browser' });
     case undefined: {
       const unreadableType = experimental?.unreadable?.type;
       return exactObject<Extract<Endpoint, { type: 'unsupported_experimental_endpoint' }>>()({
@@ -913,16 +915,17 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       experimental: undefined,
     });
   }
+  case 'llama_cpp_browser':
   case 'browser_provided_lm': {
     const {
-      type: _type,
+      type,
       ...unhandled
     } = endpoint;
 
     unhandled satisfies Record<PropertyKey, never>;
 
     const experimental = exactObject<NonNullable<Extract<EndpointDto, { type: 'experimental_type' }>['experimental']>>()({
-      type: 'browser_provided_lm',
+      type,
       unreadable: undefined,
     });
 

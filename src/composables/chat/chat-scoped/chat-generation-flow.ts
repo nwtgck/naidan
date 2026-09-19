@@ -97,6 +97,7 @@ function isBrowserProvidedLmEndpoint({ endpoint }: { endpoint: Endpoint }): bool
     return true;
   case 'openai':
   case 'ollama':
+  case 'llama_cpp_browser':
   case 'transformers_js':
   case 'unsupported_experimental_endpoint':
     return false;
@@ -209,6 +210,7 @@ export async function sendMessageToTargetChat({
           url: endpoint.url,
           type: endpoint.type,
         };
+      case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':
         return {

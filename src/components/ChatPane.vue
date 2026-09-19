@@ -46,6 +46,7 @@ import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoic
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
+import LlamaCppBrowserLoadingIndicator from '@/features/llama-cpp-browser/components/LlamaCppBrowserLoadingIndicator.vue';
 import TransformersJsLoadingIndicator from '@/features/transformers-js/components/TransformersJsLoadingIndicator.vue';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
 import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
@@ -746,6 +747,7 @@ const canGenerateImage = computed(() => {
       return true;
     case 'openai':
     case 'transformers_js':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return false;
@@ -775,6 +777,8 @@ const isChatSubmissionEnabled = computed(() => {
   case 'ollama':
   case 'transformers_js':
     return true;
+  case 'llama_cpp_browser':
+    return !__BUILD_MODE_IS_STANDALONE__;
   case 'browser_provided_lm':
     return promptApiRuntimeState.value.status === 'ready';
   case 'unsupported_experimental_endpoint':
@@ -1610,6 +1614,7 @@ watch(
               />
             </template>
 
+            <LlamaCppBrowserLoadingIndicator v-if="resolvedSettings?.endpoint.type === 'llama_cpp_browser'" />
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->
             <TransformersJsLoadingIndicator
               v-if="resolvedSettings?.endpoint.type === 'transformers_js'"

@@ -25,6 +25,7 @@ const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => 
 // Lazily load previews that are only shown during specific actions
 const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilePreview.vue') });
 // Lazily load upsell UI
+const LlamaCppBrowserUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/llama-cpp-browser/components/LlamaCppBrowserUpsell.vue') });
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsUpsell.vue') });
 const OllamaManagementView = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./OllamaManagementView.vue') });
 
@@ -95,6 +96,7 @@ const endpointType = computed<Endpoint['type']>({
       resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
       return;
     }
+    case 'llama_cpp_browser':
     case 'transformers_js':
       clearBrowserProvidedLmModelIds();
       form.value.endpoint = { type };
@@ -331,6 +333,7 @@ const titleEndpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> =
   openai: true,
   ollama: true,
   transformers_js: true,
+  llama_cpp_browser: true,
   browser_provided_lm: true,
 };
 
@@ -536,10 +539,11 @@ function setGlobalTitleEndpointType({
       },
     });
     return;
+  case 'llama_cpp_browser':
   case 'transformers_js':
     setFormTitleGeneration({
       titleGeneration: {
-        endpoint: { type: 'transformers_js' },
+        endpoint: { type: endpointType },
         model: explicitSettingsTitleModel({ modelId }),
       },
     });
@@ -612,7 +616,7 @@ async function fetchTitleEndpointModels(): Promise<void> {
   try {
     const models = await fetchModelsGlobal({ overrides: endpoint });
     if (!areEndpointsEqual({ left: endpoint, right: globalEffectiveTitleEndpoint.value })) return;
-    if (models.length === 0 && endpoint.type !== 'transformers_js') {
+    if (models.length === 0 && endpoint.type !== 'transformers_js' && endpoint.type !== 'llama_cpp_browser') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
     titleEndpointModels.value = models;
@@ -661,6 +665,7 @@ async function copySetupUrl(): Promise<void> {
       params.set('global-endpoint-url', endpoint.url);
     }
     break;
+  case 'llama_cpp_browser':
   case 'transformers_js':
     // transformers_js doesn't use global-endpoint parameters in this implementation
     break;
@@ -722,7 +727,7 @@ async function fetchModels() {
     const models = await fetchModelsGlobal({ overrides: requestedEndpoint });
     if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) return;
 
-    if (models.length === 0 && form.value.endpoint.type !== 'transformers_js') {
+    if (models.length === 0 && form.value.endpoint.type !== 'transformers_js' && form.value.endpoint.type !== 'llama_cpp_browser') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
 
@@ -733,6 +738,7 @@ async function fetchModels() {
       switch (updatedForm.endpoint.type) {
       case 'openai':
       case 'ollama':
+      case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':
         return true;
@@ -780,7 +786,7 @@ async function fetchModels() {
 
 watch([globalTitleEndpointUrl, globalTitleEndpointSelectValue], ([url, endpointType]) => {
   if (globalTitleGenerationEnabled.value && !globalTitleEndpointUsesSameScope.value) {
-    if (endpointType === 'transformers_js' || endpointType === 'browser_provided_lm' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
+    if ((endpointType === 'transformers_js' || endpointType === 'llama_cpp_browser') || endpointType === 'browser_provided_lm' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
       void fetchTitleEndpointModels();
     }
   }
@@ -881,7 +887,7 @@ function removeHeader({ index }: { index: number }) {
 // Auto-fetch for localhost or transformers_js
 watch([endpointUrl, endpointType], ([url, type]) => {
   if (
-    type === 'transformers_js'
+    (type === 'transformers_js' || type === 'llama_cpp_browser')
     || type === 'browser_provided_lm'
     || (url && (url.includes('localhost') || url.includes('127.0.0.1')))
   ) {
@@ -954,6 +960,7 @@ defineExpose({
                   <option :disabled="isStandalone" value="transformers_js">
                     {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ isStandalone ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
                   </option>
+                  <option value="llama_cpp_browser" :disabled="isStandalone">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                   <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">
                     {{ lazyStrings.SHARED__browser_provided() }}
                   </option>
@@ -1107,6 +1114,7 @@ defineExpose({
                   data-testid="setting-model-select"
                 />
                 <TransformersJsUpsell :show="endpointType === 'transformers_js'" />
+                <LlamaCppBrowserUpsell :show="endpointType === 'llama_cpp_browser'" />
                 <p tw-class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.ConnectionTab__used_for_new_conversations() }}</p>
               </div>
 
@@ -1149,6 +1157,7 @@ defineExpose({
                       <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
                       <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
                       <option value="transformers_js">{{ lazyStrings.ConnectionTab__transformers_js_experimental() }}</option>
+                      <option value="llama_cpp_browser" :disabled="isStandalone">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                       <option value="browser_provided_lm">{{ lazyStrings.SHARED__browser_provided() }}</option>
                     </select>
                   </div>

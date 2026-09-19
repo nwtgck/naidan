@@ -1,4 +1,5 @@
 import { generateId } from '@/01-models/id';
+import { LlamaCppBrowserProvider } from '@/features/llama-cpp-browser/provider';
 import type { AssistantMessageNode, Attachment, ChatMessage, Endpoint, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
@@ -226,6 +227,8 @@ export async function createProviderForCompact({
     });
   case 'transformers_js':
     return new (await import('@/features/transformers-js/provider')).TransformersJsProvider();
+  case 'llama_cpp_browser':
+    return new LlamaCppBrowserProvider();
   case 'browser_provided_lm':
     return new (await import('@/features/prompt-api/provider')).PromptApiProvider();
   case 'unsupported_experimental_endpoint':

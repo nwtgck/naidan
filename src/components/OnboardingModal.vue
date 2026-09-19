@@ -19,7 +19,9 @@ import ModelSelector from './ModelSelector.vue';
 
 // Load onboarding subviews only when their current template branch needs them.
 const ServerSetupGuide = defineAsyncComponent(() => import('./ServerSetupGuide.vue'));
+const LlamaCppBrowserManager = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue'));
 const TransformersJsManager = defineAsyncComponent(() => import('@/features/transformers-js/components/TransformersJsManager.vue'));
+import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { transformersJsService } from '@/features/transformers-js';
 import { PlayIcon, ArrowLeftIcon, CheckCircle2Icon, ActivityIcon, SettingsIcon, XIcon, PlusIcon, Trash2Icon, FlaskConicalIcon } from 'lucide-vue-next';
 import { naturalSort } from '@/utils/string';
@@ -70,6 +72,7 @@ function handleModalKeydown({ event }: {
   }
 }
 
+const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 const DEFAULT_TYPE = Symbol('default');
 const selectedType = ref<EndpointType | typeof DEFAULT_TYPE>(onboardingDraft.value?.type || DEFAULT_TYPE);
 
@@ -119,6 +122,7 @@ const isTransformersJs = computed(() => {
     return true;
   case 'openai':
   case 'ollama':
+  case 'llama_cpp_browser':
   case 'browser_provided_lm':
     return false;
   default: {
@@ -128,6 +132,7 @@ const isTransformersJs = computed(() => {
   }
 });
 
+const isLlamaCppBrowser = computed(() => effectiveType.value === 'llama_cpp_browser');
 const isBrowserProvidedLm = computed(() => effectiveType.value === 'browser_provided_lm');
 const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 const isHttpEndpointType = computed(() => (
@@ -168,6 +173,7 @@ watch(
     switch (newType) {
     case 'openai':
     case 'ollama':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
       return;
     case 'transformers_js':
@@ -238,6 +244,26 @@ const sortedModels = computed(() => naturalSort({ values: availableModels.value 
 const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
 
+watch(effectiveType, (type, _previous, onCleanup) => {
+  if (type !== 'llama_cpp_browser' || isStandalone) return;
+  const controller = new AbortController();
+  const refresh = async (): Promise<void> => {
+    try {
+      const models = await llamaCppBrowserService.listModels({ signal: controller.signal });
+      if (controller.signal.aborted) return;
+      availableModels.value = models.map(model => model.name);
+      if (!availableModels.value.includes(selectedModel.value)) selectedModel.value = availableModels.value[0] ?? '';
+    } catch { /* The local manager displays the safe feature error. */ }
+  };
+  const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: () => {
+    void refresh();
+  } });
+  onCleanup(() => {
+    controller.abort(); unsubscribeModels();
+  });
+  void refresh();
+}, { immediate: true });
+
 function addHeader() {
   customHeaders.value.push(['', '']);
 }
@@ -306,6 +332,7 @@ function createEndpoint({
       httpHeaders: httpHeaders.length > 0 ? httpHeaders : undefined,
     };
   case 'transformers_js':
+  case 'llama_cpp_browser':
   case 'browser_provided_lm':
     return { type };
   default: {
@@ -340,6 +367,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
       return true;
     case 'openai':
     case 'ollama':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
       // Keep preparation and connection checks user initiated so the UI does
       // not jump to Step 2 or start a browser model download unexpectedly.
@@ -370,6 +398,7 @@ async function handleCancelConnect(): Promise<void> {
 }
 
 async function handleConnect() {
+  if (isLlamaCppBrowser.value && isStandalone) return;
   const url = getNormalizedUrl();
 
   if (!url && isHttpEndpointType.value) {
@@ -465,6 +494,7 @@ async function handleFinish() {
             ? { endpoint: 'same_scope' as const, model: 'same_scope' as const, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } }
             : { endpoint: 'same_scope' as const, model: { id: selectedModel.value }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         };
+      case 'llama_cpp_browser':
       case 'transformers_js':
         return {
           defaultModelId: selectedModel.value || undefined,
@@ -558,7 +588,7 @@ defineExpose({
 
           <!-- Left Column: Configuration (Primary) -->
 
-          <div :tw-class="['p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs || isBrowserProvidedLm ? 'w-full' : 'w-full lg:w-[62%]']">
+          <div :tw-class="['p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs || isLlamaCppBrowser || isBrowserProvidedLm ? 'w-full' : 'w-full lg:w-[62%]']">
 
             <template v-if="isTransformersJs">
               <!-- Transformers.js Integrated View -->
@@ -588,6 +618,10 @@ defineExpose({
                       @click="selectEndpointType({ type: 'transformers_js' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
+                    <button type="button" :disabled="isStandalone" data-testid="onboarding-llama-cpp-browser-button"
+                            tw-class="px-2 py-1 text-[10px] font-bold text-purple-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                            @click="selectEndpointType({ type: 'llama_cpp_browser' })"
+                    >{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</button>
                     <button
                       @click="selectBrowserProvidedLm"
                       data-testid="onboarding-browser-provided-lm-button"
@@ -657,6 +691,10 @@ defineExpose({
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5" />
                       {{ lazyStrings.OnboardingModal__transformers_js() }}
                     </button>
+                    <button type="button" :disabled="isStandalone" data-testid="onboarding-llama-cpp-browser-button"
+                            tw-class="px-2 py-1 text-[10px] font-bold text-purple-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                            @click="selectEndpointType({ type: 'llama_cpp_browser' })"
+                    >{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</button>
                     <button
                       @click="selectBrowserProvidedLm"
                       data-testid="onboarding-browser-provided-lm-button"
@@ -668,6 +706,7 @@ defineExpose({
                   </div>
 
                 </div>
+                <LlamaCppBrowserManager v-if="isLlamaCppBrowser" />
                 <PromptApiStatus v-if="isBrowserProvidedLm" show-ready />
                 <input
                   v-if="isHttpEndpointType"
@@ -729,7 +768,7 @@ defineExpose({
                 <div tw-class="flex gap-2">
                   <button
                     @click="handleConnect"
-                    :disabled="!isValidUrl || isTesting || (isBrowserProvidedLm && promptApiRuntimeState.status !== 'ready')"
+                    :disabled="!isValidUrl || isTesting || (isLlamaCppBrowser && isStandalone) || (isBrowserProvidedLm && promptApiRuntimeState.status !== 'ready')"
                     tw-class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                     data-testid="onboarding-connect-button"
                   >

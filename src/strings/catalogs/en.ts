@@ -1715,6 +1715,28 @@ type BoundaryStringMessage = (() => string) | ((args: never) => string);
 /* eslint-enable local-rules-named-args/require-named-args */
 type BoundaryStringCatalog = Readonly<Record<string, BoundaryStringMessage>>;
 
+import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/en';
+import { llamaCppBrowser__manage_gguf_models } from '@/strings/messages/llamaCppBrowser__manage_gguf_models/en';
+import { llamaCppBrowser__import_downloaded_gguf } from '@/strings/messages/llamaCppBrowser__import_downloaded_gguf/en';
+import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/en';
+import { llamaCppBrowser__text_chat_only } from '@/strings/messages/llamaCppBrowser__text_chat_only/en';
+import { llamaCppBrowser__import_gguf } from '@/strings/messages/llamaCppBrowser__import_gguf/en';
+import { llamaCppBrowser__profile } from '@/strings/messages/llamaCppBrowser__profile/en';
+import { llamaCppBrowser__context_size } from '@/strings/messages/llamaCppBrowser__context_size/en';
+import { llamaCppBrowser__no_imported_models } from '@/strings/messages/llamaCppBrowser__no_imported_models/en';
+import { llamaCppBrowser__delete_model } from '@/strings/messages/llamaCppBrowser__delete_model/en';
+import { llamaCppBrowser__delete_model_confirmation } from '@/strings/messages/llamaCppBrowser__delete_model_confirmation/en';
+import { llamaCppBrowser__release_runtime } from '@/strings/messages/llamaCppBrowser__release_runtime/en';
+import { llamaCppBrowser__refresh_models } from '@/strings/messages/llamaCppBrowser__refresh_models/en';
+import { llamaCppBrowser__operation_failed } from '@/strings/messages/llamaCppBrowser__operation_failed/en';
+import { llamaCppBrowser__ready } from '@/strings/messages/llamaCppBrowser__ready/en';
+import { llamaCppBrowser__importing } from '@/strings/messages/llamaCppBrowser__importing/en';
+import { llamaCppBrowser__initializing } from '@/strings/messages/llamaCppBrowser__initializing/en';
+import { llamaCppBrowser__loading } from '@/strings/messages/llamaCppBrowser__loading/en';
+import { llamaCppBrowser__prefill } from '@/strings/messages/llamaCppBrowser__prefill/en';
+import { llamaCppBrowser__generating } from '@/strings/messages/llamaCppBrowser__generating/en';
+import { llamaCppBrowser__import_then_select } from '@/strings/messages/llamaCppBrowser__import_then_select/en';
+
 export const catalog = {
   SHARED__all_chats,
   SHARED__assistant,
@@ -3425,6 +3447,27 @@ export const catalog = {
   weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
+  llamaCppBrowser__endpoint_label,
+  llamaCppBrowser__manage_gguf_models,
+  llamaCppBrowser__import_downloaded_gguf,
+  llamaCppBrowser__unavailable_in_standalone,
+  llamaCppBrowser__text_chat_only,
+  llamaCppBrowser__import_gguf,
+  llamaCppBrowser__profile,
+  llamaCppBrowser__context_size,
+  llamaCppBrowser__no_imported_models,
+  llamaCppBrowser__delete_model,
+  llamaCppBrowser__delete_model_confirmation,
+  llamaCppBrowser__release_runtime,
+  llamaCppBrowser__refresh_models,
+  llamaCppBrowser__operation_failed,
+  llamaCppBrowser__ready,
+  llamaCppBrowser__importing,
+  llamaCppBrowser__initializing,
+  llamaCppBrowser__loading,
+  llamaCppBrowser__prefill,
+  llamaCppBrowser__generating,
+  llamaCppBrowser__import_then_select,
 } satisfies BoundaryStringCatalog;
 
 export type Strings = typeof catalog;

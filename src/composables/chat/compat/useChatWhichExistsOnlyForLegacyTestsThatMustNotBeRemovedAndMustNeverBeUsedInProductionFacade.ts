@@ -351,6 +351,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
               ? customEndpoint.headers.map(([name, value]) => [name, value] as [string, string])
               : undefined,
           };
+        case 'llama_cpp_browser':
         case 'transformers_js':
         case 'browser_provided_lm':
           return { type: customEndpoint.type };
@@ -443,6 +444,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
       case 'ollama':
         return resolved.endpoint;
       case 'openai':
+      case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':
       case 'unsupported_experimental_endpoint':

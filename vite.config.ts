@@ -27,6 +27,7 @@ import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
 import { createZipPackages } from './build/zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
+import { createLlamaCppRuntimeAssetsPlugin } from './src/features/llama-cpp-browser/build-runtime-assets';
 import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
 import { createTransformersJsFixesViteConfig } from './build/transformers-js-fixes/plugin';
 import { UI_LOCALES } from './src/01-models/ui-locale';
@@ -338,6 +339,7 @@ export default defineConfig(({ mode }) => {
         ],
       }),
       isHosted && createHostedTransformersRuntimeAssetsPlugin({ rootDir: __dirname }),
+      !isStandalone && createLlamaCppRuntimeAssetsPlugin({ rootDir: __dirname }),
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
         onBuildDependenciesCollected({ dependencies }) {
