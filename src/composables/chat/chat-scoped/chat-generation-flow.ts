@@ -1,6 +1,6 @@
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
-import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, Endpoint, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/01-models/types';
+import type { AssistantMessageNode, Attachment, Chat, ChatGroup, Endpoint, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { LmProvider } from '@/01-models/lm';
@@ -23,6 +23,7 @@ import {
   processThinking,
 } from '@/logic/chat-tree';
 import { generateId } from '@/01-models/id';
+import { buildChatGenerationMessages } from '@/logic/build-chat-generation-messages';
 import {
   SENTINEL_IMAGE_PENDING,
   createImageRequestMarker,
@@ -513,10 +514,12 @@ export async function generateResponseForAssistant({
       endpoint: resolved.endpoint,
     });
     controller.signal.throwIfAborted();
-    const finalMessages = await buildGenerationMessages({
+    const finalMessages = await buildChatGenerationMessages({
       chat: mutableChat,
-      assistantId,
+      excludedMessageId: assistantId,
       systemPromptMessages: resolved.systemPromptMessages,
+      resolveUserContent: getGenerationUserContent,
+      resolveToolResultText: getToolResultText,
     });
 
     let lastSave = 0;
@@ -1079,78 +1082,23 @@ async function loadGenerationProvider({
   });
 }
 
-async function buildGenerationMessages({
-  chat,
-  assistantId,
-  systemPromptMessages,
+async function getGenerationUserContent({
+  message,
 }: {
-  chat: Chat,
-  assistantId: MessageId,
-  systemPromptMessages: string[],
-}): Promise<ChatMessage[]> {
-  const messages: ChatMessage[] = [];
-  systemPromptMessages.forEach((content) => {
-    messages.push({ role: 'system', content });
-  });
+  message: UserMessageNode,
+}): Promise<string | MultimodalContent[]> {
+  const content = message.content || '';
+  if (!message.attachments || message.attachments.length === 0) return content;
 
-  const history = Array.from(getChatBranchIterator({ chat })).filter((message) => message.id !== assistantId);
-  for (const message of history) {
-    switch (message.role) {
-    case 'tool':
-      for (const result of message.results) {
-        messages.push({
-          role: 'tool',
-          tool_call_id: result.toolCallId,
-          content: await getToolResultText({ result }),
-        });
-      }
-      break;
-    case 'user':
-    case 'assistant':
-    case 'system': {
-      const content = message.content || '';
-      if (message.role === 'user' && message.attachments && message.attachments.length > 0) {
-        const contentParts: MultimodalContent[] = [{ type: 'text', text: content }];
-        for (const attachment of message.attachments) {
-          const blob = await resolveAttachmentBlob({ attachment });
-          if (blob !== null && attachment.mimeType.startsWith('image/')) {
-            const dataUrl = await fileToDataUrl({ blob });
-            contentParts.push({ type: 'image_url', image_url: { url: dataUrl } });
-          }
-        }
-        messages.push({ role: message.role, content: contentParts });
-      } else {
-        const toolCalls = (() => {
-          switch (message.role) {
-          case 'assistant':
-            // Historical Tool Calls are already LM-visible transcript data. Do not re-parse or
-            // re-validate them with current schemas; current defaults may differ from execution time.
-            return message.toolCalls;
-          case 'user':
-          case 'system':
-            return undefined;
-          default: {
-            const _ex: never = message;
-            throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
-          }
-          }
-        })();
-        messages.push({
-          role: message.role,
-          content,
-          tool_calls: toolCalls,
-        });
-      }
-      break;
-    }
-    default: {
-      const _ex: never = message;
-      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
-    }
+  const contentParts: MultimodalContent[] = [{ type: 'text', text: content }];
+  for (const attachment of message.attachments) {
+    const blob = await resolveAttachmentBlob({ attachment });
+    if (blob !== null && attachment.mimeType.startsWith('image/')) {
+      const dataUrl = await fileToDataUrl({ blob });
+      contentParts.push({ type: 'image_url', image_url: { url: dataUrl } });
     }
   }
-
-  return messages;
+  return contentParts;
 }
 
 function processStoredAssistantThinking({ node }: { node: AssistantMessageNode }): void {

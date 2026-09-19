@@ -545,15 +545,19 @@ export interface WeshCommandContext {
 
 export type WeshCommandFunction = ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
 
+export interface WeshCommandImplementation {
+  readonly fn: WeshCommandFunction,
+}
+
 export interface WeshCommandMeta {
-  name: string,
-  description: string,
-  usage: string,
+  readonly name: string,
+  readonly description: string,
+  readonly usage: string,
 }
 
 export interface WeshCommandDefinition {
-  fn: WeshCommandFunction,
-  meta: WeshCommandMeta,
+  readonly meta: WeshCommandMeta,
+  readonly load: () => Promise<WeshCommandFunction>,
 }
 
 // --- AST Definitions ---

@@ -15,6 +15,7 @@ import { detectOllama } from '@/utils/ollama-detection';
 import {
   TEST_ONLY as promptApiRuntimeTestOnly,
 } from '@/features/prompt-api/runtime';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 // Mock the services.
@@ -51,6 +52,10 @@ vi.mock('../composables/useLayout', () => ({
     setActiveFocusArea: mockSetActiveFocusArea,
   }),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('OnboardingModal.vue', () => {
   const mockSave = vi.fn();

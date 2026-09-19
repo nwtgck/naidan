@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChat } from './useChat';
 import { ref } from 'vue';
 import { storageService } from '@/00-storage/service';
@@ -58,6 +59,10 @@ vi.mock('./useSettings', () => ({
     settings: ref({}),
   }),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useChat Fork Insertion Logic', () => {
   beforeEach(() => {

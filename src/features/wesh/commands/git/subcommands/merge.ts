@@ -1,13 +1,15 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { fastForwardHead } from "@/features/wesh/commands/git/fast-forward";
 import { sortGitPaths } from "@/features/wesh/commands/git/path-order";
-import { isAncestor } from "@/features/wesh/commands/git/graph";
+import { createGitCommitGraphCache, isAncestor } from "@/features/wesh/commands/git/graph";
 import { readMergeState } from "@/features/wesh/commands/git/merge-state";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "@/features/wesh/commands/git/identity";
-import { readIndex } from "@/features/wesh/commands/git/index-file";
+import { collectUnmergedPaths, readIndex } from "@/features/wesh/commands/git/index-file";
 import { readHead } from "@/features/wesh/commands/git/refs";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { resolveCommitRevision } from "@/features/wesh/commands/git/revision";
@@ -16,16 +18,102 @@ import { resolveContentConfigForContext } from "@/features/wesh/commands/git/con
 import { printCheckoutConflicts } from "@/features/wesh/commands/git/checkout-like";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
 
+type MergeFastForwardMode = 'default' | 'ff-only' | 'no-ff';
+type MergeControlAction = 'continue' | 'abort';
+
+const MERGE_FF_ARGV_CATALOG = defineArgvCatalog<'ff-only' | 'no-ff'>({
+  nonExecutableLongOptions: ['file'],
+  definitions: [
+    {
+      semantic: 'ff-only',
+      forms: [{ kind: 'long', name: 'ff-only', value: { kind: 'none' } }],
+    },
+    {
+      semantic: 'no-ff',
+      forms: [{ kind: 'long', name: 'no-ff', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+function resolveMergeControlAction({ token }: { token: string }): MergeControlAction | undefined {
+  if (!token.startsWith('--') || token.includes('=')) return undefined;
+  const name = token.slice(2);
+  if (name.length >= 3 && 'continue'.startsWith(name)) return 'continue';
+  if (name.length >= 2 && 'abort'.startsWith(name)) return 'abort';
+  return undefined;
+}
+
+function updateMergeFastForwardMode({
+  arg,
+}: {
+  arg: string;
+}): MergeFastForwardMode | undefined {
+  if (arg === '--ff') return 'default';
+  if (!arg.startsWith('--')) return undefined;
+  const analysis = analyzeArgvLongForm({
+    token: arg,
+    catalog: MERGE_FF_ARGV_CATALOG,
+    longNameMatch: 'unique-prefix',
+  });
+  switch (analysis.kind) {
+  case 'matched':
+    switch (analysis.value.kind) {
+    case 'none':
+      break;
+    case 'unexpected-inline':
+    case 'inline':
+    case 'following-required':
+      throw new GitUsageError({ message: `unsupported merge option: ${arg}` });
+    default: {
+      const _ex: never = analysis.value;
+      throw new Error(`Unhandled merge argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+    }
+    }
+    switch (analysis.semantic) {
+    case 'ff-only':
+      return 'ff-only';
+    case 'no-ff':
+      return 'no-ff';
+    default: {
+      const _ex: never = analysis.semantic;
+      throw new Error(`Unhandled merge argv-v2 semantic: ${_ex}`);
+    }
+    }
+  case 'ambiguous':
+    throw new GitUsageError({
+      message: formatGitAmbiguousLongOption({
+        option: analysis.option,
+        candidateOptions: analysis.candidateOptions,
+      }),
+    });
+  case 'unknown':
+    return undefined;
+  default: {
+    const _ex: never = analysis;
+    throw new Error(`Unhandled merge argv-v2 analysis: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
 export async function runMerge({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context });
-  if (args.length === 1 && args[0] === '--continue')
+  const controlAction = args.length === 1 ? resolveMergeControlAction({ token: args[0]! }) : undefined;
+  switch (controlAction) {
+  case 'continue':
     return continueMerge({ context });
-  if (args.length === 1 && args[0] === '--abort')
+  case 'abort':
     return abortMerge({ context });
-  let fastForwardMode: 'default' | 'ff-only' | 'no-ff' = 'default';
+  case undefined:
+    break;
+  default: {
+    const _ex: never = controlAction;
+    throw new Error(`Unhandled merge control action: ${_ex}`);
+  }
+  }
+  let fastForwardMode: MergeFastForwardMode = 'default';
   const operands: string[] = [];
   let parsingOptions = true;
   for (const arg of args) {
@@ -33,25 +121,25 @@ export async function runMerge({ context, args }: {
       parsingOptions = false;
       continue;
     }
-    if (parsingOptions && arg === '--ff-only')
-      fastForwardMode = 'ff-only';
-    else if (parsingOptions && arg === '--no-ff')
-      fastForwardMode = 'no-ff';
-    else if (parsingOptions && arg === '--ff')
-      fastForwardMode = 'default';
-    else if (parsingOptions && arg.startsWith('-'))
+    if (parsingOptions) {
+      const nextMode = updateMergeFastForwardMode({ arg });
+      if (nextMode !== undefined) {
+        fastForwardMode = nextMode;
+        continue;
+      }
+    }
+    if (parsingOptions && arg.startsWith('-'))
       throw new GitUsageError({ message: `unsupported merge option: ${arg}` });
-    else
-      operands.push(arg);
+    operands.push(arg);
   }
   if (operands.length !== 1)
     throw new Error('git merge requires exactly one revision');
   const repository = await discoverRepositoryFromContext({ context });
   const existingMergeState = await readMergeState({ files: context.files, repository });
   if (existingMergeState !== undefined) {
-    const unmergedPaths = sortGitPaths({ paths: new Set((await readIndex({ files: context.files, repository }))
-      .filter(entry => entry.stage !== 0)
-      .map(entry => entry.path)) });
+    const unmergedPaths = sortGitPaths({
+      paths: collectUnmergedPaths({ entries: await readIndex({ files: context.files, repository }) }),
+    });
     if (unmergedPaths.length > 0) {
       await context.text().error({ text: 'error: Merging is not possible because you have unmerged files.\n' });
       await context.text().error({ text: 'fatal: Exiting because of an unresolved conflict.\n' });
@@ -67,13 +155,15 @@ export async function runMerge({ context, args }: {
   const targetExpression = operands[0]!;
   const targetObjectId = await resolveCommitRevision({ files: context.files, repository, expression: targetExpression });
   await readCommit({ files: context.files, repository, objectId: targetObjectId });
-  if (await isAncestor({ files: context.files, repository, ancestorObjectId: targetObjectId, descendantObjectId: head.objectId })) {
+  const graphCache = createGitCommitGraphCache();
+  if (await isAncestor({ files: context.files, repository, cache: graphCache, ancestorObjectId: targetObjectId, descendantObjectId: head.objectId })) {
     await context.text().print({ text: 'Already up to date.\n' });
     return { exitCode: 0 };
   }
   const fastForward = await isAncestor({
     files: context.files,
     repository,
+    cache: graphCache,
     ancestorObjectId: head.objectId,
     descendantObjectId: targetObjectId,
   });
@@ -87,6 +177,7 @@ export async function runMerge({ context, args }: {
       return integrateDivergentMerge({
         context,
         repository,
+        graphCache,
         headObjectId: head.objectId,
         targetObjectId,
         targetLabel: targetExpression,
@@ -104,6 +195,7 @@ export async function runMerge({ context, args }: {
     return integrateDivergentMerge({
       context,
       repository,
+      graphCache,
       headObjectId: head.objectId,
       targetObjectId,
       targetLabel: targetExpression,
@@ -129,6 +221,7 @@ export async function runMerge({ context, args }: {
       message: `merge ${targetExpression}: Fast-forward`,
     },
     contentConfig: await resolveContentConfigForContext({ context, repository }),
+    objectReadCache: graphCache.objectReadCache,
   });
   switch (result.type) {
   case 'checkout-conflict':

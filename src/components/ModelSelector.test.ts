@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import ModelSelector from './ModelSelector.vue';
 import { useSettings } from '@/composables/useSettings';
@@ -30,6 +31,10 @@ vi.mock('@vueuse/core', async (importOriginal) => {
     useElementBounding: vi.fn(() => mockBounding),
     useWindowSize: vi.fn(() => mockWindowSize),
   };
+});
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 describe('ModelSelector.vue', () => {

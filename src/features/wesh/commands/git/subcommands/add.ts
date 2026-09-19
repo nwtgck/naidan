@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
@@ -9,7 +10,47 @@ import { stageWorktreePaths } from "@/features/wesh/commands/git/stage";
 import { collectPathsForAdd, listWorktreeEntries, worktreeAbsolutePath } from "@/features/wesh/commands/git/worktree";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+const ADD_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [
+    'dry-run', 'no-dry-run', 'verbose', 'no-verbose', 'interactive', 'no-interactive',
+    'patch', 'no-patch', 'edit', 'no-edit', 'no-force', 'no-update', 'renormalize',
+    'no-renormalize', 'intent-to-add', 'no-intent-to-add', 'no-all', 'ignore-removal',
+    'no-ignore-removal', 'refresh', 'no-refresh', 'ignore-errors', 'no-ignore-errors',
+    'ignore-missing', 'no-ignore-missing', 'sparse', 'no-sparse', 'chmod', 'no-chmod',
+    'pathspec-from-file', 'no-pathspec-from-file', 'pathspec-file-nul', 'no-pathspec-file-nul',
+  ],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+      forms: [
+        { kind: 'short', name: 'A', value: { kind: 'none' } },
+        { kind: 'long', name: 'all', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'update', value: true }] },
+      forms: [
+        { kind: 'short', name: 'u', value: { kind: 'none' } },
+        { kind: 'long', name: 'update', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'force', value: true }] },
+      forms: [
+        { kind: 'short', name: 'f', value: { kind: 'none' } },
+        { kind: 'long', name: 'force', value: { kind: 'none' } },
+      ],
+    },
+  ],
+});
+
+const ADD_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 export async function runAdd({ context, args }: {
     context: WeshCommandContext;
@@ -17,46 +58,43 @@ export async function runAdd({ context, args }: {
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
   const repository = await discoverRepositoryFromContext({ context });
-  let mode: 'paths' | 'all' | 'update' = 'paths';
-  let allModeSeen = false;
-  let updateModeSeen = false;
-  let force = false;
-  let parsingOptions = true;
-  const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['A', 'u', 'f'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
+  const parsed = parseStandardArgv({ args, catalog: ADD_ARGV_CATALOG, policy: ADD_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    switch (diagnostic.kind) {
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'missing_option_value':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled argv diagnostic: ${JSON.stringify(_ex)}`);
     }
-    if (parsingOptions && (arg === '-A' || arg === '--all')) {
-      if (updateModeSeen)
-        throw new Error("options '-A' and '-u' cannot be used together");
-      allModeSeen = true;
-      mode = 'all';
-      continue;
     }
-    if (parsingOptions && (arg === '-u' || arg === '--update')) {
-      if (allModeSeen)
-        throw new Error("options '-A' and '-u' cannot be used together");
-      updateModeSeen = true;
-      mode = 'update';
-      continue;
-    }
-    if (parsingOptions && (arg === '-f' || arg === '--force')) {
-      force = true;
-      continue;
-    }
-    if (parsingOptions && arg.startsWith('-'))
-      throw new GitUsageError({ message: `unknown option ${arg}` });
-    operands.push(arg);
   }
+  const allModeSeen = parsed.optionValues.all === true;
+  const updateModeSeen = parsed.optionValues.update === true;
+  if (allModeSeen && updateModeSeen)
+    throw new Error("options '-A' and '-u' cannot be used together");
+  const mode: 'paths' | 'all' | 'update' = allModeSeen ? 'all' : updateModeSeen ? 'update' : 'paths';
+  const force = parsed.optionValues.force === true;
+  const operands = parsed.positionals;
   const currentEntries = await readIndex({ files: context.files, repository });
   const trackedPaths = new Set(currentEntries.map(entry => entry.path));
   let selected: Set<string>;
   switch (mode) {
   case 'all':
-    selected = new Set([...await listWorktreeEntries({ files: context.files, repository }), ...trackedPaths]);
+    selected = new Set(await listWorktreeEntries({ files: context.files, repository }));
+    for (const path of trackedPaths) selected.add(path);
     break;
   case 'update':
     selected = new Set(trackedPaths);
@@ -163,8 +201,9 @@ export async function runAdd({ context, args }: {
       throw new Error(`Unhandled add mode: ${_ex}`);
     }
     }
-    selected = new Set([...selected].filter(path => trackedPaths.has(path)
-            || !ignoreMatcher.isIgnored({ path, isDirectory: false })));
+    for (const path of selected) {
+      if (!trackedPaths.has(path) && ignoreMatcher.isIgnored({ path, isDirectory: false })) selected.delete(path);
+    }
   }
   const stagedEntries = await stageWorktreePaths({
     files: context.files,

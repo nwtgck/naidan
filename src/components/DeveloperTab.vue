@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { useSampleChat } from '@/composables/useSampleChat';
+import { computed } from 'vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
-import { CpuIcon, FlaskConicalIcon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
+import { CpuIcon, FlaskConicalIcon, RefreshCwIcon, ScrollTextIcon, SearchCheckIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 import DeveloperDataDeletionPanel from '@/features/data-deletion/components/DeveloperDataDeletionPanel.vue';
 import { lazyStrings } from '@/strings';
+import { isModelSupportInvestigationAvailable } from '@/features/transformers-js/model-support-investigation';
 
 const props = defineProps<{
   storageType: string,
 }>();
 
+const emit = defineEmits<{
+  (e: 'openModelSupportInvestigation', modelId: string): void,
+}>();
+
 const { createSampleChat, createLongSampleChat } = useSampleChat();
+const canOpenModelSupportInvestigation = computed(() => isModelSupportInvestigationAvailable);
 const { needRefresh, setNeedRefresh } = usePWAUpdate();
 
 function togglePWAUpdate() {
@@ -27,6 +34,11 @@ function togglePWAUpdate() {
 
 function handleReload() {
   window.location.reload();
+}
+
+function openModelSupportInvestigation() {
+  if (!canOpenModelSupportInvestigation.value) return;
+  emit('openModelSupportInvestigation', '');
 }
 
 defineExpose({
@@ -73,6 +85,28 @@ defineExpose({
             </button>
           </div>
           <p tw-class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.DeveloperTab__sample_conversations_description() }}</p>
+        </div>
+
+        <div v-if="canOpenModelSupportInvestigation" tw-class="space-y-4">
+          <div>
+            <h3 tw-class="ml-1 text-sm font-bold uppercase tracking-widest text-gray-500">{{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}</h3>
+            <p tw-class="ml-1 mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
+              {{ lazyStrings.ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation() }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="open-model-support-investigation-button"
+            tw-class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+            @click="openModelSupportInvestigation"
+          >
+            <div tw-class="flex items-center gap-2">
+              <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
+                <SearchCheckIcon tw-class="w-4 h-4 text-purple-500" />
+              </div>
+              <span>{{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}</span>
+            </div>
+          </button>
         </div>
 
         <DeveloperOpenStateLinks />

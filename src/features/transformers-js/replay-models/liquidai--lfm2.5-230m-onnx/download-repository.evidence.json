@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "hugging-face-commit-page-public-facts",
+    "observedAt": "2026-09-03T18:19:00.000Z",
+    "note": "Public exact-commit facts for the complete ONNX model-artifact inventory. Small non-model repository files are intentionally omitted. No large artifact body is stored in this fixture, and Git blob IDs are omitted because the captured public commit page did not expose them."
+  },
+  "modelId": "LiquidAI/LFM2.5-230M-ONNX",
+  "requestedRevision": "main",
+  "resolvedRevision": "c6f46e4e3f885ebcad164d14059a49f90e27eb4d",
+  "modelType": "lfm2",
+  "architectures": [
+    "Lfm2ForCausalLM"
+  ],
+  "transformersJsConfig": {
+    "kv_cache_dtype": {
+      "fp32": "float32"
+    },
+    "use_external_data_format": true
+  },
+  "files": [
+    {
+      "path": "onnx/model.onnx",
+      "size": 128784,
+      "lfs": {
+        "sha256": "1f85055f79e7e0e5d4f5c1de63cc61d587d5ba080165a7b8eb3f24c1835b755b",
+        "size": 128784,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model.onnx_data",
+      "size": 951537664,
+      "lfs": {
+        "sha256": "80116563ab2f55afdaeb0d7561f0f5c2a509f5b0770a290b4f595aa4f1c32147",
+        "size": 951537664,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/model_fp16.onnx",
+      "size": 133966,
+      "lfs": {
+        "sha256": "e5f6de5c62a5f2926864c02d1cb5af7ae3b9a9a91514bd685fad4ac14d04dbee",
+        "size": 133966,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model_fp16.onnx_data",
+      "size": 475768832,
+      "lfs": {
+        "sha256": "7a6396228fea9a9aa7f8682fd4b666e67b88f4a84df775264f9628aba4ab8c42",
+        "size": 475768832,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/model_q4.onnx",
+      "size": 154010,
+      "lfs": {
+        "sha256": "82a442c44d3d143432edff57984a4e7e8da65179d3a960a170d294aed8c5dd8d",
+        "size": 154010,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model_q4.onnx_data",
+      "size": 211111936,
+      "lfs": {
+        "sha256": "b51a4580a88a2cd0486032cfdaf8694b09359abca5a97df8deb0a314ea6e5b34",
+        "size": 211111936,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/model_q4f32.onnx",
+      "size": 153902,
+      "lfs": {
+        "sha256": "532477d96f2bda9f7eef984799f3c049259970bf4533c528e71fca85da283528",
+        "size": 153902,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model_q4f32.onnx_data",
+      "size": 403001344,
+      "lfs": {
+        "sha256": "ecc930d0f6e2f6fc2326730b82fd25cd1542da078af0d7ee2319edb39b9be939",
+        "size": 403001344,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/model_q8.onnx",
+      "size": 167040,
+      "lfs": {
+        "sha256": "4cfeb296227815f954a1b37c7d8a65c3e8bc264ecf463fc655963ab5bdb1e074",
+        "size": 167040,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model_q8.onnx_data",
+      "size": 489345024,
+      "lfs": {
+        "sha256": "65b7e60d582227df4a0ab97cc9cd18e0a73dad718200f172fac7f080986b4ac7",
+        "size": 489345024,
+        "pointerSize": 134
+      }
+    }
+  ]
+}

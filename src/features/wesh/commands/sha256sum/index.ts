@@ -8,7 +8,7 @@ import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-
 import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
 } from '@/features/wesh/types';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
@@ -891,12 +891,7 @@ async function runCheckMode({
   return { exitCode };
 }
 
-export const sha256sumCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: COMMAND_NAME,
-    description: 'Print or check SHA256 checksums',
-    usage: 'sha256sum [OPTION]... [FILE]...',
-  },
+export const sha256sumCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: getArgumentsThroughFirstEarlyExit({ args: context.args }),

@@ -34,7 +34,8 @@ defineExpose({
     <!-- Column panes -->
     <div
       ref="scrollContainerRef"
-      tw-class="flex flex-1 overflow-x-auto overscroll-contain"
+      data-testid="file-explorer-column-scroll"
+      tw-class="flex flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
     >
       <FileExplorerColumnPane
         v-for="(pane, i) in ctx.columnPanes"

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -82,7 +83,7 @@ describe('wesh mv', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdin }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -492,6 +493,122 @@ cat /root-dest.txt`,
     expect(invalid.result.exitCode).toBe(1);
     expect((await execute({ script: 'cat dest-invalid.txt' })).stdout.text).toBe('old-invalid');
     expect((await execute({ script: 'cat source-invalid.txt' })).stdout.text).toBe('new-invalid');
+  });
+
+  it('uses GNU simple-backup suffix precedence and normalizes empty suffixes', async () => {
+    await writeFile({ path: 'env-source', data: 'ENV-NEW' });
+    await writeFile({ path: 'env-dest', data: 'ENV-OLD' });
+    const environmentSuffix = await execute({
+      script: 'export SIMPLE_BACKUP_SUFFIX=.bak; mv -b env-source env-dest',
+    });
+
+    await writeFile({ path: 'empty-env-source', data: 'EMPTY-ENV-NEW' });
+    await writeFile({ path: 'empty-env-dest', data: 'EMPTY-ENV-OLD' });
+    const emptyEnvironmentSuffix = await execute({
+      script: 'export SIMPLE_BACKUP_SUFFIX=; mv -b empty-env-source empty-env-dest',
+    });
+
+    await writeFile({ path: 'empty-explicit-source', data: 'EMPTY-EXPLICIT-NEW' });
+    await writeFile({ path: 'empty-explicit-dest', data: 'EMPTY-EXPLICIT-OLD' });
+    const emptyExplicitSuffix = await execute({
+      script: "export SIMPLE_BACKUP_SUFFIX=.bak; mv -b -S '' empty-explicit-source empty-explicit-dest",
+    });
+
+    await writeFile({ path: 'empty-long-source', data: 'EMPTY-LONG-NEW' });
+    await writeFile({ path: 'empty-long-dest', data: 'EMPTY-LONG-OLD' });
+    const emptyLongSuffix = await execute({
+      script: 'export SIMPLE_BACKUP_SUFFIX=.bak; mv -b --suffix= empty-long-source empty-long-dest',
+    });
+
+    await writeFile({ path: 'existing-source', data: 'EXISTING-NEW' });
+    await writeFile({ path: 'existing-dest', data: 'EXISTING-OLD' });
+    const existing = await execute({
+      script: 'export SIMPLE_BACKUP_SUFFIX=.bak; mv --backup=existing existing-source existing-dest',
+    });
+
+    expect(environmentSuffix.stderr.text).toBe('');
+    expect(environmentSuffix.result.exitCode).toBe(0);
+    expect((await execute({ script: 'cat env-dest' })).stdout.text).toBe('ENV-NEW');
+    expect((await execute({ script: 'cat env-dest.bak' })).stdout.text).toBe('ENV-OLD');
+
+    expect(emptyEnvironmentSuffix.stderr.text).toBe('');
+    expect(emptyEnvironmentSuffix.result.exitCode).toBe(0);
+    expect((await execute({ script: 'cat empty-env-dest' })).stdout.text).toBe('EMPTY-ENV-NEW');
+    expect((await execute({ script: 'cat empty-env-dest~' })).stdout.text).toBe('EMPTY-ENV-OLD');
+
+    expect(emptyExplicitSuffix.stderr.text).toBe('');
+    expect(emptyExplicitSuffix.result.exitCode).toBe(0);
+    expect((await execute({ script: 'cat empty-explicit-dest' })).stdout.text).toBe('EMPTY-EXPLICIT-NEW');
+    expect((await execute({ script: 'cat empty-explicit-dest~' })).stdout.text).toBe('EMPTY-EXPLICIT-OLD');
+    await expect(wesh.vfs.lstat({ path: '/empty-explicit-dest.bak' })).rejects.toThrow();
+
+    expect(emptyLongSuffix.stderr.text).toBe('');
+    expect(emptyLongSuffix.result.exitCode).toBe(0);
+    expect((await execute({ script: 'cat empty-long-dest' })).stdout.text).toBe('EMPTY-LONG-NEW');
+    expect((await execute({ script: 'cat empty-long-dest~' })).stdout.text).toBe('EMPTY-LONG-OLD');
+
+    expect(existing.stderr.text).toBe('');
+    expect(existing.result.exitCode).toBe(0);
+    expect((await execute({ script: 'cat existing-dest' })).stdout.text).toBe('EXISTING-NEW');
+    expect((await execute({ script: 'cat existing-dest.bak' })).stdout.text).toBe('EXISTING-OLD');
+  });
+
+  it('refuses backups that would destroy regular-file or FIFO sources', async () => {
+    await writeFile({ path: 'dest', data: 'OLD' });
+    await writeFile({ path: 'dest~', data: 'NEW' });
+    const regular = await execute({ script: 'mv -b dest~ dest' });
+
+    await writeFile({ path: 'lex-dest', data: 'LEX-OLD' });
+    await writeFile({ path: 'lex-dest~', data: 'LEX-NEW' });
+    const lexical = await execute({ script: 'mv -b ./lex-dest~ lex-dest' });
+
+    await writeFile({ path: 'custom-dest', data: 'CUSTOM-OLD' });
+    await writeFile({ path: 'custom-dest.bak', data: 'CUSTOM-NEW' });
+    const custom = await execute({ script: 'mv -b -S .bak custom-dest.bak custom-dest' });
+
+    await writeFile({ path: 'fifo-dest', data: 'FIFO-OLD' });
+    const fifoCreated = await execute({ script: 'mkfifo fifo-dest~' });
+    const fifo = await execute({ script: 'mv -b fifo-dest~ fifo-dest' });
+
+    expect(regular.stdout.text).toBe('');
+    expect(regular.stderr.text).toBe("mv: backing up 'dest' might destroy source;  'dest~' not moved\n");
+    expect(regular.result.exitCode).toBe(1);
+    expect((await execute({ script: 'cat dest' })).stdout.text).toBe('OLD');
+    expect((await execute({ script: 'cat dest~' })).stdout.text).toBe('NEW');
+
+    expect(lexical.stdout.text).toBe('');
+    expect(lexical.stderr.text).toBe("mv: backing up 'lex-dest' might destroy source;  './lex-dest~' not moved\n");
+    expect(lexical.result.exitCode).toBe(1);
+    expect((await execute({ script: 'cat lex-dest' })).stdout.text).toBe('LEX-OLD');
+    expect((await execute({ script: 'cat lex-dest~' })).stdout.text).toBe('LEX-NEW');
+
+    expect(custom.stdout.text).toBe('');
+    expect(custom.stderr.text).toBe("mv: backing up 'custom-dest' might destroy source;  'custom-dest.bak' not moved\n");
+    expect(custom.result.exitCode).toBe(1);
+    expect((await execute({ script: 'cat custom-dest' })).stdout.text).toBe('CUSTOM-OLD');
+    expect((await execute({ script: 'cat custom-dest.bak' })).stdout.text).toBe('CUSTOM-NEW');
+
+    expect(fifoCreated.result.exitCode).toBe(0);
+    expect(fifo.stdout.text).toBe('');
+    expect(fifo.stderr.text).toBe("mv: backing up 'fifo-dest' might destroy source;  'fifo-dest~' not moved\n");
+    expect(fifo.result.exitCode).toBe(1);
+    expect((await execute({ script: 'cat fifo-dest' })).stdout.text).toBe('FIFO-OLD');
+    expect((await wesh.vfs.lstat({ path: '/fifo-dest~' })).type).toBe('fifo');
+  });
+
+  it('preserves GNU symlink behavior when the source aliases the selected backup path', async () => {
+    await writeFile({ path: 'dest', data: 'OLD' });
+    await writeFile({ path: 'payload', data: 'NEW' });
+    await wesh.vfs.symlink({ path: '/dest~', targetPath: 'payload' });
+
+    const moved = await execute({ script: 'mv -b dest~ dest' });
+
+    expect(moved.stdout.text).toBe('');
+    expect(moved.stderr.text).toBe('');
+    expect(moved.result.exitCode).toBe(0);
+    expect((await execute({ script: 'cat dest' })).stdout.text).toBe('OLD');
+    expect((await execute({ script: 'cat payload' })).stdout.text).toBe('NEW');
+    await expect(wesh.vfs.lstat({ path: '/dest~' })).rejects.toThrow();
   });
 
   it('prints relative destination paths for verbose target-directory moves', async () => {

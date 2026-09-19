@@ -4,6 +4,7 @@ import { workerTransfer } from '@/utils/worker-transport';
 import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
 
 import { Wesh } from '@/features/wesh';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
 import {
   createOpfsNaidanSysfsStorageReader,
@@ -23,6 +24,7 @@ import {
   weshWorkerShellStateSchema,
   weshWorkerCommandEntrySchema,
   weshWorkerListDirectoryRequestSchema,
+  weshWorkerPreloadCommandResponseSchema,
   weshWorkerDirectoryEntrySchema,
   type IWeshWorker,
   type WeshWorkerRemoteExecutionEvent,
@@ -157,6 +159,7 @@ function createForwardingHandle({
 export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
   let wesh: Wesh | undefined;
   let nextExecutionId = 1;
+  let activeExecutionCount = 0;
   const executions = new Map<string, {
     completion: Promise<WeshWorkerExecutionSummary>,
   }>();
@@ -257,11 +260,12 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
         onEvent: emit,
       });
       const stdin = createTestReadHandleFromText({ text: '' });
+      activeExecutionCount += 1;
       const completion = (async () => {
         try {
           await emit({ event: { type: 'started' } });
           const result = await wesh.execute({
-            script: validated.script,
+            source: createTextShellSource({ text: validated.script }),
             stdin,
             stdout: stdoutCapture.handle,
             stderr: stderrCapture.handle,
@@ -312,6 +316,7 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
           }
           throw error;
         } finally {
+          activeExecutionCount -= 1;
           await Promise.allSettled([
             stdoutCapture.handle.close(),
             stderrCapture.handle.close(),
@@ -371,6 +376,20 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
         throw new Error('Wesh worker is not initialized');
       }
       return z.array(weshWorkerCommandEntrySchema).parse(wesh.listCommands());
+    },
+
+    async preloadNextCommand() {
+      if (!wesh) {
+        throw new Error('Wesh worker is not initialized');
+      }
+      if (activeExecutionCount !== 0) {
+        return weshWorkerPreloadCommandResponseSchema.parse({ status: 'busy' });
+      }
+
+      const { hasMore } = await wesh.preloadNextBuiltinCommand();
+      return weshWorkerPreloadCommandResponseSchema.parse({
+        status: hasMore ? 'advanced' : 'done',
+      });
     },
 
     async listDirectory({ request }) {

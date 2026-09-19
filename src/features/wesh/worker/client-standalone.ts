@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { backgroundWorkCoordinator, type ForegroundWorkLease } from '@/logic/background-work-coordinator';
 import { workerCapability, workerProxy } from '@/utils/worker-transport';
 
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
@@ -17,6 +18,7 @@ import {
   weshWorkerShellStateSchema,
   weshWorkerCommandEntrySchema,
   weshWorkerListDirectoryRequestSchema,
+  weshWorkerPreloadCommandResponseSchema,
   weshWorkerDirectoryEntrySchema,
   type IWeshWorker,
   type WeshWorkerClient,
@@ -102,26 +104,103 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   };
 
   let runtime = await createCompatibleRuntime();
+  const foregroundExecutionLeases = new Map<string, {
+    runtime: typeof runtime,
+    lease: ForegroundWorkLease,
+  }>();
+  const releaseForegroundExecutionLease = ({ executionId, executionRuntime }: {
+    executionId: string,
+    executionRuntime: typeof runtime,
+  }): void => {
+    const entry = foregroundExecutionLeases.get(executionId);
+    if (entry?.runtime !== executionRuntime) {
+      return;
+    }
+    entry.lease.dispose();
+    foregroundExecutionLeases.delete(executionId);
+  };
+  const releaseAllForegroundExecutionLeases = (): void => {
+    for (const { lease } of foregroundExecutionLeases.values()) {
+      lease.dispose();
+    }
+    foregroundExecutionLeases.clear();
+  };
+  const registerBackgroundPreload = () => backgroundWorkCoordinator.register({
+    runStep: async () => {
+      const activeRuntime = runtime;
+      let response: ReturnType<typeof weshWorkerPreloadCommandResponseSchema.parse>;
+      try {
+        response = weshWorkerPreloadCommandResponseSchema.parse(
+          await activeRuntime.remote.preloadNextCommand(),
+        );
+      } catch (error: unknown) {
+        if (runtime !== activeRuntime) {
+          return { status: 'continue' };
+        }
+        throw error;
+      }
+      switch (response.status) {
+      case 'busy':
+      case 'advanced':
+        return { status: 'continue' };
+      case 'done':
+        return { status: 'done' };
+      default: {
+        const _ex: never = response.status;
+        throw new Error(`Unhandled Wesh preload status: ${String(_ex)}`);
+      }
+      }
+    },
+  });
+  let backgroundPreloadRegistration = registerBackgroundPreload();
+  const refreshBackgroundPreloadRegistration = (): void => {
+    backgroundPreloadRegistration.dispose();
+    backgroundPreloadRegistration = registerBackgroundPreload();
+  };
 
   return {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest,
       onEvent?: WeshWorkerExecutionEventCallback,
     }) {
-      const response = await runtime.remote.startExecution(
-        request,
-        onEvent ? workerProxy({
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback signatures are remote boundaries.
-          value: async (event: WeshWorkerRemoteExecutionEvent) => {
-            await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
-          },
-        }) : undefined,
-      );
-      return weshWorkerStartExecutionResponseSchema.parse(response);
+      const foregroundLease = backgroundWorkCoordinator.beginForegroundWork();
+      const activeRuntime = runtime;
+      try {
+        const response = await activeRuntime.remote.startExecution(
+          request,
+          onEvent ? workerProxy({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback signatures are remote boundaries.
+            value: async (event: WeshWorkerRemoteExecutionEvent) => {
+              await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
+            },
+          }) : undefined,
+        );
+        const validated = weshWorkerStartExecutionResponseSchema.parse(response);
+        if (runtime !== activeRuntime) {
+          foregroundLease.dispose();
+          return validated;
+        }
+        foregroundExecutionLeases.set(validated.executionId, {
+          runtime: activeRuntime,
+          lease: foregroundLease,
+        });
+        return validated;
+      } catch (error: unknown) {
+        foregroundLease.dispose();
+        throw error;
+      }
     },
     async awaitExecution({ request }) {
-      const response = await runtime.remote.awaitExecution({ request });
-      return weshWorkerExecutionSummarySchema.parse(response);
+      const activeRuntime = runtime;
+      try {
+        const response = await activeRuntime.remote.awaitExecution({ request });
+        return weshWorkerExecutionSummarySchema.parse(response);
+      } finally {
+        releaseForegroundExecutionLease({
+          executionId: request.executionId,
+          executionRuntime: activeRuntime,
+        });
+      }
     },
     async interruptExecution({ request }) {
       return runtime.remote.interruptExecution({ request });
@@ -137,6 +216,10 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       ]);
 
       if (stopped) {
+        releaseForegroundExecutionLease({
+          executionId: request.executionId,
+          executionRuntime: activeRuntime,
+        });
         return true;
       }
 
@@ -146,19 +229,35 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
         await destroyRuntime({ runtime: activeRuntime }).catch(cleanupError => {
           console.error('Failed to destroy cancelled standalone Wesh worker runtime after replacement failure', cleanupError);
         });
+        releaseAllForegroundExecutionLeases();
         throw error;
       }
+      releaseAllForegroundExecutionLeases();
+      refreshBackgroundPreloadRegistration();
       void destroyRuntime({ runtime: activeRuntime }).catch(error => {
         console.error('Failed to destroy cancelled standalone Wesh worker runtime', error);
       });
       return true;
     },
     async disposeExecution({ request }) {
-      await runtime.remote.disposeExecution({ request });
+      const activeRuntime = runtime;
+      try {
+        await activeRuntime.remote.disposeExecution({ request });
+      } finally {
+        releaseForegroundExecutionLease({
+          executionId: request.executionId,
+          executionRuntime: activeRuntime,
+        });
+      }
     },
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
-      const response = await runtime.remote.execute({ request });
-      return weshWorkerExecutionSummarySchema.parse(response);
+      const foregroundLease = backgroundWorkCoordinator.beginForegroundWork();
+      try {
+        const response = await runtime.remote.execute({ request });
+        return weshWorkerExecutionSummarySchema.parse(response);
+      } finally {
+        foregroundLease.dispose();
+      }
     },
     async getShellState() {
       const response = await runtime.remote.getShellState();
@@ -177,6 +276,8 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       return runtime.remote.interrupt();
     },
     async dispose() {
+      backgroundPreloadRegistration.dispose();
+      releaseAllForegroundExecutionLeases();
       const activeRuntime = runtime;
       await disposeStandaloneWorkerSession({
         session: activeRuntime,

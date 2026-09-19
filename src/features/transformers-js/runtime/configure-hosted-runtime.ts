@@ -1,3 +1,8 @@
+import {
+  HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST,
+  hostedTransformersRuntimeAssetManifestEntry,
+} from "@/features/transformers-js/runtime/runtime-asset-manifest";
+
 interface TransformersJsWasmEnvironmentLike {
   wasmPaths?: unknown,
   simd?: unknown,
@@ -20,6 +25,14 @@ export interface HostedTransformersRuntimeAssetUrls {
   mjsUrl: string,
   wasmUrl: string,
   physicalWasmUrl: string,
+  manifestUrl: string | undefined,
+  manifestBuildId: string,
+  mjsSha256: string,
+  wasmSha256: string,
+  physicalWasmSha256: string,
+  mjsByteLength: number,
+  wasmByteLength: number,
+  physicalWasmByteLength: number,
   wasmTransport: "raw" | "gzip-worker-decompression",
   variant: "standard" | "asyncify",
 }
@@ -77,13 +90,34 @@ export function resolveHostedTransformersRuntimeAssetUrls({
     }
   })();
 
-  const wasmUrl = new URL(`ort-wasm-simd-threaded${suffix}.wasm`, baseUrl).href;
-  const wasmTransport = (() => {
+  const manifestEntry = hostedTransformersRuntimeAssetManifestEntry({ variant });
+  const runtimeSelection = (() => {
     switch (environment) {
-    case "development":
-      return "raw" as const;
+    case "development": {
+      const wasmFileName = `ort-wasm-simd-threaded${suffix}.wasm`;
+      return {
+        mjsFileName: `ort-wasm-simd-threaded${suffix}.mjs`,
+        wasmFileName,
+        physicalWasmFileName: wasmFileName,
+        manifestUrl: undefined,
+        physicalWasmSha256: manifestEntry.wasm.sha256,
+        physicalWasmByteLength: manifestEntry.wasm.byteLength,
+        wasmTransport: "raw" as const,
+      };
+    }
     case "production":
-      return "gzip-worker-decompression" as const;
+      return {
+        mjsFileName: manifestEntry.mjs.publicFileName,
+        wasmFileName: manifestEntry.wasm.logicalFileName,
+        physicalWasmFileName: manifestEntry.wasm.physicalFileName,
+        manifestUrl: new URL(
+          `runtime-assets-${HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST.buildId}.json`,
+          baseUrl,
+        ).href,
+        physicalWasmSha256: manifestEntry.wasm.physicalSha256,
+        physicalWasmByteLength: manifestEntry.wasm.physicalByteLength,
+        wasmTransport: "gzip-worker-decompression" as const,
+      };
     default: {
       const _ex: never = environment;
       return _ex;
@@ -91,25 +125,20 @@ export function resolveHostedTransformersRuntimeAssetUrls({
     }
   })();
 
-  const physicalWasmUrl = (() => {
-    switch (wasmTransport) {
-    case "raw":
-      return wasmUrl;
-    case "gzip-worker-decompression":
-      return `${wasmUrl}.gz`;
-    default: {
-      const _ex: never = wasmTransport;
-      return _ex;
-    }
-    }
-  })();
-
   return {
     baseUrl: baseUrl.href,
-    mjsUrl: new URL(`ort-wasm-simd-threaded${suffix}.mjs`, baseUrl).href,
-    wasmUrl,
-    physicalWasmUrl,
-    wasmTransport,
+    mjsUrl: new URL(runtimeSelection.mjsFileName, baseUrl).href,
+    wasmUrl: new URL(runtimeSelection.wasmFileName, baseUrl).href,
+    physicalWasmUrl: new URL(runtimeSelection.physicalWasmFileName, baseUrl).href,
+    manifestUrl: runtimeSelection.manifestUrl,
+    manifestBuildId: HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST.buildId,
+    mjsSha256: manifestEntry.mjs.sha256,
+    wasmSha256: manifestEntry.wasm.sha256,
+    physicalWasmSha256: runtimeSelection.physicalWasmSha256,
+    mjsByteLength: manifestEntry.mjs.byteLength,
+    wasmByteLength: manifestEntry.wasm.byteLength,
+    physicalWasmByteLength: runtimeSelection.physicalWasmByteLength,
+    wasmTransport: runtimeSelection.wasmTransport,
     variant,
   };
 }

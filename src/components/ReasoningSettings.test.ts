@@ -1,8 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { nextTick } from 'vue';
 import type { Reasoning } from '@/01-models/types';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('ReasoningSettings Component', () => {
   const getWrapper = async (selectedEffort: Reasoning['effort'] = undefined) => {

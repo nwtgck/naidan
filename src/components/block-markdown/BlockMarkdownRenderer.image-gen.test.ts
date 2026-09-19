@@ -1,8 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
 import { normalizeDom } from './test-utils';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('BlockMarkdownRenderer: Image Generation Blocks', () => {
   const mountRenderer = ({ content }: { content: string }) => {

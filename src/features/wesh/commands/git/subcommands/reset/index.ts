@@ -1,7 +1,7 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { commitSubject, readCommit } from "@/features/wesh/commands/git/commits";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
-import { matchRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
+import { matchRepositoryPathSelection } from "@/features/wesh/commands/git/pathspec";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "@/features/wesh/commands/git/identity";
 import type { GitIndexEntry } from "@/features/wesh/commands/git/index-file";
 import { readIndex, writeIndex } from "@/features/wesh/commands/git/index-file";
@@ -34,16 +34,14 @@ export async function runReset({ context, args }: {
   if (pathOperands !== undefined) {
     const currentIndex = await readIndex({ files: context.files, repository });
     const sourceEntries = await readCommitIndex({ context, repository, revisionExpression });
-    const matches = matchRepositoryPaths({
+    const availablePaths = new Set(currentIndex.map(entry => entry.path));
+    for (const entry of sourceEntries) availablePaths.add(entry.path);
+    const selectedPaths = matchRepositoryPathSelection({
       repository,
       cwd: context.cwd,
       operands: pathOperands,
-      availablePaths: [...currentIndex.map(entry => entry.path), ...sourceEntries.map(entry => entry.path)],
-    });
-    const selectedPaths = new Set<string>();
-    for (const paths of matches.values())
-      for (const path of paths)
-        selectedPaths.add(path);
+      availablePaths,
+    }).selected;
     const sourceByPath = new Map(sourceEntries.map(entry => [entry.path, entry]));
     const nextEntries = currentIndex.filter(entry => !selectedPaths.has(entry.path));
     for (const path of selectedPaths) {

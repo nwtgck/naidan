@@ -24,8 +24,11 @@ import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
+import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
 import { createZipPackages } from './build/zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
+import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
+import { createTransformersJsFixesViteConfig } from './build/transformers-js-fixes/plugin';
 import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -221,6 +224,7 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone';
   const isHosted = mode === 'hosted';
+  const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: __dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted
     ? path.resolve(__dirname, `dist/debug-tailwind-${mode}`)
     : undefined;
@@ -253,18 +257,10 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     server: {
-      headers: {
-        // Required for SharedArrayBuffer and multi-threaded WebAssembly (Transformers.js)
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
+      headers: DEV_SERVER_ISOLATION_HEADERS,
     },
     preview: {
-      headers: {
-        // Required for SharedArrayBuffer and multi-threaded WebAssembly (Transformers.js)
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
+      headers: DEV_SERVER_ISOLATION_HEADERS,
     },
     // Inject global constants for compile-time conditional logic (tree-shaking)
     define: {
@@ -298,7 +294,10 @@ export default defineConfig(({ mode }) => {
         },
       ],
     },
+    ...transformersJsFixes,
     plugins: [
+      createDevServerIsolationPlugin(),
+      ...transformersJsFixes.plugins,
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({
@@ -329,7 +328,7 @@ export default defineConfig(({ mode }) => {
       }),
       stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
       privacyFetchBrokerDevHeadersPlugin(),
-      !isStandalone && viteStaticCopy({
+      !isStandalone && !isHosted && viteStaticCopy({
         targets: [
           {
             src: 'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded{,.asyncify}.{mjs,wasm}',
@@ -338,6 +337,7 @@ export default defineConfig(({ mode }) => {
           },
         ],
       }),
+      isHosted && createHostedTransformersRuntimeAssetsPlugin({ rootDir: __dirname }),
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
         onBuildDependenciesCollected({ dependencies }) {
@@ -471,6 +471,11 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      // Replay evaluates verified ESM bytes without Node's permanent import cache.
+      // Node 22's V8 compilation cache also retains VM modules and captured
+      // fixture state. Disable that optimization in test workers so completed
+      // runtimes can be collected; this trades compilation CPU, not heap limits.
+      execArgv: ['--experimental-vm-modules', '--no-compilation-cache'],
       exclude: [
         ...configDefaults.exclude,
         'src/test-tmp/**',

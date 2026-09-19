@@ -3,12 +3,14 @@ import type {
   ModelSupportInvestigationEvent,
   ModelSupportInvestigationGenerationAutoClassName,
   ModelSupportInvestigationLoadAttempt,
+  ModelSupportInvestigationLoadAttemptCheckpoint,
   ModelSupportInvestigationRun,
   ModelSupportInvestigationStep,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { selectGenerationAutoClass } from "@/features/transformers-js/model-support-investigation/logic/select-generation-auto-class";
 import { CandidateAttemptTimeoutError } from "@/features/transformers-js/model-support-investigation/logic/candidate-attempt-timeout";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
+import { isModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
 
 function updateLoadingStep({ run, status, detail }: {
   run: ModelSupportInvestigationRun,
@@ -23,6 +25,7 @@ function updateLoadingStep({ run, status, detail }: {
       return step;
     case "runtime-assets":
     case "repository-information":
+    case "download-evidence":
     case "existing-model-data":
     case "model-declarations":
     case "template-behavior":
@@ -45,18 +48,22 @@ function unexpectedAttempt({
   candidate,
   autoClass,
   repositoryRevision,
+  loaderRevisionOption,
   error,
+  checkpoint,
   now,
   createAttemptId,
 }: {
   candidate: ModelSupportInvestigationCandidateFilePlan,
   autoClass: ModelSupportInvestigationGenerationAutoClassName,
   repositoryRevision: string,
+  loaderRevisionOption: string | null,
   error: unknown,
+  checkpoint: ModelSupportInvestigationLoadAttemptCheckpoint | undefined,
   now: () => string,
   createAttemptId: () => string,
 }): ModelSupportInvestigationLoadAttempt {
-  const startedAt = now();
+  const startedAt = checkpoint?.startedAt ?? now();
   const errorRecord = serializeInvestigationError({ error });
   const timeout = error instanceof CandidateAttemptTimeoutError ? error : undefined;
   const failureStage = timeout?.stage ?? "worker-start";
@@ -74,26 +81,32 @@ function unexpectedAttempt({
       at: now(),
     }];
   return {
-    attemptId: createAttemptId(),
+    attemptId: checkpoint?.attemptId ?? createAttemptId(),
     candidateId: candidate.candidateId,
     device: candidate.device,
     dtype: candidate.dtype,
-    autoClass,
+    autoClass: checkpoint?.autoClass ?? autoClass,
     resolvedRevision: repositoryRevision,
+    loaderRevisionOption: checkpoint?.loaderRevisionOption ?? loaderRevisionOption,
     startedAt,
     completedAt: now(),
+    modelLoadDurationMs: checkpoint?.modelLoadDurationMs,
+    modelLoadProgress: checkpoint?.modelLoadProgress,
     status: "failed",
     failureStage,
     events,
-    inputTokenCount: undefined,
-    inputTokenIds: [],
-    inputTensors: [],
-    loadedModel: undefined,
-    generatedTokenIds: [],
-    generatedText: undefined,
-    naturalGeneration: undefined,
-    toolProtocolProbe: undefined,
-    modelType: undefined,
+    inputStrategyAttempts: checkpoint?.inputStrategyAttempts ?? [],
+    interruptedInputStrategy: checkpoint?.activeInputStrategy,
+    selectedInputStrategy: checkpoint?.selectedInputStrategy,
+    inputTokenCount: checkpoint?.inputTokenCount,
+    inputTokenIds: checkpoint?.inputTokenIds ?? [],
+    inputTensors: checkpoint?.inputTensors ?? [],
+    loadedModel: checkpoint?.loadedModel,
+    generatedTokenIds: checkpoint?.generatedTokenIds ?? [],
+    generatedText: checkpoint?.generatedText,
+    naturalGeneration: checkpoint?.naturalGeneration,
+    toolProtocolProbe: checkpoint?.toolProtocolProbe,
+    modelType: checkpoint?.modelType,
     error: errorRecord,
   };
 }
@@ -102,15 +115,19 @@ export async function runModelLoadInvestigation({
   partialRun,
   runAttempt,
   onEvent,
+  onRunUpdate = () => undefined,
   now,
   createAttemptId,
 }: {
   partialRun: ModelSupportInvestigationRun,
-  runAttempt: ({ candidate, autoClass }: {
+  runAttempt: ({ candidate, autoClass, loaderRevisionOption, onAttemptCheckpoint }: {
     candidate: ModelSupportInvestigationCandidateFilePlan,
     autoClass: ModelSupportInvestigationGenerationAutoClassName,
+    loaderRevisionOption: string | null,
+    onAttemptCheckpoint: ({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void,
   }) => Promise<ModelSupportInvestigationLoadAttempt>,
   onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
+  onRunUpdate?: ({ run }: { run: ModelSupportInvestigationRun }) => void,
   now: () => string,
   createAttemptId: () => string,
 }): Promise<ModelSupportInvestigationRun> {
@@ -124,26 +141,38 @@ export async function runModelLoadInvestigation({
     detail: string,
   }): void => {
     updateLoadingStep({ run, status, detail });
+    run.currentOperation = detail;
+    run.completedAt = now();
+    onRunUpdate({ run: structuredClone(run) });
     onEvent({ event: { stepId: "loading-investigation", status, detail } });
   };
 
-  const { repository, declarations, modelFilePlan } = run;
-  if (repository === undefined || declarations === undefined || modelFilePlan === undefined) {
+  const { runtimeTarget, declarations, modelFilePlan } = run;
+  if (runtimeTarget === undefined || declarations === undefined || modelFilePlan === undefined) {
     const missing = [
-      repository === undefined ? "repository" : undefined,
+      runtimeTarget === undefined ? "runtime target" : undefined,
       declarations === undefined ? "declarations" : undefined,
       modelFilePlan === undefined ? "model file plan" : undefined,
     ].filter((value): value is string => value !== undefined);
-    const detail = `Blocked because ${missing.join(", ")} evidence is unavailable`;
+    const repositoryWasPolicySkipped = run.steps.some(step => (
+      step.id === 'repository-information' && step.status === 'skipped'
+    ));
+    const detail = repositoryWasPolicySkipped
+      ? `Blocked because ${missing.join(", ")} evidence is unavailable after remote repository inspection was skipped by policy`
+      : `Blocked because ${missing.join(", ")} evidence is unavailable`;
     emit({ status: "blocked", detail });
-    run.status = "failed";
-    run.error = appendError({ existing: run.error, detail });
-    run.currentOperation = "Model loading investigation was blocked by missing prerequisite evidence";
+    if (!repositoryWasPolicySkipped) {
+      run.status = "failed";
+      run.error = appendError({ existing: run.error, detail });
+    }
+    run.currentOperation = repositoryWasPolicySkipped
+      ? "Model loading investigation is blocked by the current local-only planning limitation"
+      : "Model loading investigation was blocked by missing prerequisite evidence";
     run.completedAt = now();
     return run;
   }
 
-  const autoClass = selectGenerationAutoClass({ repository, declarations });
+  const autoClass = selectGenerationAutoClass({ runtimeTarget, declarations });
   if (autoClass === undefined) {
     const detail = "Blocked because no supported public generative Auto class was observed";
     emit({ status: "blocked", detail });
@@ -154,34 +183,89 @@ export async function runModelLoadInvestigation({
     return run;
   }
 
-  const candidates = modelFilePlan.candidates.filter(candidate => candidate.eligibility === "eligible");
-  if (candidates.length === 0) {
-    const detail = "Blocked because no fixed q4f16 or q4 candidate has all required repository files";
+  const runtimeCompletion = run.downloadEvidence?.runtimeCompletion;
+  if (runtimeCompletion !== undefined && runtimeCompletion.status !== 'accepted') {
+    const expectedLocalCacheBlock = runtimeCompletion.status === 'exhausted'
+      && runtimeCompletion.source === 'cache-only-unavailable';
+    const detail = expectedLocalCacheBlock
+      ? 'Blocked because no complete local Production candidate is available; Model Support Investigation does not download missing model artifacts'
+      : `Blocked because runtime cache acceptance ended with ${runtimeCompletion.status}`;
     emit({ status: "blocked", detail });
-    run.status = "failed";
-    run.error = appendError({ existing: run.error, detail });
-    run.currentOperation = "Model loading investigation was blocked by candidate file availability";
+    if (!expectedLocalCacheBlock) {
+      run.status = "failed";
+      run.error = appendError({ existing: run.error, detail });
+    }
+    run.currentOperation = expectedLocalCacheBlock
+      ? "Model loading investigation is blocked by incomplete local model cache"
+      : "Model loading investigation was blocked by failed Production cache acceptance";
     run.completedAt = now();
     return run;
   }
 
+  const eligibleCandidates = modelFilePlan.candidates.filter(candidate => candidate.eligibility === "eligible");
+  const selectedRuntimeCandidate = runtimeCompletion?.selectedCandidate;
+  const candidates = selectedRuntimeCandidate === undefined
+    ? eligibleCandidates
+    : eligibleCandidates.filter(candidate => (
+      candidate.device === selectedRuntimeCandidate.device && candidate.dtype === selectedRuntimeCandidate.dtype
+    ));
+  if (candidates.length === 0) {
+    const localCacheBlock = runtimeTarget.source === "local-cache";
+    const detail = localCacheBlock
+      ? "Blocked because no fixed q4f16 or q4 candidate has all required completed local cache files; Model Support Investigation does not download missing model artifacts"
+      : "Blocked because no fixed q4f16 or q4 candidate has all required runtime files available";
+    emit({ status: "blocked", detail });
+    if (!localCacheBlock) {
+      run.status = "failed";
+      run.error = appendError({ existing: run.error, detail });
+    }
+    run.currentOperation = localCacheBlock
+      ? "Model loading investigation is blocked by incomplete local model cache"
+      : "Model loading investigation was blocked by candidate file availability";
+    run.completedAt = now();
+    return run;
+  }
+
+  const loaderRevisionOption = runtimeCompletion === undefined
+    ? runtimeTarget.loaderRevisionOption
+    : runtimeCompletion.loaderRevisionOption;
   let successfulAttempt: ModelSupportInvestigationLoadAttempt | undefined;
-  emit({ status: "running", detail: `Starting ${candidates[0]?.candidateId} in a fresh investigation Worker` });
+  emit({ status: "running", detail: `Starting ${candidates[0]?.candidateId} in a fresh investigation Worker using ${loaderRevisionOption ?? 'main'} cache revision` });
   for (const candidate of candidates) {
     let attempt: ModelSupportInvestigationLoadAttempt;
+    let latestAttemptCheckpoint: ModelSupportInvestigationLoadAttemptCheckpoint | undefined;
+    run.activeLoadAttempt = undefined;
     try {
-      attempt = await runAttempt({ candidate, autoClass });
+      attempt = await runAttempt({
+        candidate,
+        autoClass,
+        loaderRevisionOption,
+        onAttemptCheckpoint: ({ attempt: checkpoint }) => {
+          latestAttemptCheckpoint = structuredClone(checkpoint);
+          run.activeLoadAttempt = structuredClone(checkpoint);
+          run.currentOperation = `${candidate.candidateId}: ${checkpoint.currentStage}`;
+          run.completedAt = now();
+          onRunUpdate({ run: structuredClone(run) });
+        },
+      });
     } catch (error) {
+      if (isModelSupportInvestigationUserInterruptedError({ error })) throw error;
       attempt = unexpectedAttempt({
         candidate,
         autoClass,
-        repositoryRevision: repository.resolvedRevision,
+        repositoryRevision: runtimeTarget.evidenceRevision,
+        loaderRevisionOption,
         error,
+        checkpoint: latestAttemptCheckpoint,
         now,
         createAttemptId,
       });
     }
+    run.activeLoadAttempt = undefined;
     run.loadAttempts.push(attempt);
+    run.currentOperation = `${attempt.candidateId}: attempt ${attempt.status}${attempt.failureStage === undefined ? '' : ` at ${attempt.failureStage}`}`;
+    run.completedAt = now();
+    onRunUpdate({ run: structuredClone(run) });
     switch (attempt.status) {
     case "passed":
       successfulAttempt = attempt;
@@ -204,17 +288,32 @@ export async function runModelLoadInvestigation({
     }
   }
 
+  const generationWasSkippedByScope = successfulAttempt?.events.some(event => (
+    event.stage === "first-generation" && event.status === "skipped"
+  )) === true;
+
   if (successfulAttempt === undefined) {
+    const generationRequired = run.executionPlan?.generation ?? true;
     const loadedWithoutInput = run.loadAttempts.find(attempt => (
       attempt.loadedModel !== undefined && attempt.failureStage === "input-build"
     ));
-    const detail = loadedWithoutInput === undefined
-      ? `${run.loadAttempts.length} eligible candidates failed before minimum generation completed`
-      : `${loadedWithoutInput.candidateId} loaded successfully, but deterministic generation input was unavailable`;
+    const detail = !generationRequired
+      ? `${run.loadAttempts.length} eligible candidates failed before model loading completed`
+      : loadedWithoutInput === undefined
+        ? `${run.loadAttempts.length} eligible candidates failed before minimum generation completed`
+        : `${loadedWithoutInput.candidateId} loaded successfully, but deterministic generation input was unavailable`;
     emit({ status: "failed", detail });
     run.status = "failed";
     run.error = appendError({ existing: run.error, detail });
-    run.currentOperation = "Model load attempts completed without a successful minimum generation";
+    run.currentOperation = generationRequired
+      ? "Model load attempts completed without a successful minimum generation"
+      : "Model load attempts completed without a successful model load";
+  } else if (generationWasSkippedByScope) {
+    emit({
+      status: "passed",
+      detail: `${successfulAttempt.candidateId} loaded successfully; generation was skipped by investigation scope`,
+    });
+    run.currentOperation = "Model load evidence collected; generation was not requested";
   } else {
     emit({
       status: "passed",

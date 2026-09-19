@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import {
   MockFileSystemDirectoryHandle,
   type MockFileSystemFileHandle,
@@ -58,7 +59,7 @@ describe('wesh stat', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -187,6 +188,16 @@ describe('wesh stat', () => {
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain("stat: cannot stat '': No such file or directory");
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('normalizes browser type-mismatch errors for intermediate path components', async () => {
+    await writeFile({ path: 'parent', data: 'file', mtime: undefined });
+
+    const { result, stdout, stderr } = await execute({ script: 'stat parent/child' });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("stat: cannot stat 'parent/child': Not a directory\n");
     expect(result.exitCode).toBe(1);
   });
 
@@ -568,6 +579,16 @@ name`,
 
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
+  });
+
+  it('keeps unsupported --file-system in the GNU abbreviation namespace', async () => {
+    const ambiguous = await execute({ script: 'stat --f' });
+
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--f' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--file-system'");
+    expect(ambiguous.stderr.text).toContain("'--format'");
+    expect(ambiguous.result.exitCode).not.toBe(0);
   });
 
 });

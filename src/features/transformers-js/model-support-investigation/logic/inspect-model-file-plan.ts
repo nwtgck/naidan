@@ -11,7 +11,9 @@ import type {
   ModelSupportInvestigationPlannedFileCacheMatch,
   ModelSupportInvestigationRepository,
   ModelSupportInvestigationRepositoryFile,
+  ModelSupportInvestigationRuntimeTarget,
 } from "@/features/transformers-js/model-support-investigation/types";
+import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 
 const CANDIDATES = [
   { candidateId: "webgpu-q4f16", device: "webgpu", dtype: "q4f16" },
@@ -28,10 +30,6 @@ export type ModelSupportInvestigationGetModelFiles = ({ modelId, device, dtype }
   device: ModelSupportInvestigationCandidateDevice,
   dtype: ModelSupportInvestigationCandidateDtype,
 }) => Promise<string[]>;
-
-function message({ error }: { error: unknown }): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function fileKind({ path }: { path: string }): ModelSupportInvestigationPlannedFile["kind"] {
   if (path === "config.json") return "config";
@@ -179,13 +177,121 @@ function plannedCandidate({
   };
 }
 
+
+function localCacheMatches({
+  runtimeTarget,
+  cache,
+  repositoryPath,
+}: {
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  cache: ModelSupportInvestigationCacheInventory,
+  repositoryPath: string,
+}): ModelSupportInvestigationPlannedFileCacheMatch[] {
+  return cache.files
+    .filter(file => (
+      file.repositoryPath === repositoryPath
+      && file.cacheRevision === runtimeTarget.evidenceRevision
+    ))
+    .map(file => ({
+      path: file.path,
+      size: file.size,
+      hasCompletionMarker: file.hasCompletionMarker,
+      observation: cacheObservation({ file }),
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function localPlannedFile({
+  path,
+  runtimeTarget,
+  cache,
+}: {
+  path: string,
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  cache: ModelSupportInvestigationCacheInventory,
+}): ModelSupportInvestigationPlannedFile {
+  const kind = fileKind({ path });
+  return {
+    path,
+    kind,
+    requirement: fileRequirement({ kind }),
+    repositoryObservation: "not-observed",
+    repositorySize: undefined,
+    repositoryBlobId: undefined,
+    repositoryLfsOid: undefined,
+    cacheMatches: localCacheMatches({ runtimeTarget, cache, repositoryPath: path }),
+  };
+}
+
+function localPlannedCandidate({
+  candidateId,
+  device,
+  dtype,
+  registryPaths,
+  runtimeTarget,
+  cache,
+}: {
+  candidateId: ModelSupportInvestigationCandidateId,
+  device: ModelSupportInvestigationCandidateDevice,
+  dtype: ModelSupportInvestigationCandidateDtype,
+  registryPaths: string[],
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  cache: ModelSupportInvestigationCacheInventory,
+}): ModelSupportInvestigationCandidateFilePlan {
+  const pathCounts = new Map<string, number>();
+  for (const path of registryPaths) pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
+  const duplicatePaths = [...pathCounts]
+    .filter(([, count]) => count > 1)
+    .map(([path]) => path)
+    .sort((a, b) => a.localeCompare(b));
+  const files = [...pathCounts.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .map(path => localPlannedFile({ path, runtimeTarget, cache }));
+  const requiredFiles = files.filter(file => file.requirement === "required");
+  const optionalFiles = files.filter(file => file.requirement === "optional");
+  const completedRequiredFiles = requiredFiles.filter(file => file.cacheMatches.some(match => (
+    match.hasCompletionMarker && match.size > 0
+  )));
+  const missingRequiredFiles = requiredFiles.filter(file => !completedRequiredFiles.includes(file));
+  const missingOptionalFiles = optionalFiles.filter(file => !file.cacheMatches.some(match => (
+    match.hasCompletionMarker && match.size > 0
+  )));
+  const zeroByteRequiredFiles = requiredFiles.filter(file => (
+    file.cacheMatches.length > 0
+    && file.cacheMatches.every(match => match.size === 0)
+  ));
+  const ineligibleReasons = missingRequiredFiles.map(file => (
+    `missing completed local cache file at revision ${runtimeTarget.evidenceRevision}: ${file.path}`
+  ));
+
+  return {
+    candidateId,
+    device,
+    dtype,
+    registryStatus: "planned",
+    registryError: undefined,
+    registryReturnedFileCount: registryPaths.length,
+    duplicatePaths,
+    files,
+    requiredFileCount: requiredFiles.length,
+    optionalFileCount: optionalFiles.length,
+    missingRequiredFileCount: missingRequiredFiles.length,
+    zeroByteRequiredFileCount: zeroByteRequiredFiles.length,
+    missingOptionalFileCount: missingOptionalFiles.length,
+    cacheObservedRequiredFileCount: requiredFiles.filter(file => file.cacheMatches.length > 0).length,
+    cacheCompleteMarkerRequiredFileCount: completedRequiredFiles.length,
+    eligibility: ineligibleReasons.length === 0 ? "eligible" : "ineligible",
+    ineligibleReasons,
+  };
+}
+
 function failedCandidate({ candidateId, device, dtype, error }: {
   candidateId: ModelSupportInvestigationCandidateId,
   device: ModelSupportInvestigationCandidateDevice,
   dtype: ModelSupportInvestigationCandidateDtype,
   error: unknown,
 }): ModelSupportInvestigationCandidateFilePlan {
-  const registryError = message({ error });
+  const registryError = serializeInvestigationError({ error });
   return {
     candidateId,
     device,
@@ -203,7 +309,7 @@ function failedCandidate({ candidateId, device, dtype, error }: {
     cacheObservedRequiredFileCount: 0,
     cacheCompleteMarkerRequiredFileCount: 0,
     eligibility: "registry-failed",
-    ineligibleReasons: [`ModelRegistry.get_model_files failed: ${registryError}`],
+    ineligibleReasons: [`ModelRegistry.get_model_files failed: ${registryError.name}: ${registryError.message}`],
   };
 }
 
@@ -253,6 +359,66 @@ export async function inspectModelFilePlan({
     cacheRevisionProvenance: cache?.revisionProvenance ?? "not-observed",
     cacheRevisionProvenanceReason: cache?.revisionProvenanceReason
       ?? "OPFS cache inspection did not complete, so no cache revision provenance was observed",
+    candidates,
+  };
+}
+
+
+export async function inspectLocalModelFilePlan({
+  runtimeTarget,
+  declarations,
+  cache,
+  getModelFiles,
+}: {
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  declarations: ModelSupportInvestigationModelDeclarations,
+  cache: ModelSupportInvestigationCacheInventory,
+  getModelFiles: ModelSupportInvestigationGetModelFiles,
+}): Promise<ModelSupportInvestigationModelFilePlan> {
+  switch (runtimeTarget.source) {
+  case "local-cache":
+    break;
+  case "repository":
+    throw new Error("Local model file planning requires a local-cache RuntimeTarget");
+  default: {
+    const _ex: never = runtimeTarget.source;
+    return _ex;
+  }
+  }
+  if (runtimeTarget.normalizedModelId !== declarations.normalizedModelId
+    || runtimeTarget.normalizedModelId !== cache.normalizedModelId) {
+    throw new Error("Runtime target, declarations, and cache model IDs do not match");
+  }
+  if (runtimeTarget.evidenceRevision !== declarations.resolvedRevision) {
+    throw new Error("Runtime target and declaration revisions do not match");
+  }
+
+  const candidates: ModelSupportInvestigationCandidateFilePlan[] = [];
+  for (const candidate of CANDIDATES) {
+    try {
+      const registryPaths = await getModelFiles({
+        modelId: runtimeTarget.normalizedModelId,
+        device: candidate.device,
+        dtype: candidate.dtype,
+      });
+      candidates.push(localPlannedCandidate({
+        ...candidate,
+        registryPaths,
+        runtimeTarget,
+        cache,
+      }));
+    } catch (error) {
+      candidates.push(failedCandidate({ ...candidate, error }));
+    }
+  }
+
+  return {
+    normalizedModelId: runtimeTarget.normalizedModelId,
+    resolvedRevision: runtimeTarget.evidenceRevision,
+    modelType: declarations.modelType,
+    registrySource: "ModelRegistry.get_model_files",
+    cacheRevisionProvenance: "unknown",
+    cacheRevisionProvenanceReason: `Candidate eligibility is based on completed files observed at local cache revision ${runtimeTarget.evidenceRevision}; repository availability was not observed`,
     candidates,
   };
 }

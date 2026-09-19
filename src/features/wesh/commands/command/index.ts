@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { formatResolvedCommand, hasShellFunction, resolveCommand, shellControlFlowBuiltinNames } from '@/features/wesh/command-resolution';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
@@ -19,12 +19,7 @@ const commandArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const commandCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'command',
-    description: 'Run command with arguments, ignoring any function or alias',
-    usage: 'command [-pVv] command [argument...]',
-  },
+export const commandCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: commandArgvSpec }),

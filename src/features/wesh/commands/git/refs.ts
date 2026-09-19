@@ -4,7 +4,7 @@ import type { GitIdentity } from './identity';
 import { readPackedRefs, removePackedRef } from './packed-refs';
 import { appendReflog } from './reflog';
 import type { GitRepository } from './repository';
-import { compareGitUtf8Strings } from './utf8-order';
+import { sortByGitUtf8StringKey } from './utf8-order';
 import { joinPath } from './repository';
 
 export interface GitHeadState {
@@ -401,7 +401,7 @@ export async function listRefs({ files, repository, prefix }: {
     await visit({ directoryPath: basePath, refPrefix: prefix });
   }
 
-  return [...byName.values()].sort((left, right) => compareGitUtf8Strings({ left: left.refName, right: right.refName }));
+  return sortByGitUtf8StringKey({ values: byName.values(), key: ({ value }) => value.refName });
 }
 
 export async function readHead({ files, repository }: {

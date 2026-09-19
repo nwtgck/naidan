@@ -1,8 +1,9 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { iterateNullTerminatedPathnames } from '@/features/wesh/commands/_shared/files0-from';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshStat } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshStat } from '@/features/wesh/types';
 import { getWeshCodePointDisplayWidth } from '@/features/wesh/utils/display-width';
 import { openHandleReadStream, openFileReadStream } from '@/features/wesh/utils/fs';
 import {
@@ -564,12 +565,7 @@ async function readCountsFromStream({
   };
 }
 
-export const wcCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'wc',
-    description: 'Print newline, word, byte, character, and line length counts',
-    usage: 'wc [OPTION]... [FILE]... | wc [OPTION]... --files0-from=FILE',
-  },
+export const wcCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,
@@ -706,7 +702,8 @@ export const wcCommandDefinition: WeshCommandDefinition = {
         });
       } catch (e: unknown) {
         hadError = true;
-        const message = e instanceof Error ? e.message : String(e);
+        const message = getPathErrorReason({ error: e })
+          ?? (e instanceof Error ? e.message : String(e));
         await text.error({ text: `wc: ${inputName}: ${message}\n` });
       }
     };
@@ -739,7 +736,8 @@ export const wcCommandDefinition: WeshCommandDefinition = {
         }
       } catch (e: unknown) {
         hadError = true;
-        const message = e instanceof Error ? e.message : String(e);
+        const message = getPathErrorReason({ error: e })
+          ?? (e instanceof Error ? e.message : String(e));
         await text.error({ text: `wc: cannot open '${files0From}' for reading: ${message}\n` });
       }
     }

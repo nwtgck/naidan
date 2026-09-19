@@ -228,6 +228,7 @@ export async function pushLocalBranch({ files, repository, remoteName, sourceBra
     const fastForward = await isAncestor({
       files,
       repository,
+      cache: undefined,
       ancestorObjectId: oldObjectId,
       descendantObjectId: sourceObjectId,
     });

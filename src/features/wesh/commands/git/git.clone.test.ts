@@ -1,10 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
 
 describe('wesh git local clone', () => {
   let wesh: Wesh;
@@ -19,7 +25,7 @@ describe('wesh git local clone', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -298,6 +304,20 @@ test ! -e cloned`,
     expect(result.exitCode).toBe(0);
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('fatal: Remote branch missing not found in upstream origin\n');
+  });
+
+
+  it('accepts an explicit empty --branch value before branch resolution', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q source
+git clone --branch= source cloned
+test ! -e cloned`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('fatal: Remote branch  not found in upstream origin\n');
   });
 
 

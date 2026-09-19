@@ -1,12 +1,12 @@
 import { pathExists, readFileBytes, writeFileBytes } from './files';
 import type { GitFiles } from './files';
 import type { GitObject, GitObjectType } from './object-format';
-import { encodeObject, objectIdFor } from './object-format';
-import { readPackedObject } from './pack-reader';
+import { encodeObjectHeader, objectIdFor } from './object-format';
+import { createGitPackReadCache, readPackedObject } from './pack-reader';
+import type { GitPackReadCache } from './pack-reader';
 import type { GitRepository } from './repository';
 import { joinPath } from './repository';
-import { sha1Hex } from './sha1';
-import { deflateZlib, inflateZlib } from './zlib';
+import { deflateZlibChunks, inflateZlib } from './zlib';
 
 export type { GitObject, GitObjectType } from './object-format';
 export { objectIdFor } from './object-format';
@@ -19,8 +19,8 @@ export async function writeObject({ files, repository, type, body }: {
   type: GitObjectType,
   body: Uint8Array,
 }): Promise<string> {
-  const encoded = encodeObject({ type, body });
-  const objectId = sha1Hex({ bytes: encoded });
+  const header = encodeObjectHeader({ type, bodyByteLength: body.byteLength });
+  const objectId = objectIdFor({ type, body });
   const objectDirectory = joinPath({ base: repository.commonDirPath, child: `objects/${objectId.slice(0, 2)}` });
   const objectPath = joinPath({ base: objectDirectory, child: objectId.slice(2) });
   if (!await pathExists({ files, path: objectDirectory })) {
@@ -30,7 +30,7 @@ export async function writeObject({ files, repository, type, body }: {
     await writeFileBytes({
       files,
       path: objectPath,
-      bytes: await deflateZlib({ bytes: encoded }),
+      bytes: await deflateZlibChunks({ chunks: [header, body] }),
     });
   }
   return objectId;
@@ -64,8 +64,17 @@ async function readLooseObject({ files, repository, objectId }: {
   return { type, body };
 }
 
+export interface GitObjectReadCache {
+  packReadCache: GitPackReadCache,
+}
+
+export function createGitObjectReadCache(): GitObjectReadCache {
+  return { packReadCache: createGitPackReadCache() };
+}
+
 interface ObjectResolutionContext {
   resolvingObjectIds: Set<string>,
+  cache: GitObjectReadCache | undefined,
 }
 
 async function readObjectInternal({ files, repository, objectId, resolutionContext }: {
@@ -94,6 +103,7 @@ async function readObjectInternal({ files, repository, objectId, resolutionConte
         objectId: baseObjectId,
         resolutionContext,
       }),
+      cache: resolutionContext.cache?.packReadCache,
     });
     if (packedObject !== undefined) return packedObject;
     throw new Error(`Object not found: ${objectId}`);
@@ -102,16 +112,17 @@ async function readObjectInternal({ files, repository, objectId, resolutionConte
   }
 }
 
-export async function readObject({ files, repository, objectId }: {
+export async function readObject({ files, repository, objectId, cache }: {
   files: GitFiles,
   repository: GitRepository,
   objectId: string,
+  cache?: GitObjectReadCache,
 }): Promise<GitObject> {
   return readObjectInternal({
     files,
     repository,
     objectId,
-    resolutionContext: { resolvingObjectIds: new Set() },
+    resolutionContext: { resolvingObjectIds: new Set(), cache },
   });
 }
 

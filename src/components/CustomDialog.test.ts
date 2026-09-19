@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { nextTick, markRaw } from 'vue'; // Import nextTick and markRaw from vue
 import { mount } from '@vue/test-utils';
 import CustomDialog from './CustomDialog.vue';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mockSetActiveFocusArea = vi.fn();
 

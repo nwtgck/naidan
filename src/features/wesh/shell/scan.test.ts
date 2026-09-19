@@ -233,6 +233,17 @@ $(cat <<${word}
     }
   });
 
+  it('keeps long heredoc delimiter literal runs across quote-removal boundaries', () => {
+    const literal = 'x'.repeat(4096);
+    const delimiter = `${literal}QRS`;
+    const text = `$(cat <<${literal}'Q'\\R$"S"\n)\n${delimiter}\nprintf y\n)tail`;
+
+    expect(findBalancedParenthesizedExpression({
+      text,
+      startIndex: 1,
+    })?.endIndex).toBe(text.indexOf('tail') - 1);
+  });
+
   it('preserves carriage returns in CRLF heredoc delimiters', () => {
     const text = `$(cat <<EOF\r\n)\r\nEOF\r\nprintf y\r\n)tail`;
 

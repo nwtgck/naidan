@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation = (): string => "Export observations retained from ordinary Downloads in this page session. This does not start an investigation, Load, or Download.";

@@ -1,4 +1,22 @@
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
+
+const DIFF_SHORT_ARGV_CATALOG = defineArgvCatalog<'unified-context'>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    { semantic: 'unified-context', forms: [{ kind: 'short', name: 'U', value: { kind: 'required-attached-or-following', missingValueName: 'n' } }] },
+  ],
+});
+
+function parseUnifiedContextLines({ value, option }: { value: string, option: string }): number {
+  if (!/^[0-9]+$/u.test(value))
+    throw new GitUsageError({ message: `option '${option}' expects a non-negative integer` });
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(parsed))
+    throw new GitUsageError({ message: `option '${option}' expects a non-negative integer` });
+  return parsed;
+}
+
 export interface GitDiffArguments {
   cached: boolean,
   nameOnly: boolean,
@@ -8,6 +26,9 @@ export interface GitDiffArguments {
   quiet: boolean,
   exitCode: boolean,
   nul: boolean,
+  unifiedContextLines: number,
+  wordDiff: boolean,
+  binaryPatch: boolean,
   revisions: readonly string[],
   pathOperands: readonly string[],
 }
@@ -21,12 +42,50 @@ export function parseDiffArguments({ args }: { args: readonly string[] }): GitDi
   let quiet = false;
   let exitCode = false;
   let nul = false;
+  let unifiedContextLines = 3;
+  let wordDiff = false;
+  let binaryPatch = false;
   const revisions: string[] = [];
   const pathOperands: string[] = [];
   let parsingPaths = false;
-  for (const arg of args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
     if (parsingPaths) {
       pathOperands.push(arg);
+      continue;
+    }
+    if (arg.startsWith('-U') && arg.length > 1) {
+      const analysis = analyzeArgvShortForm({ token: arg, bodyOffset: 1, prefix: '-', catalog: DIFF_SHORT_ARGV_CATALOG });
+      switch (analysis.kind) {
+      case 'unknown':
+        throw new GitUsageError({ message: `unknown option: ${arg}` });
+      case 'matched':
+        break;
+      default: {
+        const _ex: never = analysis;
+        throw new Error(`Unhandled diff short-option analysis: ${JSON.stringify(_ex)}`);
+      }
+      }
+      switch (analysis.value.kind) {
+      case 'inline':
+        unifiedContextLines = parseUnifiedContextLines({ value: analysis.value.rawValue, option: analysis.option });
+        break;
+      case 'following-required': {
+        const value = args[index + 1];
+        if (value === undefined)
+          throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+        unifiedContextLines = parseUnifiedContextLines({ value, option: analysis.option });
+        index += 1;
+        break;
+      }
+      case 'none':
+      case 'following-optional':
+        throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+      default: {
+        const _ex: never = analysis.value;
+        throw new Error(`Unhandled diff -U value: ${JSON.stringify(_ex)}`);
+      }
+      }
       continue;
     }
     switch (arg) {
@@ -48,6 +107,12 @@ export function parseDiffArguments({ args }: { args: readonly string[] }): GitDi
       break;
     case '--check':
       check = true;
+      break;
+    case '--word-diff':
+      wordDiff = true;
+      break;
+    case '--binary':
+      binaryPatch = true;
       break;
     case '--quiet':
       quiet = true;
@@ -71,7 +136,7 @@ export function parseDiffArguments({ args }: { args: readonly string[] }): GitDi
   }
   if (cached && revisions.length > 1) throw new Error('too many revisions for --cached');
   if (!cached && revisions.length > 2) throw new Error('too many revisions');
-  return { cached, nameOnly, nameStatus, stat, check, quiet, exitCode, nul, revisions, pathOperands };
+  return { cached, nameOnly, nameStatus, stat, check, quiet, exitCode, nul, unifiedContextLines, wordDiff, binaryPatch, revisions, pathOperands };
 }
 
 export const TEST_ONLY = {

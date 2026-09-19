@@ -71,6 +71,7 @@ function createOperations({
     leftLength: left.length,
     rightLength: right.length,
     areEqual: ({ leftIndex, rightIndex }) => left[leftIndex] === right[rightIndex],
+    areExactlyEqual: ({ leftIndex, rightIndex }) => left[leftIndex] === right[rightIndex],
     preferSpeedOverCompatibility,
   });
 }
@@ -110,6 +111,78 @@ describe('wesh diff algorithm', () => {
 
     expect(second).toEqual(first);
     expect(applyOperations({ left, right, operations: first })).toEqual(right);
+  });
+
+  it('shifts duplicate anchors to join adjacent changes without reducing the LCS', () => {
+    const left = ['same', 'left-only', 'duplicate'];
+    const right = ['same', 'duplicate', 'duplicate'];
+    const operations = createOperations({ left, right });
+
+    expect(operations).toEqual([
+      { kind: 'equal', leftStart: 0, rightStart: 0, length: 1 },
+      { kind: 'delete', leftStart: 1, rightStart: 1, length: 1 },
+      { kind: 'insert', leftStart: 2, rightStart: 1, length: 1 },
+      { kind: 'equal', leftStart: 2, rightStart: 2, length: 1 },
+    ]);
+  });
+
+  it('prefers a raw-exact anchor when comparison-equivalent duplicates tie', () => {
+    const left = ['BETA', 'Beta'];
+    const right = ['Beta'];
+    const operations = createDiffOperations({
+      leftLength: left.length,
+      rightLength: right.length,
+      areEqual: ({ leftIndex, rightIndex }) => (
+        left[leftIndex]?.toLowerCase() === right[rightIndex]?.toLowerCase()
+      ),
+      areExactlyEqual: ({ leftIndex, rightIndex }) => left[leftIndex] === right[rightIndex],
+      preferSpeedOverCompatibility: false,
+    });
+
+    expect(operations).toEqual([
+      { kind: 'delete', leftStart: 0, rightStart: 0, length: 1 },
+      { kind: 'equal', leftStart: 1, rightStart: 0, length: 1 },
+    ]);
+  });
+
+  it('preserves raw-exact anchor preference above the bounded dynamic-programming threshold', () => {
+    const tail = Array.from({ length: 511 }, (_value, index) => `tail-${index}`);
+    const left = ['BETA', 'Beta', ...tail];
+    const right = ['Beta', ...tail];
+    const operations = createDiffOperations({
+      leftLength: left.length,
+      rightLength: right.length,
+      areEqual: ({ leftIndex, rightIndex }) => (
+        left[leftIndex]?.toLowerCase() === right[rightIndex]?.toLowerCase()
+      ),
+      areExactlyEqual: ({ leftIndex, rightIndex }) => left[leftIndex] === right[rightIndex],
+      preferSpeedOverCompatibility: false,
+    });
+
+    expect(operations).toEqual([
+      { kind: 'delete', leftStart: 0, rightStart: 0, length: 1 },
+      { kind: 'equal', leftStart: 1, rightStart: 0, length: 512 },
+    ]);
+  });
+
+  it('keeps a later raw-exact fallback anchor across a non-equivalent changed line', () => {
+    const tail = Array.from({ length: 510 }, (_value, index) => `tail-${index}`);
+    const left = ['BETA', 'changed', 'Beta', ...tail];
+    const right = ['Beta', ...tail];
+    const operations = createDiffOperations({
+      leftLength: left.length,
+      rightLength: right.length,
+      areEqual: ({ leftIndex, rightIndex }) => (
+        left[leftIndex]?.toLowerCase() === right[rightIndex]?.toLowerCase()
+      ),
+      areExactlyEqual: ({ leftIndex, rightIndex }) => left[leftIndex] === right[rightIndex],
+      preferSpeedOverCompatibility: false,
+    });
+
+    expect(operations).toEqual([
+      { kind: 'delete', leftStart: 0, rightStart: 0, length: 2 },
+      { kind: 'equal', leftStart: 2, rightStart: 0, length: 511 },
+    ]);
   });
 
   it('groups changes and merges hunks at the context boundary', () => {

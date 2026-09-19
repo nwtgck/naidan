@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decodeShellBytesToText,
   decodeShellUtf8Projection,
+  decodeShellUtf8Text,
   encodeShellTextToBytes,
   findShellUtf8ByteOffsetForTextBoundary,
   shellByteValueToText,
@@ -137,6 +138,37 @@ describe('shell byte text', () => {
     });
   });
 
+  it('decodes long valid runs around malformed bytes without consuming an incomplete tail', () => {
+    const encoder = new TextEncoder();
+    const prefix = encoder.encode(`${'a'.repeat(4096)}😀`);
+    const suffix = encoder.encode(`β${'z'.repeat(4096)}`);
+    const incompleteTail = Uint8Array.of(0xf0, 0x9f, 0x98);
+    const bytes = new Uint8Array(prefix.length + 1 + suffix.length + incompleteTail.length);
+    bytes.set(prefix, 0);
+    bytes[prefix.length] = 0xff;
+    bytes.set(suffix, prefix.length + 1);
+    bytes.set(incompleteTail, prefix.length + 1 + suffix.length);
+
+    const consumedBytes = prefix.length + 1 + suffix.length;
+    const expectedText = `${'a'.repeat(4096)}😀${String.fromCharCode(0xdcff)}β${'z'.repeat(4096)}`;
+
+    expect(decodeShellUtf8Text({
+      bytes,
+      completion: 'may-continue',
+    })).toEqual({
+      text: expectedText,
+      consumedBytes,
+    });
+
+    const projection = decodeShellUtf8Projection({
+      bytes,
+      completion: 'may-continue',
+    });
+    expect(projection.text).toBe(expectedText);
+    expect(projection.consumedBytes).toBe(consumedBytes);
+    expect(projection.textBoundaryByteOffsets.at(-1)).toBe(consumedBytes);
+  });
+
   it('preserves malformed bytes independently while retaining valid Unicode', () => {
     expect(decodeShellUtf8Projection({
       bytes: Uint8Array.of(0xe2, 0x28, 0xa1),
@@ -182,6 +214,24 @@ describe('shell byte text', () => {
     expect(decodeShellBytesToText({
       bytes: Uint8Array.of(0x41, 0xf0, 0x9f, 0x98, 0x80, 0xff, 0x42),
     })).toBe(text);
+  });
+
+  it('encodes long adjacent raw-byte sentinel runs without changing surrounding Unicode', () => {
+    const rawBytes = Uint8Array.from({ length: 512 }, (_value, index) => 0x80 + (index % 0x80));
+    const rawText = Array.from(rawBytes, (byte) => shellByteValueToText({ byte })).join('');
+    const text = `prefix😀${rawText}suffix`;
+    const expectedPrefix = new TextEncoder().encode('prefix😀');
+    const expectedSuffix = new TextEncoder().encode('suffix');
+    const expected = new Uint8Array(expectedPrefix.length + rawBytes.length + expectedSuffix.length);
+    expected.set(expectedPrefix, 0);
+    expected.set(rawBytes, expectedPrefix.length);
+    expected.set(expectedSuffix, expectedPrefix.length + rawBytes.length);
+
+    assertBytesEqual({
+      actual: encodeShellTextToBytes({ text }),
+      expected,
+      context: 'long raw-byte sentinel run',
+    });
   });
 
   it('represents single shell byte values without changing their byte identity', () => {

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "modelId": "onnx-community/Qwen3.5-2B-ONNX",
+    "resolvedRevision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+    "transformersJsVersion": "4.2.0"
+  },
+  "nativeTemplate": {
+    "caseId": "user-generation",
+    "messages": [{ "role": "user", "content": "Template probe user message." }],
+    "addGenerationPrompt": true,
+    "renderedText": "<|im_start|>user\nTemplate probe user message.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+    "inputIds": [248045, 846, 198, 7048, 21059, 1156, 1876, 13, 248046, 198, 248045, 74455, 198, 248068, 271, 248069, 271]
+  },
+  "productionInput": {
+    "messages": [{ "role": "user", "content": "Template probe user message." }],
+    "inputKeys": ["attention_mask", "input_ids"],
+    "inputTensors": [
+      { "name": "attention_mask", "dtype": "int64", "dims": [1, 13], "location": "cpu" },
+      { "name": "input_ids", "dtype": "int64", "dims": [1, 13], "location": "cpu" }
+    ],
+    "inputTokenIds": [248045, 846, 198, 7048, 21059, 1156, 1876, 13, 248046, 198, 248045, 74455, 198],
+    "effectiveGenerationConfig": { "maxNewTokens": 16, "temperature": 0, "topP": 1, "doSample": false }
+  }
+}

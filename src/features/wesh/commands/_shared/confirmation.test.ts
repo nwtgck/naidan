@@ -45,4 +45,22 @@ describe('interactive confirmation', () => {
     await expect(read()).resolves.toBe(true);
     await expect(read()).resolves.toBe(false);
   });
+
+  it('exposes raw input lines for multi-choice command prompts', async () => {
+    const readLine = TEST_ONLY.createTextInputLineReader({
+      input: inputChunks([`\
+y
+N\r
+r
+renamed.txt
+`]),
+    });
+
+    await expect(readLine()).resolves.toBe('y');
+    await expect(readLine()).resolves.toBe('N');
+    await expect(readLine()).resolves.toBe('r');
+    await expect(readLine()).resolves.toBe('renamed.txt');
+    await expect(readLine()).resolves.toBeUndefined();
+  });
+
 });

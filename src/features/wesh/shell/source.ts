@@ -51,15 +51,15 @@ export function createHandleShellSource({ handle }: {
   };
 }
 
-async function readShellSourceHandle({ handle, maximumBytes }: {
+async function readShellSourceHandleIntoBuffer({ handle, buffer, maximumBytes }: {
   handle: WeshFileHandle,
+  buffer: Uint8Array,
   maximumBytes: number,
 }): Promise<Uint8Array | undefined> {
-  if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
-    throw new Error('Shell source maximumBytes must be a positive safe integer');
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0 || maximumBytes > buffer.length) {
+    throw new Error('Shell source maximumBytes must fit in the provided read buffer');
   }
 
-  const buffer = new Uint8Array(maximumBytes);
   const { bytesRead } = await handle.read({
     buffer,
     offset: 0,
@@ -75,6 +75,38 @@ async function readShellSourceHandle({ handle, maximumBytes }: {
   return buffer.subarray(0, bytesRead);
 }
 
+async function readShellSourceHandle({ handle, maximumBytes }: {
+  handle: WeshFileHandle,
+  maximumBytes: number,
+}): Promise<Uint8Array | undefined> {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
+    throw new Error('Shell source maximumBytes must be a positive safe integer');
+  }
+
+  return readShellSourceHandleIntoBuffer({
+    handle,
+    buffer: new Uint8Array(maximumBytes),
+    maximumBytes,
+  });
+}
+
+type ByteBackedShellSource = Extract<ShellSource, { kind: 'bytes' | 'handle' }>;
+
+function readByteBackedShellSource({ source, maximumBytes }: {
+  source: ByteBackedShellSource,
+  maximumBytes: number,
+}): Promise<Uint8Array | undefined> {
+  switch (source.kind) {
+  case 'bytes':
+    return source.read({ maximumBytes });
+  case 'handle':
+    return readShellSourceHandle({ handle: source.handle, maximumBytes });
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled byte-backed shell source: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
 
 export function createShebangStrippedShellSource({ source }: {
   source: ShellSource,
@@ -86,18 +118,11 @@ export function createShebangStrippedShellSource({ source }: {
     });
   case 'bytes':
   case 'handle': {
-    const readSource = ({ maximumBytes }: { maximumBytes: number }) => {
-      switch (source.kind) {
-      case 'bytes':
-        return source.read({ maximumBytes });
-      case 'handle':
-        return readShellSourceHandle({ handle: source.handle, maximumBytes });
-      default: {
-        const _ex: never = source;
-        throw new Error(`Unhandled shell source: ${JSON.stringify(_ex)}`);
-      }
-      }
-    };
+    const byteBackedSource = source;
+    const readSource = ({ maximumBytes }: { maximumBytes: number }) => readByteBackedShellSource({
+      source: byteBackedSource,
+      maximumBytes,
+    });
     let state: 'checking-prefix' | 'skipping-shebang' | 'passthrough' | 'complete' = 'checking-prefix';
     let prefix = new Uint8Array(0);
     let pendingOutput = new Uint8Array(0);
@@ -227,6 +252,7 @@ function stripShebangText({ text }: { text: string }): string {
 }
 
 const SHELL_SOURCE_READ_CHUNK_BYTES = 64 * 1024;
+const SHELL_SOURCE_PROJECTION_COMPACTION_SEGMENTS = 64;
 const NUL_BYTE = 0x00;
 
 function createParserVisibleByteView({ rawBytes }: {
@@ -390,18 +416,30 @@ export function createShellSourceReader({ source }: {
   }
   case 'bytes':
   case 'handle': {
-    const readSource = ({ maximumBytes }: { maximumBytes: number }) => {
-      switch (source.kind) {
+    const byteBackedSource = source;
+    const readSource = (() => {
+      switch (byteBackedSource.kind) {
       case 'bytes':
-        return source.read({ maximumBytes });
-      case 'handle':
-        return readShellSourceHandle({ handle: source.handle, maximumBytes });
+        return ({ maximumBytes }: { maximumBytes: number }) => byteBackedSource.read({ maximumBytes });
+      case 'handle': {
+        let reusableBuffer = new Uint8Array(SHELL_SOURCE_READ_CHUNK_BYTES);
+        return ({ maximumBytes }: { maximumBytes: number }) => {
+          if (reusableBuffer.length < maximumBytes) {
+            reusableBuffer = new Uint8Array(maximumBytes);
+          }
+          return readShellSourceHandleIntoBuffer({
+            handle: byteBackedSource.handle,
+            buffer: reusableBuffer,
+            maximumBytes,
+          });
+        };
+      }
       default: {
-        const _ex: never = source;
-        throw new Error(`Unhandled shell source: ${JSON.stringify(_ex)}`);
+        const _ex: never = byteBackedSource;
+        throw new Error(`Unhandled byte-backed shell source: ${JSON.stringify(_ex)}`);
       }
       }
-    };
+    })();
     let completion: 'complete' | 'may-continue' = 'may-continue';
     const retainedBytes = new ShellSourceByteBuffer();
     let retainedText = '';
@@ -409,7 +447,30 @@ export function createShellSourceReader({ source }: {
     const projectionSegments: Array<{
       textCharacters: number,
       rawBytes: number,
+      rawBytesAreParserVisible: boolean,
     }> = [];
+    let projectionSegmentStart = 0;
+
+    // Move the logical head on every consume, but compact only occasionally so repeated
+    // small shell units do not copy the remaining segment array on every parse cycle.
+    const compactProjectionSegments = (): void => {
+      if (projectionSegmentStart === 0) {
+        return;
+      }
+      if (projectionSegmentStart === projectionSegments.length) {
+        projectionSegments.length = 0;
+        projectionSegmentStart = 0;
+        return;
+      }
+      if (
+        projectionSegmentStart < SHELL_SOURCE_PROJECTION_COMPACTION_SEGMENTS
+        || projectionSegmentStart * 2 < projectionSegments.length
+      ) {
+        return;
+      }
+      projectionSegments.splice(0, projectionSegmentStart);
+      projectionSegmentStart = 0;
+    };
 
     const appendProjection = (): string => {
       const rawBytes = retainedBytes.view().subarray(projectedBytes);
@@ -439,14 +500,18 @@ export function createShellSourceReader({ source }: {
       }
       if (consumedRawBytes > 0) {
         if (projection.text.length === 0) {
-          const previousSegment = projectionSegments.at(-1);
+          const previousSegment = projectionSegmentStart < projectionSegments.length
+            ? projectionSegments.at(-1)
+            : undefined;
           if (previousSegment !== undefined) {
             previousSegment.rawBytes += consumedRawBytes;
+            previousSegment.rawBytesAreParserVisible &&= parserVisibleBytes === rawBytes;
           }
         } else {
           projectionSegments.push({
             textCharacters: projection.text.length,
             rawBytes: consumedRawBytes,
+            rawBytesAreParserVisible: parserVisibleBytes === rawBytes,
           });
         }
       }
@@ -459,6 +524,7 @@ export function createShellSourceReader({ source }: {
       retainedText = '';
       projectedBytes = 0;
       projectionSegments.length = 0;
+      projectionSegmentStart = 0;
       appendProjection();
     };
 
@@ -505,7 +571,8 @@ export function createShellSourceReader({ source }: {
         let rawBytesConsumed = 0;
         let fullyConsumedSegments = 0;
         while (remainingCharacters > 0) {
-          const segment = projectionSegments[fullyConsumedSegments];
+          const segmentIndex = projectionSegmentStart + fullyConsumedSegments;
+          const segment = projectionSegments[segmentIndex];
           if (segment === undefined) {
             throw new Error('Shell parser consumed beyond retained source projection');
           }
@@ -520,26 +587,37 @@ export function createShellSourceReader({ source }: {
             rawBytesConsumed,
             rawBytesConsumed + segment.rawBytes,
           );
-          const parserVisibleBytes = createParserVisibleByteView({ rawBytes: segmentBytes });
-          const partialParserBytes = findShellUtf8ByteOffsetForTextBoundary({
-            bytes: parserVisibleBytes,
-            completion: 'complete',
-            characters: remainingCharacters,
-          });
-          const partialRawBytes = findRawByteOffsetForParserByteBoundary({
-            rawBytes: segmentBytes,
-            parserVisibleBytes,
-            parserByteOffset: partialParserBytes,
-          });
-          projectionSegments[fullyConsumedSegments] = {
+          const partialRawBytes = (() => {
+            if (segment.rawBytesAreParserVisible) {
+              return findShellUtf8ByteOffsetForTextBoundary({
+                bytes: segmentBytes,
+                completion: 'complete',
+                characters: remainingCharacters,
+              });
+            }
+            const parserVisibleBytes = createParserVisibleByteView({ rawBytes: segmentBytes });
+            const partialParserBytes = findShellUtf8ByteOffsetForTextBoundary({
+              bytes: parserVisibleBytes,
+              completion: 'complete',
+              characters: remainingCharacters,
+            });
+            return findRawByteOffsetForParserByteBoundary({
+              rawBytes: segmentBytes,
+              parserVisibleBytes,
+              parserByteOffset: partialParserBytes,
+            });
+          })();
+          projectionSegments[segmentIndex] = {
             textCharacters: segment.textCharacters - remainingCharacters,
             rawBytes: segment.rawBytes - partialRawBytes,
+            rawBytesAreParserVisible: segment.rawBytesAreParserVisible,
           };
           rawBytesConsumed += partialRawBytes;
           remainingCharacters = 0;
         }
         if (fullyConsumedSegments > 0) {
-          projectionSegments.splice(0, fullyConsumedSegments);
+          projectionSegmentStart += fullyConsumedSegments;
+          compactProjectionSegments();
         }
         if (rawBytesConsumed > projectedBytes) {
           throw new Error('Shell parser consumed bytes not yet available in its text projection');
@@ -587,7 +665,9 @@ export async function readShellSourceToText({ source }: {
 
   while (true) {
     const next = await reader.read();
-    parts.push(next.text);
+    if (next.text.length > 0) {
+      parts.push(next.text);
+    }
     switch (next.completion) {
     case 'complete':
       return parts.join('');

@@ -214,7 +214,7 @@ function buildTextDetails({
   );
   const lineTerminators: FileCommandLineTerminator[] = [];
   if (/\r\n/u.test(decoded.text)) lineTerminators.push('crlf');
-  if (/\r(?!\n)/u.test(decoded.text)) lineTerminators.push('cr');
+  if (/\r(?!\n|$)/u.test(decoded.text)) lineTerminators.push('cr');
   if (/(^|[^\r])\n/u.test(decoded.text)) lineTerminators.push('lf');
   if (decoded.text.includes('\u0085')) lineTerminators.push('nel');
   return {
@@ -255,6 +255,27 @@ function shebangInterpreterName({
     return undefined;
   }
   return envCommand.slice(envCommand.lastIndexOf('/') + 1);
+}
+
+function shebangGenericCommand({
+  text,
+}: {
+  text: string,
+}): string | undefined {
+  if (!text.startsWith('#!')) return undefined;
+
+  const lineEnd = text.search(/[\r\n]/u);
+  const line = text.slice(2, lineEnd === -1 ? undefined : lineEnd).trim();
+  if (line.length === 0) return undefined;
+
+  const words = line.split(/[\t ]+/u);
+  const executable = words[0];
+  if (executable === undefined) return undefined;
+  const executableName = executable.slice(executable.lastIndexOf('/') + 1);
+  if (executableName !== 'env') return executable;
+
+  const envCommand = words.slice(1).join(' ');
+  return envCommand === '' ? executable : envCommand;
 }
 
 function classifyScriptLanguage({
@@ -303,6 +324,11 @@ function classifyStructuredText({
   const scriptLanguage = classifyScriptLanguage({ text: normalizedText });
   if (scriptLanguage !== undefined) {
     return { kind: 'script', language: scriptLanguage, text };
+  }
+
+  const genericScriptCommand = shebangGenericCommand({ text: normalizedText });
+  if (genericScriptCommand !== undefined) {
+    return { kind: 'generic_script', command: genericScriptCommand, text };
   }
 
   if (complete) {

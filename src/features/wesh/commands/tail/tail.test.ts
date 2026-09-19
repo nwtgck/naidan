@@ -1,11 +1,53 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh';
+import { TEST_ONLY as TAIL_TEST_ONLY } from './index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromBytes,
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+
+describe('tail from-start streaming', () => {
+  it.each([
+    { delimiterByte: 0x0a, firstRecord: 'skip\n', activeRecord: 'streaming-line' },
+    { delimiterByte: 0x00, firstRecord: 'skip\0', activeRecord: 'streaming-record' },
+  ])('forwards the active record before EOF for delimiter $delimiterByte', async ({
+    delimiterByte,
+    firstRecord,
+    activeRecord,
+  }) => {
+    let releaseInput!: () => void;
+    const inputReleased = new Promise<void>(resolve => {
+      releaseInput = resolve;
+    });
+    let waitingForMoreInput!: () => void;
+    const requestedMoreInput = new Promise<void>(resolve => {
+      waitingForMoreInput = resolve;
+    });
+    const stdout = createTestWriteCaptureHandle();
+    const encoder = new TextEncoder();
+
+    async function* chunks(): AsyncIterable<Uint8Array> {
+      yield encoder.encode(`${firstRecord}${activeRecord}`);
+      waitingForMoreInput();
+      await inputReleased;
+    }
+
+    const processing = TAIL_TEST_ONLY.writeTailRecordsFromStart({
+      chunks: chunks(),
+      recordsToSkip: 1,
+      delimiterByte,
+      handle: stdout.handle,
+    });
+
+    await requestedMoreInput;
+    expect(stdout.text).toBe(activeRecord);
+    releaseInput();
+    await processing;
+  });
+});
 
 describe('tail command', () => {
   let wesh: Wesh;
@@ -43,7 +85,7 @@ describe('tail command', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: stdinBytes === undefined
         ? createTestReadHandleFromText({ text: stdinText ?? '' })
         : createTestReadHandleFromBytes({ bytes: stdinBytes }),
@@ -184,7 +226,7 @@ a2
     });
 
     expect(stdout.text).toContain('==> a.txt <==');
-    expect(stderr.text).toContain('tail: missing.txt:');
+    expect(stderr.text).toBe('tail: missing.txt: No such file or directory\n');
     expect(result.exitCode).toBe(1);
   });
 
@@ -204,6 +246,19 @@ a2
 a2
 `);
     expect(stderr.text).toContain('tail: missing.txt:');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('normalizes browser type-mismatch errors for intermediate file path components', async () => {
+    await writeFile({ name: 'parent', data: 'file' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'tail parent/child',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('tail: parent/child: Not a directory\n');
     expect(result.exitCode).toBe(1);
   });
 

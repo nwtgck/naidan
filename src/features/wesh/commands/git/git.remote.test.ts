@@ -1,10 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
 
 describe('wesh git local remotes', () => {
   let wesh: Wesh;
@@ -19,7 +25,7 @@ describe('wesh git local remotes', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -585,6 +591,50 @@ git status --porcelain=v1 --branch`,
     expect(lines[2]).toBe('# branch.upstream origin/master');
     expect(lines[3]).toBe('# branch.ab +1 -1');
     expect(lines[4]).toBe('## master...origin/master [ahead 1, behind 1]');
+  });
+
+  it('reports exact multi-commit upstream divergence counts', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q source
+cd source
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > base.txt
+git add base.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null
+cd /
+git clone -q source cloned
+cd cloned
+git config user.name Tester
+git config user.email tester@example.com
+printf 'local-one\n' > local-one.txt
+git add local-one.txt
+GIT_AUTHOR_DATE='981259506 +0000' GIT_COMMITTER_DATE='981259506 +0000' git commit -m local-one >/dev/null
+printf 'local-two\n' > local-two.txt
+git add local-two.txt
+GIT_AUTHOR_DATE='981345906 +0000' GIT_COMMITTER_DATE='981345906 +0000' git commit -m local-two >/dev/null
+cd /source
+printf 'remote-one\n' > remote-one.txt
+git add remote-one.txt
+GIT_AUTHOR_DATE='981432306 +0000' GIT_COMMITTER_DATE='981432306 +0000' git commit -m remote-one >/dev/null
+printf 'remote-two\n' > remote-two.txt
+git add remote-two.txt
+GIT_AUTHOR_DATE='981518706 +0000' GIT_COMMITTER_DATE='981518706 +0000' git commit -m remote-two >/dev/null
+printf 'remote-three\n' > remote-three.txt
+git add remote-three.txt
+GIT_AUTHOR_DATE='981605106 +0000' GIT_COMMITTER_DATE='981605106 +0000' git commit -m remote-three >/dev/null
+cd /cloned
+git fetch -q origin
+git status --porcelain=v2 --branch
+git status --porcelain=v1 --branch`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    const lines = stdout.text.trimEnd().split('\n');
+    expect(lines[3]).toBe('# branch.ab +2 -3');
+    expect(lines[4]).toBe('## master...origin/master [ahead 2, behind 3]');
   });
 
   it('accepts --ff-only with --rebase and lets ff-only reject divergence after fetch', async () => {

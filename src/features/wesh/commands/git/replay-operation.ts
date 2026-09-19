@@ -9,11 +9,11 @@ import { formatPreparedMergeConflict, prepareMergeConflicts } from "./merge-conf
 import type { GitPreparedMergeConflict } from "./merge-conflict";
 import { readMergeState } from "./merge-state";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "./identity";
-import { readIndex, writeIndex } from "./index-file";
+import { collectUnmergedPaths, readIndex, writeIndex } from "./index-file";
 import { forceReplaceIndexAndWorktree } from "./index-worktree";
 import { branchNameFromHead, readHead, updateHead } from "./refs";
 import { discoverRepository, discoverRepositoryFromContext } from "./repository";
-import { resolveCommitRevision } from "./revision";
+import { GitUnknownRevisionError, resolveCommitRevision } from "./revision";
 import { prepareCommitReplay } from "./replay";
 import type { GitPreparedReplay } from "./replay";
 import type { GitReplayKind } from "./replay-state";
@@ -309,7 +309,7 @@ async function continueReplay({ context, kind }: {
     }
   }
   const entries = await readIndex({ files: context.files, repository });
-  const unmergedPaths = sortGitPaths({ paths: new Set(entries.filter(entry => entry.stage !== 0).map(entry => entry.path)) });
+  const unmergedPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries }) });
   if (unmergedPaths.length > 0) {
     for (const path of unmergedPaths)
       await context.text().print({ text: `U\t${path}\n` });
@@ -488,7 +488,14 @@ export async function executeReplay({ context, request, kind }: {
   }
   const todo = [];
   for (const operand of request.operands) {
-    const objectId = await resolveCommitRevision({ files: context.files, repository, expression: operand });
+    let objectId: string;
+    try {
+      objectId = await resolveCommitRevision({ files: context.files, repository, expression: operand });
+    } catch (error) {
+      if (!(error instanceof GitUnknownRevisionError)) throw error;
+      await context.text().error({ text: `fatal: bad revision '${error.expression}'\n` });
+      return { exitCode: 128 };
+    }
     const commit = await readCommit({ files: context.files, repository, objectId });
     todo.push({ kind, objectId, subject: commitSubject({ commit }) });
   }

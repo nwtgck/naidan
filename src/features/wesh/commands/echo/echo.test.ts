@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { TEST_ONLY as ECHO_TEST_ONLY } from '@/features/wesh/commands/echo';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -20,7 +21,7 @@ describe('wesh echo', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -166,7 +167,7 @@ compact`);
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: 'echo hello',
+      source: createTextShellSource({ text: 'echo hello' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,

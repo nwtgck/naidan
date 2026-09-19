@@ -1,5 +1,6 @@
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import { Wesh } from './index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { NaidanSysfsProvider } from './naidan-sysfs/provider';
 import { NAIDAN_SYSFS_ROOT_PATH } from './naidan-sysfs/constants';
 import type { ChatContent, ChatGroup, ChatMeta, Hierarchy, SidebarItem } from '@/01-models/types';
@@ -422,7 +423,7 @@ export async function executeInWesh({
   const stderr = createTestWriteCaptureHandle();
 
   const result = await wesh.execute({
-    script: script,
+    source: createTextShellSource({ text: script }),
     stdin: createTestReadHandleFromText({ text: '' }),
     stdout: stdout.handle,
     stderr: stderr.handle,

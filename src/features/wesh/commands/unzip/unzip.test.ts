@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -15,12 +16,18 @@ describe('wesh unzip', () => {
     await wesh.init();
   });
 
-  async function execute({ script }: { script: string }) {
+  async function execute({
+    script,
+    stdinText = '',
+  }: {
+    script: string,
+    stdinText?: string,
+  }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
-      stdin: createTestReadHandleFromText({ text: '' }),
+      source: createTextShellSource({ text: script }),
+      stdin: createTestReadHandleFromText({ text: stdinText }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -243,6 +250,186 @@ describe('wesh unzip', () => {
 
     expect(execution.result.exitCode).toBe(0);
     expect((await execute({ script: 'test -f out/entry.txt' })).result.exitCode).toBe(0);
+  });
+
+
+  it('searches exact, .zip, and .ZIP archive candidates in order', async () => {
+    expect((await execute({
+      script: "printf 'LOWER\\n' > marker.txt && zip -q archive.zip marker.txt && rm marker.txt",
+    })).result.exitCode).toBe(0);
+
+    const lower = await execute({ script: 'unzip -p archive marker.txt' });
+    expect(lower.result.exitCode).toBe(0);
+    expect(lower.stdout.text).toBe('LOWER\n');
+
+    expect((await execute({
+      script: "rm archive.zip && printf 'UPPER\\n' > marker.txt && zip -q archive.zip marker.txt && mv archive.zip archive.ZIP && rm marker.txt",
+    })).result.exitCode).toBe(0);
+
+    const upper = await execute({ script: 'unzip -tq archive' });
+    expect(upper.result.exitCode).toBe(0);
+    expect(upper.stdout.text).toContain('archive.ZIP');
+
+    expect((await execute({
+      script: "rm archive.ZIP && printf 'LOWER2\\n' > marker.txt && zip -q archive.zip.zip marker.txt && rm marker.txt",
+    })).result.exitCode).toBe(0);
+
+    const appended = await execute({ script: 'unzip -p archive.zip marker.txt' });
+    expect(appended.result.exitCode).toBe(0);
+    expect(appended.stdout.text).toBe('LOWER2\n');
+  });
+
+  it('continues implicit archive search past directories and invalid ZIP candidates', async () => {
+    expect((await execute({
+      script: "mkdir archive && printf 'LOWER\\n' > marker.txt && zip -q archive.zip marker.txt && rm marker.txt",
+    })).result.exitCode).toBe(0);
+
+    const directoryCandidate = await execute({ script: 'unzip -p archive marker.txt' });
+    expect(directoryCandidate.result.exitCode).toBe(0);
+    expect(directoryCandidate.stdout.text).toBe('LOWER\n');
+
+    expect((await execute({
+      script: "rm -r archive archive.zip && printf 'not-a-zip\\n' > archive && printf 'UPPER\\n' > marker.txt && zip -q archive.zip marker.txt && mv archive.zip archive.ZIP && rm marker.txt",
+    })).result.exitCode).toBe(0);
+
+    const invalidCandidate = await execute({ script: 'unzip -p archive marker.txt' });
+    expect(invalidCandidate.result.exitCode).toBe(0);
+    expect(invalidCandidate.stdout.text).toBe('UPPER\n');
+    expect(invalidCandidate.stderr.text).toContain('[archive]');
+    expect(invalidCandidate.stderr.text).toContain('End-of-central-directory signature not found');
+  });
+
+  it('prefers a valid exact archive over suffixed candidates', async () => {
+    expect((await execute({
+      script: "printf 'BARE\\n' > marker.txt && zip -q exact.zip marker.txt && cp exact.zip archive && printf 'LOWER\\n' > marker.txt && zip -q archive.zip marker.txt && rm marker.txt exact.zip",
+    })).result.exitCode).toBe(0);
+
+    const execution = await execute({ script: 'unzip -p archive marker.txt' });
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stdout.text).toBe('BARE\n');
+    expect(execution.stderr.text).toBe('');
+  });
+
+  it('reports the full candidate set when an archive operand is missing', async () => {
+    const execution = await execute({ script: 'unzip missing.zip' });
+
+    expect(execution.result.exitCode).toBe(9);
+    expect(execution.stdout.text).toBe('');
+    expect(execution.stderr.text).toBe(
+      'unzip:  cannot find or open missing.zip, missing.zip.zip or missing.zip.ZIP.\n',
+    );
+  });
+
+
+  it('supports Info-ZIP negated member character classes for includes and excludes', async () => {
+    const setup = await execute({
+      script: "printf 'A\\n' > a.txt && printf 'B\\n' > b.txt && printf 'BANG\\n' > '!.txt' && zip -q archive.zip a.txt b.txt '!.txt' && rm a.txt b.txt '!.txt'",
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const include = await execute({ script: "unzip -qq -p archive.zip '[!a]*.txt'" });
+    expect(include.result.exitCode).toBe(0);
+    expect(include.stdout.text).toBe(`\
+B
+BANG
+`);
+    expect(include.stderr.text).toBe('');
+
+    const exclude = await execute({ script: "unzip -qq archive.zip '*.txt' -x '[!a]*.txt'" });
+    expect(exclude.result.exitCode).toBe(0);
+    expect((await execute({ script: "test -f a.txt && test ! -e b.txt && test ! -e '!.txt'" })).result.exitCode).toBe(0);
+  });
+
+  it('treats backslash as a quote for unzip member-pattern metacharacters', async () => {
+    const setup = await execute({
+      script: "printf 'STAR\\n' > 'star*name.txt' && printf 'QUESTION\\n' > 'q?name.txt' && printf 'BRACKET\\n' > 'br[ack].txt' && zip -q archive.zip 'star*name.txt' 'q?name.txt' 'br[ack].txt' && rm 'star*name.txt' 'q?name.txt' 'br[ack].txt'",
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const execution = await execute({
+      script: String.raw`unzip -qq -p archive.zip 'star\*name.txt' 'q\?name.txt' 'br\[ack\].txt'`,
+    });
+
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stdout.text).toBe(`\
+STAR
+QUESTION
+BRACKET
+`);
+    expect(execution.stderr.text).toBe('');
+  });
+
+
+  it('prompts for each default overwrite conflict and accepts yes or no', async () => {
+    const setup = await execute({
+      script: "printf 'ZIPA' > a.txt && printf 'ZIPB' > b.txt && zip -q archive.zip a.txt b.txt && printf 'OLDA' > a.txt && rm b.txt",
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const yes = await execute({ script: 'unzip archive.zip', stdinText: 'y\n' });
+    expect(yes.result.exitCode).toBe(0);
+    expect(yes.stderr.text).toBe('replace a.txt? [y]es, [n]o, [A]ll, [N]one, [r]ename: ');
+    expect((await execute({ script: "test \"$(cat a.txt)\" = ZIPA && test \"$(cat b.txt)\" = ZIPB" })).result.exitCode).toBe(0);
+
+    expect((await execute({ script: "printf 'OLDA' > a.txt && rm b.txt" })).result.exitCode).toBe(0);
+    const no = await execute({ script: 'unzip archive.zip', stdinText: 'n\n' });
+    expect(no.result.exitCode).toBe(0);
+    expect(no.stderr.text).toBe('replace a.txt? [y]es, [n]o, [A]ll, [N]one, [r]ename: ');
+    expect((await execute({ script: "test \"$(cat a.txt)\" = OLDA && test \"$(cat b.txt)\" = ZIPB" })).result.exitCode).toBe(0);
+  });
+
+  it('persists All and None overwrite decisions across later conflicts', async () => {
+    const setup = await execute({
+      script: "printf 'ZIPA' > a.txt && printf 'ZIPB' > b.txt && zip -q archive.zip a.txt b.txt && printf 'OLDA' > a.txt && printf 'OLDB' > b.txt",
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const all = await execute({ script: 'unzip archive.zip', stdinText: 'A\n' });
+    expect(all.result.exitCode).toBe(0);
+    expect(all.stderr.text).toBe('replace a.txt? [y]es, [n]o, [A]ll, [N]one, [r]ename: ');
+    expect((await execute({ script: "test \"$(cat a.txt)\" = ZIPA && test \"$(cat b.txt)\" = ZIPB" })).result.exitCode).toBe(0);
+
+    expect((await execute({ script: "printf 'OLDA' > a.txt && printf 'OLDB' > b.txt" })).result.exitCode).toBe(0);
+    const none = await execute({ script: 'unzip archive.zip', stdinText: 'N\n' });
+    expect(none.result.exitCode).toBe(0);
+    expect(none.stderr.text).toBe('replace a.txt? [y]es, [n]o, [A]ll, [N]one, [r]ename: ');
+    expect((await execute({ script: "test \"$(cat a.txt)\" = OLDA && test \"$(cat b.txt)\" = OLDB" })).result.exitCode).toBe(0);
+  });
+
+  it('treats EOF at the overwrite prompt as None with exit status 1', async () => {
+    const setup = await execute({
+      script: "printf 'ZIPA' > a.txt && printf 'ZIPB' > b.txt && zip -q archive.zip a.txt b.txt && printf 'OLDA' > a.txt && rm b.txt",
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const execution = await execute({ script: 'unzip archive.zip' });
+    expect(execution.result.exitCode).toBe(1);
+    expect(execution.stderr.text).toBe(
+      'replace a.txt? [y]es, [n]o, [A]ll, [N]one, [r]ename:  NULL\n'
+      + '(EOF or read error, treating as "[N]one" ...)\n',
+    );
+    expect((await execute({ script: "test \"$(cat a.txt)\" = OLDA && test \"$(cat b.txt)\" = ZIPB" })).result.exitCode).toBe(0);
+  });
+
+  it('supports renaming a conflicting member from the default overwrite prompt', async () => {
+    const setup = await execute({
+      script: "printf 'ZIPA' > a.txt && zip -q archive.zip a.txt && printf 'OLDA' > a.txt",
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const execution = await execute({
+      script: 'unzip archive.zip',
+      stdinText: `\
+r
+renamed.txt
+`,
+    });
+
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stderr.text).toBe(
+      'replace a.txt? [y]es, [n]o, [A]ll, [N]one, [r]ename: new name: ',
+    );
+    expect((await execute({ script: "test \"$(cat a.txt)\" = OLDA && test \"$(cat renamed.txt)\" = ZIPA" })).result.exitCode).toBe(0);
   });
 
 });

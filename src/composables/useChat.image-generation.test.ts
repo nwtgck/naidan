@@ -1,5 +1,6 @@
 import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChat } from './useChat';
 import { storageService } from '@/00-storage/service';
 import { SENTINEL_IMAGE_PENDING } from '@/utils/image-generation';
@@ -54,6 +55,10 @@ vi.mock('./useSettings', () => ({
     setOnboardingDraft: vi.fn(),
   }),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useChat Image Generation', () => {
   const chatStore = useChat();

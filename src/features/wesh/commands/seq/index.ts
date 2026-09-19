@@ -1,5 +1,5 @@
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
@@ -1147,12 +1147,7 @@ function* iterateSeqValues({
   }
 }
 
-export const seqCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'seq',
-    description: 'Print a sequence of numbers',
-    usage: 'seq [OPTION]... LAST | seq [OPTION]... FIRST LAST | seq [OPTION]... FIRST INCREMENT LAST',
-  },
+export const seqCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseSeqArgs({ args: context.args });
     if (parsed.diagnostic !== undefined) {

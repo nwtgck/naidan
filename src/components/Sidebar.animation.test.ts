@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { ref, reactive, nextTick, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
   useRoute: vi.fn(),

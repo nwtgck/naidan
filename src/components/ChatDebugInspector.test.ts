@@ -189,7 +189,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
 
     const wrapper = mountInspector(chat);
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
 
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
@@ -211,7 +211,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
 
     const wrapper = mountInspector(chat);
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
 
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
@@ -234,7 +234,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
 
     const wrapper = mountInspector(chat);
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
 
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
@@ -256,7 +256,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
 
     const wrapper = mountInspector(chat);
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
 
     // Select node C
@@ -277,7 +277,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   it('Scenario 5: Tree Map Collapsibility', async () => {
     const chat = createMockChat([createNode('A', 'user', 'A')]);
     const wrapper = mountInspector(chat);
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
 
     const treeMapContainer = wrapper.find('.relative.overflow-y-auto.border-r');
@@ -293,7 +293,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const chat = createMockChat([createNode('A', 'user', 'A')]);
     const wrapper = mountInspector(chat);
 
-    await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
     await nextTick();
 
     const pre = wrapper.find('pre');
@@ -306,6 +306,87 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     expect(pre.html()).not.toContain('class="text-red-500');
   });
 
+  it('copies the currently displayed full chat JSON', async () => {
+    const nodeA = createNode('A', 'user', 'A');
+    const chat = createMockChat([nodeA]);
+    const wrapper = mountInspector(chat, [nodeA]);
+
+    await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="copy-raw-json"]').trigger('click');
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(JSON.stringify(chat, null, 2));
+  });
+
+  it('shows and copies only the active branch in current-thread JSON scope', async () => {
+    const nodeC = createNode('C', 'assistant', 'C');
+    const nodeB = createNode('B', 'user', 'B', [nodeC]);
+    const sibling = createNode('X', 'user', 'sibling');
+    const nodeA = createNode('A', 'assistant', 'A', [nodeB, sibling]);
+    const chat = createMockChat([nodeA]);
+    chat.currentLeafId = nodeC.id;
+    const originalChatJson = JSON.stringify(chat);
+    const activeMessages = [nodeA, nodeB, nodeC];
+    const wrapper = mountInspector(chat, activeMessages);
+
+    await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="raw-json-scope-current-thread"]').trigger('click');
+    await nextTick();
+
+    const displayed = JSON.parse(wrapper.get('[data-testid="raw-json-output"]').text());
+    expect(displayed.id).toBe('chat-1');
+    expect(displayed.currentLeafId).toBe('C');
+    expect(displayed.root.items).toHaveLength(1);
+    expect(displayed.root.items[0].id).toBe('A');
+    expect(displayed.root.items[0].replies.items).toHaveLength(1);
+    expect(displayed.root.items[0].replies.items[0].id).toBe('B');
+    expect(displayed.root.items[0].replies.items[0].replies.items).toHaveLength(1);
+    expect(displayed.root.items[0].replies.items[0].replies.items[0].id).toBe('C');
+    expect(displayed.root.items[0].replies.items[0].replies.items[0].replies.items).toEqual([]);
+    expect(JSON.stringify(displayed)).not.toContain('sibling');
+    expect(JSON.stringify(chat)).toBe(originalChatJson);
+
+    await wrapper.get('[data-testid="copy-raw-json"]').trigger('click');
+    const copied = vi.mocked(navigator.clipboard.writeText).mock.calls.at(-1)?.[0];
+    expect(copied).toBe(wrapper.get('[data-testid="raw-json-output"]').text());
+  });
+
+  it('keeps copy feedback scoped to the latest JSON copy request', async () => {
+    vi.useFakeTimers();
+    try {
+      const nodeA = createNode('A', 'user', 'A');
+      const chat = createMockChat([nodeA]);
+      chat.currentLeafId = nodeA.id;
+      const wrapper = mountInspector(chat, [nodeA]);
+
+      await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
+      await nextTick();
+
+      const copyButton = wrapper.get('[data-testid="copy-raw-json"]');
+      await copyButton.trigger('click');
+      await flushPromises();
+      expect(copyButton.text()).toContain('Check');
+
+      vi.advanceTimersByTime(1000);
+      await wrapper.get('[data-testid="raw-json-scope-current-thread"]').trigger('click');
+      await nextTick();
+      await copyButton.trigger('click');
+      await flushPromises();
+      expect(copyButton.text()).toContain('Check');
+
+      vi.advanceTimersByTime(1000);
+      await nextTick();
+      expect(copyButton.text()).toContain('Check');
+
+      vi.advanceTimersByTime(1000);
+      await nextTick();
+      expect(copyButton.text()).not.toContain('Check');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('Scenario 7: Mode Transitions', async () => {
     const nodeA = createNode('A', 'user', 'A');
     const activeMessages = [nodeA];
@@ -314,11 +395,11 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     expect(wrapper.text()).toContain('A');
 
-    await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
     await nextTick();
     expect(wrapper.find('pre').text()).toContain('chat-1');
 
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
     expect(wrapper.findComponent(NetworkIcon).exists()).toBe(true);
   });
@@ -397,7 +478,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
     const wrapper = mountInspector(chat);
 
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
     await (wrapper.vm as any).handleSelectNode({ node: nodeB });
     await nextTick();
@@ -412,7 +493,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const chat = createMockChat([]);
     const wrapper = mountInspector(chat);
 
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
 
     expect(wrapper.findComponent(NetworkIcon).exists()).toBe(true);
@@ -425,7 +506,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
     const wrapper = mountInspector(chat);
 
-    await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
     await nextTick();
 
     const pre = wrapper.find('pre');
@@ -439,8 +520,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
     const wrapper = mountInspector(chat);
 
-    // Switch to Full JSON
-    await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
+    // Switch to JSON
+    await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
     await nextTick();
 
     // Turn OFF highlighting
@@ -536,7 +617,7 @@ not-json
     });
 
     const wrapper = mountInspector(chat);
-    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
 
     // Directly trigger select-node on the inspector instance to update selectedNode

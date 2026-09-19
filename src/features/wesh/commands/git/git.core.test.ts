@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -8,6 +10,10 @@ import {
 import { objectIdFor } from './objects';
 
 const textEncoder = new TextEncoder();
+
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
 
 describe('wesh git core lifecycle', () => {
   let wesh: Wesh;
@@ -22,7 +28,7 @@ describe('wesh git core lifecycle', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -677,6 +683,66 @@ git rev-parse --verify HEAD`,
     const lines = stdout.text.trimEnd().split('\n');
     expect(lines[0]).toBe('true');
     expect(lines[1]).toMatch(/^[0-9a-f]{40}$/u);
+  });
+
+  it('preserves rev-parse streaming order and starts single-revision mode at the option position', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /rev-parse-streaming
+cd /rev-parse-streaming
+git config user.name Tester
+git config user.email tester@example.com
+printf base > tracked.txt
+git add tracked.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null
+git rev-parse HEAD`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+    expect(setup.stderr.text).toBe('');
+    const head = setup.stdout.text.trim();
+    expect(head).toMatch(/^[0-9a-f]{40}$/u);
+
+    const afterRevisionSpecial = await execute({
+      script: 'git -C /rev-parse-streaming rev-parse HEAD --git-dir',
+    });
+    expect(afterRevisionSpecial.result.exitCode).toBe(0);
+    expect(afterRevisionSpecial.stderr.text).toBe('');
+    expect(afterRevisionSpecial.stdout.text).toBe(`${head}\n.git\n`);
+
+    const beforeRevisionSpecial = await execute({
+      script: 'git -C /rev-parse-streaming rev-parse --git-dir HEAD',
+    });
+    expect(beforeRevisionSpecial.result.exitCode).toBe(0);
+    expect(beforeRevisionSpecial.stderr.text).toBe('');
+    expect(beforeRevisionSpecial.stdout.text).toBe(`.git\n${head}\n`);
+
+    const lateShortWithoutRevision = await execute({
+      script: 'git -C /rev-parse-streaming rev-parse HEAD --short',
+    });
+    expect(lateShortWithoutRevision.result.exitCode).toBe(128);
+    expect(lateShortWithoutRevision.stdout.text).toBe(`${head}\n`);
+    expect(lateShortWithoutRevision.stderr.text).toContain('Needed a single revision');
+
+    const lateShortWithRevision = await execute({
+      script: 'git -C /rev-parse-streaming rev-parse HEAD --short HEAD',
+    });
+    expect(lateShortWithRevision.result.exitCode).toBe(0);
+    expect(lateShortWithRevision.stderr.text).toBe('');
+    expect(lateShortWithRevision.stdout.text).toBe(`${head}\n${head.slice(0, 7)}\n`);
+
+    const deferredRevision = await execute({
+      script: 'git -C /rev-parse-streaming rev-parse --short HEAD --git-dir',
+    });
+    expect(deferredRevision.result.exitCode).toBe(0);
+    expect(deferredRevision.stderr.text).toBe('');
+    expect(deferredRevision.stdout.text).toBe(`.git\n${head.slice(0, 7)}\n`);
+
+    const updatedDeferredMode = await execute({
+      script: 'git -C /rev-parse-streaming rev-parse --short HEAD --short=12',
+    });
+    expect(updatedDeferredMode.result.exitCode).toBe(0);
+    expect(updatedDeferredMode.stderr.text).toBe('');
+    expect(updatedDeferredMode.stdout.text).toBe(`${head.slice(0, 12)}\n`);
   });
 
   it('preserves rev-parse -- delimiter semantics without treating following paths as revisions', async () => {

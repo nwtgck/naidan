@@ -1,3 +1,4 @@
+import { createAwkByteCharacter } from '@/features/wesh/commands/awk/byte-string';
 import { compilePosixCompatibleRegExp } from '@/features/wesh/commands/_shared/posix-regexp';
 
 function escapeAwkRegexLiteralCharacter({ character }: { character: string }): string {
@@ -49,7 +50,7 @@ function normalizeAwkDynamicRegexEscapes({ source }: { source: string }): string
         digits += source[index + 1]!;
       }
       result += escapeAwkRegexLiteralCharacter({
-        character: String.fromCharCode(Number.parseInt(digits, 8) & 0xff),
+        character: createAwkByteCharacter({ byte: Number.parseInt(digits, 8) }),
       });
       index += 1;
       continue;
@@ -63,7 +64,7 @@ function normalizeAwkDynamicRegexEscapes({ source }: { source: string }): string
       }
       if (digits.length > 0) {
         result += escapeAwkRegexLiteralCharacter({
-          character: String.fromCharCode(Number.parseInt(digits, 16)),
+          character: createAwkByteCharacter({ byte: Number.parseInt(digits, 16) }),
         });
         index += 1;
         continue;

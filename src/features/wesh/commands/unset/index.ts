@@ -4,7 +4,7 @@ import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-capability';
 import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const unsetArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -18,12 +18,7 @@ const unsetArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const unsetCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'unset',
-    description: 'Unset environment variables',
-    usage: 'unset [-v] [-f] [name ...]',
-  },
+export const unsetCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({

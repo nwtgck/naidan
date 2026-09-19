@@ -126,6 +126,11 @@ interface GitPathspecSelection {
   unmatchedPositiveOperands: string[],
 }
 
+export interface GitRepositoryPathSelection {
+  readonly byOperand: Map<string, readonly string[]>,
+  readonly selected: Set<string>,
+}
+
 function calculatePathspecSelection({ repository, cwd, operands, availablePaths }: {
   repository: GitRepository,
   cwd: string,
@@ -138,7 +143,10 @@ function calculatePathspecSelection({ repository, cwd, operands, availablePaths 
   const excludes = specs.filter(spec => spec.exclude);
   const rawMatches = new Map<ParsedGitPathspec, string[]>();
   for (const spec of specs) rawMatches.set(spec, matchOnePathspec({ repository, cwd, pathspec: spec, paths }));
-  const excluded = new Set(excludes.flatMap(spec => rawMatches.get(spec)!));
+  const excluded = new Set<string>();
+  for (const spec of excludes) {
+    for (const path of rawMatches.get(spec)!) excluded.add(path);
+  }
   const selected = new Set<string>();
   if (positives.length === 0) {
     for (const path of paths) if (!excluded.has(path)) selected.add(path);
@@ -193,13 +201,23 @@ export function pathspecSelectsDirectory({ repository, cwd, operand, matchedPath
   return selectedDirectoryPathForPathspec({ repository, cwd, operand, matchedPaths }) !== undefined;
 }
 
+export function matchRepositoryPathSelection({ repository, cwd, operands, availablePaths }: {
+  repository: GitRepository,
+  cwd: string,
+  operands: readonly string[],
+  availablePaths: Iterable<string>,
+}): GitRepositoryPathSelection {
+  const selection = calculatePathspecSelection({ repository, cwd, operands, availablePaths });
+  return { byOperand: selection.byOperand, selected: selection.selected };
+}
+
 export function matchRepositoryPaths({ repository, cwd, operands, availablePaths }: {
   repository: GitRepository,
   cwd: string,
   operands: readonly string[],
   availablePaths: Iterable<string>,
 }): Map<string, readonly string[]> {
-  return calculatePathspecSelection({ repository, cwd, operands, availablePaths }).byOperand;
+  return matchRepositoryPathSelection({ repository, cwd, operands, availablePaths }).byOperand;
 }
 
 export function selectRepositoryPaths({ repository, cwd, operands, availablePaths }: {

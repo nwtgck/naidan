@@ -1,5 +1,6 @@
 import { ref, defineComponent, h, nextTick, reactive } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { useRouter, useRoute } from 'vue-router';
 import Sidebar from './Sidebar.vue';
@@ -9,6 +10,10 @@ import { useTheme } from '@/features/theme/composables/useTheme';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),

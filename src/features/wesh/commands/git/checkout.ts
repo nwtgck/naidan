@@ -4,7 +4,8 @@ import type { GitWorktreeContentConfig } from './config';
 import type { GitFiles } from './files';
 import { pathExists } from './files';
 import type { GitIndexEntry } from './index-file';
-import { compareGitPaths, sortGitPaths } from './path-order';
+import { sortGitPaths } from './path-order';
+import { sortByGitUtf8StringKey } from './utf8-order';
 import type { GitRepository } from './repository';
 import { joinPath } from './repository';
 import { hashWorktreeEntry, listWorktreeEntries, replaceTrackedWorktreePaths, worktreeAbsolutePath } from './worktree';
@@ -100,8 +101,10 @@ export async function planCheckoutTree({ files, repository, currentHeadEntries, 
   const headByPath = entryMap({ entries: currentHeadEntries });
   const indexByPath = entryMap({ entries: currentIndexEntries });
   const targetByPath = entryMap({ entries: targetEntries });
+  const candidatePaths = new Set(headByPath.keys());
+  for (const path of targetByPath.keys()) candidatePaths.add(path);
   const changedPaths = new Set<string>();
-  for (const path of new Set([...headByPath.keys(), ...targetByPath.keys()])) {
+  for (const path of candidatePaths) {
     if (!entriesEqual({ left: headByPath.get(path), right: targetByPath.get(path) })) changedPaths.add(path);
   }
 
@@ -174,7 +177,7 @@ export async function planCheckoutTree({ files, repository, currentHeadEntries, 
   }
 
   return {
-    nextIndexEntries: [...nextIndexByPath.values()].sort((left, right) => compareGitPaths({ left: left.path, right: right.path })),
+    nextIndexEntries: sortByGitUtf8StringKey({ values: nextIndexByPath.values(), key: ({ value }) => value.path }),
     worktreePathsToReplace,
     conflicts,
   };

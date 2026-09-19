@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status = ({ notApplicableCount }: { notApplicableCount: number }): string => `证据的验证范围与执行状态不同。范围外项目：${notApplicableCount} 项（并非等待执行）。`;

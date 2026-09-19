@@ -1,10 +1,11 @@
 import { createWeshOwnedBytes } from '@/features/wesh/types';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import {
   parseStandardArgv,
   type ArgvOptionOccurrence,
   type StandardArgvParserSpec,
 } from '@/features/wesh/argv';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import {
@@ -181,6 +182,46 @@ async function writeTailByteQueue({
   }
 }
 
+async function writeTailRecordsFromStart({
+  chunks,
+  recordsToSkip,
+  delimiterByte,
+  handle,
+}: {
+  chunks: AsyncIterable<Uint8Array>,
+  recordsToSkip: number,
+  delimiterByte: number,
+  handle: WeshCommandContext['stdout'],
+}): Promise<void> {
+  let remainingRecordsToSkip = Math.max(recordsToSkip, 0);
+
+  for await (const chunk of chunks) {
+    if (remainingRecordsToSkip === 0) {
+      await writeOwnedBytes({ handle, data: chunk });
+      continue;
+    }
+
+    let outputOffset = chunk.byteLength;
+    for (let index = 0; index < chunk.byteLength; index += 1) {
+      if (chunk[index] !== delimiterByte) {
+        continue;
+      }
+      remainingRecordsToSkip -= 1;
+      if (remainingRecordsToSkip === 0) {
+        outputOffset = index + 1;
+        break;
+      }
+    }
+
+    if (remainingRecordsToSkip === 0 && outputOffset < chunk.byteLength) {
+      await writeOwnedBytes({
+        handle,
+        data: chunk.subarray(outputOffset),
+      });
+    }
+  }
+}
+
 interface TailLineQueue {
   records: Uint8Array[],
   headIndex: number,
@@ -283,12 +324,7 @@ const tailArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
-export const tailCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'tail',
-    description: 'Output the last part of files',
-    usage: 'tail [OPTION]... [FILE]...',
-  },
+export const tailCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const normalizedArgs = normalizeLeadingPositiveLegacyCount({
       args: context.args,
@@ -421,19 +457,12 @@ export const tailCommandDefinition: WeshCommandDefinition = {
       }
 
       if (countFromStart) {
-        let currentLineNumber = 1;
-        for await (const record of iterateRecords({ chunks })) {
-          if (currentLineNumber >= lineCount) {
-            await writeOwnedBytes({
-              handle: context.stdout,
-              data: materializeByteRecord({
-                record,
-                delimiterByte: recordDelimiterByte,
-              }),
-            });
-          }
-          currentLineNumber += 1;
-        }
+        await writeTailRecordsFromStart({
+          chunks,
+          recordsToSkip: Math.max(lineCount - 1, 0),
+          delimiterByte: recordDelimiterByte,
+          handle: context.stdout,
+        });
         return;
       }
 
@@ -504,7 +533,8 @@ export const tailCommandDefinition: WeshCommandDefinition = {
           await processStream({ stream });
         } catch (e: unknown) {
           hadError = true;
-          const message = e instanceof Error ? e.message : String(e);
+          const message = getPathErrorReason({ error: e })
+            ?? (e instanceof Error ? e.message : String(e));
           await text.error({ text: `tail: ${f}: ${message}\n` });
           if (stopAfterError) {
             break;
@@ -520,4 +550,5 @@ export const tailCommandDefinition: WeshCommandDefinition = {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  writeTailRecordsFromStart,
 };

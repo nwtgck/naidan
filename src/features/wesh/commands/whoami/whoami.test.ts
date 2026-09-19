@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -24,7 +25,7 @@ describe('wesh whoami', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -43,10 +44,14 @@ describe('wesh whoami', () => {
 
   it('supports GNU-style --version before the option terminator', async () => {
     const version = await execute({ script: 'whoami --version' });
+    const abbreviatedVersion = await execute({ script: 'whoami --vers --bogus' });
     const lateVersion = await execute({ script: 'whoami extra --version' });
     const terminated = await execute({ script: 'whoami -- extra --version' });
 
     expect(version.stdout.text).toBe('whoami (Wesh coreutils) 1.0\n');
+    expect(abbreviatedVersion.stdout.text).toBe('whoami (Wesh coreutils) 1.0\n');
+    expect(abbreviatedVersion.stderr.text).toBe('');
+    expect(abbreviatedVersion.result.exitCode).toBe(0);
     expect(version.stderr.text).toBe('');
     expect(version.result.exitCode).toBe(0);
     expect(lateVersion.stdout.text).toBe('whoami (Wesh coreutils) 1.0\n');
@@ -59,6 +64,7 @@ describe('wesh whoami', () => {
 
   it('prints help and rejects extra operands and invalid options', async () => {
     const help = await execute({ script: 'whoami --help' });
+    const abbreviatedHelp = await execute({ script: 'whoami --he --bogus' });
     const invalid = await execute({ script: 'whoami --bogus' });
     const extra = await execute({ script: 'whoami extra' });
 
@@ -67,6 +73,9 @@ describe('wesh whoami', () => {
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
+    expect(abbreviatedHelp.stdout.text).toBe(help.stdout.text);
+    expect(abbreviatedHelp.stderr.text).toBe('');
+    expect(abbreviatedHelp.result.exitCode).toBe(0);
 
     expect(invalid.stdout.text).toBe('');
     expect(invalid.stderr.text).toContain("whoami: unrecognized option '--bogus'");

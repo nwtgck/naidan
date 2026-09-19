@@ -2,7 +2,7 @@ import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { parseStandardArgv } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const helpArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -20,12 +20,7 @@ const helpArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const helpCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'help',
-    description: 'Display information about builtin commands',
-    usage: 'help [COMMAND]',
-  },
+export const helpCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({

@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { canonicalizeExistingPath, resolvePath } from '@/features/wesh/path';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 
 interface CdCandidate {
@@ -71,12 +71,7 @@ const cdArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const cdCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'cd',
-    description: 'Change current directory',
-    usage: 'cd [-LP] [path]',
-  },
+export const cdCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: cdArgvSpec }),

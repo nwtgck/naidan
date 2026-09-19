@@ -12,9 +12,20 @@ function isLocalUserModelRequest({ url }: { url: string }): boolean {
   return /(^|\/)models\/(?:user|local)\//u.test(url) || /^(?:user|local)\//u.test(url);
 }
 
+function isHuggingFaceResolvedArtifactRequest({ url }: { url: string }): boolean {
+  try {
+    const parsed = new URL(url);
+    const isHuggingFace = parsed.hostname === "huggingface.co" || parsed.hostname.endsWith(".huggingface.co");
+    return isHuggingFace && parsed.pathname.includes("/resolve/");
+  } catch {
+    return false;
+  }
+}
+
 function isModelArtifactRequest({ url }: { url: string }): boolean {
   const path = pathWithoutQueryOrHash({ url });
-  return path.includes("/models/")
+  return isHuggingFaceResolvedArtifactRequest({ url })
+    || path.includes("/models/")
     || path.endsWith(".json")
     || path.endsWith(".onnx")
     || path.endsWith(".bin")

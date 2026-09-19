@@ -1,4 +1,6 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
+import type { GenerationCaptureClient, GenerationCaptureRequest } from './generation-capture-protocol';
+import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import type {
   TransformersJsWorkerClient,
   ModelLoadResult,
@@ -6,29 +8,27 @@ import type {
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
   TransformersJsToolCallsCallback,
-  TransformersJsPrefetchResult,
 } from '@/features/transformers-js/types';
 
 function createUnsupportedError(): Error {
   return new Error('Transformers.js is not available in standalone mode');
 }
 
+/** Standalone cannot create a Production recording Worker. */
+export function createTransformersJsGenerationCaptureClient({ runId: _runId, workerEpoch: _workerEpoch, limits: _limits, getActiveRequest: _getActiveRequest }: {
+  runId: string;
+  workerEpoch: number;
+  limits: GenerationCaptureRequest['limits'];
+  getActiveRequest: () => { runId: string; requestId: string } | undefined;
+}): GenerationCaptureClient {
+  throw createUnsupportedError();
+}
+
 export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   return {
-    async downloadModel({ modelId: _modelId, progressCallback: _progressCallback }: {
+    async loadDownloadedModel({ modelId: _modelId, revisionSelection: _revisionSelection, progressCallback: _progressCallback }: {
       modelId: string,
-      progressCallback: TransformersJsProgressCallback,
-    }): Promise<void> {
-      throw createUnsupportedError();
-    },
-    async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }: {
-      urls: string[],
-      progressCallback: TransformersJsProgressCallback,
-    }): Promise<TransformersJsPrefetchResult> {
-      throw createUnsupportedError();
-    },
-    async loadModel({ modelId: _modelId, progressCallback: _progressCallback }: {
-      modelId: string,
+      revisionSelection: DownloadedModelRevisionSelection,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
       throw createUnsupportedError();
@@ -42,12 +42,13 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     async resetCache(): Promise<void> {
       throw createUnsupportedError();
     },
-    async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools }: {
+    async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools, continuationOwner: _continuationOwner }: {
       messages: ChatMessage[],
       onChunk: TransformersJsChunkCallback,
       onToolCalls: TransformersJsToolCallsCallback,
       params?: LmParameters,
       tools?: WorkerToolDefinition[],
+      continuationOwner?: string,
     }): Promise<void> {
       throw createUnsupportedError();
     },

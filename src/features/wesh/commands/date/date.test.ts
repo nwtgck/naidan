@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -22,17 +23,45 @@ describe('wesh date', () => {
     vi.useRealTimers();
   });
 
+  async function writeFile({
+    path,
+    data = '',
+    mtime,
+  }: {
+    path: string,
+    data?: string,
+    mtime?: number,
+  }) {
+    const segments = path.split('/').filter(Boolean);
+    const fileName = segments.pop();
+    if (fileName === undefined) throw new Error('path must include a file name');
+
+    let dir = rootHandle;
+    for (const segment of segments) {
+      dir = await dir.getDirectoryHandle(segment, { create: true });
+    }
+
+    const handle = await dir.getFileHandle(fileName, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(data);
+    await writable.close();
+    if (mtime !== undefined) handle.lastModified = mtime;
+    return handle;
+  }
+
   async function execute({
     script,
+    stdin = '',
   }: {
     script: string,
+    stdin?: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
-      stdin: createTestReadHandleFromText({ text: '' }),
+      source: createTextShellSource({ text: script }),
+      stdin: createTestReadHandleFromText({ text: stdin }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -45,7 +74,9 @@ describe('wesh date', () => {
     const extra = await execute({ script: 'date +%F unexpected' });
 
     expect(help.stdout.text).toContain('Print the system date and time');
-    expect(help.stdout.text).toContain('usage: date [-u] [-d STRING] [-I[TIMESPEC]] [--rfc-3339=TIMESPEC] [+FORMAT]');
+    expect(help.stdout.text).toContain(
+      'usage: date [-u] [-d STRING | -r FILE | -f DATEFILE] [-I[TIMESPEC]] [--rfc-3339=TIMESPEC] [+FORMAT]',
+    );
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
 
@@ -451,6 +482,145 @@ describe('wesh date', () => {
     expect(offset.stdout.text).toBe('1773936123|987654321\n');
     expect(offset.stderr.text).toBe('');
     expect(offset.result.exitCode).toBe(0);
+  });
+
+
+  it('reuses the bounded shared DATE expression semantics for -d', async () => {
+    const tomorrow = await execute({
+      script: "date -u -d tomorrow '+%F %T'",
+    });
+    const anchored = await execute({
+      script: "date -u -d '2024-01-01 00:00:00 UTC + 1 day' '+%F %T'",
+    });
+    const ago = await execute({
+      script: "date -u -d '2 days ago' '+%F %T'",
+    });
+
+    expect(tomorrow.stdout.text).toBe('2026-03-21 01:02:03\n');
+    expect(tomorrow.stderr.text).toBe('');
+    expect(tomorrow.result.exitCode).toBe(0);
+    expect(anchored.stdout.text).toBe('2024-01-02 00:00:00\n');
+    expect(anchored.stderr.text).toBe('');
+    expect(anchored.result.exitCode).toBe(0);
+    expect(ago.stdout.text).toBe('2026-03-18 01:02:03\n');
+    expect(ago.stderr.text).toBe('');
+    expect(ago.result.exitCode).toBe(0);
+  });
+
+  it('supports -r and --reference using the followed reference mtime', async () => {
+    await writeFile({ path: 'first', mtime: 1_250.5 });
+    await writeFile({ path: 'second', mtime: 2_000 });
+    await wesh.vfs.symlink({ path: '/alias', targetPath: 'first' });
+
+    const short = await execute({ script: "date -u -r first '+%s|%N'" });
+    const long = await execute({ script: "date -u --reference=alias '+%s|%N'" });
+    const repeated = await execute({ script: "date -u -r first -r second '+%s'" });
+    const permuted = await execute({ script: "date -u '+%s' -r second" });
+
+    expect(short.stdout.text).toBe('1|250500000\n');
+    expect(short.stderr.text).toBe('');
+    expect(short.result.exitCode).toBe(0);
+    expect(long.stdout.text).toBe(short.stdout.text);
+    expect(long.stderr.text).toBe('');
+    expect(long.result.exitCode).toBe(0);
+    expect(repeated.stdout.text).toBe('2\n');
+    expect(repeated.stderr.text).toBe('');
+    expect(repeated.result.exitCode).toBe(0);
+    expect(permuted.stdout.text).toBe('2\n');
+    expect(permuted.stderr.text).toBe('');
+    expect(permuted.result.exitCode).toBe(0);
+  });
+
+  it('rejects mixed date sources after help handling and reports missing references', async () => {
+    await writeFile({ path: 'ref', mtime: 1_000 });
+
+    const mixed = await execute({ script: "date -d @0 -r ref '+%s'" });
+    const helpFirst = await execute({ script: 'date --help -d @0 -r ref' });
+    const missing = await execute({ script: "date -u -r missing '+%s'" });
+
+    expect(mixed.stdout.text).toBe('');
+    expect(mixed.stderr.text).toBe('date: the options to specify dates for printing are mutually exclusive\n');
+    expect(mixed.result.exitCode).toBe(1);
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).not.toBe('');
+    expect(helpFirst.stderr.text).toBe('');
+    expect(missing.stdout.text).toBe('');
+    expect(missing.stderr.text).toContain("date: 'missing':");
+    expect(missing.result.exitCode).toBe(1);
+  });
+
+
+  it('supports -f bulk input, continues after invalid lines, and preserves order', async () => {
+    await writeFile({ path: 'dates.txt', data: `\
+@0
+not-a-date
+@2
+` });
+
+    const result = await execute({ script: "date -u -f dates.txt '+%s'" });
+
+    expect(result.stdout.text).toBe(`\
+0
+2
+`);
+    expect(result.stderr.text).toBe("date: invalid date 'not-a-date'\n");
+    expect(result.result.exitCode).toBe(1);
+  });
+
+  it('supports --file=DATEFILE, stdin, relative lines, empty input, and repeated -f last-wins', async () => {
+    await writeFile({ path: 'first.txt', data: '@1\n' });
+    await writeFile({ path: 'second.txt', data: '@2\n' });
+    await writeFile({ path: 'relative.txt', data: `\
+tomorrow
+2 days ago
+` });
+    await writeFile({ path: 'empty.txt', data: '' });
+
+    const attached = await execute({ script: "date -u --file=second.txt '+%s'" });
+    const stdin = await execute({ script: "date -u -f - '+%s'", stdin: `\
+@3
+@4
+` });
+    const relative = await execute({ script: "date -u -f relative.txt '+%F %T'" });
+    const empty = await execute({ script: "date -u -f empty.txt '+%s'" });
+    const repeated = await execute({ script: "date -u -f first.txt -f second.txt '+%s'" });
+
+    expect(attached.stdout.text).toBe('2\n');
+    expect(stdin.stdout.text).toBe(`\
+3
+4
+`);
+    expect(relative.stdout.text).toBe(`\
+2026-03-21 01:02:03
+2026-03-18 01:02:03
+`);
+    expect(empty.stdout.text).toBe('');
+    expect(repeated.stdout.text).toBe('2\n');
+    for (const execution of [attached, stdin, relative, empty, repeated]) {
+      expect(execution.stderr.text).toBe('');
+      expect(execution.result.exitCode).toBe(0);
+    }
+  });
+
+  it('treats -f as a mutually exclusive date source while preserving help priority', async () => {
+    await writeFile({ path: 'dates.txt', data: '@0\n' });
+    await writeFile({ path: 'ref', mtime: 1_000 });
+
+    for (const script of [
+      "date -f dates.txt -d @0 '+%s'",
+      "date -r ref -f dates.txt '+%s'",
+      "date -d @0 -f dates.txt '+%s'",
+    ]) {
+      const result = await execute({ script });
+      expect(result.stdout.text).toBe('');
+      expect(result.stderr.text).toBe('date: the options to specify dates for printing are mutually exclusive\n');
+      expect(result.result.exitCode).toBe(1);
+    }
+
+    const help = await execute({ script: 'date --help -f dates.txt -d @0' });
+    expect(help.result.exitCode).toBe(0);
+    expect(help.stdout.text).not.toBe('');
+    expect(help.stderr.text).toBe('');
   });
 
 });

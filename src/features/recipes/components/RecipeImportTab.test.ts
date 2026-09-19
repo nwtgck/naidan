@@ -1,7 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import RecipeImportTab from './RecipeImportTab.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('RecipeImportTab.vue', () => {
   const mockModels = ['llama3', 'gpt-4'];

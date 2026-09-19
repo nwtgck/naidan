@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { storageService } from './index';
 
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only generic mock keeps Boundary Strings loading out of storage service tests without adding a runtime dependency.
+vi.mock('@/strings', () => ({
+  ensureStrings: new Proxy({}, {
+    get: () => async () => 'test boundary string',
+  }),
+}));
+
 const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
   mockLocalProvider: {
     init: vi.fn().mockResolvedValue(undefined),
@@ -171,7 +178,7 @@ describe('StorageService Migration', () => {
 
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       source: 'StorageService:switchProvider',
-      message: 'An error occurred during a storage operation.',
+      message: 'test boundary string',
       details: error,
     }));
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Wesh } from "@/features/wesh/index";
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import type { WeshFileHandle } from "@/features/wesh/types";
 import { hasPotentiallyUnsafeBacktrackingStructure } from "@/features/wesh/commands/_shared/backtracking-safety";
 import { MockFileSystemDirectoryHandle } from "@/features/wesh/mocks/InMemoryFileSystem";
@@ -56,7 +57,7 @@ describe("wesh grep", () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin:
         stdinHandle ?? createTestReadHandleFromText({ text: stdinText ?? "" }),
       stdout: stdout.handle,
@@ -803,10 +804,22 @@ alpha
       script: "grep -s alpha missing.txt",
     });
 
-    expect(noisy.stderr.text).toContain("grep: missing.txt:");
+    expect(noisy.stderr.text).toBe("grep: missing.txt: No such file or directory\n");
     expect(noisy.result.exitCode).toBe(2);
     expect(quiet.stderr.text).toBe("");
     expect(quiet.result.exitCode).toBe(2);
+  });
+
+  it("normalizes browser type-mismatch errors for intermediate file path components", async () => {
+    await writeFile({ path: "parent", data: "file" });
+
+    const { result, stdout, stderr } = await execute({
+      script: "grep alpha parent/child",
+    });
+
+    expect(stdout.text).toBe("");
+    expect(stderr.text).toBe("grep: parent/child: Not a directory\n");
+    expect(result.exitCode).toBe(2);
   });
 
   it("treats - as stdin when it appears in the file list", async () => {
@@ -1762,7 +1775,7 @@ beta
     const stderr = createTestWriteCaptureHandle();
 
     const result = await restrictedWesh.execute({
-      script: "grep alpha restricted/notes.txt",
+      source: createTextShellSource({ text: "grep alpha restricted/notes.txt" }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,

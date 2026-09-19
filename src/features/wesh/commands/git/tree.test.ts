@@ -4,7 +4,7 @@ import { WeshVFS } from '@/features/wesh/vfs';
 import { concatBytes, hexToBytes } from './bytes';
 import { writeObject } from './objects';
 import type { GitRepository } from './repository';
-import { readTreeRecursively } from './tree';
+import { readTreePath, readTreeRecursively } from './tree';
 
 const encoder = new TextEncoder();
 
@@ -62,6 +62,45 @@ describe('wesh git tree pathname safety', () => {
     await expect(readTreeRecursively({ files, repository, treeObjectId })).rejects.toThrow(
       'non-UTF-8 tree pathname is not supported yet',
     );
+  });
+
+  it('resolves one path without reading an unrelated corrupt sibling subtree', async () => {
+    const files = createFiles();
+    const repository = await createRepository({ files });
+    const corruptTreeObjectId = await writeObject({
+      files,
+      repository,
+      type: 'tree',
+      body: encoder.encode('corrupt'),
+    });
+    const targetObjectId = await writeObject({
+      files,
+      repository,
+      type: 'blob',
+      body: encoder.encode('target\n'),
+    });
+    const treeObjectId = await writeObject({
+      files,
+      repository,
+      type: 'tree',
+      body: concatBytes({
+        chunks: [
+          encoder.encode('40000 broken\0'),
+          hexToBytes({ hex: corruptTreeObjectId }),
+          encoder.encode('100644 target.txt\0'),
+          hexToBytes({ hex: targetObjectId }),
+        ],
+      }),
+    });
+
+    await expect(readTreeRecursively({ files, repository, treeObjectId })).rejects.toThrow(
+      `corrupt tree ${corruptTreeObjectId}: missing mode separator`,
+    );
+    await expect(readTreePath({ files, repository, treeObjectId, path: 'target.txt' })).resolves.toEqual({
+      path: 'target.txt',
+      objectId: targetObjectId,
+      mode: 0o100644,
+    });
   });
 
   it.each(['..', '.git', 'a/b'])('rejects malformed tree entry name %j', async name => {

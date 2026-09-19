@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { WeshVFS } from '@/features/wesh/vfs';
 import { concatBytes } from './bytes';
-import { parseIndexFile, serializeIndexFile, TEST_ONLY, writeIndex } from './index-file';
+import { collectUnmergedPaths, parseIndexFile, serializeIndexFile, TEST_ONLY, writeIndex } from './index-file';
 import { readFileBytes, writeFileBytes } from './files';
 import type { GitRepository } from './repository';
 import { sha1Bytes } from './sha1';
@@ -41,6 +41,17 @@ describe('wesh git index parser', () => {
         stage: 0,
       },
     ]);
+  });
+
+  it('collects each unmerged pathname once while ignoring stage zero entries', () => {
+    expect(collectUnmergedPaths({
+      entries: [
+        { path: 'clean.txt', objectId: '1'.repeat(40), mode: 0o100644, size: 1, stage: 0 },
+        { path: 'conflict.txt', objectId: '2'.repeat(40), mode: 0o100644, size: 1, stage: 1 },
+        { path: 'conflict.txt', objectId: '3'.repeat(40), mode: 0o100644, size: 1, stage: 2 },
+        { path: 'other.txt', objectId: '4'.repeat(40), mode: 0o100644, size: 1, stage: 3 },
+      ],
+    })).toEqual(new Set(['conflict.txt', 'other.txt']));
   });
 
   it('writes version 4 with prefix compression while preserving entries', async () => {

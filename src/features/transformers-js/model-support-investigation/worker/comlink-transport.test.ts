@@ -4,11 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationEvent,
+  ModelSupportInvestigationLoadAttemptCheckpoint,
   ModelSupportInvestigationLoadAttemptEvent,
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
   ITransformersJsWorker,
-  TransformersJsProgressCallback,
+  TransformersJsProductionInvestigationProgressCallback,
 } from "@/features/transformers-js/types";
 
 async function releaseRemote({ remote, ports }: {
@@ -37,52 +38,97 @@ describe("Transformers.js Comlink transport contracts", () => {
       detail: "candidate model load",
       at: "2026-08-07T00:00:00.000Z",
     };
+
+    const attemptCheckpoint: ModelSupportInvestigationLoadAttemptCheckpoint = {
+      attemptId: "attempt-1",
+      candidateId: "webgpu-q4",
+      device: "webgpu",
+      dtype: "q4",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: "2026-08-07T00:00:00.000Z",
+      checkpointedAt: "2026-08-07T00:00:01.000Z",
+      status: "running",
+      currentStage: "model-load",
+      events: [attemptEvent],
+      inputStrategyAttempts: [],
+      activeInputStrategy: undefined,
+      selectedInputStrategy: undefined,
+      inputTokenCount: undefined,
+      inputTokenIds: [],
+      inputTensors: [],
+      loadedModel: undefined,
+      generatedTokenIds: [],
+      generatedText: undefined,
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+      modelType: "llama",
+      error: undefined,
+    };
+
     const exposedWorker: IModelSupportInvestigationWorker = {
-      async runPartialInvestigation(modelId, onEvent) {
+      async runPartialInvestigation(request, onEvent, onRunCheckpoint) {
         onEvent({ event: planningEvent });
-        return { modelId } as never;
+        onRunCheckpoint({ run: { modelId: request.modelId } as never });
+        return { modelId: request.modelId } as never;
+      },
+      async inspectDownloadedTemplateBehavior() {
+        return {} as never;
       },
       async runCandidateAttempt(
         _repository,
         _declarations,
         _templateBehavior,
-        _cacheRevisionAliases,
+        _loaderRevisionOption,
         _candidate,
         onEvent,
         onAttemptEvent,
+        onAttemptCheckpoint,
       ) {
         onEvent({ event: planningEvent });
         onAttemptEvent({ event: attemptEvent });
+        onAttemptCheckpoint({ attempt: attemptCheckpoint });
         return { status: "passed" } as never;
       },
     };
     Comlink.expose(exposedWorker, ports.port1 as unknown as Comlink.Endpoint);
     const remote = Comlink.wrap<IModelSupportInvestigationWorker>(ports.port2 as unknown as Comlink.Endpoint);
     const onEvent = vi.fn();
+    const onRunCheckpoint = vi.fn();
     const onAttemptEvent = vi.fn();
+    const onAttemptCheckpoint = vi.fn();
 
     try {
       const planningResult = await remote.runPartialInvestigation(
-        "org/model",
+        { runId: "host-run", modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
         Comlink.proxy(onEvent),
+        Comlink.proxy(onRunCheckpoint),
+        Comlink.proxy(async () => {
+          throw new Error('Fresh metadata was not requested by this transport fixture');
+        }),
       );
       await remote.runCandidateAttempt(
         {} as never,
         {} as never,
         {} as never,
-        [] as never,
+        {} as never,
         {} as never,
         Comlink.proxy(onEvent),
         Comlink.proxy(onAttemptEvent),
+        Comlink.proxy(onAttemptCheckpoint),
       );
 
       expect(planningResult).toEqual({ modelId: "org/model" });
       await vi.waitFor(() => {
         expect(onEvent).toHaveBeenCalledTimes(2);
+        expect(onRunCheckpoint).toHaveBeenCalledTimes(1);
         expect(onAttemptEvent).toHaveBeenCalledTimes(1);
+        expect(onAttemptCheckpoint).toHaveBeenCalledTimes(1);
       });
       expect(onEvent).toHaveBeenCalledWith({ event: planningEvent });
+      expect(onRunCheckpoint).toHaveBeenCalledWith({ run: { modelId: "org/model" } });
       expect(onAttemptEvent).toHaveBeenCalledWith({ event: attemptEvent });
+      expect(onAttemptCheckpoint).toHaveBeenCalledWith({ attempt: attemptCheckpoint });
     } finally {
       await releaseRemote({ remote, ports });
     }
@@ -93,18 +139,19 @@ describe("Transformers.js Comlink transport contracts", () => {
     type ProductionRemote = Pick<ITransformersJsWorker, "runModelSupportInvestigationScenario">;
     const exposedWorker: ProductionRemote = {
       async runModelSupportInvestigationScenario(scenario, progressCallback) {
-        progressCallback({ info: { status: "model-support-production-model-load" } });
+        progressCallback({ event: { kind: "stage", status: "model-support-production-model-load" } });
         return { modelId: scenario.modelId } as never;
       },
     };
     Comlink.expose(exposedWorker, ports.port1 as unknown as Comlink.Endpoint);
     const remote = Comlink.wrap<ProductionRemote>(ports.port2 as unknown as Comlink.Endpoint);
-    const progressCallback = vi.fn<TransformersJsProgressCallback>();
+    const progressCallback = vi.fn<TransformersJsProductionInvestigationProgressCallback>();
 
     try {
       const result = await remote.runModelSupportInvestigationScenario(
         { modelId: "org/model" } as never,
         Comlink.proxy(progressCallback),
+        Comlink.proxy(vi.fn()),
       );
 
       expect(result).toEqual({ modelId: "org/model" });
@@ -112,7 +159,7 @@ describe("Transformers.js Comlink transport contracts", () => {
         expect(progressCallback).toHaveBeenCalledTimes(1);
       });
       expect(progressCallback).toHaveBeenCalledWith({
-        info: { status: "model-support-production-model-load" },
+        event: { kind: "stage", status: "model-support-production-model-load" },
       });
     } finally {
       await releaseRemote({ remote, ports });

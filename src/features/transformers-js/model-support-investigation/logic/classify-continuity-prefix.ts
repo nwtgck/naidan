@@ -17,11 +17,13 @@ export function classifyContinuityPrefix({
   isEncoderDecoder,
   firstGeneratedSequenceTokenIds,
   secondInputTokenIds,
+  reconstructedFullInputTokenIds,
   secondTurnPastKeyValuesProvided,
 }: {
   isEncoderDecoder: boolean,
   firstGeneratedSequenceTokenIds: number[],
   secondInputTokenIds: number[],
+  reconstructedFullInputTokenIds: number[] | undefined,
   secondTurnPastKeyValuesProvided: boolean,
 }): PrefixComparison {
   if (isEncoderDecoder) {
@@ -29,29 +31,45 @@ export function classifyContinuityPrefix({
       mode: "not-applicable-encoder-decoder",
       expectedPrefixTokenIds: [],
       secondInputTokenIds,
+      reconstructedFullInputTokenIds,
+      comparisonInputSource: "not-applicable",
       exactPrefixMatch: undefined,
       firstMismatchIndex: undefined,
+      firstMismatchContext: undefined,
     };
   }
-  if (secondTurnPastKeyValuesProvided) {
+
+  const comparisonInputTokenIds = reconstructedFullInputTokenIds ?? (
+    secondTurnPastKeyValuesProvided ? undefined : secondInputTokenIds
+  );
+  if (comparisonInputTokenIds === undefined) {
     return {
       mode: "cache-suffix",
       expectedPrefixTokenIds: [],
       secondInputTokenIds,
+      reconstructedFullInputTokenIds: undefined,
+      comparisonInputSource: "actual-model-input",
       exactPrefixMatch: undefined,
       firstMismatchIndex: undefined,
+      firstMismatchContext: undefined,
     };
   }
+
   const mismatchIndex = firstPrefixMismatch({
     expected: firstGeneratedSequenceTokenIds,
-    actual: secondInputTokenIds,
+    actual: comparisonInputTokenIds,
   });
   return {
     mode: "full-input-prefix",
     expectedPrefixTokenIds: firstGeneratedSequenceTokenIds,
     secondInputTokenIds,
+    reconstructedFullInputTokenIds,
+    comparisonInputSource: reconstructedFullInputTokenIds === undefined
+      ? "actual-model-input"
+      : "reconstructed-full-conversation",
     exactPrefixMatch: mismatchIndex === undefined,
     firstMismatchIndex: mismatchIndex,
+    firstMismatchContext: undefined,
   };
 }
 

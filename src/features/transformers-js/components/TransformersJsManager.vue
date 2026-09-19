@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { ensureStrings, lazyStrings } from '@/strings';
-import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
 import type { ProgressInfo } from '@/features/transformers-js/types';
-import {
-  isModelSupportInvestigationAvailable,
-  loadModelSupportInvestigationModal,
-} from '@/features/transformers-js/model-support-investigation';
+import type { DownloadFileStatus } from '@/features/transformers-js/download-progress';
+import { isModelSupportInvestigationAvailable } from '@/features/transformers-js/model-support-investigation';
 import {
   Loader2Icon, CheckCircle2Icon, AlertCircleIcon, DownloadIcon, FolderOpenIcon, RefreshCcwIcon, Trash2Icon,
   ChevronDownIcon, PlusIcon, HardDriveDownloadIcon, XIcon, BrainCircuitIcon, PowerOffIcon, ExternalLinkIcon, SearchIcon, FileCodeIcon, RotateCcwIcon,
@@ -20,12 +18,9 @@ import { computedAsync } from '@vueuse/core';
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
 
-const ModelSupportInvestigationModal = isModelSupportInvestigationAvailable
-  ? defineAsyncComponent(loadModelSupportInvestigationModal)
-  : undefined;
-
 const emit = defineEmits<{
   (e: 'modelLoaded', modelId: string): void,
+  (e: 'openModelSupportInvestigation', modelId: string): void,
 }>();
 
 const status = ref(transformersJsService.getState().status);
@@ -39,6 +34,68 @@ const activeModelId = ref(transformersJsService.getState().activeModelId);
 const device = ref(transformersJsService.getState().device);
 const isCached = ref(transformersJsService.getState().isCached);
 const isLoadingFromCache = ref(transformersJsService.getState().isLoadingFromCache);
+const downloadProgress = ref(transformersJsService.getState().downloadProgress);
+const downloadPhaseLabel = computed(() => {
+  const phase = downloadProgress.value?.phase;
+  switch (phase) {
+  case undefined: return undefined;
+  // Preparation phases track ownership, diagnostics, and progress; they are
+  // intentionally not rendered as separate Download labels, even in details.
+  case 'resolving-revision': case 'checking-cache': case 'preparing-metadata':
+  case 'observing-candidate': case 'transferring': case 'saving':
+    return lazyStrings.TransformersJsManager__transferring();
+  case 'checking-runtime': return lazyStrings.TransformersJsManager__checking_runtime();
+  case 'complete': return lazyStrings.TransformersJsManager__download_complete();
+  case 'failed': return lazyStrings.TransformersJsManager__download_failed();
+  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  }
+});
+
+const downloadEstimateRevisionLabel = computed(() => {
+  const reason = downloadProgress.value?.revisionReason;
+  switch (reason) {
+  case undefined: return undefined;
+  case 'size-updated':
+  case 'size-conflict': return lazyStrings.TransformersJsManager__recalculated_after_size_update();
+  case 'resource-restarted': return lazyStrings.TransformersJsManager__recalculated_after_download_restart();
+  default: { const exhaustive: never = reason; throw new Error(String(exhaustive)); }
+  }
+});
+
+const downloadEtaLabel = computed(() => {
+  const eta = downloadProgress.value?.downloadEta;
+  if (eta === undefined) return undefined;
+  switch (eta.status) {
+  case 'estimating': return lazyStrings.TransformersJsManager__about_time_remaining({ seconds: eta.remainingSeconds });
+  case 'warming-up': case 'stalled':
+  case 'unavailable': return undefined;
+  default: { const exhaustive: never = eta; throw new Error(String(exhaustive)); }
+  }
+});
+
+const isRetryingDownloadCandidate = computed(() => {
+  const snapshot = downloadProgress.value;
+  if (snapshot?.attemptNumber === undefined || snapshot.attemptNumber <= 1) return false;
+  const phase = snapshot.phase;
+  switch (phase) {
+  case 'complete': case 'failed': return false;
+  case 'resolving-revision': case 'checking-cache': case 'preparing-metadata':
+  case 'observing-candidate': case 'transferring': case 'saving': case 'checking-runtime': return true;
+  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  }
+});
+
+const downloadFileStatusLabel = ({ status }: { status: DownloadFileStatus }): string | undefined => {
+  switch (status) {
+  case 'queued': return lazyStrings.TransformersJsManager__queued();
+  case 'transferring': return lazyStrings.TransformersJsManager__transferring();
+  case 'saving': return lazyStrings.TransformersJsManager__saving();
+  case 'cached': return lazyStrings.TransformersJsManager__reusing_downloaded_file();
+  case 'complete': return lazyStrings.TransformersJsManager__complete();
+  case 'failed': return lazyStrings.TransformersJsManager__error();
+  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  }
+};
 
 const isFileUrl = typeof window !== 'undefined' && window.location.protocol === 'file:';
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;
@@ -71,7 +128,7 @@ const containerRef = ref<HTMLElement | null>(null);
 const isImporting = ref(false);
 const importProgress = ref(0);
 const lastDownloadError = ref<string | null>(null);
-const investigationModelId = ref<string | undefined>(undefined);
+const isDownloadFailureDismissed = ref(false);
 
 let unsubscribe: (() => void) | null = null;
 let unsubscribeList: (() => void) | null = null;
@@ -131,11 +188,7 @@ const selectModelId = ({ id }: { id: string }) => {
 
 const openModelSupportInvestigation = ({ modelId }: { modelId: string }): void => {
   if (!isModelSupportInvestigationAvailable) return;
-  investigationModelId.value = modelId;
-};
-
-const closeModelSupportInvestigation = (): void => {
-  investigationModelId.value = undefined;
+  emit('openModelSupportInvestigation', modelId);
 };
 
 const handleClickOutside = ({ event }: { event: MouseEvent }) => {
@@ -157,6 +210,21 @@ onMounted(async () => {
     isLoadingFromCache.value = l;
     progressItems.value = items;
     const state = transformersJsService.getState();
+    downloadProgress.value = state.downloadProgress;
+    const downloadPhase = state.downloadProgress?.phase;
+    switch (downloadPhase) {
+    case 'failed': break;
+    case undefined:
+    case 'resolving-revision':
+    case 'checking-cache':
+    case 'preparing-metadata':
+    case 'observing-candidate':
+    case 'transferring':
+    case 'saving':
+    case 'checking-runtime':
+    case 'complete': isDownloadFailureDismissed.value = false; break;
+    default: { const exhaustive: never = downloadPhase; throw new Error(String(exhaustive)); }
+    }
     activeModelId.value = state.activeModelId;
     device.value = state.device;
     totalLoadedAmount.value = state.totalLoadedAmount;
@@ -172,11 +240,11 @@ onUnmounted(() => {
   if (unsubscribeList) unsubscribeList();
 });
 
-const loadModel = async ({ modelId }: { modelId: string }) => {
+const loadDownloadedModel = async ({ modelId }: { modelId: string }) => {
   if (!modelId || isStandalone) return;
   lastDownloadError.value = null; // Clear previous download error when starting a fresh load
   try {
-    await transformersJsService.loadModel({ modelId });
+    await transformersJsService.loadDownloadedModel({ modelId });
     emit('modelLoaded', modelId);
   } catch (e) {
     // Error is handled via subscription
@@ -210,28 +278,37 @@ const handleRestart = async () => {
   }
 };
 
-const downloadModel = async () => {
-  const modelId = searchQuery.value.trim();
-  if (!modelId || isStandalone) return;
+const downloadModelById = async ({ modelId }: { modelId: string }) => {
+  const normalizedModelId = modelId.trim();
+  if (!normalizedModelId || isStandalone) return;
 
   lastDownloadError.value = null;
-  // Checking if it is already cached
-  const isAlreadyCached = cachedModels.value.some(m => m.id === modelId || m.id === `hf.co/${modelId}`);
-  if (isAlreadyCached) {
-    addToast({ message: await ensureStrings.TransformersJsManager__model_is_already_downloaded() });
-    return;
-  }
+  // listCachedModels().isComplete only describes the committed files currently
+  // present in OPFS; it is not authoritative for the Production-required file
+  // set. Explicit Download therefore always runs the Production preparation.
+  // Existing complete files are cache hits, so this remains a cheap no-op when
+  // the selected Production candidate is already fully available.
 
   try {
-    await transformersJsService.downloadModel({ modelId });
+    await transformersJsService.downloadModel({ modelId: normalizedModelId });
     await refreshLocalModels();
-    addToast({ message: await ensureStrings.TransformersJsManager__successfully_downloaded_model({ modelId }) });
+    addToast({ message: await ensureStrings.TransformersJsManager__successfully_downloaded_model({ modelId: normalizedModelId }) });
 
-    // Auto-load after download
-    await loadModel({ modelId });
+    // Loading remains a separate cache-only operation after explicit download.
+    await loadDownloadedModel({ modelId: normalizedModelId });
   } catch (e) {
     lastDownloadError.value = e instanceof Error ? e.message : String(e);
   }
+};
+
+const downloadModel = async () => downloadModelById({ modelId: searchQuery.value });
+
+const loadOrResumeModel = async ({ modelId, isComplete }: { modelId: string, isComplete: boolean }) => {
+  if (isComplete) {
+    await loadDownloadedModel({ modelId });
+    return;
+  }
+  await downloadModelById({ modelId });
 };
 
 const deleteModel = async ({ modelId }: { modelId: string }) => {
@@ -441,7 +518,55 @@ defineExpose({
             </div>
 
             <!-- Contextual Progress for Download -->
-            <div v-if="(status === 'loading' && !isLoadingFromCache) || lastDownloadError" class="animate-in fade-in slide-in-from-top-2" tw-class="duration-300">
+            <div v-if="downloadProgress !== undefined && !isDownloadFailureDismissed" data-testid="download-progress" tw-class="space-y-3 rounded-2xl border border-purple-100 dark:border-purple-900/40 p-4">
+              <div data-testid="download-progress-heading" tw-class="flex items-center justify-between gap-3 text-sm font-bold text-purple-700 dark:text-purple-300">
+                <span data-testid="download-phase">{{ downloadPhaseLabel }}</span>
+                <div tw-class="flex items-center gap-3">
+                  <span tw-class="tabular-nums">
+                    <span v-if="downloadProgress.overallProgress !== undefined" data-testid="download-overall-progress">{{ downloadProgress.overallProgress }}%</span><span v-if="downloadEtaLabel !== undefined"> · <span data-testid="download-eta">{{ downloadEtaLabel }}</span></span>
+                  </span>
+                  <button v-if="downloadProgress.phase === 'failed'" data-testid="dismiss-download-failure" :aria-label="lazyStrings.TransformersJsManager__close_error_details()" @click="isDownloadFailureDismissed = true; lastDownloadError = null" tw-class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                    <XIcon tw-class="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div data-testid="download-overall-bar" role="progressbar" :aria-label="lazyStrings.TransformersJsManager__overall_progress()" :aria-valuenow="downloadProgress.overallProgress" aria-valuemin="0" aria-valuemax="100" tw-class="h-1.5 rounded-full overflow-hidden bg-purple-100 dark:bg-purple-900/30">
+                <div v-if="downloadProgress.overallProgress !== undefined" tw-class="h-full bg-purple-600 dark:bg-purple-400 transition-all" :style="{ width: downloadProgress.overallProgress + '%' }"></div>
+              </div>
+              <p v-if="downloadProgress.overallProgress === undefined && downloadProgress.unknownTotalCount > 0 && downloadProgress.phase !== 'failed'" data-testid="download-size-status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.TransformersJsManager__total_size_unknown() }}</p>
+              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.TransformersJsManager__current_candidate_preparation_includes_cached_files() }}</p>
+              <p v-if="downloadEstimateRevisionLabel !== undefined" data-testid="download-estimate-revision" :data-estimate-generation="downloadProgress.estimateGeneration" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ downloadEstimateRevisionLabel }}</p>
+              <p v-if="isRetryingDownloadCandidate" data-testid="download-candidate-retry" tw-class="text-xs font-medium text-purple-700 dark:text-purple-300">{{ lazyStrings.TransformersJsManager__retrying_with_another_candidate() }}</p>
+              <p v-if="downloadProgress.attemptNumber !== undefined" tw-class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                {{ lazyStrings.TransformersJsManager__candidate_number({ number: downloadProgress.attemptNumber, count: downloadProgress.attemptCount }) }}
+                <span v-if="downloadProgress.candidate !== undefined"> · {{ downloadProgress.candidate.device }} / {{ downloadProgress.candidate.dtype }}</span>
+              </p>
+              <p v-if="downloadProgress.attemptNumber !== undefined" data-testid="download-byte-summary" tw-class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                {{ lazyStrings.TransformersJsManager__received_and_reused_bytes({ received: formatSize({ bytes: downloadProgress.receivedBytes }), reused: formatSize({ bytes: downloadProgress.cachedBytes }) }) }}
+              </p>
+              <p v-if="downloadProgress.totalFileCount > 0" data-testid="download-file-summary" tw-class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{{ lazyStrings.TransformersJsManager__files_complete({ completed: downloadProgress.completedFileCount, total: downloadProgress.totalFileCount }) }}</p>
+              <button v-if="downloadProgress.files.length > 0" @click="isDetailsExpanded = !isDetailsExpanded" :aria-expanded="isDetailsExpanded" tw-class="flex items-center gap-1.5 text-xs font-bold text-gray-500 dark:text-gray-400">
+                <ChevronDownIcon :tw-class="['w-3 h-3 transition-transform', { '-rotate-90': !isDetailsExpanded }]" />
+                {{ lazyStrings.TransformersJsManager__asset_details() }}
+              </button>
+              <ul v-if="isDetailsExpanded" tw-class="space-y-3 max-h-80 overflow-y-auto">
+                <li v-for="file in downloadProgress.files" :key="file.path" data-testid="download-file-row" tw-class="space-y-1 text-xs">
+                  <div tw-class="flex justify-between gap-3">
+                    <span tw-class="break-all text-gray-700 dark:text-gray-300">{{ file.path }}</span>
+                    <span tw-class="shrink-0 text-purple-600 dark:text-purple-400">{{ downloadFileStatusLabel({ status: file.status }) }}</span>
+                  </div>
+                  <div tw-class="flex justify-between gap-3 tabular-nums text-gray-500 dark:text-gray-400">
+                    <span>{{ formatSize({ bytes: file.loaded }) }} / {{ file.total === undefined || file.total <= 0 ? lazyStrings.TransformersJsManager__unknown() : formatSize({ bytes: file.total }) }}</span>
+                    <span>{{ file.progress === undefined ? lazyStrings.TransformersJsManager__unknown() : `${Math.round(file.progress)}%` }}</span>
+                  </div>
+                  <div v-if="file.progress !== undefined" role="progressbar" :aria-label="file.path" :aria-valuenow="file.progress" aria-valuemin="0" aria-valuemax="100" tw-class="h-1 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800">
+                    <div tw-class="h-full bg-purple-400 dark:bg-purple-500" :style="{ width: file.progress + '%' }"></div>
+                  </div>
+                </li>
+              </ul>
+              <p v-if="downloadProgress.phase === 'failed'" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ lastDownloadError || error }}</p>
+            </div>
+            <div v-else-if="(status === 'loading' && !isLoadingFromCache) || lastDownloadError" class="animate-in fade-in slide-in-from-top-2" tw-class="duration-300">
               <template v-if="lastDownloadError">
                 <div tw-class="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-2xl">
                   <div tw-class="flex items-start gap-3">
@@ -572,7 +697,7 @@ defineExpose({
                   <template v-if="isImporting">{{ lazyStrings.TransformersJsManager__importing_local_model({ progress: importProgress }) }}</template>
                   <template v-else>
                     {{ status === 'idle' ? lazyStrings.TransformersJsManager__engine_idle() :
-                      status === 'loading' ? lazyStrings.TransformersJsManager__initializing_engine() :
+                      status === 'loading' ? (downloadProgress === undefined ? lazyStrings.TransformersJsManager__initializing_engine() : downloadPhaseLabel) :
                       status === 'ready' ? lazyStrings.TransformersJsManager__engine_ready() : lazyStrings.TransformersJsManager__error() }}
                   </template>
                 </h4>
@@ -604,14 +729,14 @@ defineExpose({
                 <template v-if="isImporting">{{ lazyStrings.TransformersJsManager__writing_model_files_to_browser_local_storage_opfs() }}</template>
                 <template v-else>
                   {{ status === 'idle' ? lazyStrings.TransformersJsManager__load_a_model_from_the_list_below_to_start_in_browser_inference() :
-                    status === 'loading' ? (isLoadingFromCache ? lazyStrings.TransformersJsManager__loading_from_local_storage({ progress }) : lazyStrings.TransformersJsManager__downloading_and_compiling({ progress })) :
+                    status === 'loading' ? (downloadProgress !== undefined ? lazyStrings.TransformersJsManager__current_candidate_preparation_includes_cached_files() : isLoadingFromCache ? lazyStrings.TransformersJsManager__loading_from_local_storage({ progress }) : lazyStrings.TransformersJsManager__downloading_and_compiling({ progress })) :
                     status === 'ready' ? (activeModelId === undefined ? lazyStrings.TransformersJsManager__engine_ready() : lazyStrings.TransformersJsManager__active_model({ modelId: activeModelId })) :
                     (lastDownloadError ? lazyStrings.TransformersJsManager__download_failed_check_details_in_the_section_below() : error) }}
                 </template>
               </p>
 
               <!-- Progress Bar -->
-              <div v-if="status === 'loading' || isImporting" tw-class="mt-5 h-2 w-full bg-blue-200 dark:bg-blue-900/50 rounded-full overflow-hidden">
+              <div v-if="(status === 'loading' && downloadProgress === undefined) || isImporting" tw-class="mt-5 h-2 w-full bg-blue-200 dark:bg-blue-900/50 rounded-full overflow-hidden">
                 <div tw-class="h-full bg-blue-600 dark:bg-blue-400 transition-all duration-300 ease-out" :style="{ width: (isImporting ? importProgress : progress) + '%' }"></div>
               </div>
             </div>
@@ -663,7 +788,7 @@ defineExpose({
                     {{ lazyStrings.TransformersJsManager__incomplete() }}
                   </span>
                   <button
-                    v-if="ModelSupportInvestigationModal !== undefined && !model.isLocal"
+                    v-if="isModelSupportInvestigationAvailable && !model.isLocal"
                     type="button"
                     tw-class="px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 rounded-lg text-[10px] font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
                     :data-testid="`model-support-investigate-${model.id}`"
@@ -672,7 +797,7 @@ defineExpose({
                     {{ lazyStrings.TransformersJsManager__investigate() }}
                   </button>
                   <button
-                    @click="loadModel({ modelId: model.id })"
+                    @click="loadOrResumeModel({ modelId: model.id, isComplete: model.isComplete })"
                     :disabled="status === 'loading' || activeModelId === model.id"
                     tw-class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
                   >
@@ -698,11 +823,6 @@ defineExpose({
       </section>
     </div>
 
-    <ModelSupportInvestigationModal
-      v-if="ModelSupportInvestigationModal !== undefined && investigationModelId !== undefined"
-      :model-id="investigationModelId"
-      @close="closeModelSupportInvestigation"
-    />
   </div>
 </template>
 

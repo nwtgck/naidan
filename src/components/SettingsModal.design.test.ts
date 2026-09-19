@@ -1,5 +1,5 @@
 import { ref, reactive } from 'vue';
-import { beforeAll, describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { useRouter, useRoute, createRouter, createMemoryHistory } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
@@ -40,7 +40,7 @@ vi.mock('../composables/useSampleChat', () => ({
 }));
 
 describe('SettingsModal Design Specifications', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

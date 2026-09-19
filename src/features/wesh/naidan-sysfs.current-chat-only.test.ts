@@ -43,7 +43,7 @@ chat-1
 
     const siblingMetadata = await executeInWesh({ wesh, script: 'cat /sys/fs/naidan/chats/chat-2/metadata.md' });
     expect(siblingMetadata.stdout.text).toBe('');
-    expect(siblingMetadata.stderr.text).toBe('cat: /sys/fs/naidan/chats/chat-2/metadata.md: Path not found: /sys/fs/naidan/chats/chat-2/metadata.md\n');
+    expect(siblingMetadata.stderr.text).toBe('cat: /sys/fs/naidan/chats/chat-2/metadata.md: No such file or directory\n');
     expect(siblingMetadata.result.exitCode).toBe(1);
   });
 

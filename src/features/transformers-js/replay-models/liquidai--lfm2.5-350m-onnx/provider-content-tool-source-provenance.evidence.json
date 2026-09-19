@@ -1,0 +1,211 @@
+{
+  "format": "provider-source-provenance-v1",
+  "sourceDigests": {
+    "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+    "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+    "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+  },
+  "attributions": [
+    {
+      "caseId": "first-turn",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "continuity",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "independent-next-input",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "system-user",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "supplied-history",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "reasoning-none",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "reasoning-low",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "reasoning-medium",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "reasoning-high",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "natural-tool-minimal",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "structured-tool-history",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    },
+    {
+      "caseId": "image",
+      "sourceDigests": {
+        "native": "dd203d75998fbbec5f36a02bef22c7ed5fc620b93a447493d5500fa3d183475b",
+        "provider": "560e6a8dad99f88836e5e402d2a1c459bb4f3e6004134583f0a485f76c1f6a3e",
+        "inventory": "f32f5650943214753743cdb1d611850b4e3c89cc14cf9b99307281049d449e2d"
+      }
+    }
+  ],
+  "requestOrder": [
+    "first-turn",
+    "continuity",
+    "independent-next-input",
+    "system-user",
+    "supplied-history",
+    "reasoning-none",
+    "reasoning-low",
+    "reasoning-medium",
+    "reasoning-high",
+    "natural-tool-minimal",
+    "natural-tool-representative",
+    "structured-tool-history",
+    "image"
+  ],
+  "invocations": [
+    {
+      "caseId": "first-turn",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 1
+    },
+    {
+      "caseId": "continuity",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 2
+    },
+    {
+      "caseId": "independent-next-input",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 3
+    },
+    {
+      "caseId": "system-user",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 4
+    },
+    {
+      "caseId": "supplied-history",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 5
+    },
+    {
+      "caseId": "reasoning-none",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 6
+    },
+    {
+      "caseId": "reasoning-low",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 7
+    },
+    {
+      "caseId": "reasoning-medium",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 8
+    },
+    {
+      "caseId": "reasoning-high",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 9
+    },
+    {
+      "caseId": "natural-tool-minimal",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 10
+    },
+    {
+      "caseId": "natural-tool-minimal",
+      "localOrdinal": 2,
+      "sourceCallOrdinal": 11
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 12
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "localOrdinal": 2,
+      "sourceCallOrdinal": 13
+    },
+    {
+      "caseId": "structured-tool-history",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 14
+    },
+    {
+      "caseId": "image",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 15
+    }
+  ],
+  "inputGaps": [],
+  "optionalFields": {
+    "unavailableRecordedCalls": false,
+    "nativeInputGaps": false
+  }
+}

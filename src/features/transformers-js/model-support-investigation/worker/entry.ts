@@ -10,22 +10,32 @@ import {
   AutoTokenizer,
   ModelRegistry,
   PretrainedConfig,
+  Tensor as TransformersTensor,
   TextStreamer,
   type PreTrainedTokenizer,
   type ProgressCallback as TransformersProgressCallback,
   env,
 } from "@huggingface/transformers";
-import { InferenceSession, Tensor } from "onnxruntime-web";
+import { InferenceSession, Tensor as OrtTensor, env as ortEnv } from "onnxruntime-web/webgpu";
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationGenerationAutoClassName,
+  ModelSupportInvestigationInputTensorMetadata,
   ModelSupportInvestigationJsonValue,
+  ModelSupportInvestigationTemplateCase,
+  ModelSupportInvestigationRuntimeTarget,
+  ModelSupportInvestigationTextInputStrategy,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { exposeWorkerRemote, type WorkerServerApi } from "@/utils/worker-transport";
 import { parseInvestigationJson } from "@/features/transformers-js/model-support-investigation/logic/json-value-schema";
 import { runRuntimeIntegrityPreflight } from "@/features/transformers-js/model-support-investigation/logic/run-runtime-integrity-preflight";
+import { importPlanningRuntimeModule } from "@/features/transformers-js/model-support-investigation/worker/import-planning-runtime-module";
+import { withVerifiedRuntimeControl } from '@/features/transformers-js/model-support-investigation/logic/runtime-control-binding';
 import { runPartialModelSupportInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-partial-model-support-investigation";
-import { inspectHuggingFaceRepository } from "@/features/transformers-js/model-support-investigation/logic/inspect-hugging-face-repository";
+import { toPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
+import { classifyReplayMetadataAccess, collectReplayMetadata, REPLAY_METADATA_TARGET_BYTES, type InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
+import { readReplayMetadataLocal } from '@/features/transformers-js/model-support-investigation/logic/read-replay-metadata-local';
+import { inspectHuggingFaceRepository, normalizeHuggingFaceModelId } from "@/features/transformers-js/model-support-investigation/logic/inspect-hugging-face-repository";
 import { inspectModelCache } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-cache";
 import {
   MODEL_CACHE_PROVENANCE_MAXIMUM_FILE_COUNT,
@@ -33,23 +43,29 @@ import {
   verifyModelCacheProvenance,
 } from "@/features/transformers-js/model-support-investigation/logic/verify-model-cache-provenance";
 import { evaluateCandidateRequiredFileCoverage } from "@/features/transformers-js/model-support-investigation/logic/evaluate-candidate-required-file-coverage";
-import { inspectModelDeclarations } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-declarations";
-import { inspectTemplateBehavior } from "@/features/transformers-js/model-support-investigation/logic/inspect-template-behavior";
-import { inspectModelFilePlan } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-file-plan";
+import { inspectCachedModelDeclarations, inspectModelDeclarations } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-declarations";
+import { inspectTemplateBehaviorForTarget } from "@/features/transformers-js/model-support-investigation/logic/inspect-template-behavior";
+import { inspectLocalModelFilePlan, inspectModelFilePlan, type ModelSupportInvestigationGetModelFiles } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-file-plan";
+import { inspectChatPersistenceRoundTrip } from "@/features/transformers-js/model-support-investigation/logic/inspect-chat-persistence-roundtrip";
 import { inspectRuntimeEnvironment } from "@/features/transformers-js/model-support-investigation/logic/inspect-runtime-environment";
 import { correlateSessionFiles } from "@/features/transformers-js/model-support-investigation/logic/correlate-session-files";
 import { runCandidateLoadAttempt } from "@/features/transformers-js/model-support-investigation/logic/run-candidate-load-attempt";
+import { readCompletedCachedModelFile } from "@/features/transformers-js/model-support-investigation/logic/read-completed-cached-model-file";
 import { createModelLoadProgressTracker } from "@/features/transformers-js/model-support-investigation/logic/model-load-progress";
 import { createForcedTokenSequenceLogitsProcessorList } from "@/features/transformers-js/model-support-investigation/worker/forced-token-sequence-logits-processor";
 import { compareForcedTokenSequence } from "@/features/transformers-js/model-support-investigation/logic/plan-tool-protocol-probe";
 import { selectGenerationAutoClass } from "@/features/transformers-js/model-support-investigation/logic/select-generation-auto-class";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
+import { MODEL_SUPPORT_INVESTIGATION_REFERENCE_PLAIN_TEXT } from "@/features/transformers-js/model-support-investigation/fixtures/reference-plain-text";
 import { observeProductionToolParser } from "@/features/transformers-js/model-support-investigation/worker/observe-production-tool-parser";
 import { observeToolResultTemplateRoundTrip } from "@/features/transformers-js/model-support-investigation/worker/observe-tool-result-template-roundtrip";
 import { selectGenerationStrategy } from "@/features/transformers-js/generation-strategies";
 import { configureHostedTransformersRuntime } from "@/features/transformers-js/runtime/configure-hosted-runtime";
 import { createHostedTransformersModelFetch } from "@/features/transformers-js/runtime/model-fetch";
+import { createDownloadedModelReadOnlyCache } from "@/features/transformers-js/runtime/downloaded-model-cache";
 import { createOpfsModelCache } from "@/features/transformers-js/runtime/opfs-model-cache";
+import { collectDownloadVerificationEvidence } from '@/features/transformers-js/download-verification/logic/collect-download-verification-evidence';
+import { createModelSupportInvestigationNetworkFetch } from '@/features/transformers-js/model-support-investigation/logic/create-investigation-network-fetch';
 import {
   createRuntimeControlModelBytes,
   RUNTIME_CONTROL_FIXTURE_ID,
@@ -68,19 +84,45 @@ const { assets, runtimeFetch } = configureHostedTransformersRuntime({
   createDecompressionStream: () => new DecompressionStream("gzip"),
 });
 const modelFetch = createHostedTransformersModelFetch({ runtimeFetch });
+const MODEL_SUPPORT_INVESTIGATION_MAXIMUM_MODEL_ARTIFACT_RANGE_BYTES = 32 * 1024;
+const downloadedModelCacheOnlyFetch: typeof fetch = async input => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  throw new Error(
+    `Model Support Investigation MUST NOT fetch model artifacts while loading; required downloaded file is missing: ${url}`,
+  );
+};
 self.fetch = modelFetch;
-env.fetch = modelFetch;
-// Investigation is launched only for downloaded Hugging Face models. Match the
-// production remote-model load mode: check the shared OPFS custom cache first,
-// then allow Transformers.js to fall back to Hugging Face when a load discovers
-// a missing artifact. Do not probe env.localModelPath (/models/ in browsers),
-// because that is not part of the production path for remote models and Vite's
-// SPA fallback can otherwise be misread as tokenizer/config JSON.
-env.allowLocalModels = false;
-env.allowRemoteModels = true;
+env.fetch = downloadedModelCacheOnlyFetch;
+// Investigation loads must match Production's downloaded-model contract. The
+// shared OPFS cache is readable but MUST NOT be mutated, and Transformers.js
+// MUST NOT start/resume/repair a model download when an artifact is missing.
+// Transformers.js 4.2 requires local lookup to remain enabled when
+// local_files_only=true, even when the custom OPFS cache contains the file.
+// Repository/provenance HTTP inspection remains separate and uses runtimeFetch.
+env.allowLocalModels = true;
+env.allowRemoteModels = false;
 env.useBrowserCache = false;
 env.useCustomCache = true;
-env.customCache = createOpfsModelCache();
+env.customCache = createOpfsModelCache({ mutationPolicy: 'read-only' });
+
+async function withRuntimeTargetModelCache<T>({
+  runtimeTarget,
+  run,
+}: {
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  run: () => Promise<T>,
+}): Promise<T> {
+  const previousCustomCache = env.customCache;
+  env.customCache = createDownloadedModelReadOnlyCache({
+    modelId: runtimeTarget.normalizedModelId,
+    revision: runtimeTarget.loaderRevisionOption ?? undefined,
+  });
+  try {
+    return await run();
+  } finally {
+    env.customCache = previousCustomCache;
+  }
+}
 
 type CandidateModel =
   | Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>
@@ -90,7 +132,140 @@ type CandidateModel =
   | Awaited<ReturnType<typeof AutoModelForAudioTextToText.from_pretrained>>
   | Awaited<ReturnType<typeof AutoModelForSpeechSeq2Seq.from_pretrained>>;
 
-async function loadCandidateModel({
+type CandidateTextInput = {
+  tokenizer: PreTrainedTokenizer,
+  modelInputs: Record<string, TransformersTensor>,
+  inputTokenIds: number[],
+  inputText?: string,
+};
+
+function tensorMetadata({ name, tensor }: {
+  name: string,
+  tensor: TransformersTensor,
+}): ModelSupportInvestigationInputTensorMetadata {
+  return {
+    name,
+    dtype: tensor.type,
+    dims: [...tensor.dims],
+    location: tensor.location,
+  };
+}
+
+function tokenIdsFromTensor({ tensor }: { tensor: TransformersTensor }): number[] {
+  if (tensor.dims.length !== 2 || tensor.dims[0] !== 1) {
+    throw new Error(`Expected a single-batch input_ids Tensor, got [${tensor.dims.join(",")}]`);
+  }
+  return Array.from(tensor.data as ArrayLike<number | bigint>, value => Number(value));
+}
+
+function tensorInputsFromUnknown({ value }: { value: unknown }): Record<string, TransformersTensor> {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Tokenizer did not return a model input dictionary");
+  }
+  const result: Record<string, TransformersTensor> = {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") continue;
+    const tensor = Reflect.get(value, key);
+    if (tensor instanceof TransformersTensor) result[key] = tensor;
+  }
+  if (result.input_ids === undefined) {
+    throw new Error("Tokenizer model input dictionary did not contain a Transformers.js input_ids Tensor");
+  }
+  return result;
+}
+
+function buildObservedTokenIdInput({ tokenizer, inputIds }: {
+  tokenizer: PreTrainedTokenizer,
+  inputIds: number[],
+}): CandidateTextInput {
+  if (inputIds.length === 0) {
+    throw new Error("The deterministic user-generation template case did not produce input token IDs");
+  }
+  const inputIdsTensor = new TransformersTensor(
+    "int64",
+    BigInt64Array.from(inputIds, value => BigInt(value)),
+    [1, inputIds.length],
+  );
+  const attentionMask = new TransformersTensor(
+    "int64",
+    BigInt64Array.from(inputIds, () => 1n),
+    [1, inputIds.length],
+  );
+  return {
+    tokenizer,
+    modelInputs: { input_ids: inputIdsTensor, attention_mask: attentionMask },
+    inputTokenIds: [...inputIds],
+  };
+}
+
+function buildFixedPlainTextInput({ tokenizer }: {
+  tokenizer: PreTrainedTokenizer,
+}): CandidateTextInput & { inputText: string } {
+  const value = tokenizer(MODEL_SUPPORT_INVESTIGATION_REFERENCE_PLAIN_TEXT, { return_tensor: true });
+  const modelInputs = tensorInputsFromUnknown({ value });
+  return {
+    tokenizer,
+    modelInputs,
+    inputTokenIds: tokenIdsFromTensor({ tensor: modelInputs.input_ids! }),
+    inputText: MODEL_SUPPORT_INVESTIGATION_REFERENCE_PLAIN_TEXT,
+  };
+}
+
+function buildChatTemplateInput({ tokenizer, templateCase }: {
+  tokenizer: PreTrainedTokenizer,
+  templateCase: ModelSupportInvestigationTemplateCase | undefined,
+}): CandidateTextInput {
+  if (templateCase === undefined) {
+    throw new Error("The deterministic user-generation template case is unavailable");
+  }
+  const value = tokenizer.apply_chat_template(
+    templateCase.messages as Parameters<PreTrainedTokenizer["apply_chat_template"]>[0],
+    {
+      add_generation_prompt: templateCase.addGenerationPrompt,
+      ...(templateCase.tools === undefined ? {} : { tools: templateCase.tools }),
+      tokenize: true,
+      return_tensor: true,
+      return_dict: true,
+    },
+  );
+  const modelInputs = tensorInputsFromUnknown({ value });
+  return {
+    tokenizer,
+    modelInputs,
+    inputTokenIds: tokenIdsFromTensor({ tensor: modelInputs.input_ids! }),
+  };
+}
+
+function buildCandidateTextInput({ tokenizer, strategy, templateCase, observedInputIds }: {
+  tokenizer: PreTrainedTokenizer,
+  strategy: ModelSupportInvestigationTextInputStrategy,
+  templateCase: ModelSupportInvestigationTemplateCase | undefined,
+  observedInputIds: number[],
+}): CandidateTextInput {
+  switch (strategy) {
+  case "chat-template-tensor-dict":
+    return buildChatTemplateInput({ tokenizer, templateCase });
+  case "observed-token-ids-transformers-tensor":
+    return buildObservedTokenIdInput({ tokenizer, inputIds: observedInputIds });
+  case "fixed-plain-text-tokenizer-tensor-dict":
+    return buildFixedPlainTextInput({ tokenizer });
+  default: {
+    const _ex: never = strategy;
+    return _ex;
+  }
+  }
+}
+
+function disposeCandidateTextInput({ input }: { input: CandidateTextInput }): void {
+  const disposed = new Set<TransformersTensor>();
+  for (const tensor of Object.values(input.modelInputs)) {
+    if (disposed.has(tensor)) continue;
+    disposed.add(tensor);
+    tensor.dispose();
+  }
+}
+
+async function loadDownloadedCandidateModel({
   autoClass,
   modelId,
   revision,
@@ -101,18 +276,19 @@ async function loadCandidateModel({
 }: {
   autoClass: ModelSupportInvestigationGenerationAutoClassName,
   modelId: string,
-  revision: string,
+  revision: string | undefined,
   config: PretrainedConfig,
   device: "webgpu" | "wasm",
   dtype: "q4f16" | "q4",
   onProgress: TransformersProgressCallback,
 }): Promise<CandidateModel> {
   const options = {
-    revision,
+    ...(revision === undefined ? {} : { revision }),
     config,
     device,
     dtype,
     progress_callback: onProgress,
+    local_files_only: true,
   };
   switch (autoClass) {
   case "AutoModelForCausalLM":
@@ -212,42 +388,63 @@ function reconstructProductionTextStreamerChunks({
 
 const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
-  async runPartialInvestigation(modelId, onEvent) {
-    return runPartialModelSupportInvestigation({
+  async runPartialInvestigation(request, onEvent, onRunCheckpoint, collectFreshMetadata) {
+    const { runId, modelId, externalNetworkPolicy, executionPlan, replayMetadataBudgetBytes, ...unhandledRequest } = request;
+    unhandledRequest satisfies Record<PropertyKey, never>;
+    let replayMetadata: InvestigationReplayMetadataSidecar[] | undefined;
+    let freshMetadata: import('@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types').FreshMetadataSummary | undefined;
+    const investigationFetch = createModelSupportInvestigationNetworkFetch({
+      runtimeFetch,
+      applicationOrigin: self.location.origin,
+      externalNetworkPolicy,
+      maximumModelArtifactRangeBytes: MODEL_SUPPORT_INVESTIGATION_MAXIMUM_MODEL_ARTIFACT_RANGE_BYTES,
+    });
+    // The planning worker never receives full-model download capability. Even with
+    // external network access enabled, model-weight requests are limited to HEAD or
+    // bounded byte ranges. Model Load has a separate cache-only fetch boundary below.
+    self.fetch = createHostedTransformersModelFetch({ runtimeFetch: investigationFetch });
+    const run = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy,
+      executionPlan,
+      inspectPersistenceRoundTrip: () => inspectChatPersistenceRoundTrip(),
       runRuntimePreflight: () => runRuntimeIntegrityPreflight({
         modelId,
         assets,
         applicationOrigin: self.location.origin,
-        runtimeFetch,
-        importRuntimeModule: async ({ url }) => {
-          await import(/* @vite-ignore */ url);
-        },
-        runWasmControl: async () => {
-          const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
-            executionProviders: ["wasm"],
-          });
-          try {
-            const outputs = await session.run({
-              x: new Tensor("float32", Float32Array.from([7]), [1]),
+        runtimeFetch: investigationFetch,
+        importRuntimeModule: importPlanningRuntimeModule,
+        runWasmControl: async ({ verifiedWasm, observeBinding }) => withVerifiedRuntimeControl({
+          executionProvider: 'wasm', assets, configuredEnvironment: env.backends.onnx.wasm,
+          controlEnvironment: ortEnv.wasm, verifiedWasm, observeBinding,
+          run: async () => {
+            const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
+              executionProviders: ["wasm"],
             });
-            const output = outputs.y;
-            if (output === undefined || output.data.length !== 1) {
-              throw new Error("ONNX Runtime WASM control did not return the expected output tensor");
+            try {
+              const outputs = await session.run({
+                x: new OrtTensor("float32", Float32Array.from([7]), [1]),
+              });
+              const output = outputs.y;
+              if (output === undefined || output.data.length !== 1) {
+                throw new Error("ONNX Runtime WASM control did not return the expected output tensor");
+              }
+              return {
+                fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
+                fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
+                executionProvider: "wasm",
+                status: "passed",
+                inputName: "x",
+                outputName: "y",
+                inputValue: 7,
+                outputValue: Number(output.data[0]),
+                error: undefined,
+              };
+            } finally {
+              await session.release();
             }
-            return {
-              fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
-              fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
-              executionProvider: "wasm",
-              inputName: "x",
-              outputName: "y",
-              inputValue: 7,
-              outputValue: Number(output.data[0]),
-            };
-          } finally {
-            await session.release();
-          }
-        },
-        runWebGpuControl: async () => {
+          },
+        }),
+        runWebGpuControl: async ({ verifiedWasm, observeBinding }) => {
           const hasWebGpu = (navigator as Navigator & { gpu?: unknown }).gpu !== undefined;
           if (!hasWebGpu) {
             return {
@@ -262,49 +459,155 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
               error: undefined,
             };
           }
-          const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
-            executionProviders: ["webgpu"],
+          return withVerifiedRuntimeControl({
+            executionProvider: 'webgpu', assets, configuredEnvironment: env.backends.onnx.wasm,
+            controlEnvironment: ortEnv.wasm, verifiedWasm, observeBinding,
+            run: async () => {
+              const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
+                executionProviders: ["webgpu"],
+              });
+              try {
+                const outputs = await session.run({
+                  x: new OrtTensor("float32", Float32Array.from([7]), [1]),
+                });
+                const output = outputs.y;
+                if (output === undefined || output.data.length !== 1) {
+                  throw new Error("ONNX Runtime WebGPU control did not return the expected output tensor");
+                }
+                const outputValue = Number(output.data[0]);
+                if (outputValue !== 7) {
+                  throw new Error(`ONNX Runtime WebGPU control returned an unexpected value: ${outputValue}`);
+                }
+                return {
+                  fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
+                  fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
+                  executionProvider: "webgpu",
+                  status: "passed",
+                  inputName: "x",
+                  outputName: "y",
+                  inputValue: 7,
+                  outputValue,
+                  error: undefined,
+                };
+              } finally {
+                await session.release();
+              }
+            },
           });
-          try {
-            const outputs = await session.run({
-              x: new Tensor("float32", Float32Array.from([7]), [1]),
-            });
-            const output = outputs.y;
-            if (output === undefined || output.data.length !== 1) {
-              throw new Error("ONNX Runtime WebGPU control did not return the expected output tensor");
-            }
-            const outputValue = Number(output.data[0]);
-            if (outputValue !== 7) {
-              throw new Error(`ONNX Runtime WebGPU control returned an unexpected value: ${outputValue}`);
-            }
-            return {
-              fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
-              fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
-              executionProvider: "webgpu",
-              status: "passed",
-              inputName: "x",
-              outputName: "y",
-              inputValue: 7,
-              outputValue,
-              error: undefined,
-            };
-          } finally {
-            await session.release();
-          }
         },
         inspectEnvironment: () => inspectRuntimeEnvironment({
           navigatorValue: navigator,
           crossOriginIsolatedValue: globalThis.crossOriginIsolated === true,
         }),
+        inspectWasmConfiguration: () => {
+          const wasm = env.backends.onnx.wasm;
+          return {
+            numThreads: typeof wasm?.numThreads === "number" ? wasm.numThreads : undefined,
+            proxy: typeof wasm?.proxy === "boolean" ? wasm.proxy : undefined,
+          };
+        },
         onEvent,
-        createRunId: () => crypto.randomUUID(),
+        onRunUpdate: ({ run }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run }) }),
+        // The host publishes this identity before the Worker starts. Every
+        // planning checkpoint must belong to that same investigation.
+        createRunId: () => runId,
         now: () => new Date().toISOString(),
       }),
       inspectRepository: () => inspectHuggingFaceRepository({
         modelId,
         requestedRevision: "main",
-        repositoryFetch: runtimeFetch,
+        repositoryFetch: investigationFetch,
       }),
+      collectDownloadEvidence: async ({ repository, runId }) => collectDownloadVerificationEvidence({
+        modelId: repository.normalizedModelId,
+        runId,
+        browserFetch: investigationFetch,
+        storageRoot: await navigator.storage.getDirectory(),
+        resolvedRepository: {
+          modelId: repository.requestedModelId,
+          normalizedModelId: repository.normalizedModelId,
+          requestedRevision: repository.requestedRevision,
+          resolvedRevision: repository.resolvedRevision,
+          repositoryFiles: repository.files.map(file => ({
+            path: file.path,
+            size: file.size,
+            blobId: file.blobId,
+            lfsOid: file.lfsOid,
+            lfsSha256: undefined,
+            lfsSize: undefined,
+          })),
+        },
+      }),
+      collectReplayMetadata: async ({ run, onSummary }) => {
+        const target = run.runtimeTarget;
+        const repository = run.repository;
+        const revision = (() => {
+          if (target === undefined) return undefined;
+          switch (target.revisionIdentity) {
+          case 'exact-resolved-revision':
+          case 'local-immutable-revision':
+            return target.evidenceRevision;
+          case 'legacy-main-unverified':
+            return undefined;
+          default: {
+            const _ex: never = target.revisionIdentity;
+            return _ex;
+          }
+          }
+        })();
+        const normalizedModelId = target?.normalizedModelId ?? normalizeHuggingFaceModelId({ modelId });
+        const modelAccess = classifyReplayMetadataAccess({ metadata: repository?.metadata });
+        const budgetBytes = replayMetadataBudgetBytes ?? REPLAY_METADATA_TARGET_BYTES;
+        if (externalNetworkPolicy === 'allow' && modelAccess === 'public-request' && revision !== undefined && repository !== undefined && budgetBytes > 0) {
+          const result = await collectFreshMetadata({ request: {
+            modelId: normalizedModelId, revision, maximumBytes: budgetBytes,
+            repositoryFiles: repository.files.map(({ path, size }) => ({ path, size })),
+          } });
+          freshMetadata = result.summary;
+          replayMetadata = result.files;
+          if (result.replayMetadata !== undefined) {
+            onSummary({ summary: result.replayMetadata });
+          } else {
+            // A timed-out Worker may retain HTTP observations but no raw data.
+            // Publish an explicit partial collection, never retry acquisition
+            // through the later fallback collection hook.
+            await collectReplayMetadata({
+              modelId: normalizedModelId, revision, files: repository.files,
+              budgetBytes, fileTimeoutMs: 15_000, modelAccess,
+              localRead: async () => undefined, remoteFetch: undefined,
+              onSnapshot: ({ snapshot }) => onSummary({ summary: snapshot.summary }),
+            });
+          }
+          return;
+        }
+        await collectReplayMetadata({
+          modelId: normalizedModelId,
+          revision,
+          files: repository?.files,
+          budgetBytes: replayMetadataBudgetBytes ?? REPLAY_METADATA_TARGET_BYTES,
+          fileTimeoutMs: 15_000,
+          modelAccess,
+          localRead: async ({ path, revision: exactRevision }) => readReplayMetadataLocal({
+            storageRoot: await navigator.storage.getDirectory(), modelId: normalizedModelId, revision: exactRevision, path,
+          }),
+          remoteFetch: (() => {
+            switch (externalNetworkPolicy) {
+            case 'allow':
+              return investigationFetch;
+            case 'deny':
+              return undefined;
+            default: {
+              const _ex: never = externalNetworkPolicy;
+              return _ex;
+            }
+            }
+          })(),
+          onSnapshot: ({ snapshot }) => {
+            replayMetadata = snapshot.sidecars;
+            onSummary({ summary: snapshot.summary });
+          },
+        });
+      },
       inspectCache: async () => inspectModelCache({
         modelId,
         storageRoot: await navigator.storage.getDirectory(),
@@ -313,14 +616,12 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         inventory: cache,
         repository,
         storageRoot: await navigator.storage.getDirectory(),
-        repositoryFetch: runtimeFetch,
+        repositoryFetch: investigationFetch,
         rangeBytes: MODEL_CACHE_PROVENANCE_RANGE_BYTES,
         maximumFileCount: MODEL_CACHE_PROVENANCE_MAXIMUM_FILE_COUNT,
       }),
-      inspectDeclarations: ({ repository }) => inspectModelDeclarations({
-        repository,
-        repositoryFetch: runtimeFetch,
-        autoClasses: {
+      inspectDeclarations: async ({ runtimeTarget, repository, cache }) => {
+        const autoClasses = {
           AutoModel,
           AutoModelForAudioTextToText,
           AutoModelForCausalLM,
@@ -328,71 +629,162 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           AutoModelForSeq2SeqLM,
           AutoModelForSpeechSeq2Seq,
           AutoModelForVision2Seq,
-        },
-      }),
-      inspectTemplateBehavior: ({ repository }) => inspectTemplateBehavior({
-        repository,
+        };
+        switch (runtimeTarget.source) {
+        case "repository":
+          if (repository === undefined) throw new Error("Repository RuntimeTarget requires repository evidence");
+          return await inspectModelDeclarations({ repository, repositoryFetch: investigationFetch, autoClasses });
+        case "local-cache": {
+          if (cache === undefined) throw new Error("Local-cache RuntimeTarget requires cache evidence");
+          const storageRoot = await navigator.storage.getDirectory();
+          return await inspectCachedModelDeclarations({
+            runtimeTarget,
+            cache,
+            readCachedFile: ({ repositoryPath }) => readCompletedCachedModelFile({
+              storageRoot,
+              normalizedModelId: runtimeTarget.normalizedModelId,
+              revision: runtimeTarget.evidenceRevision,
+              repositoryPath,
+            }),
+            autoClasses,
+          });
+        }
+        default: {
+          const _ex: never = runtimeTarget.source;
+          return _ex;
+        }
+        }
+      },
+      inspectTemplateBehavior: ({ runtimeTarget }) => inspectTemplateBehaviorForTarget({
+        runtimeTarget,
         loadTokenizer: async ({ modelId: tokenizerModelId, revision }) => AutoTokenizer.from_pretrained(
           tokenizerModelId,
-          { revision },
+          {
+            ...(revision === undefined ? {} : { revision }),
+            local_files_only: true,
+          },
         ),
       }),
-      inspectModelFilePlan: async ({ repository, declarations, cache }) => {
+      deferTemplateBehavior: true,
+      inspectModelFilePlan: async ({ runtimeTarget, repository, declarations, cache }) => {
         const config = new PretrainedConfig(declarations.config);
-        return inspectModelFilePlan({
-          repository,
-          declarations,
-          cache,
-          getModelFiles: ({ modelId: registryModelId, device, dtype }) => ModelRegistry.get_model_files(
-            registryModelId,
-            { config, device, dtype },
-          ),
-        });
+        const getModelFiles: ModelSupportInvestigationGetModelFiles = ({ modelId: registryModelId, device, dtype }) => ModelRegistry.get_model_files(
+          registryModelId,
+          { config, device, dtype },
+        );
+        switch (runtimeTarget.source) {
+        case "repository":
+          if (repository === undefined) throw new Error("Repository RuntimeTarget requires repository evidence");
+          return await inspectModelFilePlan({ repository, declarations, cache, getModelFiles });
+        case "local-cache":
+          if (cache === undefined) throw new Error("Local-cache RuntimeTarget requires cache evidence");
+          return await inspectLocalModelFilePlan({ runtimeTarget, declarations, cache, getModelFiles });
+        default: {
+          const _ex: never = runtimeTarget.source;
+          return _ex;
+        }
+        }
       },
       onEvent,
+      onRunUpdate: ({ run: updatedRun }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run: { ...updatedRun, freshMetadata } }), replayMetadata }),
       now: () => new Date().toISOString(),
+    });
+    return toPlanningWorkerRun({ run: { ...run, freshMetadata } });
+  },
+  async inspectDownloadedTemplateBehavior({ runtimeTarget }) {
+    return await withRuntimeTargetModelCache({
+      runtimeTarget,
+      run: async () => await inspectTemplateBehaviorForTarget({
+        runtimeTarget,
+        loadTokenizer: async ({ modelId: tokenizerModelId, revision }) => AutoTokenizer.from_pretrained(
+          tokenizerModelId,
+          {
+            ...(revision === undefined ? {} : { revision }),
+            local_files_only: true,
+          },
+        ),
+      }),
     });
   },
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level remote arguments to remain transferable.
-  async runCandidateAttempt(repository, declarations, templateBehavior, cacheRevisionAliases, candidate, onEvent, onAttemptEvent) {
-    env.customCache = createOpfsModelCache({ revisionAliases: cacheRevisionAliases });
-    const config = new PretrainedConfig(declarations.config);
-    const autoClass = selectGenerationAutoClass({ repository, declarations });
+  async runCandidateAttempt(runtimeTarget, declarations, templateBehavior, candidate, executionOptions, onEvent, onAttemptEvent, onAttemptCheckpoint) {
+    // Keep the measured load path identical to normal Chat. Repository SHA
+    // resolution is Evidence/provenance metadata, not a second cache namespace.
     const modelLoadProgress = createModelLoadProgressTracker({ candidateId: candidate.candidateId });
+    let modelLoadActive = false;
+    env.customCache = createDownloadedModelReadOnlyCache({
+      modelId: runtimeTarget.normalizedModelId,
+      revision: runtimeTarget.loaderRevisionOption ?? undefined,
+      onMatchObservation: ({ observation }) => {
+        if (!modelLoadActive) return;
+        modelLoadProgress.observeCacheMatch({ observation, at: new Date().toISOString() });
+      },
+    });
+    const loadRevision = runtimeTarget.loaderRevisionOption ?? undefined;
+    const config = new PretrainedConfig(declarations.config);
+    const autoClass = selectGenerationAutoClass({ runtimeTarget, declarations });
+    let candidateTokenizer: PreTrainedTokenizer | undefined;
+    const loadCandidateTokenizer = async (): Promise<PreTrainedTokenizer> => {
+      candidateTokenizer ??= await AutoTokenizer.from_pretrained(runtimeTarget.normalizedModelId, {
+        ...(loadRevision === undefined ? {} : { revision: loadRevision }),
+        local_files_only: true,
+      });
+      return candidateTokenizer;
+    };
     const attempt = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior,
       candidate,
+      executionOptions,
       autoClass,
-      loadModel: () => {
+      loadDownloadedModel: async ({ onProgressObservation }) => {
         if (autoClass === undefined) {
           throw new Error("No public generative Auto class is available");
         }
-        return loadCandidateModel({
-          autoClass,
-          modelId: repository.normalizedModelId,
-          revision: repository.resolvedRevision,
-          config,
-          device: candidate.device,
-          dtype: candidate.dtype,
-          onProgress: info => {
-            const progress = modelLoadProgress.observe({
-              info,
-              at: new Date().toISOString(),
-              nowMs: performance.now(),
-            });
-            if (progress === undefined) return;
-            onEvent({
-              event: {
-                stepId: "loading-investigation",
-                status: "running",
-                detail: `${candidate.candidateId}: model-load`,
-                progress,
-              },
-            });
-          },
-        });
+        const publishProgress = ({ progress }: {
+          progress: NonNullable<ReturnType<typeof modelLoadProgress.flush>>,
+        }): void => {
+          onProgressObservation({ progress });
+          onEvent({
+            event: {
+              stepId: "loading-investigation",
+              status: "running",
+              detail: `${candidate.candidateId}: model-load`,
+              progress,
+            },
+          });
+        };
+        const previousFetch = env.fetch;
+        modelLoadActive = true;
+        env.fetch = async input => {
+          modelLoadProgress.observeRemoteFetchAttempt({ at: new Date().toISOString() });
+          return await downloadedModelCacheOnlyFetch(input);
+        };
+        try {
+          return await loadDownloadedCandidateModel({
+            autoClass,
+            modelId: runtimeTarget.normalizedModelId,
+            revision: loadRevision,
+            config,
+            device: candidate.device,
+            dtype: candidate.dtype,
+            onProgress: info => {
+              const progress = modelLoadProgress.observe({
+                info,
+                at: new Date().toISOString(),
+                nowMs: performance.now(),
+              });
+              if (progress === undefined) return;
+              publishProgress({ progress });
+            },
+          });
+        } finally {
+          modelLoadActive = false;
+          env.fetch = previousFetch;
+          const finalLoadProgress = modelLoadProgress.flush();
+          if (finalLoadProgress !== undefined) publishProgress({ progress: finalLoadProgress });
+        }
       },
       observeLoadedModel: ({ model }) => {
         const observation = observeCandidateModel({ model });
@@ -404,41 +796,29 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           }),
         };
       },
-      buildInput: async ({ inputIds }) => {
-        const tokenizer = await AutoTokenizer.from_pretrained(repository.normalizedModelId, {
-          revision: repository.resolvedRevision,
+      buildInput: async ({ inputIds, strategy }) => {
+        const tokenizer = await loadCandidateTokenizer();
+        const input = buildCandidateTextInput({
+          tokenizer,
+          strategy,
+          templateCase: templateBehavior?.cases.find(item => item.caseId === "user-generation"),
+          observedInputIds: inputIds,
         });
-        const inputIdTensor = new Tensor("int64", BigInt64Array.from(inputIds, value => BigInt(value)), [1, inputIds.length]);
-        const attentionMaskTensor = new Tensor("int64", BigInt64Array.from(inputIds, () => 1n), [1, inputIds.length]);
         return {
-          input: {
-            tokenizer,
-            inputIds: inputIdTensor,
-            attentionMask: attentionMaskTensor,
-          },
-          tensors: [{
-            name: "input_ids",
-            dtype: inputIdTensor.type,
-            dims: [...inputIdTensor.dims],
-            location: inputIdTensor.location,
-          }, {
-            name: "attention_mask",
-            dtype: attentionMaskTensor.type,
-            dims: [...attentionMaskTensor.dims],
-            location: attentionMaskTensor.location,
-          }],
+          input,
+          inputTokenIds: [...input.inputTokenIds],
+          tensors: Object.entries(input.modelInputs).map(([name, tensor]) => tensorMetadata({ name, tensor })),
+          ...(input.inputText === undefined ? {} : { inputText: input.inputText }),
         };
       },
       generateMinimumToken: async ({ model, input }) => {
         const output = await model.generate({
-          input_ids: input.inputIds,
-          attention_mask: input.attentionMask,
+          ...input.modelInputs,
           max_new_tokens: 1,
           do_sample: false,
         });
         const sequence = generatedSequence({ output });
-        const inputTokenCount = input.inputIds.dims.at(-1);
-        if (inputTokenCount === undefined) throw new Error("Input tensor is missing its token dimension");
+        const inputTokenCount = input.inputTokenIds.length;
         const generatedTokenIds = model.config.is_encoder_decoder
           ? sequence
           : sequence.slice(inputTokenCount);
@@ -450,18 +830,17 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
       },
       generateNaturalBaseline: async ({ model, input }) => {
         const output = await model.generate({
-          input_ids: input.inputIds,
-          attention_mask: input.attentionMask,
+          ...input.modelInputs,
           max_new_tokens: 16,
           do_sample: false,
         });
         const sequence = generatedSequence({ output });
-        const inputTokenCount = input.inputIds.dims.at(-1);
-        if (inputTokenCount === undefined) throw new Error("Input tensor is missing its token dimension");
+        const inputTokenCount = input.inputTokenIds.length;
         const generatedTokenIds = model.config.is_encoder_decoder
           ? sequence
           : sequence.slice(inputTokenCount);
         return {
+          status: "observed",
           forced: false,
           maxNewTokens: 16,
           doSample: false,
@@ -470,41 +849,34 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           termination: generatedTokenIds.length >= 16 ? "limit-reached" : "ended-before-limit",
         };
       },
-      generateToolProtocolProbe: async ({ model, inputTokenIds, forcedTokenIds }) => {
-        const tokenizer = await AutoTokenizer.from_pretrained(repository.normalizedModelId, {
-          revision: repository.resolvedRevision,
+      generateToolProtocolProbe: async ({ model, inputTokenIds, forcedTokenIds, inputStrategy }) => {
+        const tokenizer = await loadCandidateTokenizer();
+        const templateCase = templateBehavior?.cases.find(item => item.caseId === "tools-generation");
+        const probeInput = buildCandidateTextInput({
+          tokenizer,
+          strategy: inputStrategy,
+          templateCase,
+          observedInputIds: inputTokenIds,
         });
-        const inputIds = new Tensor(
-          "int64",
-          BigInt64Array.from(inputTokenIds, value => BigInt(value)),
-          [1, inputTokenIds.length],
-        );
-        const attentionMask = new Tensor(
-          "int64",
-          BigInt64Array.from(inputTokenIds, () => 1n),
-          [1, inputTokenIds.length],
-        );
         try {
           const output = await model.generate({
-            input_ids: inputIds,
-            attention_mask: attentionMask,
+            ...probeInput.modelInputs,
             max_new_tokens: forcedTokenIds.length,
             do_sample: false,
             logits_processor: createForcedTokenSequenceLogitsProcessorList({
-              promptLength: inputTokenIds.length,
+              promptLength: probeInput.inputTokenIds.length,
               forcedTokenIds,
             }),
           });
           const sequence = generatedSequence({ output });
-          const generatedTokenIds = sequence.slice(inputTokenIds.length);
+          const generatedTokenIds = sequence.slice(probeInput.inputTokenIds.length);
           const comparison = compareForcedTokenSequence({
             expected: forcedTokenIds,
             actual: generatedTokenIds,
           });
           const strategy = selectGenerationStrategy({
             modelType: typeof model.config.model_type === "string" ? model.config.model_type : undefined,
-            activeModelId: repository.normalizedModelId,
-            hasTools: true,
+            activeModelId: runtimeTarget.normalizedModelId,
           }).kind;
           let parserObservation;
           let inputChunks: string[] = [];
@@ -514,7 +886,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             case "qwen3_5":
               inputChunks = reconstructProductionTextStreamerChunks({
                 tokenizer,
-                inputTokenIds,
+                inputTokenIds: probeInput.inputTokenIds,
                 generatedTokenIds,
                 skipSpecialTokens: true,
               });
@@ -522,7 +894,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             case "gpt-oss":
               inputChunks = reconstructProductionTextStreamerChunks({
                 tokenizer,
-                inputTokenIds,
+                inputTokenIds: probeInput.inputTokenIds,
                 generatedTokenIds,
                 skipSpecialTokens: false,
               });
@@ -534,7 +906,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
               return exhaustive;
             }
             }
-            parserObservation = observeProductionToolParser({ strategy, inputChunks });
+            parserObservation = observeProductionToolParser({ strategy, inputChunks, tools: templateCase?.tools });
           } catch (error) {
             parserObservation = {
               status: "failed" as const,
@@ -557,7 +929,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             generationCaseId: "tools-generation",
             assistantToolCallCaseId: "assistant-tool-call-history",
             toolResultContinuationCaseId: "tool-result-continuation",
-            inputTokenIds: [...inputTokenIds],
+            inputTokenIds: [...probeInput.inputTokenIds],
             forcedTokenIds: [...forcedTokenIds],
             generatedTokenIds,
             generatedText: tokenizer.decode(generatedTokenIds, { skip_special_tokens: false }),
@@ -570,13 +942,11 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             toolResultTemplateRoundTrip,
           };
         } finally {
-          inputIds.dispose();
-          attentionMask.dispose();
+          disposeCandidateTextInput({ input: probeInput });
         }
       },
       disposeInput: async ({ input }) => {
-        input.inputIds.dispose();
-        input.attentionMask.dispose();
+        disposeCandidateTextInput({ input });
       },
       disposeModel: async ({ model }) => {
         await model.dispose();
@@ -591,12 +961,15 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           },
         });
       },
+      onAttemptUpdate: ({ attempt: checkpoint }) => {
+        onAttemptCheckpoint({ attempt: checkpoint });
+      },
       now: () => new Date().toISOString(),
       createAttemptId: () => crypto.randomUUID(),
     });
     try {
       const inventory = await inspectModelCache({
-        modelId: repository.normalizedModelId,
+        modelId: runtimeTarget.normalizedModelId,
         storageRoot: await navigator.storage.getDirectory(),
       });
       return {

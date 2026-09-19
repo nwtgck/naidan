@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { parseStandardArgv } from '@/features/wesh/argv';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
@@ -24,12 +24,7 @@ async function printExportedVariables({ context }: { context: WeshCommandContext
   }
 }
 
-export const exportCmdCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'export',
-    description: 'Set environment variables',
-    usage: 'export [-pn] [name[=value]...]',
-  },
+export const exportCmdCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: exportArgvSpec }),

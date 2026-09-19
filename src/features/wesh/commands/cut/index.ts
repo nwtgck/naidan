@@ -6,7 +6,7 @@ import {
 import { parseStandardArgv } from '@/features/wesh/argv';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
 import { openFileReadStream } from '@/features/wesh/utils/fs';
 
 type CutMode = 'bytes' | 'characters' | 'fields';
@@ -534,12 +534,7 @@ function findCutPreHelpSemanticIssue({
   return undefined;
 }
 
-export const cutCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'cut',
-    description: 'Remove sections from each line of files',
-    usage: 'cut [OPTION]... [FILE]...',
-  },
+export const cutCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const cutArgvSpec: StandardArgvParserSpec = {
       options: [

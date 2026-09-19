@@ -1,10 +1,5 @@
 import { isAsciiShellIdentifierPart, isAsciiShellIdentifierStart } from './ascii';
-import {
-  findBackquoteSubstitution,
-  findBalancedArithmeticExpression,
-  findBalancedParenthesizedExpression,
-  findBracedParameterEnd,
-} from './scan';
+import { findShellWordConstructEnd } from './scan';
 
 type ParameterValueOperator = ':-' | '-' | ':=' | '=' | ':?' | '?' | ':+' | '+';
 type ParameterPatternOperator = '##' | '#' | '%%' | '%';
@@ -144,28 +139,10 @@ function findUnescapedSlash({ text, startIndex }: { text: string, startIndex: nu
       index += 1;
       continue;
     }
-    if (text[index] === '`') {
-      const substitution = findBackquoteSubstitution({ text, startIndex: index });
-      if (substitution !== undefined) {
-        index = substitution.endIndex;
-        continue;
-      }
-    }
-    if (text[index] === '$' && text[index + 1] === '{') {
-      const endIndex = findBracedParameterEnd({ text, startIndex: index });
-      if (endIndex >= 0) {
-        index = endIndex;
-        continue;
-      }
-    }
-    if (text[index] === '$' && text[index + 1] === '(') {
-      const expression = text[index + 2] === '('
-        ? findBalancedArithmeticExpression({ text, startIndex: index })
-        : findBalancedParenthesizedExpression({ text, startIndex: index + 1 });
-      if (expression !== undefined) {
-        index = expression.endIndex;
-        continue;
-      }
+    const constructEnd = findShellWordConstructEnd({ text, startIndex: index });
+    if (constructEnd !== undefined) {
+      index = constructEnd;
+      continue;
     }
     if (text[index] === '/') return index;
   }
@@ -173,10 +150,10 @@ function findUnescapedSlash({ text, startIndex }: { text: string, startIndex: nu
 }
 
 function unescapeSubstitutionReplacementSlashes({ replacement }: { replacement: string }): string {
-  let result = '';
+  let output: string[] | undefined;
+  let literalStart = 0;
   for (let index = 0; index < replacement.length;) {
     if (replacement[index] !== '\\') {
-      result += replacement[index] ?? '';
       index += 1;
       continue;
     }
@@ -184,17 +161,30 @@ function unescapeSubstitutionReplacementSlashes({ replacement }: { replacement: 
     let runEnd = index;
     while (replacement[runEnd] === '\\') runEnd += 1;
     if (replacement[runEnd] !== '/') {
-      result += replacement.slice(index, runEnd);
       index = runEnd;
       continue;
     }
 
-    const backslashCount = runEnd - index;
-    result += '\\'.repeat(Math.floor(backslashCount / 2));
-    result += '/';
+    output ??= [];
+    if (literalStart < index) {
+      output.push(replacement.slice(literalStart, index));
+    }
+    const preservedBackslashes = Math.floor((runEnd - index) / 2);
+    if (preservedBackslashes > 0) {
+      output.push('\\'.repeat(preservedBackslashes));
+    }
+    output.push('/');
     index = runEnd + 1;
+    literalStart = index;
   }
-  return result;
+
+  if (output === undefined) {
+    return replacement;
+  }
+  if (literalStart < replacement.length) {
+    output.push(replacement.slice(literalStart));
+  }
+  return output.join('');
 }
 
 function parseSubstitutionOperator({ rest }: { rest: string }): {

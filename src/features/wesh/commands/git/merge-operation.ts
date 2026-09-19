@@ -5,11 +5,12 @@ import { readEffectiveConfig } from "./config";
 import { readFileText } from "./files";
 import { sortGitPaths } from "./path-order";
 import { findMergeBases } from "./graph";
+import type { GitCommitGraphCache } from "./graph";
 import { applyMergedIndexWithConflicts } from "./merge-apply";
 import { formatPreparedMergeConflict, prepareMergeConflicts } from "./merge-conflict";
 import { clearMergeState, readMergeState, writeMergeState } from "./merge-state";
 import { mergeThreeTrees } from "./merge-tree";
-import { readIndex, writeIndex } from "./index-file";
+import { collectUnmergedPaths, readIndex, writeIndex } from "./index-file";
 import { forceReplaceIndexAndWorktree } from "./index-worktree";
 import { branchNameFromHead, readHead, updateHead, writeOrigHead } from "./refs";
 import { discoverRepository, joinPath, discoverRepositoryFromContext } from "./repository";
@@ -30,7 +31,7 @@ export async function continueMerge({ context }: {
     return { exitCode: 128 };
   }
   const entries = await readIndex({ files: context.files, repository });
-  const unmergedPaths = sortGitPaths({ paths: new Set(entries.filter(entry => entry.stage !== 0).map(entry => entry.path)) });
+  const unmergedPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries }) });
   if (unmergedPaths.length > 0) {
     for (const path of unmergedPaths)
       await context.text().print({ text: `U\t${path}\n` });
@@ -101,9 +102,10 @@ export async function abortMerge({ context }: {
   await clearMergeState({ files: context.files, repository });
   return { exitCode: 0 };
 }
-export async function integrateDivergentMerge({ context, repository, headObjectId, targetObjectId, targetLabel, commitMessage, reflogMessage }: {
+export async function integrateDivergentMerge({ context, repository, graphCache, headObjectId, targetObjectId, targetLabel, commitMessage, reflogMessage }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
+    graphCache: GitCommitGraphCache;
     headObjectId: string;
     targetObjectId: string;
     targetLabel: string;
@@ -119,6 +121,7 @@ export async function integrateDivergentMerge({ context, repository, headObjectI
   const bases = await findMergeBases({
     files: context.files,
     repository,
+    cache: graphCache,
     leftObjectId: headObjectId,
     rightObjectId: targetObjectId,
   });
@@ -126,12 +129,42 @@ export async function integrateDivergentMerge({ context, repository, headObjectI
     await context.text().error({ text: `fatal: expected one merge base, found ${bases.length}\n` });
     return { exitCode: 128 };
   }
-  const baseCommit = await readCommit({ files: context.files, repository, objectId: bases[0]! });
-  const oursCommit = await readCommit({ files: context.files, repository, objectId: headObjectId });
-  const theirsCommit = await readCommit({ files: context.files, repository, objectId: targetObjectId });
-  const baseEntries = await readTreeIntoIndex({ files: context.files, repository, treeObjectId: baseCommit.treeObjectId });
-  const oursEntries = await readTreeIntoIndex({ files: context.files, repository, treeObjectId: oursCommit.treeObjectId });
-  const theirsEntries = await readTreeIntoIndex({ files: context.files, repository, treeObjectId: theirsCommit.treeObjectId });
+  const baseCommit = await readCommit({
+    files: context.files,
+    repository,
+    objectId: bases[0]!,
+    objectReadCache: graphCache.objectReadCache,
+  });
+  const oursCommit = await readCommit({
+    files: context.files,
+    repository,
+    objectId: headObjectId,
+    objectReadCache: graphCache.objectReadCache,
+  });
+  const theirsCommit = await readCommit({
+    files: context.files,
+    repository,
+    objectId: targetObjectId,
+    objectReadCache: graphCache.objectReadCache,
+  });
+  const baseEntries = await readTreeIntoIndex({
+    files: context.files,
+    repository,
+    treeObjectId: baseCommit.treeObjectId,
+    objectReadCache: graphCache.objectReadCache,
+  });
+  const oursEntries = await readTreeIntoIndex({
+    files: context.files,
+    repository,
+    treeObjectId: oursCommit.treeObjectId,
+    objectReadCache: graphCache.objectReadCache,
+  });
+  const theirsEntries = await readTreeIntoIndex({
+    files: context.files,
+    repository,
+    treeObjectId: theirsCommit.treeObjectId,
+    objectReadCache: graphCache.objectReadCache,
+  });
   const merged = mergeThreeTrees({ baseEntries, oursEntries, theirsEntries });
   const autoMerged = await autoMergeTextConflicts({
     files: context.files,

@@ -12,6 +12,8 @@ import { runCherryPick } from "./subcommands/cherry-pick";
 import { runRevert } from "./subcommands/revert";
 import { runRebase } from "./subcommands/rebase";
 import { runLog } from "./subcommands/log";
+import { runGrep } from "./subcommands/grep";
+import { runBlame } from "./subcommands/blame";
 import { runBranch } from "./subcommands/branch";
 import { runSwitch } from "./subcommands/switch";
 import { runCheckout } from "./subcommands/checkout";
@@ -23,7 +25,7 @@ import { runPush } from './subcommands/push';
 import { runConfig } from './subcommands/config';
 import { runRevParse } from './subcommands/rev-parse';
 import { runReflog } from './subcommands/reflog';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { runDiff } from './subcommands/diff';
 import { runLsFiles } from './subcommands/ls-files';
 import { runRemote } from './subcommands/remote';
@@ -53,6 +55,8 @@ Common commands:
    diff       Show changes between states
    commit     Record changes to the repository
    log        Show commit logs
+   grep       Print lines matching a pattern
+   blame      Show what revision last modified each line
    show       Show revision contents
    branch     List, create, or delete branches
    tag        Create, list, or delete tags
@@ -108,6 +112,10 @@ async function executeSubcommand({ context, command, args }: {
     return runCommit({ context, args });
   case 'log':
     return runLog({ context, args });
+  case 'grep':
+    return runGrep({ context, args });
+  case 'blame':
+    return runBlame({ context, args });
   case 'show':
     return runShow({ context, args });
   case 'branch':
@@ -146,12 +154,7 @@ async function executeSubcommand({ context, command, args }: {
   }
 }
 
-export const gitCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'git',
-    description: 'Git-compatible version control commands',
-    usage: 'git [--version] [--help] <command> [<args>]',
-  },
+export const gitCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     try {
       const invocation = await parseGitInvocation({ context });

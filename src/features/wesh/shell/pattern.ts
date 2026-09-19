@@ -244,13 +244,50 @@ function parseCharacterClass({
   return undefined;
 }
 
+function pushLiteralPatternToken({
+  tokens,
+  value,
+}: {
+  tokens: WeshShellPatternToken[],
+  value: string,
+}): void {
+  const previous = tokens.at(-1);
+  if (previous !== undefined) {
+    switch (previous.kind) {
+    case 'literal':
+      previous.value += value;
+      return;
+    case 'any-character':
+    case 'any-string':
+    case 'character-class':
+      break;
+    default: {
+      const _ex: never = previous;
+      throw new Error(`Unhandled shell pattern token: ${String(_ex)}`);
+    }
+    }
+  }
+  tokens.push({
+    kind: 'literal',
+    value,
+  });
+}
+
 function joinLiteralPatternTokens({
   tokens,
+  startIndex,
+  endIndex,
 }: {
   tokens: readonly WeshShellPatternToken[],
+  startIndex: number,
+  endIndex: number,
 }): string {
   let result = '';
-  for (const token of tokens) {
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const token = tokens[index];
+    if (token === undefined) {
+      continue;
+    }
     switch (token.kind) {
     case 'literal':
       result += token.value;
@@ -276,6 +313,9 @@ export function compileShellPattern({
 }): WeshCompiledShellPattern {
   const tokens: WeshShellPatternToken[] = [];
   let previousWasStar = false;
+  let starCount = 0;
+  let firstStarIndex = -1;
+  let literalOnly = true;
 
   for (let index = 0; index < pattern.length;) {
     const character = pattern[index];
@@ -291,8 +331,8 @@ export function compileShellPattern({
         pattern,
         index,
       });
-      tokens.push({
-        kind: 'literal',
+      pushLiteralPatternToken({
+        tokens,
         value: literal.value,
       });
       previousWasStar = false;
@@ -302,7 +342,11 @@ export function compileShellPattern({
 
     if (character === '*') {
       if (!previousWasStar) {
+        if (starCount === 0) {
+          firstStarIndex = tokens.length;
+        }
         tokens.push({ kind: 'any-string' });
+        starCount += 1;
       }
       previousWasStar = true;
       index += 1;
@@ -311,6 +355,7 @@ export function compileShellPattern({
 
     if (character === '?') {
       tokens.push({ kind: 'any-character' });
+      literalOnly = false;
       previousWasStar = false;
       index += 1;
       continue;
@@ -323,6 +368,7 @@ export function compileShellPattern({
       });
       if (characterClass !== undefined) {
         tokens.push(characterClass.token);
+        literalOnly = false;
         previousWasStar = false;
         index = characterClass.nextIndex;
         continue;
@@ -330,52 +376,36 @@ export function compileShellPattern({
     }
 
     const literal = readCodePoint({ text: pattern, index });
-    tokens.push({
-      kind: 'literal',
+    pushLiteralPatternToken({
+      tokens,
       value: literal.value,
     });
     previousWasStar = false;
     index = literal.nextIndex;
   }
 
-  const starIndexes: number[] = [];
-  let literalOnly = true;
-  for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
-    const token = tokens[tokenIndex];
-    if (token === undefined) {
-      continue;
-    }
-    switch (token.kind) {
-    case 'literal':
-      break;
-    case 'any-string':
-      starIndexes.push(tokenIndex);
-      break;
-    case 'any-character':
-    case 'character-class':
-      literalOnly = false;
-      break;
-    default: {
-      const _ex: never = token;
-      throw new Error(`Unhandled shell pattern token: ${String(_ex)}`);
-    }
-    }
-  }
-
-  if (literalOnly && starIndexes.length === 0) {
+  if (literalOnly && starCount === 0) {
     return {
       kind: 'literal',
-      value: joinLiteralPatternTokens({ tokens }),
+      value: joinLiteralPatternTokens({
+        tokens,
+        startIndex: 0,
+        endIndex: tokens.length,
+      }),
     };
   }
 
-  if (literalOnly && starIndexes.length === 1) {
-    const starIndex = starIndexes[0] ?? 0;
+  if (literalOnly && starCount === 1) {
+    const starIndex = firstStarIndex;
     const prefix = joinLiteralPatternTokens({
-      tokens: tokens.slice(0, starIndex),
+      tokens,
+      startIndex: 0,
+      endIndex: starIndex,
     });
     const suffix = joinLiteralPatternTokens({
-      tokens: tokens.slice(starIndex + 1),
+      tokens,
+      startIndex: starIndex + 1,
+      endIndex: tokens.length,
     });
     return {
       kind: 'single-star',
@@ -398,8 +428,10 @@ function posixCharacterClassMatches({
   character: string,
 }): boolean {
   const codePoint = character.codePointAt(0);
-  const isAsciiAlpha = /^[A-Za-z]$/u.test(character);
-  const isAsciiDigit = /^[0-9]$/u.test(character);
+  const isAsciiUpper = codePoint !== undefined && codePoint >= 0x41 && codePoint <= 0x5a;
+  const isAsciiLower = codePoint !== undefined && codePoint >= 0x61 && codePoint <= 0x7a;
+  const isAsciiAlpha = isAsciiUpper || isAsciiLower;
+  const isAsciiDigit = codePoint !== undefined && codePoint >= 0x30 && codePoint <= 0x39;
   switch (className) {
   case 'alnum':
     return isAsciiAlpha || isAsciiDigit;
@@ -416,7 +448,7 @@ function posixCharacterClassMatches({
   case 'graph':
     return codePoint !== undefined && codePoint >= 0x21 && codePoint <= 0x7e;
   case 'lower':
-    return /^[a-z]$/u.test(character);
+    return isAsciiLower;
   case 'print':
     return codePoint !== undefined && codePoint >= 0x20 && codePoint <= 0x7e;
   case 'punct':
@@ -424,11 +456,13 @@ function posixCharacterClassMatches({
   case 'space':
     return character === ' ' || character === '\t' || character === '\n' || character === '\v' || character === '\f' || character === '\r';
   case 'upper':
-    return /^[A-Z]$/u.test(character);
+    return isAsciiUpper;
   case 'word':
     return isAsciiAlpha || isAsciiDigit || character === '_';
   case 'xdigit':
-    return /^[0-9A-Fa-f]$/u.test(character);
+    return isAsciiDigit ||
+      (codePoint !== undefined && codePoint >= 0x41 && codePoint <= 0x46) ||
+      (codePoint !== undefined && codePoint >= 0x61 && codePoint <= 0x66);
   default: {
     const _ex: never = className;
     throw new Error(`Unhandled POSIX shell character class: ${_ex}`);
@@ -502,7 +536,19 @@ function matchesTokenShellPattern({
         tokenIndex += 1;
         continue;
       case 'literal':
+        if (text.startsWith(token.value, textIndex)) {
+          tokenIndex += 1;
+          textIndex += token.value.length;
+          continue;
+        }
+        break;
       case 'any-character':
+        tokenIndex += 1;
+        textIndex = nextShellCharacterIndex({
+          text,
+          index: textIndex,
+        });
+        continue;
       case 'character-class': {
         const nextTextIndex = nextShellCharacterIndex({
           text,
@@ -511,23 +557,7 @@ function matchesTokenShellPattern({
         const character = nextTextIndex === textIndex + 1
           ? text[textIndex] ?? ''
           : text.slice(textIndex, nextTextIndex);
-        let matched: boolean;
-        switch (token.kind) {
-        case 'literal':
-          matched = character === token.value;
-          break;
-        case 'any-character':
-          matched = true;
-          break;
-        case 'character-class':
-          matched = characterClassMatches({ token, character });
-          break;
-        default: {
-          const _ex: never = token;
-          throw new Error(`Unhandled shell pattern token: ${String(_ex)}`);
-        }
-        }
-        if (matched) {
+        if (characterClassMatches({ token, character })) {
           tokenIndex += 1;
           textIndex = nextTextIndex;
           continue;
@@ -625,14 +655,41 @@ export function escapeShellPatternLiteral({
 }: {
   text: string,
 }): string {
-  let result = '';
-  for (const character of text) {
-    if (character === '\\' || character === '*' || character === '?' || character === '[' || character === ']') {
-      result += '\\';
+  let firstMetaIndex = -1;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (
+      character === '\\' ||
+      character === '*' ||
+      character === '?' ||
+      character === '[' ||
+      character === ']'
+    ) {
+      firstMetaIndex = index;
+      break;
     }
-    result += character;
   }
-  return result;
+  if (firstMetaIndex < 0) return text;
+
+  const parts: string[] = [];
+  let literalStart = 0;
+  for (let index = firstMetaIndex; index < text.length; index += 1) {
+    const character = text[index];
+    if (
+      character !== '\\' &&
+      character !== '*' &&
+      character !== '?' &&
+      character !== '[' &&
+      character !== ']'
+    ) {
+      continue;
+    }
+    if (index > literalStart) parts.push(text.slice(literalStart, index));
+    parts.push('\\', character);
+    literalStart = index + 1;
+  }
+  if (literalStart < text.length) parts.push(text.slice(literalStart));
+  return parts.join('');
 }
 
 export function containsShellPatternMeta({

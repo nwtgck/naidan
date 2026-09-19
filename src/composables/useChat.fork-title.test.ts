@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChat } from './useChat';
 import { reactive } from 'vue';
 import type { Chat, MessageNode } from '@/01-models/types';
@@ -38,6 +39,10 @@ vi.mock('./useToast', () => ({
     addToast: vi.fn(),
   }),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useChat fork title fix', () => {
   const { forkChat, TEST_ONLY } = useChat();

@@ -1,9 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { h } from 'vue';
 import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
 import type { ToolExecutionResult } from '@/01-models/tool';
 import { toToolCallId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;

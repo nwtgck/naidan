@@ -11,12 +11,50 @@ import {
 function run(): ModelSupportInvestigationRun {
   return {
     runtimeAssets: {
+      assetIdentity: {
+        manifestBuildId: "runtime-build-fixture",
+        manifestUrl: "https://naidan.example/transformers/runtime-assets-runtime-build-fixture.json",
+        observedManifestBuildId: "runtime-build-fixture",
+        versions: {
+          transformers: "4.2.0",
+          onnxRuntimeWeb: "1.26.0-dev.20260416-b7804b056c",
+          onnxRuntimeCommon: "1.24.3",
+          onnxRuntimeWebBundledCommon: "1.24.0-dev.20251116-b39e144322",
+        },
+        mjs: {
+          url: "https://naidan.example/transformers/ort-fixture.mjs",
+          expectedByteLength: 11,
+          observedByteLength: 11,
+          expectedSha256: "m".repeat(64),
+          observedSha256: "m".repeat(64),
+        },
+        wasm: {
+          logicalUrl: "https://naidan.example/transformers/ort-fixture.wasm",
+          physicalUrl: "https://naidan.example/transformers/ort-fixture.wasm.gz",
+          expectedByteLength: 12,
+          observedByteLength: 12,
+          expectedSha256: "w".repeat(64),
+          observedSha256: "w".repeat(64),
+          expectedPhysicalByteLength: 8,
+          observedPhysicalByteLength: 8,
+          expectedPhysicalSha256: "g".repeat(64),
+          observedPhysicalSha256: "g".repeat(64),
+        },
+      },
       applicationOrigin: "https://naidan.example",
       mjsOrigin: "https://naidan.example",
       wasmOrigin: "https://naidan.example",
-      control: { inputValue: 7, outputValue: 7 },
+      control: { status: "passed", inputValue: 7, outputValue: 7 },
     },
     repository: { resolvedRevision: "a".repeat(40) },
+    runtimeTarget: {
+      normalizedModelId: "org/model",
+      evidenceRevision: "a".repeat(40),
+      loaderRevisionOption: null,
+      source: "repository",
+      revisionIdentity: "exact-resolved-revision",
+      pipelineTag: undefined,
+    },
     cache: {
       revisionProvenanceReason: "Completion markers do not independently prove file bytes",
       provenance: {
@@ -25,6 +63,7 @@ function run(): ModelSupportInvestigationRun {
       },
     },
     declarations: {
+      fileFailures: [],
       modelType: "new_chat_model",
       classCapabilities: [{ autoClass: "AutoModelForCausalLM", supports: true }],
     },
@@ -66,7 +105,7 @@ function run(): ModelSupportInvestigationRun {
       },
       inputTensors: [{ name: "input_ids" }],
       generatedTokenIds: [42],
-      naturalGeneration: { generatedTokenIds: [43, 44] },
+      naturalGeneration: { status: "observed", generatedTokenIds: [43, 44] },
       postAttemptCache: {
         status: "observed",
         inventory: {
@@ -78,6 +117,7 @@ function run(): ModelSupportInvestigationRun {
         requiredFileCoverage: {
           expectedPaths: ["onnx/model.onnx"],
           completePaths: ["onnx/model.onnx"],
+          sizeMismatchPaths: [],
           incompletePaths: [],
           missingPaths: [],
           revisionProvenance: "unknown",
@@ -120,12 +160,65 @@ function run(): ModelSupportInvestigationRun {
         },
       },
     }],
-    productionLane: { status: "not-run", observation: undefined, error: undefined },
+    productionLane: { status: "not-run", observation: undefined, partialObservation: undefined, error: undefined },
     laneComparison: undefined,
   } as unknown as ModelSupportInvestigationRun;
 }
 
 describe("evaluateEvidenceReadiness", () => {
+  it("marks scope-excluded runtime domains not applicable instead of unobserved", () => {
+    const scopedRun = run();
+    scopedRun.executionPlan = {
+      repositoryDownload: true,
+      modelLoad: false,
+      generation: false,
+      continuity: false,
+      capabilityProbes: false,
+    };
+
+    const report = evaluateEvidenceReadiness({ run: scopedRun });
+    for (const domainId of [
+      "runtime-load",
+      "template-tokenizer",
+      "plain-text",
+      "production-routing",
+      "continuity-kv-cache",
+      "tools",
+      "reasoning",
+      "multimodal",
+    ] as const) {
+      const domain = report.domains.find(item => item.domainId === domainId);
+      expect(domain).toMatchObject({
+        status: "not-applicable",
+        questions: [{ status: "not-applicable", answer: "Not applicable to the selected investigation scope", evidencePaths: [] }],
+      });
+    }
+    expect(report.domains.find(item => item.domainId === "repository")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "download")?.status).not.toBe("not-applicable");
+  });
+
+  it("keeps required Continuity domains active while excluding unselected capability probes", () => {
+    const scopedRun = run();
+    scopedRun.executionPlan = {
+      repositoryDownload: false,
+      modelLoad: true,
+      generation: true,
+      continuity: true,
+      capabilityProbes: false,
+    };
+
+    const report = evaluateEvidenceReadiness({ run: scopedRun });
+    expect(report.domains.find(item => item.domainId === "repository")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "download")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "template-tokenizer")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "plain-text")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "continuity-kv-cache")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "tools")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "reasoning")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "multimodal")?.status).toBe("not-applicable");
+  });
+
   it("marks observed implementation domains ready without claiming unobserved capabilities", () => {
     const report = evaluateEvidenceReadiness({ run: run() });
 
@@ -148,6 +241,188 @@ describe("evaluateEvidenceReadiness", () => {
     expect(renderEvidenceReadinessMarkdown({ report })).toContain("Evidence: load-attempts/index.json");
   });
 
+
+  it("ties Download Evidence readiness to the same frozen repository revision", () => {
+    const value = run();
+    value.downloadEvidence = {
+      schemaVersion: 1,
+      runId: "download-run",
+      mode: "probe-only",
+      run: {
+        modelId: "org/model",
+        normalizedModelId: "org/model",
+        requestedRevision: "main",
+        resolvedRevision: "a".repeat(40),
+        repositoryFileCount: 1,
+        repositoryFiles: [{ path: "onnx/model_q4.onnx", size: 100, blobId: undefined, lfsOid: undefined, lfsSha256: undefined, lfsSize: undefined }],
+        transportObservations: [{
+          path: "onnx/model_q4.onnx", method: "HEAD", status: 200, redirected: false,
+          finalUrl: "https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx",
+          finalOrigin: "https://huggingface.co", contentLength: 100, contentRange: undefined,
+          acceptRanges: "bytes", contentType: "application/octet-stream", etag: undefined,
+          rangeHonored: undefined, bytesConsumed: 0, abortedByByteBudget: false, error: undefined,
+        }],
+        skippedModelArtifactCount: 0, bytesConsumed: 0, maximumBytes: 2 * 1024 * 1024,
+        startedAt: "2026-09-04T00:00:00.000Z", finishedAt: "2026-09-04T00:00:01.000Z",
+      },
+      modelArtifactObservations: [{
+        modelId: "org/model", revision: "a".repeat(40), autoClass: "AutoModelForCausalLM",
+        candidate: { device: "webgpu", dtype: "q4" }, status: "observed",
+        observationMethod: "held-model-artifact-fetch-quiescence", quiescenceMs: 100, timeoutMs: 1000,
+        paths: ["onnx/model_q4.onnx"],
+        requests: [{ path: "onnx/model_q4.onnx", url: "https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx" }],
+        error: undefined,
+      }],
+      modelArtifactObservationError: undefined, cacheBefore: undefined, cacheInspectionError: undefined,
+    };
+
+    const ready = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(ready?.status).toBe("implementation-ready");
+    expect(ready?.questions[0]?.answer).toContain(`revision=${"a".repeat(40)}`);
+    expect(ready?.questions[0]?.evidencePaths).toContain("download-lane/test-readiness.json");
+
+    value.downloadEvidence.mode = "runtime-complete";
+    value.downloadEvidence.runtimeCompletion = {
+      schemaVersion: 1,
+      status: "accepted",
+      source: "production-download-preparation",
+      receipt: {
+        format: 'production-offline-load-receipt-v1', modelId: 'org/model',
+        loaderRevisionOption: { status: 'provided', value: 'a'.repeat(40) },
+        autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'webgpu', dtype: 'q4' },
+        plannedRequiredPaths: ['config.json', 'onnx/model_q4.onnx'],
+        cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'a'.repeat(40), hitPaths: ['config.json', 'onnx/model_q4.onnx'] },
+        completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+        limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
+      },
+      repositoryResolvedRevision: "a".repeat(40),
+      cacheRevision: "a".repeat(40),
+      loaderRevisionOption: "a".repeat(40),
+      selectedCandidate: { device: "webgpu", dtype: "q4" },
+      cacheReuse: undefined,
+      preparation: undefined,
+      cacheAfter: undefined,
+      cacheInspectionError: undefined,
+      error: undefined,
+    };
+    const runtimeReady = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(runtimeReady?.status).toBe("implementation-ready");
+    expect(runtimeReady?.summary).toContain("Production cache-only runtime acceptance succeeded");
+    expect(runtimeReady?.questions[0]?.evidencePaths).toContain("download-lane/cache-acceptance.json");
+
+    value.downloadEvidence.runtimeCompletion = {
+      ...value.downloadEvidence.runtimeCompletion,
+      source: "reused-production-cache",
+      cacheRevision: "main",
+      loaderRevisionOption: null,
+      receipt: { ...value.downloadEvidence.runtimeCompletion.receipt!, loaderRevisionOption: { status: 'omitted' },
+        cacheLookup: { ...value.downloadEvidence.runtimeCompletion.receipt!.cacheLookup, revision: 'main' } },
+    };
+    const legacyMainReport = evaluateEvidenceReadiness({ run: value });
+    const legacyDownload = legacyMainReport.domains.find(item => item.domainId === "download");
+    expect(legacyDownload?.status).toBe("partial");
+    expect(legacyDownload?.summary).toContain("exact identity");
+    expect(legacyDownload?.questions[0]?.answer).toContain("revisionIdentity=legacy-main-unverified");
+    expect(legacyMainReport.domains.find(item => item.domainId === "template-tokenizer")?.status).toBe("partial");
+    expect(legacyMainReport.domains.find(item => item.domainId === "runtime-load")?.status).toBe("partial");
+    expect(legacyMainReport.domains.find(item => item.domainId === "plain-text")?.status).toBe("partial");
+
+    value.downloadEvidence.runtimeCompletion = {
+      ...value.downloadEvidence.runtimeCompletion,
+      status: "failed",
+      source: "cache-reuse-failed",
+      cacheRevision: null,
+      loaderRevisionOption: null,
+      selectedCandidate: undefined,
+      error: { name: "RuntimeRejected", message: "runtime rejected cached artifacts" },
+    };
+    const runtimeFailed = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(runtimeFailed?.status).toBe("insufficient");
+    expect(runtimeFailed?.summary).toContain("runtime rejected cached artifacts");
+
+    value.downloadEvidence.run.resolvedRevision = "b".repeat(40);
+    const mismatch = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(mismatch?.status).toBe("insufficient");
+    expect(mismatch?.summary).toContain("same frozen repository revision");
+  });
+
+
+  it("treats intentional offline repository skipping as partial when an immutable local runtime target is available", () => {
+    const value = run();
+    value.repository = undefined;
+    value.downloadEvidence = undefined;
+    value.runtimeTarget = {
+      normalizedModelId: "org/model",
+      evidenceRevision: "b".repeat(40),
+      loaderRevisionOption: "b".repeat(40),
+      source: "local-cache",
+      revisionIdentity: "local-immutable-revision",
+      pipelineTag: undefined,
+    };
+    value.steps = [{ id: "repository-information", status: "skipped", detail: "External network denied" }];
+
+    const report = evaluateEvidenceReadiness({ run: value });
+    expect(report.overall).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "repository")?.status).toBe("not-observed");
+    expect(report.domains.find(item => item.domainId === "execution-target")).toMatchObject({
+      status: "implementation-ready",
+      questions: [expect.objectContaining({ evidencePaths: ["runtime-target/target.json"] })],
+    });
+  });
+
+  it("downgrades runtime observations for an offline legacy main target without inventing an immutable revision", () => {
+    const value = run();
+    value.repository = undefined;
+    value.downloadEvidence = undefined;
+    value.runtimeTarget = {
+      normalizedModelId: "org/model",
+      evidenceRevision: "main",
+      loaderRevisionOption: null,
+      source: "local-cache",
+      revisionIdentity: "legacy-main-unverified",
+      pipelineTag: undefined,
+    };
+    value.steps = [{ id: "repository-information", status: "skipped", detail: "External network denied" }];
+
+    const report = evaluateEvidenceReadiness({ run: value });
+    expect(report.overall).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "execution-target")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "plain-text")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.summary).toContain("exact immutable model revision was not proven");
+  });
+
+  it("keeps runtime readiness insufficient when runtime asset identity is unavailable", () => {
+    const value = run();
+    if (value.runtimeAssets === undefined) throw new Error("Runtime-assets fixture is unavailable");
+    value.runtimeAssets.assetIdentity = undefined;
+
+    const runtime = evaluateEvidenceReadiness({ run: value }).domains
+      .find(item => item.domainId === "runtime-assets");
+
+    expect(runtime).toMatchObject({ status: "insufficient" });
+    expect(runtime?.questions[0]?.answer).toContain("Runtime asset identity");
+  });
+
+  it("keeps model declaration readiness partial when optional declaration files fail", () => {
+    const value = run();
+    value.declarations!.fileFailures = [{
+      path: "tokenizer_config.json",
+      url: "https://huggingface.co/org/model/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/tokenizer_config.json",
+      error: {
+        name: "Error",
+        message: "Hugging Face declaration tokenizer_config.json resolved to HTML instead of JSON",
+        stack: undefined,
+      },
+    }];
+
+    const report = evaluateEvidenceReadiness({ run: value });
+
+    expect(report.domains.find(item => item.domainId === "model-declarations")).toMatchObject({
+      status: "partial",
+      summary: expect.stringContaining("1 optional declaration files failed"),
+    });
+  });
 
   it("preserves successful model-load readiness when deterministic input construction fails", () => {
     const value = run();
@@ -172,6 +447,47 @@ describe("evaluateEvidenceReadiness", () => {
     expect(report.domains.find(item => item.domainId === "plain-text")?.status).toBe("not-observed");
   });
 
+
+  it("keeps Production plain-text evidence when all Reference input strategies fail", () => {
+    const value = run();
+    const attempt = value.loadAttempts[0];
+    if (attempt === undefined) throw new Error("Load-attempt fixture is unavailable");
+    attempt.status = "failed";
+    attempt.failureStage = "first-generation";
+    attempt.inputStrategyAttempts = [{
+      strategy: "chat-template-tensor-dict",
+      status: "failed",
+      failureStage: "first-generation",
+      inputTokenIds: [1, 2],
+      inputTensors: [{ name: "input_ids", dtype: "int64", dims: [1, 2], location: "cpu" }],
+      error: { name: "TypeError", message: "adapter rejected input", stack: undefined },
+    }, {
+      strategy: "observed-token-ids-transformers-tensor",
+      status: "failed",
+      failureStage: "first-generation",
+      inputTokenIds: [1, 2],
+      inputTensors: [{ name: "input_ids", dtype: "int64", dims: [1, 2], location: "cpu" }],
+      error: { name: "TypeError", message: "fallback rejected input", stack: undefined },
+    }];
+    attempt.selectedInputStrategy = undefined;
+    attempt.inputTensors = [];
+    attempt.generatedTokenIds = [];
+    attempt.naturalGeneration = undefined;
+    value.productionLane = {
+      status: "passed",
+      observation: {
+        route: { autoClass: "AutoModelForCausalLM", processor: "tokenizer", strategy: "standard", modelType: "new_chat_model" },
+        firstTurn: { status: "passed", turn: { generatedTokenIds: [9, 10] } },
+      } as never,
+      error: undefined,
+    };
+
+    const plainText = evaluateEvidenceReadiness({ run: value }).domains
+      .find(item => item.domainId === "plain-text");
+    expect(plainText).toMatchObject({ status: "partial" });
+    expect(plainText?.summary).toContain("Production Lane generated 2 token(s)");
+    expect(plainText?.questions[0]?.evidencePaths).toEqual(["production-lane/observation.json"]);
+  });
 
   it("marks a bounded cache sample mismatch insufficient without claiming whole-file comparison", () => {
     const value = run();
@@ -201,6 +517,88 @@ describe("evaluateEvidenceReadiness", () => {
 
     expect(cache).toMatchObject({ status: "insufficient" });
     expect(cache?.questions[0]?.answer).toContain("bounded sample mismatch detected");
+  });
+
+  it("links structured runtime failures from runtime readiness", () => {
+    const value = run();
+    value.runtimeAssets = undefined;
+    value.runtimeAssetsPartial = {
+      variant: "asyncify",
+      baseUrl: "https://naidan.example/transformers/",
+      mjsUrl: "https://naidan.example/transformers/ort.mjs",
+      wasmUrl: "https://naidan.example/transformers/ort.wasm",
+      physicalWasmUrl: "https://naidan.example/transformers/ort.wasm.gz",
+      applicationOrigin: "https://naidan.example",
+      mjsOrigin: "https://naidan.example",
+      wasmOrigin: "https://naidan.example",
+      physicalWasmOrigin: "https://naidan.example",
+      environment: undefined,
+      wasmByteLength: undefined,
+      control: undefined,
+      webGpuControl: undefined,
+      currentStage: undefined,
+      stageObservations: [{
+        stage: "module-import",
+        status: "failed",
+        detail: "runtime module import failed",
+        error: "runtime module import failed",
+      }],
+    };
+    value.stepErrors = {
+      "runtime-assets": [{
+        name: "Error",
+        message: "runtime module import failed",
+        stack: "Error: runtime module import failed",
+      }],
+    };
+
+    const runtime = evaluateEvidenceReadiness({ run: value }).domains
+      .find(item => item.domainId === "runtime-assets");
+    expect(runtime).toMatchObject({ status: "insufficient" });
+    expect(runtime?.questions[0]?.evidencePaths).toEqual([
+      "runtime-assets/preflight-partial.json",
+      "errors.json",
+    ]);
+  });
+
+  it("marks failed prerequisite inspections insufficient and links their structured errors", () => {
+    const value = run();
+    value.repository = undefined;
+    value.cache = undefined;
+    value.declarations = undefined;
+    value.templateBehavior = undefined;
+    value.modelFilePlan = undefined;
+    const structuredError = {
+      name: "TypeError",
+      message: "fixture inspection failed",
+      stack: `\
+TypeError: fixture inspection failed
+    at fixture`,
+      thrownType: "TypeError",
+      serializedOriginalThrownValue: '{"name":"TypeError"}',
+      cause: undefined,
+    };
+    value.stepErrors = {
+      "repository-information": [structuredError],
+      "existing-model-data": [structuredError],
+      "model-declarations": [structuredError],
+      "template-behavior": [structuredError],
+      "model-file-plan": [structuredError],
+    };
+
+    const report = evaluateEvidenceReadiness({ run: value });
+
+    for (const domainId of [
+      "repository",
+      "cache",
+      "model-declarations",
+      "template-tokenizer",
+      "model-file-plan",
+    ] as const) {
+      const readiness = report.domains.find(item => item.domainId === domainId);
+      expect(readiness?.status).toBe("insufficient");
+      expect(readiness?.questions[0]?.evidencePaths).toContain("errors.json");
+    }
   });
 
   it("does not claim tool protocol provenance when the continuation template failed", () => {
@@ -246,7 +644,11 @@ describe("evaluateEvidenceReadiness", () => {
         status: "failed",
         inputIds: undefined,
         failureStage: "template-selection",
-        error: "tool continuation unsupported",
+        error: {
+          name: "Error",
+          message: "tool continuation unsupported",
+          stack: undefined,
+        },
       },
     ];
 
@@ -276,6 +678,186 @@ describe("evaluateEvidenceReadiness", () => {
     expect(report.domains.find(item => item.domainId === "runtime-assets")?.status).toBe("not-observed");
   });
 
+  it("keeps continuity partial until the persistence serialization contract is observed", () => {
+    const value = run();
+    value.productionLane = {
+      status: "running",
+      observation: undefined,
+      partialObservation: {
+        route: {
+          autoClass: "AutoModelForCausalLM",
+          processor: "processor",
+          strategy: "qwen3_5",
+          modelType: "qwen3_5",
+        },
+        continuity: {
+          status: "passed",
+          secondTurn: {
+            pastKeyValuesProvided: false,
+            cacheDecision: { status: "not-reused", reason: "qwen3_5-message-count-mismatch" },
+          },
+          prefixComparison: {
+            mode: "full-input-prefix",
+            comparisonInputSource: "reconstructed-full-conversation",
+            exactPrefixMatch: true,
+            firstMismatchIndex: undefined,
+          },
+        },
+      } as never,
+      error: undefined,
+    };
+
+    const continuity = evaluateEvidenceReadiness({ run: value }).domains
+      .find(item => item.domainId === "continuity-kv-cache");
+    expect(continuity).toMatchObject({ status: "partial" });
+    expect(continuity?.questions[0]?.answer).toContain("qwen3_5-message-count-mismatch");
+    expect(continuity?.questions[0]?.answer).toContain("preserved the exact prior model-token prefix");
+    expect(continuity?.questions[0]?.answer).toContain("persistence mapper/DTO/JSON roundtrip was not observed");
+  });
+
+  it("marks continuity implementation-ready when exact prefix and persistence serialization evidence agree", () => {
+    const value = run();
+    value.persistenceRoundTrip = {
+      status: 'observed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      modelVisibleProjectionMethod: 'build-chat-generation-messages-v1',
+      serializedByteLength: 128,
+      serializedSha256: 'b'.repeat(64),
+      originalMessages: [{ role: 'user', content: 'fixture', tool_calls: undefined, tool_call_id: undefined }],
+      restoredMessages: [{ role: 'user', content: 'fixture', tool_calls: undefined, tool_call_id: undefined }],
+      exactModelVisibleMatch: true,
+      firstMismatchIndex: undefined,
+    };
+    value.productionLane = {
+      status: 'running', observation: undefined,
+      partialObservation: {
+        route: { autoClass: 'AutoModelForCausalLM', processor: 'processor', strategy: 'qwen3_5', modelType: 'qwen3_5' },
+        continuity: {
+          status: 'passed',
+          secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: 'not-reused', reason: 'qwen3_5-message-count-mismatch' } },
+          prefixComparison: {
+            mode: 'full-input-prefix', comparisonInputSource: 'reconstructed-full-conversation',
+            exactPrefixMatch: true, firstMismatchIndex: undefined,
+          },
+        },
+      } as never,
+      error: undefined,
+    };
+
+    const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === 'continuity-kv-cache');
+    expect(continuity).toMatchObject({ status: 'implementation-ready' });
+    expect(continuity?.questions[0]?.answer).toContain('preserved 1 model-visible synthetic messages exactly');
+    expect(continuity?.questions[0]?.evidencePaths).toContain('continuity/persistence-roundtrip.json');
+  });
+
+  it('keeps legacy persistence evidence partial when Production history projection provenance is absent', () => {
+    const value = run();
+    value.persistenceRoundTrip = {
+      status: 'observed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      serializedByteLength: 128,
+      serializedSha256: 'b'.repeat(64),
+      originalMessages: [{ role: 'user', content: 'fixture', tool_calls: undefined, tool_call_id: undefined }],
+      restoredMessages: [{ role: 'user', content: 'fixture', tool_calls: undefined, tool_call_id: undefined }],
+      exactModelVisibleMatch: true,
+      firstMismatchIndex: undefined,
+    };
+    value.productionLane = {
+      status: 'running',
+      observation: undefined,
+      partialObservation: {
+        route: { autoClass: 'AutoModelForCausalLM', processor: 'processor', strategy: 'qwen3_5', modelType: 'qwen3_5' },
+        continuity: {
+          status: 'passed',
+          secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: 'not-reused', reason: 'qwen3_5-message-count-mismatch' } },
+          prefixComparison: {
+            mode: 'full-input-prefix',
+            comparisonInputSource: 'reconstructed-full-conversation',
+            exactPrefixMatch: true,
+            firstMismatchIndex: undefined,
+          },
+        },
+      } as never,
+      error: undefined,
+    };
+
+    const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === 'continuity-kv-cache');
+    expect(continuity).toMatchObject({ status: 'partial' });
+    expect(continuity?.summary).toContain('does not prove that the restored history passed through the same Production LM-message projection');
+  });
+
+  it("marks continuity insufficient when persistence serialization changes model-visible history", () => {
+    const value = run();
+    value.persistenceRoundTrip = {
+      status: 'observed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      modelVisibleProjectionMethod: 'build-chat-generation-messages-v1',
+      serializedByteLength: 128,
+      serializedSha256: 'b'.repeat(64),
+      originalMessages: [{ role: 'assistant', content: 'before', tool_calls: undefined, tool_call_id: undefined }],
+      restoredMessages: [{ role: 'assistant', content: 'after', tool_calls: undefined, tool_call_id: undefined }],
+      exactModelVisibleMatch: false,
+      firstMismatchIndex: 0,
+    };
+    value.productionLane = {
+      status: 'running', observation: undefined,
+      partialObservation: {
+        route: { autoClass: 'AutoModelForCausalLM', processor: 'processor', strategy: 'qwen3_5', modelType: 'qwen3_5' },
+        continuity: {
+          status: 'passed',
+          secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: 'not-reused', reason: 'qwen3_5-message-count-mismatch' } },
+          prefixComparison: {
+            mode: 'full-input-prefix', comparisonInputSource: 'reconstructed-full-conversation',
+            exactPrefixMatch: true, firstMismatchIndex: undefined,
+          },
+        },
+      } as never,
+      error: undefined,
+    };
+
+    const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === 'continuity-kv-cache');
+    expect(continuity).toMatchObject({ status: 'insufficient' });
+    expect(continuity?.summary).toContain('changed model-visible synthetic history');
+  });
+
+  it("marks continuity insufficient when the strategy cache decision contradicts the model.generate handoff", () => {
+    const value = run();
+    value.productionLane = {
+      status: "running",
+      observation: undefined,
+      partialObservation: {
+        route: {
+          autoClass: "AutoModelForCausalLM",
+          processor: "processor",
+          strategy: "qwen3_5",
+          modelType: "qwen3_5",
+        },
+        continuity: {
+          status: "passed",
+          secondTurn: {
+            pastKeyValuesProvided: false,
+            cacheDecision: { status: "reused", reason: "qwen3_5-no-tool-continuation" },
+          },
+          prefixComparison: {
+            mode: "full-input-prefix",
+            comparisonInputSource: "reconstructed-full-conversation",
+            exactPrefixMatch: true,
+            firstMismatchIndex: undefined,
+          },
+        },
+      } as never,
+      error: undefined,
+    };
+
+    const continuity = evaluateEvidenceReadiness({ run: value }).domains
+      .find(item => item.domainId === "continuity-kv-cache");
+    expect(continuity).toMatchObject({ status: "insufficient" });
+    expect(continuity?.summary).toContain("contradict");
+  });
+
   it("marks Production routing ready only with an observation and Reference token comparison", () => {
     const value = run();
     value.productionLane = {
@@ -291,23 +873,30 @@ describe("evaluateEvidenceReadiness", () => {
           modelType: "new_chat_model",
         },
         isEncoderDecoder: false,
-        messages: [{ role: "user", content: "hello" }],
-        inputKeys: ["input_ids"],
-        inputTensors: [],
-        inputTokenIds: [1, 2],
-        pastKeyValuesProvided: false,
-        inputPastKeyValuesSummary: { kind: "nullish", valueType: "undefined", constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
-        outputPastKeyValuesSummary: { kind: "object", valueType: "object", constructorName: "Object", ownKeyCount: 1, ownKeys: ["layer_0"], arrayLength: undefined, truncated: false },
-        generatedSequenceTokenIds: [1, 2, 4],
-        generatedTokenIds: [4],
-        generatedText: "answer",
-        streamChunks: ["answer"],
-        toolCalls: [],
-        effectiveGenerationConfig: {
-          maxNewTokens: 16,
-          temperature: 0,
-          topP: 1,
-          doSample: false,
+        firstTurn: {
+          status: "passed",
+          turn: {
+            messages: [{ role: "user", content: "hello" }],
+            inputKeys: ["input_ids"],
+            inputTensors: [],
+            inputTokenIds: [1, 2],
+            fullConversationInput: { status: "unavailable", reason: "test fixture does not observe reconstructed full conversation input" },
+            cacheDecision: { status: "unavailable", reason: "test fixture does not observe cache decision" },
+            pastKeyValuesProvided: false,
+            inputPastKeyValuesSummary: { kind: "nullish", valueType: "undefined", constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
+            outputPastKeyValuesSummary: { kind: "object", valueType: "object", constructorName: "Object", ownKeyCount: 1, ownKeys: ["layer_0"], arrayLength: undefined, truncated: false },
+            generatedSequenceTokenIds: [1, 2, 4],
+            generatedTokenIds: [4],
+            generatedText: "answer",
+            streamChunks: ["answer"],
+            toolCalls: [],
+            effectiveGenerationConfig: {
+              maxNewTokens: 16,
+              temperature: 0,
+              topP: 1,
+              doSample: false,
+            },
+          },
         },
         continuity: {
           status: "failed",
@@ -340,9 +929,50 @@ describe("evaluateEvidenceReadiness", () => {
     expect(production).toMatchObject({ status: "implementation-ready" });
     expect(production?.questions[0]?.evidencePaths).toEqual([
       "production-lane/observation.json",
+      "production-lane/first-turn.json",
       "lane-comparison/comparison.json",
     ]);
     expect(production?.questions[0]?.answer).toContain("input tokens match exactly");
+  });
+
+  it("keeps Production routing partial after a first-turn failure while retaining independent probe evidence", () => {
+    const value = run();
+    value.productionLane = {
+      status: "passed",
+      observation: {
+        modelId: "org/model",
+        resolvedRevision: "a".repeat(40),
+        candidate: { device: "webgpu", dtype: "q4" },
+        route: { autoClass: "AutoModelForCausalLM", processor: "tokenizer", strategy: "qwen3_5", modelType: "qwen3_5" },
+        isEncoderDecoder: false,
+        firstTurn: { status: "failed", error: { name: "FixtureFirstTurnError", message: "first turn failed" } },
+        continuity: { status: "not-run", reason: "First Production turn failed" },
+        toolResultContinuation: { status: "not-run", reason: "not requested" },
+        reasoning: {
+          status: "observed",
+          source: "existing-production-strategy",
+          strategy: "qwen3_5",
+          disabledEffort: "none",
+          enabledEffort: "high",
+          disabledTurn: { inputTokenIds: [7, 0] } as never,
+          enabledTurn: { inputTokenIds: [7, 1] } as never,
+          inputTokenExactMatch: false,
+          firstInputMismatchIndex: 1,
+        },
+        multimodal: { status: "unavailable", strategy: "qwen3_5", reason: "not a multimodal route" },
+      },
+      error: undefined,
+    };
+
+    const report = evaluateEvidenceReadiness({ run: value });
+    const production = report.domains.find(item => item.domainId === "production-routing");
+    const continuity = report.domains.find(item => item.domainId === "continuity-kv-cache");
+    const reasoning = report.domains.find(item => item.domainId === "reasoning");
+
+    expect(production).toMatchObject({ status: "partial" });
+    expect(production?.questions[0]?.answer).toContain("first turn failed");
+    expect(continuity).toMatchObject({ status: "not-observed" });
+    expect(reasoning).toMatchObject({ status: "partial" });
   });
 
   it("keeps a failed Production Lane partial while preserving its error evidence", () => {
@@ -367,6 +997,8 @@ describe("evaluateEvidenceReadiness", () => {
     observedRun.productionLane = {
       status: "passed",
       observation: {
+        route: { autoClass: "AutoModelForCausalLM", processor: "tokenizer", strategy: "qwen3_5", modelType: "qwen3_5" },
+        firstTurn: { status: "failed", error: { name: "FixtureError", message: "first turn not relevant to reasoning fixture" } },
         reasoning: {
           status: "observed",
           source: "existing-production-strategy",
@@ -397,6 +1029,8 @@ describe("evaluateEvidenceReadiness", () => {
     value.productionLane = {
       status: "passed",
       observation: {
+        route: { autoClass: "AutoModelForImageTextToText", processor: "gemma4-processor", strategy: "gemma4", modelType: "gemma4" },
+        firstTurn: { status: "failed", error: { name: "FixtureError", message: "first turn not relevant to multimodal fixture" } },
         multimodal: {
           status: "observed",
           source: "fixed-synthetic-fixture-and-existing-production-strategy",
@@ -420,6 +1054,8 @@ describe("evaluateEvidenceReadiness", () => {
               { name: "pixel_values", dtype: "float32", dims: [1, 3, 1, 1], location: "gpu-buffer" },
             ],
             inputTokenIds: [7, 8],
+            fullConversationInput: { status: "unavailable", reason: "test fixture does not observe reconstructed full conversation input" },
+            cacheDecision: { status: "unavailable", reason: "test fixture does not observe cache decision" },
             pastKeyValuesProvided: false,
             inputPastKeyValuesSummary: { kind: "nullish", valueType: "undefined", constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
             outputPastKeyValuesSummary: { kind: "object", valueType: "object", constructorName: "Object", ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
@@ -450,6 +1086,8 @@ describe("evaluateEvidenceReadiness", () => {
     value.productionLane = {
       status: "passed",
       observation: {
+        route: { autoClass: "AutoModelForCausalLM", processor: "qwen3_5-processor", strategy: "qwen3_5", modelType: "qwen3_5" },
+        firstTurn: { status: "failed", error: { name: "FixtureError", message: "first turn not relevant to multimodal fixture" } },
         multimodal: {
           status: "unavailable",
           strategy: "qwen3_5",

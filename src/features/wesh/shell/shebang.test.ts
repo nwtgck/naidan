@@ -65,6 +65,17 @@ describe('shell shebang parsing', () => {
     ]);
   });
 
+  it('preserves long env -S literal runs across quote and escape boundaries', () => {
+    const literalPrefix = 'x'.repeat(4096);
+
+    expect(splitEnvShebangArguments({
+      optionalArgument: String.raw`-S ${literalPrefix}" quoted"\#tail next`,
+    })).toEqual([
+      `${literalPrefix} quoted#tail`,
+      'next',
+    ]);
+  });
+
   it('decodes GNU env -S escapes outside and inside double quotes', () => {
     expect(splitEnvShebangArguments({ optionalArgument: String.raw`-S bash\n-e` })).toEqual([
       `\

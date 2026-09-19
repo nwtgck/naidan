@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import MessageDiffModal from './MessageDiffModal.vue';
 import type { MessageNode } from '@/01-models/types';
 import { nextTick } from 'vue';
 import { toMessageId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('MessageDiffModal', () => {
   const createMessage = (id: string, content: string, timestamp: number): MessageNode => ({

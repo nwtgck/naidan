@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type {
   ModelSupportInvestigationModelDeclarations,
-  ModelSupportInvestigationRepository,
+  ModelSupportInvestigationRuntimeTarget,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { selectGenerationAutoClass } from "@/features/transformers-js/model-support-investigation/logic/select-generation-auto-class";
 
-const repository = {
+const runtimeTarget = {
+  normalizedModelId: "org/model",
+  evidenceRevision: "a".repeat(40),
+  loaderRevisionOption: null,
+  source: "repository",
+  revisionIdentity: "exact-resolved-revision",
   pipelineTag: "text-generation",
-} as ModelSupportInvestigationRepository;
+} as ModelSupportInvestigationRuntimeTarget;
 
 function declarations({ supported }: { supported: string[] }): ModelSupportInvestigationModelDeclarations {
   return {
@@ -30,21 +35,21 @@ function declarations({ supported }: { supported: string[] }): ModelSupportInves
 describe("selectGenerationAutoClass", () => {
   it("prefers the class matching the declared pipeline", () => {
     expect(selectGenerationAutoClass({
-      repository: { ...repository, pipelineTag: "image-text-to-text" },
+      runtimeTarget: { ...runtimeTarget, pipelineTag: "image-text-to-text" },
       declarations: declarations({ supported: ["AutoModelForCausalLM", "AutoModelForImageTextToText"] }),
     })).toBe("AutoModelForImageTextToText");
   });
 
   it("uses a deterministic generative fallback when the pipeline tag is absent", () => {
     expect(selectGenerationAutoClass({
-      repository: { ...repository, pipelineTag: undefined },
+      runtimeTarget: { ...runtimeTarget, pipelineTag: undefined },
       declarations: declarations({ supported: ["AutoModelForSeq2SeqLM", "AutoModelForCausalLM"] }),
     })).toBe("AutoModelForCausalLM");
   });
 
   it("does not select non-generative AutoModel support", () => {
     expect(selectGenerationAutoClass({
-      repository,
+      runtimeTarget,
       declarations: declarations({ supported: ["AutoModel"] }),
     })).toBeUndefined();
   });

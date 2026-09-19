@@ -282,6 +282,32 @@ describe('wesh.worker', () => {
     expect(stdoutChunks.join('')).toEqual(renderChatMetadataMarkdown({ metadata: expectedMetadata }));
   });
 
+  it('defers command preloading while an execution is active', async () => {
+    const comlink = await import('comlink');
+    const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');
+    await import('./entry');
+
+    const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0];
+    await workerApi.init({
+      request: {
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
+        mounts: [],
+        user: 'user',
+        initialEnv: {},
+      },
+    });
+
+    const { executionId } = await workerApi.startExecution({ script: 'sleep 1' });
+    await expect(workerApi.preloadNextCommand()).resolves.toEqual({ status: 'busy' });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await workerApi.interruptExecution({ request: { executionId } });
+    await expect(workerApi.awaitExecution({ request: { executionId } })).resolves.toEqual({ exitCode: 130 });
+    await workerApi.disposeExecution({ request: { executionId } });
+
+    await expect(workerApi.preloadNextCommand()).resolves.toEqual({ status: 'advanced' });
+  });
+
   it('interrupts a foreground process group', async () => {
     const comlink = await import('comlink');
     const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');

@@ -44,6 +44,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
 
     vi.mocked(Comlink.wrap).mockReturnValue({
       init,
+      preloadNextCommand: vi.fn().mockResolvedValue({ status: 'done' }),
       startExecution,
       awaitExecution,
       interruptExecution,
@@ -103,6 +104,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       release: ReturnType<typeof vi.fn>,
     }) => ({
       init,
+      preloadNextCommand: vi.fn().mockResolvedValue({ status: 'done' }),
       startExecution: vi.fn(),
       awaitExecution: vi.fn(),
       interruptExecution: vi.fn(),
@@ -175,6 +177,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
 
     const remote1 = {
       init: vi.fn().mockResolvedValue(undefined),
+      preloadNextCommand: vi.fn().mockResolvedValue({ status: 'done' }),
       startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
       awaitExecution: vi.fn().mockImplementation(() => new Promise(resolve => {
         awaitExecutionResolvers.push(resolve);
@@ -189,6 +192,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
 
     const remote2 = {
       init: vi.fn().mockResolvedValue(undefined),
+      preloadNextCommand: vi.fn().mockResolvedValue({ status: 'done' }),
       startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-2' }),
       awaitExecution: vi.fn().mockResolvedValue({ exitCode: 0 }),
       interruptExecution: vi.fn().mockResolvedValue(true),
@@ -240,6 +244,95 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     expect(terminate1).toHaveBeenCalledTimes(1);
   });
 
+  it('does not let a stale runtime release a reused execution id lease', async () => {
+    const terminate1 = vi.fn();
+    const terminate2 = vi.fn();
+    const worker1 = { terminate: terminate1 } as unknown as Worker;
+    const worker2 = { terminate: terminate2 } as unknown as Worker;
+    class WorkerMock {
+      static nextWorkers = [worker1, worker2];
+      constructor() {
+        return WorkerMock.nextWorkers.shift()!;
+      }
+    }
+    vi.stubGlobal('Worker', WorkerMock);
+
+    const release1 = vi.fn().mockResolvedValue(undefined);
+    const release2 = vi.fn().mockResolvedValue(undefined);
+    const awaitExecutionResolvers: Array<(value: { exitCode: number }) => void> = [];
+    const remote1 = {
+      init: vi.fn().mockResolvedValue(undefined),
+      preloadNextCommand: vi.fn().mockResolvedValue({ status: 'done' }),
+      startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
+      awaitExecution: vi.fn().mockImplementation(() => new Promise(resolve => {
+        awaitExecutionResolvers.push(resolve);
+      })),
+      interruptExecution: vi.fn().mockResolvedValue(true),
+      disposeExecution: vi.fn().mockResolvedValue(undefined),
+      execute: vi.fn().mockResolvedValue({ exitCode: 0 }),
+      interrupt: vi.fn().mockResolvedValue(true),
+      dispose: vi.fn().mockResolvedValue(undefined),
+      [Comlink.releaseProxy]: release1,
+    } as unknown as Comlink.Remote<import('./types').IWeshWorker>;
+    const remote2 = {
+      init: vi.fn().mockResolvedValue(undefined),
+      preloadNextCommand: vi.fn().mockResolvedValue({ status: 'done' }),
+      startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
+      awaitExecution: vi.fn().mockResolvedValue({ exitCode: 0 }),
+      interruptExecution: vi.fn().mockResolvedValue(true),
+      disposeExecution: vi.fn().mockResolvedValue(undefined),
+      execute: vi.fn().mockResolvedValue({ exitCode: 0 }),
+      interrupt: vi.fn().mockResolvedValue(true),
+      dispose: vi.fn().mockResolvedValue(undefined),
+      [Comlink.releaseProxy]: release2,
+    } as unknown as Comlink.Remote<import('./types').IWeshWorker>;
+    vi.mocked(Comlink.wrap)
+      .mockReturnValueOnce(remote1)
+      .mockReturnValueOnce(remote2);
+
+    const oldLeaseDispose = vi.fn();
+    const newLeaseDispose = vi.fn();
+    const { backgroundWorkCoordinator } = await import('@/logic/background-work-coordinator');
+    vi.spyOn(backgroundWorkCoordinator, 'beginForegroundWork')
+      .mockReturnValueOnce({ dispose: oldLeaseDispose })
+      .mockReturnValueOnce({ dispose: newLeaseDispose });
+
+    const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');
+    const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client');
+    const client = await createFileProtocolCompatibleWeshWorkerClient({
+      rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
+      mounts: [],
+      user: 'user',
+      initialEnv: {},
+      initialCwd: undefined,
+    });
+
+    const first = await client.startExecution({
+      request: { script: 'sleep 10' },
+    });
+    const staleAwait = client.awaitExecution({ request: first });
+
+    await expect(client.cancelExecution({ request: first })).resolves.toBe(true);
+    expect(oldLeaseDispose).toHaveBeenCalledTimes(1);
+
+    const second = await client.startExecution({
+      request: { script: 'echo replacement' },
+    });
+    expect(second.executionId).toBe(first.executionId);
+    expect(newLeaseDispose).not.toHaveBeenCalled();
+
+    awaitExecutionResolvers[0]?.({ exitCode: 130 });
+    await expect(staleAwait).resolves.toEqual({ exitCode: 130 });
+    expect(newLeaseDispose).not.toHaveBeenCalled();
+
+    await client.disposeExecution({ request: second });
+    expect(newLeaseDispose).toHaveBeenCalledTimes(1);
+
+    awaitExecutionResolvers[1]?.({ exitCode: 130 });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await client.dispose();
+  });
+
   it('passes a naidan sysfs remote reader during initialization for local storage mounts', async () => {
     const terminate = vi.fn();
     const worker = { terminate } as unknown as Worker;
@@ -254,6 +347,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const init = vi.fn().mockResolvedValue(undefined);
     const remote = {
       init,
+      preloadNextCommand: vi.fn().mockResolvedValue({ status: 'done' }),
       startExecution: vi.fn(),
       awaitExecution: vi.fn(),
       interruptExecution: vi.fn(),

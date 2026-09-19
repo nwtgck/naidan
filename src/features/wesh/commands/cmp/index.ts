@@ -7,7 +7,7 @@ import {
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshOpenFlags,
 } from '@/features/wesh/types';
@@ -233,12 +233,7 @@ function processWasInterrupted({
   return waitStatus?.kind === 'signaled' || waitStatus?.kind === 'stopped';
 }
 
-export const cmpCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'cmp',
-    description: 'Compare two files byte by byte',
-    usage: 'cmp [OPTION]... FILE1 [FILE2 [SKIP1 [SKIP2]]]',
-  },
+export const cmpCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,

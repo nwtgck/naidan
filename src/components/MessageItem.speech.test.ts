@@ -1,9 +1,14 @@
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import { webSpeechService } from '@/features/speech/logic/web-speech';
 import { nextTick } from 'vue';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {

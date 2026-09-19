@@ -2,13 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import type { ToolCall } from '@/01-models/types';
 import { toToolCallId } from '@/01-models/ids';
+import { runProviderTestInferenceOperation } from './provider-inference-test-scope';
+import type { TransformersJsInferenceOperation } from './inference-operation';
 
 // Mock the service
 const mockService = {
   getState: vi.fn(),
-  loadModel: vi.fn(),
+  loadDownloadedModel: vi.fn(),
   generateText: vi.fn(),
   listCachedModels: vi.fn(),
+  runInferenceOperation(args: TransformersJsInferenceOperation) {
+    return runProviderTestInferenceOperation({ ...args, service: mockService });
+  },
 };
 
 vi.mock('./index', () => ({
@@ -43,7 +48,7 @@ describe('TransformersJsProvider', () => {
 
   it('should auto-load model if not already ready', async () => {
     mockService.getState.mockReturnValue({ status: 'idle', activeModelId: null });
-    mockService.loadModel.mockResolvedValue(undefined);
+    mockService.loadDownloadedModel.mockResolvedValue(undefined);
     setupGenerateTextMock();
 
     const { TransformersJsProvider } = await import('./provider');
@@ -55,7 +60,7 @@ describe('TransformersJsProvider', () => {
       onChunk: vi.fn(),
     });
 
-    expect(mockService.loadModel).toHaveBeenCalledWith({ modelId: 'some-model' });
+    expect(mockService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'some-model' });
     expect(mockService.generateText).toHaveBeenCalledOnce();
     expect(mockService.generateText.mock.calls[0]![0].messages).toEqual([{ role: 'user', content: 'hello' }]);
   });
@@ -73,7 +78,7 @@ describe('TransformersJsProvider', () => {
       onChunk: () => {},
     });
 
-    expect(mockService.loadModel).not.toHaveBeenCalled();
+    expect(mockService.loadDownloadedModel).not.toHaveBeenCalled();
     expect(mockService.generateText).toHaveBeenCalledOnce();
   });
 
@@ -141,7 +146,7 @@ describe('TransformersJsProvider', () => {
       expect(mockService.generateText).toHaveBeenCalledTimes(2);
 
       // Tool was called with validated args
-      expect(tool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { input: 'hello' }, signal: undefined }));
+      expect(tool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { input: 'hello' }, signal: expect.any(AbortSignal) }));
       expect(onToolCall).toHaveBeenCalledWith({
         id: 'call_1',
         toolName: 'my_tool',
@@ -154,6 +159,58 @@ describe('TransformersJsProvider', () => {
       expect(secondCallMessages).toContainEqual(
         expect.objectContaining({ role: 'tool', tool_call_id: 'call_1', content: 'result of my_tool' }),
       );
+    });
+
+    it('should execute multiple tool calls before continuing generation', async () => {
+      mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
+
+      const toolCalls: ToolCall[] = [
+        {
+          id: toToolCallId({ raw: 'call_workspace' }),
+          type: 'function',
+          function: { name: 'shell_execute', arguments: '{"shell_script":"ls -la /workspace"}' },
+        },
+        {
+          id: toToolCallId({ raw: 'call_tmp' }),
+          type: 'function',
+          function: { name: 'shell_execute', arguments: '{"shell_script":"ls -la /tmp"}' },
+        },
+      ];
+      setupGenerateTextMock(toolCalls);
+
+      const execute = vi.fn(async ({ args }: { args: { shell_script: string } }) => ({
+        status: 'success' as const,
+        content: `result for ${args.shell_script}`,
+      }));
+      const tool = {
+        name: 'shell_execute',
+        description: 'Run shell',
+        parametersSchema: z.object({ shell_script: z.string() }),
+        execute,
+      };
+
+      const { TransformersJsProvider } = await import('./provider');
+      const provider = new TransformersJsProvider();
+      await provider.chat({
+        model: 'model',
+        messages: [{ role: 'user', content: 'Use shell tools.' }],
+        onChunk: vi.fn(),
+        tools: [tool],
+      });
+
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(execute.mock.calls.map(([request]) => request.args)).toEqual([
+        { shell_script: 'ls -la /workspace' },
+        { shell_script: 'ls -la /tmp' },
+      ]);
+      expect(mockService.generateText).toHaveBeenCalledTimes(2);
+      const continuationMessages = mockService.generateText.mock.calls[1]![0].messages as Array<Record<string, unknown>>;
+      const assistant = continuationMessages.find(message => message['role'] === 'assistant') as { tool_calls?: ToolCall[] } | undefined;
+      expect(assistant?.tool_calls).toEqual(toolCalls);
+      expect(continuationMessages.filter(message => message['role'] === 'tool')).toEqual([
+        expect.objectContaining({ tool_call_id: 'call_workspace', content: 'result for ls -la /workspace' }),
+        expect.objectContaining({ tool_call_id: 'call_tmp', content: 'result for ls -la /tmp' }),
+      ]);
     });
 
     it('should report an error when the tool is not found', async () => {

@@ -1,10 +1,15 @@
 import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import MessageItem from './MessageItem.vue';
 import { SENTINEL_IMAGE_PENDING, TEST_ONLY as IMAGE_GENERATION_TEST_ONLY } from '@/utils/image-generation';
 import { useSettings } from '@/composables/useSettings';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {

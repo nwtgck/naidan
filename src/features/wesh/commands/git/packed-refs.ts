@@ -1,7 +1,7 @@
 import type { GitFiles } from './files';
 import { pathExists, readFileText, replaceTextViaLock } from './files';
 import type { GitRepository } from './repository';
-import { compareGitUtf8Strings } from './utf8-order';
+import { sortByGitUtf8StringKey } from './utf8-order';
 import { joinPath } from './repository';
 
 export interface GitPackedRef {
@@ -45,7 +45,7 @@ async function writePackedRefs({ files, repository, entries }: {
   repository: GitRepository,
   entries: readonly GitPackedRef[],
 }): Promise<void> {
-  const sorted = [...entries].sort((left, right) => compareGitUtf8Strings({ left: left.refName, right: right.refName }));
+  const sorted = sortByGitUtf8StringKey({ values: entries, key: ({ value }) => value.refName });
   const lines = ['# pack-refs with: peeled fully-peeled sorted '];
   for (const entry of sorted) {
     lines.push(`${entry.objectId} ${entry.refName}`);

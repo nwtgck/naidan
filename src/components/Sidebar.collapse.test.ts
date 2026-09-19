@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -6,6 +7,10 @@ import { ref, nextTick, reactive, computed } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import type { ChatGroup, SidebarItem } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),

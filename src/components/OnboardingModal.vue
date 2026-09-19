@@ -210,7 +210,7 @@ watch(
         }
 
         try {
-          await transformersJsService.loadModel({ modelId: target });
+          await transformersJsService.loadDownloadedModel({ modelId: target });
           if (!cancelled) {
             selectedModel.value = target;
           }

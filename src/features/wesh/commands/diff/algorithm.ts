@@ -91,80 +91,60 @@ function appendOperation({
   operations.push(operation);
 }
 
-function tryCreateDynamicProgrammingOperations({
+interface MutableDiffMatch {
+  leftIndex: number,
+  rightIndex: number,
+}
+
+function reconstructOperationsFromMatches({
+  matches,
   leftLength,
   rightLength,
-  areEqual,
 }: {
+  matches: readonly MutableDiffMatch[],
   leftLength: number,
   rightLength: number,
-  areEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
-}): DiffOperation[] | undefined {
-  const rowWidth = rightLength + 1;
-  const cellCount = (leftLength + 1) * rowWidth;
-  if (!Number.isSafeInteger(cellCount) || cellCount > MAX_DYNAMIC_PROGRAMMING_CELLS) {
-    return undefined;
-  }
-
-  const longestCommonSubsequenceLengths = new Uint32Array(cellCount);
-  for (let leftIndex = leftLength - 1; leftIndex >= 0; leftIndex--) {
-    for (let rightIndex = rightLength - 1; rightIndex >= 0; rightIndex--) {
-      const index = (leftIndex * rowWidth) + rightIndex;
-      if (areEqual({ leftIndex, rightIndex })) {
-        longestCommonSubsequenceLengths[index] = longestCommonSubsequenceLengths[index + rowWidth + 1]! + 1;
-      } else {
-        longestCommonSubsequenceLengths[index] = Math.max(
-          longestCommonSubsequenceLengths[index + rowWidth]!,
-          longestCommonSubsequenceLengths[index + 1]!,
-        );
-      }
-    }
-  }
-
+}): DiffOperation[] {
   const operations: DiffOperation[] = [];
   let leftIndex = 0;
   let rightIndex = 0;
-  while (leftIndex < leftLength && rightIndex < rightLength) {
-    if (areEqual({ leftIndex, rightIndex })) {
-      appendOperation({
-        operations,
-        operation: {
-          kind: 'equal',
-          leftStart: leftIndex,
-          rightStart: rightIndex,
-          length: 1,
-        },
-      });
-      leftIndex++;
-      rightIndex++;
-      continue;
-    }
 
-    const deleteLength = longestCommonSubsequenceLengths[((leftIndex + 1) * rowWidth) + rightIndex]!;
-    const insertLength = longestCommonSubsequenceLengths[(leftIndex * rowWidth) + rightIndex + 1]!;
-    if (deleteLength >= insertLength) {
+  for (const match of matches) {
+    if (leftIndex < match.leftIndex) {
       appendOperation({
         operations,
         operation: {
           kind: 'delete',
           leftStart: leftIndex,
           rightStart: rightIndex,
-          length: 1,
+          length: match.leftIndex - leftIndex,
         },
       });
-      leftIndex++;
-    } else {
+      leftIndex = match.leftIndex;
+    }
+    if (rightIndex < match.rightIndex) {
       appendOperation({
         operations,
         operation: {
           kind: 'insert',
           leftStart: leftIndex,
           rightStart: rightIndex,
-          length: 1,
+          length: match.rightIndex - rightIndex,
         },
       });
-      rightIndex++;
+      rightIndex = match.rightIndex;
     }
+    appendOperation({
+      operations,
+      operation: {
+        kind: 'equal',
+        leftStart: leftIndex,
+        rightStart: rightIndex,
+        length: 1,
+      },
+    });
+    leftIndex++;
+    rightIndex++;
   }
 
   if (leftIndex < leftLength) {
@@ -192,34 +172,417 @@ function tryCreateDynamicProgrammingOperations({
   return operations;
 }
 
+function shiftEquivalentMatchBoundaries({
+  operations,
+  leftLength,
+  rightLength,
+  areEqual,
+  areExactlyEqual,
+}: {
+  operations: readonly DiffOperation[],
+  leftLength: number,
+  rightLength: number,
+  areEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
+  areExactlyEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
+}): DiffOperation[] {
+  const matches: MutableDiffMatch[] = [];
+  const leftMatched = new Uint8Array(leftLength);
+  const rightMatched = new Uint8Array(rightLength);
+  for (const operation of operations) {
+    switch (operation.kind) {
+    case 'equal':
+      for (let offset = 0; offset < operation.length; offset++) {
+        const leftIndex = operation.leftStart + offset;
+        const rightIndex = operation.rightStart + offset;
+        matches.push({ leftIndex, rightIndex });
+        leftMatched[leftIndex] = 1;
+        rightMatched[rightIndex] = 1;
+      }
+      break;
+    case 'delete':
+    case 'insert':
+      break;
+    default: {
+      const _ex: never = operation;
+      throw new Error(`Unhandled diff operation: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  function changedNeighborCount({
+    candidate,
+    rangeStart,
+    rangeEnd,
+    matched,
+  }: {
+    candidate: number,
+    rangeStart: number,
+    rangeEnd: number,
+    matched: Uint8Array,
+  }): number {
+    const leftChanged = candidate > rangeStart
+      || (candidate > 0 && matched[candidate - 1] === 0);
+    const rightChanged = candidate < rangeEnd
+      || (candidate + 1 < matched.length && matched[candidate + 1] === 0);
+    return Number(leftChanged) + Number(rightChanged);
+  }
+
+  for (const match of matches) {
+    let rangeStart = match.leftIndex;
+    while (
+      rangeStart > 0
+      && leftMatched[rangeStart - 1] === 0
+      && areEqual({ leftIndex: rangeStart - 1, rightIndex: match.rightIndex })
+    ) {
+      rangeStart--;
+    }
+    let rangeEnd = match.leftIndex;
+    while (
+      rangeEnd + 1 < leftLength
+      && leftMatched[rangeEnd + 1] === 0
+      && areEqual({ leftIndex: rangeEnd + 1, rightIndex: match.rightIndex })
+    ) {
+      rangeEnd++;
+    }
+    let bestLeftIndex = match.leftIndex;
+    let bestNeighborCount = changedNeighborCount({
+      candidate: bestLeftIndex,
+      rangeStart,
+      rangeEnd,
+      matched: leftMatched,
+    });
+    for (let candidate = rangeStart; candidate <= rangeEnd; candidate++) {
+      const neighborCount = changedNeighborCount({
+        candidate,
+        rangeStart,
+        rangeEnd,
+        matched: leftMatched,
+      });
+      if (
+        neighborCount < bestNeighborCount
+        || (
+          neighborCount === bestNeighborCount
+          && !areExactlyEqual({ leftIndex: bestLeftIndex, rightIndex: match.rightIndex })
+          && areExactlyEqual({ leftIndex: candidate, rightIndex: match.rightIndex })
+        )
+      ) {
+        bestLeftIndex = candidate;
+        bestNeighborCount = neighborCount;
+      }
+    }
+    if (bestLeftIndex !== match.leftIndex) {
+      leftMatched[match.leftIndex] = 0;
+      leftMatched[bestLeftIndex] = 1;
+      match.leftIndex = bestLeftIndex;
+    }
+  }
+
+  for (const match of matches) {
+    let rangeStart = match.rightIndex;
+    while (
+      rangeStart > 0
+      && rightMatched[rangeStart - 1] === 0
+      && areEqual({ leftIndex: match.leftIndex, rightIndex: rangeStart - 1 })
+    ) {
+      rangeStart--;
+    }
+    let rangeEnd = match.rightIndex;
+    while (
+      rangeEnd + 1 < rightLength
+      && rightMatched[rangeEnd + 1] === 0
+      && areEqual({ leftIndex: match.leftIndex, rightIndex: rangeEnd + 1 })
+    ) {
+      rangeEnd++;
+    }
+    let bestRightIndex = match.rightIndex;
+    let bestNeighborCount = changedNeighborCount({
+      candidate: bestRightIndex,
+      rangeStart,
+      rangeEnd,
+      matched: rightMatched,
+    });
+    for (let candidate = rangeStart; candidate <= rangeEnd; candidate++) {
+      const neighborCount = changedNeighborCount({
+        candidate,
+        rangeStart,
+        rangeEnd,
+        matched: rightMatched,
+      });
+      if (
+        neighborCount < bestNeighborCount
+        || (
+          neighborCount === bestNeighborCount
+          && !areExactlyEqual({ leftIndex: match.leftIndex, rightIndex: bestRightIndex })
+          && areExactlyEqual({ leftIndex: match.leftIndex, rightIndex: candidate })
+        )
+      ) {
+        bestRightIndex = candidate;
+        bestNeighborCount = neighborCount;
+      }
+    }
+    if (bestRightIndex !== match.rightIndex) {
+      rightMatched[match.rightIndex] = 0;
+      rightMatched[bestRightIndex] = 1;
+      match.rightIndex = bestRightIndex;
+    }
+  }
+
+  return reconstructOperationsFromMatches({
+    matches,
+    leftLength,
+    rightLength,
+  });
+}
+
+function tryCreateDynamicProgrammingOperations({
+  leftLength,
+  rightLength,
+  areEqual,
+  areExactlyEqual,
+}: {
+  leftLength: number,
+  rightLength: number,
+  areEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
+  areExactlyEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
+}): DiffOperation[] | undefined {
+  const rowWidth = rightLength + 1;
+  const cellCount = (leftLength + 1) * rowWidth;
+  if (!Number.isSafeInteger(cellCount) || cellCount > MAX_DYNAMIC_PROGRAMMING_CELLS) {
+    return undefined;
+  }
+
+  const longestCommonSubsequenceLengths = new Uint32Array(cellCount);
+
+  // GNU diff shifts change boundaries across duplicate/equivalent lines when
+  // doing so keeps the same LCS length but joins otherwise separated change
+  // groups. Preserve the primary maximum-LCS objective, then minimize the
+  // number of change groups as a bounded secondary objective. Two states are
+  // required because starting a change after an equal operation costs one new
+  // group, while continuing an existing change does not. Compute both costs in
+  // the same reverse pass as the LCS table so each line comparison is evaluated
+  // only once per cell.
+  const changeGroupsAfterEqual = new Uint16Array(cellCount);
+  const changeGroupsAfterChange = new Uint16Array(cellCount);
+  for (let leftIndex = 0; leftIndex < leftLength; leftIndex++) {
+    changeGroupsAfterEqual[(leftIndex * rowWidth) + rightLength] = 1;
+  }
+  const lastRowStart = leftLength * rowWidth;
+  for (let rightIndex = 0; rightIndex < rightLength; rightIndex++) {
+    changeGroupsAfterEqual[lastRowStart + rightIndex] = 1;
+  }
+
+  for (let leftIndex = leftLength - 1; leftIndex >= 0; leftIndex--) {
+    for (let rightIndex = rightLength - 1; rightIndex >= 0; rightIndex--) {
+      const index = (leftIndex * rowWidth) + rightIndex;
+      const equal = areEqual({ leftIndex, rightIndex });
+      if (equal) {
+        longestCommonSubsequenceLengths[index] = longestCommonSubsequenceLengths[index + rowWidth + 1]! + 1;
+      } else {
+        longestCommonSubsequenceLengths[index] = Math.max(
+          longestCommonSubsequenceLengths[index + rowWidth]!,
+          longestCommonSubsequenceLengths[index + 1]!,
+        );
+      }
+
+      const lcsLength = longestCommonSubsequenceLengths[index]!;
+      const equalContinuation = (
+        equal
+        && longestCommonSubsequenceLengths[index + rowWidth + 1]! + 1 === lcsLength
+      )
+        ? changeGroupsAfterEqual[index + rowWidth + 1]!
+        : Number.POSITIVE_INFINITY;
+      let changeContinuation = Number.POSITIVE_INFINITY;
+      if (longestCommonSubsequenceLengths[index + rowWidth]! === lcsLength) {
+        changeContinuation = Math.min(
+          changeContinuation,
+          changeGroupsAfterChange[index + rowWidth]!,
+        );
+      }
+      if (longestCommonSubsequenceLengths[index + 1]! === lcsLength) {
+        changeContinuation = Math.min(
+          changeContinuation,
+          changeGroupsAfterChange[index + 1]!,
+        );
+      }
+
+      changeGroupsAfterChange[index] = Math.min(equalContinuation, changeContinuation);
+      changeGroupsAfterEqual[index] = Math.min(equalContinuation, changeContinuation + 1);
+    }
+  }
+
+  const operations: DiffOperation[] = [];
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let previousOperationKind: 'equal' | 'change' = 'equal';
+  while (leftIndex < leftLength && rightIndex < rightLength) {
+    const index = (leftIndex * rowWidth) + rightIndex;
+    const lcsLength = longestCommonSubsequenceLengths[index]!;
+    let targetGroupCount: number;
+    let startingGroupCost: number;
+    switch (previousOperationKind) {
+    case 'equal':
+      targetGroupCount = changeGroupsAfterEqual[index]!;
+      startingGroupCost = 1;
+      break;
+    case 'change':
+      targetGroupCount = changeGroupsAfterChange[index]!;
+      startingGroupCost = 0;
+      break;
+    default: {
+      const _ex: never = previousOperationKind;
+      throw new Error(`Unhandled previous diff operation kind: ${_ex}`);
+    }
+    }
+    const equalContinuation = (
+      areEqual({ leftIndex, rightIndex })
+      && longestCommonSubsequenceLengths[index + rowWidth + 1]! + 1 === lcsLength
+    )
+      ? changeGroupsAfterEqual[index + rowWidth + 1]!
+      : Number.POSITIVE_INFINITY;
+
+    // Keep the current earliest-match behavior when it ties the secondary
+    // objective. Boundary shifting is used only when it strictly reduces the
+    // number of change groups.
+    if (equalContinuation === targetGroupCount) {
+      appendOperation({
+        operations,
+        operation: {
+          kind: 'equal',
+          leftStart: leftIndex,
+          rightStart: rightIndex,
+          length: 1,
+        },
+      });
+      leftIndex++;
+      rightIndex++;
+      previousOperationKind = 'equal';
+      continue;
+    }
+
+    const deleteLength = longestCommonSubsequenceLengths[((leftIndex + 1) * rowWidth) + rightIndex]!;
+    const insertLength = longestCommonSubsequenceLengths[(leftIndex * rowWidth) + rightIndex + 1]!;
+    const deleteGroupCount = deleteLength === lcsLength
+      ? startingGroupCost + changeGroupsAfterChange[((leftIndex + 1) * rowWidth) + rightIndex]!
+      : Number.POSITIVE_INFINITY;
+    const insertGroupCount = insertLength === lcsLength
+      ? startingGroupCost + changeGroupsAfterChange[(leftIndex * rowWidth) + rightIndex + 1]!
+      : Number.POSITIVE_INFINITY;
+
+    if (deleteGroupCount === targetGroupCount && deleteLength >= insertLength) {
+      appendOperation({
+        operations,
+        operation: {
+          kind: 'delete',
+          leftStart: leftIndex,
+          rightStart: rightIndex,
+          length: 1,
+        },
+      });
+      leftIndex++;
+    } else if (insertGroupCount === targetGroupCount) {
+      appendOperation({
+        operations,
+        operation: {
+          kind: 'insert',
+          leftStart: leftIndex,
+          rightStart: rightIndex,
+          length: 1,
+        },
+      });
+      rightIndex++;
+    } else if (deleteGroupCount === targetGroupCount) {
+      appendOperation({
+        operations,
+        operation: {
+          kind: 'delete',
+          leftStart: leftIndex,
+          rightStart: rightIndex,
+          length: 1,
+        },
+      });
+      leftIndex++;
+    } else {
+      throw new Error('failed to reconstruct dynamic-programming diff path');
+    }
+    previousOperationKind = 'change';
+  }
+
+  if (leftIndex < leftLength) {
+    appendOperation({
+      operations,
+      operation: {
+        kind: 'delete',
+        leftStart: leftIndex,
+        rightStart: rightIndex,
+        length: leftLength - leftIndex,
+      },
+    });
+  }
+  if (rightIndex < rightLength) {
+    appendOperation({
+      operations,
+      operation: {
+        kind: 'insert',
+        leftStart: leftIndex,
+        rightStart: rightIndex,
+        length: rightLength - rightIndex,
+      },
+    });
+  }
+  return shiftEquivalentMatchBoundaries({
+    operations,
+    leftLength,
+    rightLength,
+    areEqual,
+    areExactlyEqual,
+  });
+}
+
 function findSingleLineMatch({
   leftStart,
   leftEnd,
   rightStart,
   rightEnd,
   areEqual,
+  areExactlyEqual,
 }: {
   leftStart: number,
   leftEnd: number,
   rightStart: number,
   rightEnd: number,
   areEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
+  areExactlyEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
 }): { leftIndex: number, rightIndex: number } | undefined {
   if (leftEnd - leftStart === 1) {
+    let firstEquivalentRightIndex: number | undefined;
     for (let rightIndex = rightStart; rightIndex < rightEnd; rightIndex++) {
-      if (areEqual({ leftIndex: leftStart, rightIndex })) {
+      if (!areEqual({ leftIndex: leftStart, rightIndex })) {
+        continue;
+      }
+      if (areExactlyEqual({ leftIndex: leftStart, rightIndex })) {
         return { leftIndex: leftStart, rightIndex };
       }
+      firstEquivalentRightIndex ??= rightIndex;
     }
-    return undefined;
+    return firstEquivalentRightIndex === undefined
+      ? undefined
+      : { leftIndex: leftStart, rightIndex: firstEquivalentRightIndex };
   }
 
   if (rightEnd - rightStart === 1) {
+    let firstEquivalentLeftIndex: number | undefined;
     for (let leftIndex = leftStart; leftIndex < leftEnd; leftIndex++) {
-      if (areEqual({ leftIndex, rightIndex: rightStart })) {
+      if (!areEqual({ leftIndex, rightIndex: rightStart })) {
+        continue;
+      }
+      if (areExactlyEqual({ leftIndex, rightIndex: rightStart })) {
         return { leftIndex, rightIndex: rightStart };
       }
+      firstEquivalentLeftIndex ??= leftIndex;
     }
+    return firstEquivalentLeftIndex === undefined
+      ? undefined
+      : { leftIndex: firstEquivalentLeftIndex, rightIndex: rightStart };
   }
 
   return undefined;
@@ -461,11 +824,13 @@ export function createDiffOperations({
   leftLength,
   rightLength,
   areEqual,
+  areExactlyEqual,
   preferSpeedOverCompatibility = false,
 }: {
   leftLength: number,
   rightLength: number,
   areEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
+  areExactlyEqual: ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean,
   preferSpeedOverCompatibility?: boolean,
 }): DiffOperation[] {
   if (!preferSpeedOverCompatibility) {
@@ -473,6 +838,7 @@ export function createDiffOperations({
       leftLength,
       rightLength,
       areEqual,
+      areExactlyEqual,
     });
     if (dynamicProgrammingOperations !== undefined) {
       return dynamicProgrammingOperations;
@@ -514,7 +880,7 @@ export function createDiffOperations({
     while (
       leftStart < leftEnd
       && rightStart < rightEnd
-      && areEqual({ leftIndex: leftStart, rightIndex: rightStart })
+      && areExactlyEqual({ leftIndex: leftStart, rightIndex: rightStart })
     ) {
       leftStart++;
       rightStart++;
@@ -524,7 +890,7 @@ export function createDiffOperations({
     while (
       leftStart < leftEnd
       && rightStart < rightEnd
-      && areEqual({ leftIndex: leftEnd - 1, rightIndex: rightEnd - 1 })
+      && areExactlyEqual({ leftIndex: leftEnd - 1, rightIndex: rightEnd - 1 })
     ) {
       leftEnd--;
       rightEnd--;
@@ -581,6 +947,7 @@ export function createDiffOperations({
           rightStart,
           rightEnd,
           areEqual,
+          areExactlyEqual,
         }),
       });
     } else {

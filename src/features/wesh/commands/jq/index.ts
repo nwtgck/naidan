@@ -14,7 +14,7 @@ import {
   type JqRuntimeInputState,
 } from '@/features/wesh/commands/jq/runtime';
 import { createJsonObject, defineJsonProperty, jsonObjectKeys } from '@/features/wesh/commands/jq/value';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { openHandleReadStream, readAllFileText } from '@/features/wesh/utils/fs';
 
 const OUTPUT_BUFFER_LIMIT = 16 * 1024;
@@ -1595,12 +1595,7 @@ async function writeRuntimeError({
   return { exitCode: 5 };
 }
 
-export const jqCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'jq',
-    description: 'Query and transform JSON values with jq-style filters',
-    usage: 'jq [OPTION]... FILTER [FILE]...',
-  },
+export const jqCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedJq = parseJqArgv({ args: context.args });
     const parsed = parsedJq.standard;

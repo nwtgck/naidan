@@ -85,7 +85,10 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="flex flex-col w-52 shrink-0 border-r border-gray-100 dark:border-gray-800 overflow-y-auto overscroll-contain">
+  <div
+    data-testid="file-explorer-column-pane"
+    tw-class="flex flex-col w-52 shrink-0 border-r border-gray-100 dark:border-gray-800 overflow-x-hidden overflow-y-auto overscroll-y-contain"
+  >
     <div v-if="pane.isLoading" tw-class="flex items-center justify-center py-8">
       <Loader2Icon tw-class="w-4 h-4 text-gray-400 animate-spin" />
     </div>

@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import ChatPrintContent from './ChatPrintContent.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatBranches } from '@/composables/chat/useChatBranches';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // Mock dependencies
 const mockMarkPrintReady = vi.fn();

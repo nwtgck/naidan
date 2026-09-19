@@ -1,8 +1,11 @@
+import { createOpfsStagingFileName } from './runtime/opfs-staging-file';
+import { assertOpfsFileLease, withOpfsFileLease, type OpfsFileLease } from './runtime/opfs-access';
+
 /**
  * Interface to extend FileSystemFileHandle with the non-standard createWritable method.
  */
 export interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
-  createWritable(): Promise<FileSystemWritableFileStream>,
+  createWritable(options?: { keepExistingData?: boolean }): Promise<FileSystemWritableFileStream>,
 }
 
 /**
@@ -79,7 +82,7 @@ async function removeEntryIfPresent({ directory, name }: {
   try {
     await directory.removeEntry(name);
   } catch (error) {
-    if (error instanceof Error && error.name === 'NotFoundError') return;
+    if ((error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError') return;
     throw error;
   }
 }
@@ -87,33 +90,114 @@ async function removeEntryIfPresent({ directory, name }: {
 async function writeResponseBody({ fileHandle, response }: {
   fileHandle: FileSystemFileHandle,
   response: Response,
-}): Promise<void> {
+}): Promise<number> {
   if (!('createWritable' in fileHandle)) {
     throw new Error('OPFS file handle does not support createWritable');
   }
-  const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
+  const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable({ keepExistingData: false });
   if (response.body !== null) {
-    await response.body.pipeTo(writable);
-    return;
+    let receivedByteLength = 0;
+    let piping: Promise<void>;
+    try {
+      piping = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          receivedByteLength += chunk.byteLength;
+          controller.enqueue(chunk);
+        },
+      })).pipeTo(writable);
+    } catch (error) {
+      // Setup can throw before pipeTo takes ownership (for example a locked
+      // source). Abort the writable before cleanup or releasing its lease.
+      try {
+        await writable.abort(error);
+      } catch { /* Preserve the setup failure. */ }
+      throw error;
+    }
+    await piping;
+    return receivedByteLength;
   }
-  await writable.write(await response.arrayBuffer());
-  await writable.close();
+  try {
+    const bytes = await response.arrayBuffer();
+    await writable.write(bytes);
+    await writable.close();
+    return bytes.byteLength;
+  } catch (error) {
+    try {
+      await writable.abort(error);
+    } catch { /* Preserve the write failure. */ }
+    throw error;
+  }
 }
 
-function expectedResponseByteLength({ response }: { response: Response }): number | undefined {
+/**
+ * Length checks and transfer progress must describe the bytes exposed by fetch,
+ * not the encoded HTTP payload. Native fetch can retain compression headers
+ * after decoding the body, so that Content-Length cannot verify an OPFS file.
+ */
+export function expectedDecodedResponseByteLength({ response }: { response: Response }): number | undefined {
+  const encoding = response.headers.get('content-encoding')?.trim().toLowerCase();
+  if (encoding !== undefined && encoding !== '' && encoding !== 'identity') return undefined;
   const header = response.headers.get('content-length');
-  if (header === null) return undefined;
+  if (header === null || !/^\d+$/u.test(header.trim())) return undefined;
   const value = Number(header);
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
+/** Full-file persistence never promotes a range or an unsuccessful response. */
+export function fullResourceResponseError({ response }: { response: Response }): Error | undefined {
+  if (!response.ok) return new Error(`HTTP ${response.status} ${response.statusText}`);
+  if (response.status !== 200) return new Error(`Full resource response requires HTTP 200, received HTTP ${response.status}`);
+  if (response.headers.has('Content-Range')) return new Error('Full resource response must not include Content-Range');
+  return undefined;
+}
+
+export const REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS = 1_000;
+
+/** Reject before writes; bound cleanup of unread or tee-branch response bodies. */
+async function cancelResponseBodyBounded({ response }: { response: Response }): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve().then(() => response.body?.cancel()).catch(() => undefined),
+      new Promise<void>(resolve => {
+        timeout = setTimeout(resolve, REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+export async function rejectResourceResponse({ response, error }: { response: Response, error: Error }): Promise<never> {
+  await cancelResponseBodyBounded({ response });
+  // The original validation error always wins. The deadline cannot certify a
+  // response as complete or prove transport termination; the caller still owns
+  // its Worker. Normal successful responses never enter this cleanup wait.
+  throw error;
+}
+
+export async function assertFullResourceResponse({ response }: { response: Response }): Promise<void> {
+  const error = fullResourceResponseError({ response });
+  if (error !== undefined) await rejectResourceResponse({ response, error });
+}
+
 /**
  * Writes a response body directly to its final OPFS path. This is the normal
- * Transformers.js custom-cache write path and intentionally preserves the
- * pre-investigation production behavior: one response stream, one final write,
- * then the completion marker.
+ * Transformers.js custom-cache write path uses one response stream and one final
+ * write. Completion is published only after the closed file passes verification;
+ * the old marker must not certify replacement bytes when verification fails.
  */
 export async function writeToOpfs({ path, response }: { path: string, response: Response }): Promise<void> {
+  await withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) => {
+    await writeDirectUnderLease({ path, response, lease });
+  } });
+}
+
+async function writeDirectUnderLease({ path, response, lease }: {
+  path: string; response: Response; lease: OpfsFileLease;
+}): Promise<number> {
+  assertOpfsFileLease({ lease, path, mode: 'exclusive' });
+  await assertFullResourceResponse({ response });
   const pathParts = path.split('/');
   const fileName = pathParts.pop()!;
 
@@ -125,15 +209,58 @@ export async function writeToOpfs({ path, response }: { path: string, response: 
   }
 
   const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
-  if ('createWritable' in fileHandle) {
-    const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
-    if (response.body !== null) {
-      await response.body.pipeTo(writable);
-    } else {
-      await writable.write(await response.arrayBuffer());
-      await writable.close();
+  if (!('createWritable' in fileHandle)) {
+    throw new Error('OPFS file handle does not support createWritable');
+  }
+  const markerName = `.${fileName}.complete`;
+  await removeEntryIfPresent({ directory: currentDir, name: markerName });
+  const receivedByteLength = await writeResponseBody({ fileHandle, response });
+  const file = await fileHandle.getFile();
+  const expectedByteLength = expectedDecodedResponseByteLength({ response });
+  if (file.size === 0) throw new Error(`OPFS file is empty: ${path}`);
+  if (file.size !== receivedByteLength) {
+    throw new Error(`OPFS byte length mismatch for ${path}: consumed ${receivedByteLength}, stored ${file.size}`);
+  }
+  if (expectedByteLength !== undefined && file.size !== expectedByteLength) {
+    throw new Error(`OPFS byte length mismatch for ${path}: expected ${expectedByteLength}, received ${file.size}`);
+  }
+  await currentDir.getFileHandle(markerName, { create: true });
+  return file.size;
+}
+
+/** Only incomplete prefetch files enter this path. Normal complete files must
+ * be reused before calling it; this is not a replacement/rollback API.
+ */
+export async function writeIncompleteOpfsFile({ path, response, lease }: {
+  path: string; response: Response; lease: OpfsFileLease;
+}): Promise<{ byteLength: number }> {
+  assertOpfsFileLease({ lease, path, mode: 'exclusive' });
+  // Invalid/range responses are rejected before any mutation, including the
+  // cleanup path. Preserve the existing whole-response validation boundary.
+  await assertFullResourceResponse({ response });
+  try {
+    return { byteLength: await writeDirectUnderLease({ path, response, lease }) };
+  } catch (error) {
+    // The caller retains its exclusive lease until this cleanup settles. Never
+    // let a late cleanup remove another writer's successfully committed file.
+    try {
+      const parts = path.split('/').filter(part => part.length > 0);
+      const name = parts.pop()!;
+      let directory = await navigator.storage.getDirectory();
+      for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: false });
+      await removeEntryIfPresent({ directory, name: `.${name}.complete` });
+      await removeEntryIfPresent({ directory, name });
+    } catch (cleanupError) {
+      console.warn('[transformersJs] Failed to clean an incomplete OPFS file', cleanupError);
     }
-    await currentDir.getFileHandle(`.${fileName}.complete`, { create: true });
+    // Covers setup failures before pipeTo owns cancellation, including unread
+    // tee branches. The bounded wait does not certify transport termination.
+    // Actual pipeTo/write/abort and storage cleanup have already settled; this
+    // deadline must never release a still-running writer's storage lease.
+    try {
+      if (!response.body?.locked) await cancelResponseBodyBounded({ response });
+    } catch { /* The original write/verification error remains authoritative. */ }
+    throw error;
   }
 }
 
@@ -143,10 +270,19 @@ export async function writeToOpfs({ path, response }: { path: string, response: 
  * existing completion marker must not survive a failed repair.
  */
 export async function writeToOpfsWithStaging({ path, response }: { path: string, response: Response }): Promise<{ byteLength: number }> {
+  return await withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) =>
+    await writeToOpfsWithStagingUnderLease({ path, response, lease }) });
+}
+
+export async function writeToOpfsWithStagingUnderLease({ path, response, lease }: {
+  path: string; response: Response; lease: OpfsFileLease;
+}): Promise<{ byteLength: number }> {
+  assertOpfsFileLease({ lease, path, mode: 'exclusive' });
+  await assertFullResourceResponse({ response });
   const pathParts = path.split('/');
   const fileName = pathParts.pop()!;
   const markerName = `.${fileName}.complete`;
-  const stagingName = `.${fileName}.staging-${crypto.randomUUID()}`;
+  const stagingName = createOpfsStagingFileName({ fileName });
 
   const root = await navigator.storage.getDirectory();
   let currentDir = root;
@@ -158,10 +294,13 @@ export async function writeToOpfsWithStaging({ path, response }: { path: string,
   let promotionStarted = false;
   try {
     const stagingHandle = await currentDir.getFileHandle(stagingName, { create: true });
-    await writeResponseBody({ fileHandle: stagingHandle, response });
+    const receivedByteLength = await writeResponseBody({ fileHandle: stagingHandle, response });
     const stagedFile = await stagingHandle.getFile();
-    const expectedByteLength = expectedResponseByteLength({ response });
+    const expectedByteLength = expectedDecodedResponseByteLength({ response });
     if (stagedFile.size === 0) throw new Error(`Staged OPFS file is empty: ${path}`);
+    if (stagedFile.size !== receivedByteLength) {
+      throw new Error(`Staged OPFS byte length mismatch for ${path}: consumed ${receivedByteLength}, stored ${stagedFile.size}`);
+    }
     if (expectedByteLength !== undefined && stagedFile.size !== expectedByteLength) {
       throw new Error(`Staged OPFS byte length mismatch for ${path}: expected ${expectedByteLength}, received ${stagedFile.size}`);
     }

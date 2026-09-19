@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import type { WeshFileHandle } from '@/features/wesh/types';
 import { createReadHandleFromStream } from '@/features/wesh/utils/stream';
@@ -64,7 +65,7 @@ describe('wesh xxd', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: stdin ?? createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -95,6 +96,30 @@ describe('wesh xxd', () => {
     expect(stdout.text).toBe('68656c6c6f0a\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('resolves input and output pathnames relative to the current working directory', async () => {
+    await writeFile({
+      path: 'work/probe.bin',
+      data: new Uint8Array([0x00, 0x01, 0x02, 0xff]),
+    });
+    await writeFile({ path: 'work/plain.hex', data: '000102ff\n' });
+
+    const normal = await execute({ script: 'cd work && xxd probe.bin' });
+    const plain = await execute({ script: 'cd /work && xxd -p probe.bin dump.hex' });
+    const reverse = await execute({ script: 'cd /work && xxd -r -p plain.hex restored.bin' });
+
+    expect(normal.stdout.text).toBe('00000000: 0001 02ff                                ....\n');
+    expect(normal.stderr.text).toBe('');
+    expect(normal.result.exitCode).toBe(0);
+    expect(plain.stdout.text).toBe('');
+    expect(plain.stderr.text).toBe('');
+    expect(plain.result.exitCode).toBe(0);
+    expect(new TextDecoder().decode(await readFile({ path: 'work/dump.hex' }))).toBe('000102ff\n');
+    expect(reverse.stdout.text).toBe('');
+    expect(reverse.stderr.text).toBe('');
+    expect(reverse.result.exitCode).toBe(0);
+    expect(Array.from(await readFile({ path: 'work/restored.bin' }))).toEqual([0x00, 0x01, 0x02, 0xff]);
   });
 
   it('supports Vim plain-output aliases', async () => {

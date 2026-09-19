@@ -223,7 +223,25 @@ describe('wesh du core behavior', () => {
     });
 
     expect(stdout.text).toBe('3\tgood.txt\n');
-    expect(stderr.text).toContain("du: cannot access 'missing.txt':");
+    expect(stderr.text).toBe("du: cannot access 'missing.txt': No such file or directory\n");
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('normalizes browser type-mismatch errors for intermediate path components', async () => {
+    await writeDuTestFile({
+      rootHandle: testContext.rootHandle,
+      path: 'parent',
+      data: 'file',
+    });
+
+    const { result, stdout, stderr } = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du parent/child',
+      stdin: '',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("du: cannot access 'parent/child': Not a directory\n");
     expect(result.exitCode).toBe(1);
   });
 

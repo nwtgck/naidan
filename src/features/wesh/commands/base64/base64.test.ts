@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -50,7 +51,7 @@ describe('wesh base64', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -241,6 +242,30 @@ cA==
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('base64: missing.txt:');
     expect(result.exitCode).toBe(1);
+  });
+
+  it('preserves missing-value diagnostics and rejects values on no-value flags', async () => {
+    const missingShort = await execute({ script: 'base64 -w' });
+    const missingLong = await execute({ script: 'base64 --wrap' });
+    const valuedHelp = await execute({ script: 'base64 --help=bogus' });
+    const helpBeforeInvalid = await execute({ script: 'base64 --help --bogus' });
+    const invalidBeforeHelp = await execute({ script: 'base64 --bogus --help' });
+
+    expect(missingShort.stdout.text).toBe('');
+    expect(missingShort.stderr.text).toContain('base64: -w requires a value for cols');
+    expect(missingShort.result.exitCode).toBe(1);
+    expect(missingLong.stdout.text).toBe('');
+    expect(missingLong.stderr.text).toContain('base64: --wrap requires a value for cols');
+    expect(missingLong.result.exitCode).toBe(1);
+    expect(valuedHelp.stdout.text).toBe('');
+    expect(valuedHelp.stderr.text).toContain("base64: option '--help' doesn't allow an argument");
+    expect(valuedHelp.result.exitCode).toBe(1);
+    expect(helpBeforeInvalid.stdout.text).toContain('Base64 encode or decode data');
+    expect(helpBeforeInvalid.stderr.text).toBe('');
+    expect(helpBeforeInvalid.result.exitCode).toBe(0);
+    expect(invalidBeforeHelp.stdout.text).toBe('');
+    expect(invalidBeforeHelp.stderr.text).toContain("base64: unrecognized option '--bogus'");
+    expect(invalidBeforeHelp.result.exitCode).toBe(1);
   });
 
   it('prints help with --help', async () => {

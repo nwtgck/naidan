@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, ref, computed, reactive, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -7,6 +8,10 @@ import CurrentChatPane from './CurrentChatPane.vue';
 import { useLayout } from '@/composables/useLayout';
 import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
   mockScrollIntoViewSafe: vi.fn(),

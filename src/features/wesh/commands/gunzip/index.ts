@@ -1,5 +1,5 @@
 import type {
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshCommandContext,
   WeshFileHandle,
@@ -153,12 +153,7 @@ const gunzipArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const gunzipCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'gunzip',
-    description: 'Decompress files',
-    usage: 'gunzip [OPTION]... [FILE]...',
-  },
+export const gunzipCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardArgvAtFirstEarlyExit({

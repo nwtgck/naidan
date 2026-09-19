@@ -1,7 +1,7 @@
 import { CommandDataStreamDecoder, decodeCommandDataBytes } from '@/features/wesh/commands/_shared/data-codec';
 import { resolveCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleAndTrailingBlankWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { parseStandardArgv, type ArgvOptionOccurrence, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
@@ -245,12 +245,7 @@ function assignReadValues({
   return values;
 }
 
-export const readCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'read',
-    description: 'Read a line from standard input or a file descriptor into shell variables',
-    usage: 'read [-r] [-d delim] [-n nchars] [-N nchars] [-s] [-p prompt] [-u fd] [name...]',
-  },
+export const readCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: readArgvSpec }),

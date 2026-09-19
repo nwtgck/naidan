@@ -2,7 +2,7 @@ import { uppercaseAscii } from '@/features/wesh/commands/_shared/locale';
 import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshTrapDisposition,
 } from '@/features/wesh/types';
@@ -77,12 +77,7 @@ async function writeInvalidCondition({
   await context.text().error({ text: `trap: ${condition}: invalid signal specification\n` });
 }
 
-export const trapCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'trap',
-    description: 'Set shell trap handlers',
-    usage: 'trap [-lp] [[arg] signal_spec ...]',
-  },
+export const trapCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({
       args: context.args,

@@ -1,27 +1,65 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Blob as NodeBlob } from 'node:buffer';
+import { webcrypto } from 'node:crypto';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toToolCallId } from '@/01-models/ids';
 import ModelSupportInvestigationModal from './ModelSupportInvestigationModal.vue';
-import type { ModelSupportInvestigationRun } from '@/features/transformers-js/model-support-investigation/types';
+import ModelSupportInvestigationSession from './ModelSupportInvestigationSession.vue';
+import { configurationForPreset } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
+import { createInvestigationSessionView, TEST_ONLY as sessionTestOnly } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
+import * as providerRetention from '@/features/transformers-js/model-support-investigation/logic/investigation-provider-retention';
+import * as nativeEvidenceModule from '@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence';
+import { createProductionProviderTrace } from '@/features/transformers-js/model-support-investigation/logic/production-provider-trace';
+import { captureScenarioInput } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-plan';
+import type { ProductionProviderCaptureSnapshot } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-owner';
+import type { ProductionProviderInvestigationLiveProgress } from '@/features/transformers-js/model-support-investigation/logic/production-provider-investigation-summary';
+import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
+import { ModelSupportInvestigationUserInterruptedError } from '@/features/transformers-js/model-support-investigation/logic/investigation-interruption';
+import type { ModelSupportInvestigationRun, ModelSupportInvestigationWorkerClient } from '@/features/transformers-js/model-support-investigation/types';
+import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
+
+function retainedTiming(): DownloadTimingSnapshot {
+  return { format: 'transformers-js-download-timing-v1', measurementVersion: 1, source: 'ordinary-download',
+    serviceEpoch: '11111111-1111-4111-8111-111111111111', identityStatus: 'available', sequence: 1, availability: 'recorded', droppedOperations: 1,
+    records: [{ operationId: '11111111-1111-4111-8111-111111111111/1', modelId: 'org/previous', runtimeEpoch: 1, outcome: 'failed',
+      timingStatus: 'measured', wallMs: 23000, truncated: false, droppedObservations: 0, observations: [] }] };
+}
 
 const fixtureToolCallId = toToolCallId({ raw: 'call_fixture' });
 
 const workerMocks = vi.hoisted(() => ({
+  createClient: vi.fn(),
   runPartialInvestigation: vi.fn(),
+  interrupt: vi.fn(),
   dispose: vi.fn(),
+  waitForEvidenceRelease: vi.fn(),
 }));
 
 const evidenceMocks = vi.hoisted(() => ({
-  createPartialModelSupportEvidence: vi.fn(),
+  createClient: vi.fn(),
+  createRetainedDownloadTimingEvidence: vi.fn(),
+  createPartialEvidence: vi.fn(),
+  createBatchEvidence: vi.fn(),
+  dispose: vi.fn(),
 }));
+
+const confirmMocks = vi.hoisted(() => ({ showConfirm: vi.fn() }));
+
+vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => confirmMocks }));
 
 vi.mock('@/features/transformers-js/model-support-investigation/worker/client-hosted', () => ({
-  createModelSupportInvestigationWorkerClient: () => workerMocks,
+  createModelSupportInvestigationWorkerClient: () => {
+    workerMocks.createClient();
+    return { ...workerMocks };
+  },
 }));
 
-vi.mock('@/features/transformers-js/model-support-investigation/logic/create-partial-evidence', () => ({
-  createPartialModelSupportEvidence: evidenceMocks.createPartialModelSupportEvidence,
+vi.mock('@/features/transformers-js/model-support-investigation/evidence-worker/client-hosted', () => ({
+  createModelSupportInvestigationEvidenceWorkerClient: () => {
+    evidenceMocks.createClient();
+    return { ...evidenceMocks };
+  },
 }));
 
 const completedRun: ModelSupportInvestigationRun = {
@@ -67,14 +105,24 @@ const completedRun: ModelSupportInvestigationRun = {
         error: undefined,
       },
     },
+    threading: {
+      requestedThreads: 4,
+      effectiveThreads: 1,
+      effectiveThreadsBasis: 'runtime-env-after-control',
+      proxy: false,
+      childWorkerLifecycle: 'not-observed',
+      childWorkerLifecycleReason: 'Emscripten pthread worker lifecycle is not exposed by the public runtime API',
+    },
     control: {
       fixtureId: 'identity-float32-v1',
       fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
       executionProvider: 'wasm',
+      status: 'passed',
       inputName: 'x',
       outputName: 'y',
       inputValue: 7,
       outputValue: 7,
+      error: undefined,
     },
     webGpuControl: {
       fixtureId: 'identity-float32-v1',
@@ -101,6 +149,15 @@ const completedRun: ModelSupportInvestigationRun = {
     libraryName: 'transformers',
     metadata: {},
   },
+  runtimeTarget: {
+    normalizedModelId: 'org/model',
+    evidenceRevision: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    loaderRevisionOption: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    source: 'repository',
+    revisionIdentity: 'exact-resolved-revision',
+    pipelineTag: 'text-generation',
+  },
+  downloadEvidence: undefined,
   cache: {
     normalizedModelId: 'org/model',
     rootPath: 'models/huggingface.co/org/model',
@@ -129,6 +186,7 @@ const completedRun: ModelSupportInvestigationRun = {
       contentType: 'application/json',
       value: { model_type: 'new_chat_model' },
     }],
+    fileFailures: [],
     config: { model_type: 'new_chat_model' },
     modelType: 'new_chat_model',
     architectures: ['NewChatForCausalLM'],
@@ -210,6 +268,8 @@ const completedRun: ModelSupportInvestigationRun = {
     status: 'passed',
     failureStage: undefined,
     events: [],
+    inputStrategyAttempts: [],
+    selectedInputStrategy: undefined,
     inputTokenCount: 2,
     inputTokenIds: [1, 2],
     inputTensors: [],
@@ -217,6 +277,7 @@ const completedRun: ModelSupportInvestigationRun = {
     generatedTokenIds: [42],
     generatedText: 'answer',
     naturalGeneration: {
+      status: "observed",
       forced: false,
       maxNewTokens: 16,
       doSample: false,
@@ -269,6 +330,10 @@ const completedRun: ModelSupportInvestigationRun = {
       modelId: 'org/model',
       resolvedRevision: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       candidate: { device: 'webgpu', dtype: 'q4' },
+      loadAttempts: [
+        { candidate: { device: 'webgpu', dtype: 'q4f16' }, status: 'failed', error: { name: 'Error', message: 'q4f16 load failed', stack: 'stack-q4f16' } },
+        { candidate: { device: 'webgpu', dtype: 'q4' }, status: 'passed', error: undefined },
+      ],
       route: {
         autoClass: 'AutoModelForCausalLM',
         processor: 'tokenizer',
@@ -276,19 +341,26 @@ const completedRun: ModelSupportInvestigationRun = {
         modelType: 'new_chat_model',
       },
       isEncoderDecoder: false,
-      messages: [{ role: 'user', content: 'Template probe user message.' }],
-      inputKeys: ['input_ids'],
-      inputTensors: [],
-      inputTokenIds: [1, 2],
-      pastKeyValuesProvided: false,
-      inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
-      outputPastKeyValuesSummary: { kind: 'object', valueType: 'object', constructorName: 'Object', ownKeyCount: 1, ownKeys: ['layer_0'], arrayLength: undefined, truncated: false },
-      generatedSequenceTokenIds: [1, 2, 45],
-      generatedTokenIds: [45],
-      generatedText: 'production',
-      streamChunks: ['production'],
-      toolCalls: [],
-      effectiveGenerationConfig: { maxNewTokens: 16, temperature: 0, topP: 1, doSample: false },
+      firstTurn: {
+        status: "passed",
+        turn: {
+          messages: [{ role: 'user', content: 'Template probe user message.' }],
+          inputKeys: ['input_ids'],
+          inputTensors: [],
+          inputTokenIds: [1, 2],
+          fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' },
+          cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' },
+          pastKeyValuesProvided: false,
+          inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
+          outputPastKeyValuesSummary: { kind: 'object', valueType: 'object', constructorName: 'Object', ownKeyCount: 1, ownKeys: ['layer_0'], arrayLength: undefined, truncated: false },
+          generatedSequenceTokenIds: [1, 2, 45],
+          generatedTokenIds: [45],
+          generatedText: 'production',
+          streamChunks: ['production'],
+          toolCalls: [],
+          effectiveGenerationConfig: { maxNewTokens: 16, temperature: 0, topP: 1, doSample: false },
+        },
+      },
       continuity: {
         status: 'failed',
         assistantMessage: { role: 'assistant', content: 'production' },
@@ -305,6 +377,7 @@ const completedRun: ModelSupportInvestigationRun = {
           { role: 'tool', tool_call_id: fixtureToolCallId, content: '{"temperatureC":20,"condition":"clear"}' },
         ],
         expectedInputTokenIds: [50, 51, 52],
+        comparisonInputSource: 'reconstructed-full-conversation',
         inputTokenExactMatch: true,
         firstInputMismatchIndex: undefined,
         turn: {
@@ -312,6 +385,8 @@ const completedRun: ModelSupportInvestigationRun = {
           inputKeys: ['input_ids'],
           inputTensors: [],
           inputTokenIds: [50, 51, 52],
+          fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' },
+          cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' },
           pastKeyValuesProvided: false,
           inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           outputPastKeyValuesSummary: { kind: 'object', valueType: 'object', constructorName: 'Object', ownKeyCount: 1, ownKeys: ['layer_0'], arrayLength: undefined, truncated: false },
@@ -330,14 +405,14 @@ const completedRun: ModelSupportInvestigationRun = {
         disabledEffort: 'none',
         enabledEffort: 'high',
         disabledTurn: {
-          messages: [], inputKeys: ['input_ids'], inputTensors: [], inputTokenIds: [70, 0], pastKeyValuesProvided: false,
+          messages: [], inputKeys: ['input_ids'], inputTensors: [], inputTokenIds: [70, 0], fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' }, cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' }, pastKeyValuesProvided: false,
           inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           outputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           generatedSequenceTokenIds: [70, 0, 80], generatedTokenIds: [80], generatedText: 'none', streamChunks: ['none'], toolCalls: [],
           effectiveGenerationConfig: { maxNewTokens: 16, temperature: 0, topP: 1, doSample: false },
         },
         enabledTurn: {
-          messages: [], inputKeys: ['input_ids'], inputTensors: [], inputTokenIds: [70, 1], pastKeyValuesProvided: false,
+          messages: [], inputKeys: ['input_ids'], inputTensors: [], inputTokenIds: [70, 1], fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' }, cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' }, pastKeyValuesProvided: false,
           inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           outputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           generatedSequenceTokenIds: [70, 1, 81], generatedTokenIds: [81], generatedText: 'high', streamChunks: ['high'], toolCalls: [],
@@ -370,6 +445,8 @@ const completedRun: ModelSupportInvestigationRun = {
             { name: 'pixel_values', dtype: 'float32', dims: [1, 3, 1, 1], location: 'gpu-buffer' },
           ],
           inputTokenIds: [7, 8],
+          fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' },
+          cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' },
           pastKeyValuesProvided: false,
           inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           outputPastKeyValuesSummary: { kind: 'object', valueType: 'object', constructorName: 'Object', ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
@@ -403,13 +480,39 @@ const completedRun: ModelSupportInvestigationRun = {
   error: undefined,
 };
 
+async function nativeCheckpoint() {
+  const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'native-run', now: () => completedRun.startedAt });
+  const requestId = 'native-run-first-turn';
+  const trace = createProductionProviderTrace({ requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } });
+  trace.settle({ outcome: 'fulfilled', error: undefined });
+  const provider: ProductionProviderCaptureSnapshot = {
+    format: 'production-provider-capture-v2', runId: checkpoint.run.runId, modelId: checkpoint.run.modelId, plan: 'first-only', run: { status: 'completed' },
+    lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [],
+    requests: [{ runId: checkpoint.run.runId, requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined,
+      input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), trace: trace.snapshot() }],
+    capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
+  };
+  checkpoint.run.productionProviderCapture = provider;
+  const nativeEvidence = await nativeEvidenceModule.createProductionProviderNativeEvidence({
+    native: { format: 'production-provider-native-collection-v1', runId: checkpoint.run.runId, maximumWorkerEpochs: 8, phase: 'not-requested', unrecordedWorkerCreations: 0, incompleteReasons: [], epochs: [] },
+    provider, maximumBinaryBytes: nativeEvidenceModule.PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
+  });
+  return { ...checkpoint, nativeEvidence };
+}
+
 describe('ModelSupportInvestigationModal', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 
   beforeEach(() => {
+    sessionTestOnly.clear();
     vi.clearAllMocks();
+    confirmMocks.showConfirm.mockResolvedValue(true);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn() },
+    });
     workerMocks.runPartialInvestigation.mockImplementation(async ({ onEvent }) => {
       onEvent({
         event: {
@@ -421,10 +524,18 @@ describe('ModelSupportInvestigationModal', () => {
       return completedRun;
     });
     workerMocks.dispose.mockResolvedValue(undefined);
-    evidenceMocks.createPartialModelSupportEvidence.mockResolvedValue({
+    workerMocks.waitForEvidenceRelease.mockResolvedValue(undefined);
+    workerMocks.interrupt.mockResolvedValue(undefined);
+    evidenceMocks.createPartialEvidence.mockResolvedValue({
       blob: new Blob(["evidence"]),
       fileName: "evidence.zip",
     });
+    evidenceMocks.createBatchEvidence.mockResolvedValue({
+      blob: new Blob(["batch-evidence"]),
+      fileName: "batch-evidence.zip",
+    });
+    evidenceMocks.createRetainedDownloadTimingEvidence.mockResolvedValue({ blob: new Blob(['timing']), fileName: 'timing.zip' });
+    evidenceMocks.dispose.mockResolvedValue(undefined);
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: vi.fn(() => "blob:evidence"),
@@ -436,26 +547,1368 @@ describe('ModelSupportInvestigationModal', () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   });
 
-  it('runs the real-worker boundary automatically and shows partial findings', async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([false, true])('shows supplied runtime control inputs only when observed: %s', async recorded => {
+    const result = structuredClone(completedRun);
+    if (recorded && result.runtimeAssets !== undefined) {
+      result.runtimeAssets.controlRuntimeBindings = { wasm: {
+        format: 'runtime-control-binding-v1', executionProvider: 'wasm', constructorModule: 'onnxruntime-web/webgpu', environmentMatchesConfigured: true,
+        mjs: { matchesSelected: true, byteConnection: 'configured-url-not-verified-import-bytes' },
+        wasm: { matchesSelected: true, supplySource: 'preflight-verified-buffer', suppliedByteLength: 8, suppliedSha256: 'a'.repeat(64), suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' },
+      } };
+    }
+    workerMocks.runPartialInvestigation.mockResolvedValueOnce(result);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const details = wrapper.find('[data-testid="model-support-runtime-control-inputs"]');
+    expect(details.exists()).toBe(recorded);
+    if (recorded) {
+      expect(details.text()).toContain('onnxruntime-web/webgpu');
+      expect(details.text()).toContain('supplied=8 bytes');
+      expect(details.text()).toContain('compilerConsumption=not-observed');
+      expect(details.text()).toContain('configured-url-not-verified-import-bytes');
+    }
+    wrapper.unmount();
+  });
+
+  it('keeps retained-only export disabled with an honest missing-session explanation', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-export-retained-timing"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="model-support-retained-timing-unavailable"]').text()).toContain('No Download timing');
+    expect(evidenceMocks.createRetainedDownloadTimingEvidence).not.toHaveBeenCalled();
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('exports a fixed previous Download snapshot without starting any investigation or Load', async () => {
+    const source = retainedTiming();
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '', ordinaryDownloadTiming: source } });
+    await flushPromises();
+    source.records[0]!.outcome = 'completed';
+    await wrapper.setProps({ ordinaryDownloadTiming: { ...retainedTiming(), serviceEpoch: '22222222-2222-4222-8222-222222222222' } });
+    await wrapper.get('[data-testid="model-support-export-retained-timing"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createRetainedDownloadTimingEvidence).toHaveBeenCalledTimes(1);
+    expect(evidenceMocks.createRetainedDownloadTimingEvidence.mock.calls[0]?.[0].snapshot).toEqual(retainedTiming());
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(evidenceMocks.createPartialEvidence).not.toHaveBeenCalled();
+    expect(evidenceMocks.createBatchEvidence).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="model-support-investigation-setup"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-support-retained-timing-truncated"]').exists()).toBe(true);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it.each([false, true])('blocks Setup admissions after retained export cleanup fails, including late readiness=%s', async lateReadiness => {
+    const ready = Promise.withResolvers<{ status: 'complete' }>();
+    const originalView = createInvestigationSessionView({ initialSnapshot: undefined });
+    const sessionView = lateReadiness ? { ...originalView, ready: ready.promise } : originalView;
+    evidenceMocks.dispose.mockRejectedValue(new Error('Retained export Worker termination unavailable'));
+    const wrapper = mount(ModelSupportInvestigationSession, { props: { modelId: 'org/model', sessionView, ordinaryDownloadTiming: retainedTiming() } });
+    try {
+      await flushPromises();
+      const exportButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-export-retained-timing"]');
+      const startButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-investigation-start"]');
+      await exportButton.trigger('click');
+      await flushPromises();
+      ready.resolve({ status: 'complete' });
+      await flushPromises();
+      // Explicit dispatch bypasses the disabled button's click() behavior and
+      // proves the handlers also reject new Worker admission in this view.
+      exportButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      startButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      expect(workerMocks.createClient).not.toHaveBeenCalled();
+      expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+      expect(evidenceMocks.createClient).toHaveBeenCalledTimes(1);
+      expect(evidenceMocks.createRetainedDownloadTimingEvidence).toHaveBeenCalledTimes(1);
+      expect(startButton.attributes('disabled')).toBeDefined();
+      expect(exportButton.attributes('disabled')).toBeDefined();
+      expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Retained export Worker termination unavailable');
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+    } finally {
+      wrapper.unmount();
+      await flushPromises();
+    }
+  });
+
+  it('does not publish a late retained-only export after its modal owner retires', async () => {
+    const pending = Promise.withResolvers<{ blob: Blob; fileName: string }>();
+    evidenceMocks.createRetainedDownloadTimingEvidence.mockReturnValue(pending.promise);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '', ordinaryDownloadTiming: retainedTiming() } });
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-export-retained-timing"]').trigger('click');
+    wrapper.unmount();
+    await flushPromises();
+    pending.resolve({ blob: new Blob(['late']), fileName: 'late.zip' });
+    await flushPromises();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(evidenceMocks.dispose).toHaveBeenCalled();
+  });
+
+  it('preserves the original Download snapshot when investigation results are reopened', async () => {
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model', ordinaryDownloadTiming: retainedTiming() } });
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    await flushPromises();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model', ordinaryDownloadTiming: { ...retainedTiming(), serviceEpoch: '22222222-2222-4222-8222-222222222222' } } });
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls.at(-1)?.[0].ordinaryDownloadTiming).toEqual(retainedTiming());
+    reopened.unmount();
+  });
+
+  it.each([
+    { invalidRunId: 'foreign-run', invalidModelId: 'org/model', error: 'Invalid checkpoint run identity' },
+    { invalidRunId: 'accepted-run', invalidModelId: 'org/foreign', error: 'Invalid checkpoint model identity' },
+  ])('preserves $error in the UI and exported checkpoint after cancellation rejects as a user stop', async ({ invalidRunId, invalidModelId, error }) => {
+    workerMocks.runPartialInvestigation.mockImplementation(({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const pending = Promise.withResolvers<ModelSupportInvestigationRun>();
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: 'accepted-run', now: () => completedRun.startedAt });
+      workerMocks.interrupt.mockImplementation(async () => {
+        onCheckpoint({ checkpoint: { ...checkpoint, run: { ...checkpoint.run, error: 'Unrequested user-stop checkpoint' } } });
+        pending.reject(new ModelSupportInvestigationUserInterruptedError());
+      });
+      onCheckpoint({ checkpoint });
+      onCheckpoint({ checkpoint: { ...checkpoint, run: { ...checkpoint.run, runId: invalidRunId, modelId: invalidModelId } } });
+      return pending.promise;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    try {
+      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await flushPromises();
+      expect(workerMocks.interrupt).toHaveBeenCalledOnce();
+      expect(wrapper.get('[data-testid="model-support-target-error-org/model"]').text()).toContain(error);
+      expect(wrapper.text()).not.toContain('Model Support Investigation was stopped by the user');
+      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+      await flushPromises();
+      expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
+        run: { runId: 'accepted-run', modelId: 'org/model', status: 'failed', error: expect.stringContaining(error) },
+        recovery: { status: 'interrupted', interruption: { error: { message: error } } },
+      });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it.each([
+    { invalidRunId: 'foreign-run', invalidModelId: 'org/model', error: 'Invalid completed run identity' },
+    { invalidRunId: 'accepted-run', invalidModelId: 'org/foreign', error: 'Invalid completed model identity' },
+  ])('rejects $error without a native recording and preserves the accepted checkpoint for export', async ({ invalidRunId, invalidModelId, error }) => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: 'accepted-run', now: () => completedRun.startedAt });
+      onCheckpoint({ checkpoint });
+      return { ...checkpoint.run, runId: invalidRunId, modelId: invalidModelId, status: 'passed', error: undefined };
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    try {
+      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await flushPromises();
+      const targetError = wrapper.find('[data-testid="model-support-target-error-org/model"]');
+      expect(targetError.exists()).toBe(true);
+      expect(targetError.text()).toContain(error);
+      expect(wrapper.text()).not.toContain('Model Support Investigation was stopped by the user');
+      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+      await flushPromises();
+      expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
+        run: { runId: 'accepted-run', modelId: 'org/model', status: 'failed', error: expect.stringContaining(error) },
+        recovery: { status: 'interrupted', interruption: { error: { message: error } } },
+      });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('reopens completed results and exports retained metadata without rerunning the investigation', async () => {
+    // jsdom Blobs are not supported by Node's native structuredClone.
+    vi.stubGlobal('Blob', NodeBlob);
+    const sidecar = { path: 'tokenizer.json', blob: new Blob(['{"version":"1.0"}']) };
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId: completedRun.modelId, runId: completedRun.runId, now: () => completedRun.startedAt });
+      onCheckpoint?.({ checkpoint: { ...checkpoint, run: completedRun, replayMetadata: [sidecar] } });
+      return completedRun;
+    });
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'hf.co/org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'hf.co/org/model' } });
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    const exported = evidenceMocks.createPartialEvidence.mock.calls[0]?.[0];
+    expect(exported.run.runId).toBe(completedRun.runId);
+    expect(exported.replayMetadata[0].path).toBe('tokenizer.json');
+    expect(await exported.replayMetadata[0].blob.text()).toBe('{"version":"1.0"}');
+    reopened.unmount();
+  });
+
+  it('selects the requested model when reopening a retained multi-model batch', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
+      ...structuredClone(completedRun), modelId, currentOperation: `${modelId} complete`,
+    }));
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await first.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-current-operation"]').text()).toBe('org/first complete');
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    reopened.unmount();
+  });
+
+  it('returns a completed batch to Setup, retains choices on reopening, and exports only fresh run evidence', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    const oldPublishers: Array<Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint']> = [];
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      oldPublishers.push(onCheckpoint);
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: `old-${modelId}`, now: () => completedRun.startedAt });
+      const result = { ...structuredClone(completedRun), modelId, runId: checkpoint.run.runId };
+      onCheckpoint?.({ checkpoint: { ...checkpoint, run: result, replayMetadata: [{ path: 'old-config.json', blob: new Blob(['old']) }] } });
+      return result;
+    });
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await first.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+    await first.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    const previousBatchId = evidenceMocks.createBatchEvidence.mock.calls[0]?.[0].batchId;
+    await first.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    expect(confirmMocks.showConfirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'New investigation' }));
+    expect(first.find('[data-testid="model-support-investigation-download"]').exists()).toBe(false);
+    expect(first.find('[data-testid="model-support-investigation-start"]').exists()).toBe(true);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    oldPublishers[0]?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-old-run', now: () => completedRun.startedAt }) });
+    first.unmount();
+
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-preset-download-focused"]').attributes('aria-pressed')).toBe('true');
+    expect(reopened.find('[data-testid="model-support-investigation-download"]').exists()).toBe(false);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
+      ...structuredClone(completedRun), modelId, runId: `new-${modelId}`,
+    }));
+    await reopened.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    oldPublishers[1]?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/second', runId: 'late-old-run', now: () => completedRun.startedAt }) });
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    const freshBatch = evidenceMocks.createBatchEvidence.mock.calls[1]?.[0];
+    expect(freshBatch.batchId).not.toBe(previousBatchId);
+    expect(freshBatch.items).toMatchObject([
+      { target: 'org/first', run: { runId: 'new-org/first' }, recovery: undefined, replayMetadata: undefined },
+      { target: 'org/second', run: { runId: 'new-org/second' }, recovery: undefined, replayMetadata: undefined },
+    ]);
+    expect(workerMocks.runPartialInvestigation.mock.calls.slice(2).map(([args]) => args.configuration)).toEqual([
+      configurationForPreset({ preset: 'download-focused' }),
+      configurationForPreset({ preset: 'download-focused' }),
+    ]);
+    reopened.unmount();
+  });
+
+  it('can start a fresh investigation after failure before the first checkpoint', async () => {
+    workerMocks.runPartialInvestigation.mockRejectedValueOnce(new Error('Worker unavailable'));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run).toMatchObject({ status: 'passed', error: undefined });
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it('keeps Results when New investigation confirmation is cancelled', async () => {
+    confirmMocks.showConfirm.mockResolvedValue(false);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-support-investigation-start"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run.runId).toBe(completedRun.runId);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it('disables New investigation until an active run and its Worker disposal settle', async () => {
+    const investigation = Promise.withResolvers<ModelSupportInvestigationRun>();
+    const disposal = Promise.withResolvers<void>();
+    workerMocks.runPartialInvestigation.mockReturnValue(investigation.promise);
+    workerMocks.dispose.mockReturnValue(disposal.promise);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const action = wrapper.get('[data-testid="model-support-investigation-new"]');
+    expect(action.attributes('disabled')).toBeDefined();
+    await action.trigger('click');
+    investigation.resolve(completedRun);
+    await flushPromises();
+    expect(action.attributes('disabled')).toBeDefined();
+    expect(confirmMocks.showConfirm).not.toHaveBeenCalled();
+    disposal.resolve();
+    await flushPromises();
+    expect(action.attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('disables New investigation during export and rechecks export after confirmation', async () => {
+    const confirmation = Promise.withResolvers<boolean>();
+    confirmMocks.showConfirm.mockReturnValueOnce(confirmation.promise);
+    const evidence = Promise.withResolvers<{ blob: Blob; fileName: string }>();
+    evidenceMocks.createPartialEvidence.mockReturnValueOnce(evidence.promise);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const action = wrapper.get('[data-testid="model-support-investigation-new"]');
+    await action.trigger('click');
+    await flushPromises();
+    expect(action.attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    confirmation.resolve(true);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-support-investigation-start"]').exists()).toBe(false);
+    expect(action.attributes('disabled')).toBeDefined();
+    await action.trigger('click');
+    expect(confirmMocks.showConfirm).toHaveBeenCalledOnce();
+    evidence.resolve({ blob: new Blob(['evidence']), fileName: 'evidence.zip' });
+    await flushPromises();
+    expect(action.attributes('disabled')).toBeUndefined();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run.runId).toBe(completedRun.runId);
+    await action.trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-support-investigation-start"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('waits for old Worker and sealing teardown on reopening and isolates its late checkpoints', async () => {
+    const oldRun = Promise.withResolvers<ModelSupportInvestigationRun>();
+    const oldDisposal = Promise.withResolvers<void>();
+    let publishOld: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint'] | undefined;
+    workerMocks.runPartialInvestigation.mockImplementationOnce(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      publishOld = onCheckpoint;
+      publishOld?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'old-run', now: () => completedRun.startedAt }) });
+      return oldRun.promise;
+    });
+    workerMocks.dispose.mockReturnValueOnce(oldDisposal.promise);
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await first.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    expect(workerMocks.interrupt).not.toHaveBeenCalled();
+
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    expect(reopened.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeUndefined();
+    await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    expect(confirmMocks.showConfirm).not.toHaveBeenCalled();
+    oldDisposal.resolve();
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    oldRun.resolve({ ...structuredClone(completedRun), modelId: 'org/first', runId: 'late-old-run' });
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
+      ...structuredClone(completedRun), modelId, runId: `fresh-${modelId}`, currentOperation: `${modelId} fresh result`,
+    }));
+    await reopened.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-old-run', now: () => completedRun.startedAt });
+    publishOld?.({ checkpoint });
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(3);
+    expect(reopened.get('[data-testid="model-support-current-operation"]').text()).toBe('org/second fresh result');
+    reopened.unmount();
+
+    const retained = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await flushPromises();
+    await retained.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0].items).toMatchObject([
+      { target: 'org/first', status: 'passed', run: { runId: 'fresh-org/first' }, recovery: undefined },
+      { target: 'org/second', status: 'passed', run: { runId: 'fresh-org/second' }, recovery: undefined },
+    ]);
+    retained.unmount();
+  });
+
+  it('retires an exporting view on Close and suppresses its late archive after reopening and rerunning', async () => {
+    const oldEvidence = Promise.withResolvers<{ blob: Blob; fileName: string }>();
+    const oldEvidenceDisposal = Promise.withResolvers<void>();
+    evidenceMocks.createPartialEvidence.mockReturnValueOnce(oldEvidence.promise);
+    evidenceMocks.dispose.mockReturnValueOnce(oldEvidenceDisposal.promise);
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-close"]').trigger('click');
+    expect(first.emitted('close')).toHaveLength(1);
+    expect(evidenceMocks.dispose).toHaveBeenCalledOnce();
+    first.unmount();
+
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    oldEvidenceDisposal.resolve();
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    workerMocks.runPartialInvestigation.mockResolvedValue({ ...structuredClone(completedRun), runId: 'fresh-run' });
+    await reopened.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    oldEvidence.resolve({ blob: new Blob(['old-evidence']), fileName: 'old-evidence.zip' });
+    await flushPromises();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(reopened.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Not Run');
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[1]?.[0].run.runId).toBe('fresh-run');
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+    reopened.unmount();
+  });
+
+  it('ignores a New investigation confirmation that resolves after its view was unmounted', async () => {
+    const confirmation = Promise.withResolvers<boolean>();
+    confirmMocks.showConfirm.mockReturnValueOnce(confirmation.promise);
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    confirmation.resolve(true);
+    await flushPromises();
+    expect(reopened.find('[data-testid="model-support-investigation-start"]').exists()).toBe(false);
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeUndefined();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run.runId).toBe(completedRun.runId);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    reopened.unmount();
+  });
+
+  it('explains a previous teardown failure and requires reload before starting another investigation', async () => {
+    const previous = createInvestigationSessionView({ initialSnapshot: undefined });
+    await previous.retire({ dispose: async () => {
+      throw new Error('Worker termination unavailable');
+    } });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    const alert = wrapper.get('[data-testid="model-support-investigation-teardown-error"]');
+    expect(alert.text()).toContain('Reload the page before starting another investigation.');
+    expect(alert.text()).toContain('Worker termination unavailable');
+    expect(wrapper.get('[data-testid="model-support-investigation-start"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="model-support-investigation-close"]').trigger('click');
+    expect(wrapper.emitted('close')).toHaveLength(1);
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('freezes checkpoint identity and metadata together before asynchronous export preparation', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    let publish: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint'] | undefined;
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'before-export', now: () => completedRun.startedAt });
+    workerMocks.runPartialInvestigation.mockImplementation(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      publish = onCheckpoint;
+      publish?.({ checkpoint: { ...checkpoint, replayMetadata: [{ path: 'config.json', blob: new Blob(['{"version":1}']) }] } });
+      return new Promise(() => undefined);
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const exporting = wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    publish?.({ checkpoint: {
+      ...checkpoint,
+      run: { ...checkpoint.run, runId: 'after-export' },
+      recovery: { ...checkpoint.recovery, checkpointSequence: 99 },
+      replayMetadata: [{ path: 'config.json', blob: new Blob(['{"version":2}']) }],
+    } });
+    await exporting;
+    await flushPromises();
+    const exported = evidenceMocks.createPartialEvidence.mock.calls[0]?.[0];
+    expect(exported.run.runId).toBe('before-export');
+    expect(exported.recovery.checkpointSequence).toBe(0);
+    expect(await exported.replayMetadata[0].blob.text()).toBe('{"version":1}');
+    wrapper.unmount();
+  });
+
+  it('retains an interrupted checkpoint on teardown without restarting it when reopened', async () => {
+    const retiredRun = Promise.withResolvers<ModelSupportInvestigationRun>();
+    workerMocks.runPartialInvestigation.mockImplementation(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'pending-run', now: () => completedRun.startedAt }) });
+      return retiredRun.promise;
+    });
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
+      run: { status: 'failed', runId: 'pending-run' },
+      recovery: { status: 'interrupted', interruption: { error: { message: 'Investigation stopped when its modal was closed' } } },
+    });
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    retiredRun.reject(new Error('Retired Worker operation stopped'));
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    workerMocks.runPartialInvestigation.mockResolvedValue({ ...structuredClone(completedRun), runId: 'fresh-run' });
+    await reopened.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[1]?.[0]).toMatchObject({ run: { status: 'passed', runId: 'fresh-run' }, recovery: undefined });
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    reopened.unmount();
+  });
+
+  it('times out a hung download investigation, continues the batch, and rejects late checkpoints', async () => {
+    vi.useFakeTimers();
+    let publishLate: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint'] | undefined;
+    workerMocks.runPartialInvestigation.mockImplementation(({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      if (modelId === 'org/first') {
+        publishLate = onCheckpoint;
+        onCheckpoint?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId, runId: 'hung-run', now: () => completedRun.startedAt }) });
+        return new Promise(() => undefined);
+      }
+      return Promise.resolve({ ...structuredClone(completedRun), modelId, runId: 'second-run' });
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(120_000);
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    publishLate?.({ checkpoint: {
+      ...createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-run', now: () => completedRun.startedAt }),
+      run: { ...structuredClone(completedRun), modelId: 'org/first', runId: 'late-run' },
+    } });
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0]).toMatchObject({ items: [
+      { target: 'org/first', status: 'failed', run: { runId: 'hung-run', status: 'failed' }, recovery: { status: 'interrupted', interruption: { error: { name: 'InvestigationTargetBudgetError' } } } },
+      { target: 'org/second', status: 'passed', run: { runId: 'second-run' } },
+    ] });
+    wrapper.unmount();
+  });
+
+  it.each([
+    { outcome: 'passed', timeout: false, interrupted: false, collecting: false, expectedMiB: [48, 48, 48, 48, 48] },
+    { outcome: 'failed', timeout: false, interrupted: false, collecting: false, expectedMiB: [48, 48, 48, 48, 48] },
+    { outcome: 'failed', timeout: true, interrupted: false, collecting: false, expectedMiB: [48, 48, 48, 16, 0] },
+    { outcome: 'failed', timeout: false, interrupted: true, collecting: false, expectedMiB: [48, 48, 48, 48, 48] },
+    { outcome: 'failed', timeout: false, interrupted: true, collecting: true, expectedMiB: [48, 48, 48, 16, 0] },
+  ] as const)('settles metadata bytes for $outcome with file timeout=$timeout, interruption=$interrupted, collecting=$collecting', async ({ outcome, timeout, interrupted, collecting, expectedMiB }) => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint, replayMetadataBudgetBytes }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: `run-${modelId}`, now: () => completedRun.startedAt });
+      const received = Math.min(100, replayMetadataBudgetBytes ?? 0);
+      const result: ModelSupportInvestigationRun = {
+        ...structuredClone(completedRun), modelId, status: outcome,
+        replayMetadata: {
+          schemaVersion: 1, modelId, revision: 'a'.repeat(40), status: collecting ? 'collecting' : 'partial',
+          receivedBytes: received, retainedBytes: 0, budgetBytes: replayMetadataBudgetBytes ?? 0,
+          files: [{ path: 'config.json', source: 'remote-exact', byteLength: received, status: timeout ? 'timeout' : 'invalid-content' }],
+        },
+      };
+      onCheckpoint?.({ checkpoint: {
+        run: result,
+        recovery: { ...checkpoint.recovery, status: interrupted ? 'interrupted' : 'completed' },
+      } });
+      if (interrupted) throw new Error(collecting ? 'Worker lost during collection' : 'Full cache acceptance timed out after metadata collection');
+      return result;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/one
+org/two
+org/three
+org/four
+org/five
+`);
+    await wrapper.get(`[data-testid="model-support-preset-${interrupted ? 'full' : 'download-focused'}"]`).trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation.mock.calls.map(call => call[0].replayMetadataBudgetBytes)).toEqual(expectedMiB.map(value => value * 1024 * 1024));
+    wrapper.unmount();
+  });
+
+  it.each(['completed', 'interrupted'] as const)('shows %s execution independently from partial evidence coverage', async status => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: 'execution-display', now: () => completedRun.startedAt });
+      const result = { ...structuredClone(completedRun), requestedConfiguration: configurationForPreset({ preset: 'download-focused' }), executionPlan: { repositoryDownload: true, modelLoad: false, generation: false, continuity: false, capabilityProbes: false } };
+      onCheckpoint?.({ checkpoint: { run: result, recovery: { ...checkpoint.recovery, status } } });
+      return result;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-execution-summary"]').text()).toContain(
+      status === 'completed' ? 'Selected-scope investigation finished' : 'Investigation stopped before completion',
+    );
+    expect(wrapper.get('[data-testid="model-support-evidence-coverage-explanation"]').text()).toContain('not pending');
+    expect(wrapper.get('[data-testid="model-support-investigation-download"]').text()).toBe('Download Evidence ZIP');
+    expect(wrapper.text()).not.toContain('later investigation stages are not run yet');
+    wrapper.unmount();
+  });
+
+  it('shows fresh metadata success separately from full Download and Load', async () => {
+    workerMocks.runPartialInvestigation.mockResolvedValue({ ...structuredClone(completedRun), freshMetadata: {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'prepared', maximumBytes: 1024, receivedBytes: 100, requests: [],
+      preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
+    } });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-fresh-metadata-status"]').text()).toContain('Fresh metadata preparation: succeeded');
+    expect(wrapper.get('[data-testid="model-support-fresh-metadata-limit"]').text()).toContain('not a full model download or successful Load');
+    expect(wrapper.get('[data-testid="model-support-fresh-metadata-bytes"]').text()).toContain('100 / 1024');
+    wrapper.unmount();
+  });
+
+  it('does not present a failed fresh acquisition as success when investigation execution finished', async () => {
+    workerMocks.runPartialInvestigation.mockResolvedValue({ ...structuredClone(completedRun), freshMetadata: {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'failed', maximumBytes: 1024, receivedBytes: 0, requests: [],
+    } });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-fresh-metadata-status"]').text()).toContain('Fresh metadata preparation: failed');
+    expect(wrapper.find('[data-testid="model-support-fresh-metadata-limit"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('prefills the selected model without starting an investigation on mount', async () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
 
+    expect(wrapper.get('[data-testid="model-support-target-row-org/model"]').text()).toContain('org/model');
+    expect((wrapper.get('[data-testid="model-support-targets-input"]').element as HTMLTextAreaElement).value).toBe('');
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('keeps committed models above a separate input and accepts multi-line paste', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/seed' },
+    });
+
+    await wrapper.get('[data-testid="model-support-targets-input"]').trigger('paste', {
+      clipboardData: {
+        getData: () => `\
+org/one
+https://hf.co/org/two
+org/one`,
+      },
+    });
     await flushPromises();
 
+    expect(wrapper.find('[data-testid="model-support-target-row-org/seed"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-support-target-row-org/one"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-support-target-row-org/two"]').exists()).toBe(true);
+    expect((wrapper.get('[data-testid="model-support-targets-input"]').element as HTMLTextAreaElement).value).toBe('');
+    expect(wrapper.findAll('[data-testid^="model-support-target-row-"]')).toHaveLength(3);
+    wrapper.unmount();
+  });
+
+  it('shows the execution summary in Setup without adding a separate Review step', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    expect(wrapper.get('[data-testid="model-support-stage-setup"]').attributes('data-state')).toBe('active');
+    expect(wrapper.get('[data-testid="model-support-target-row-org/model"]').text()).toContain('org/model');
+    expect(wrapper.get('[data-testid="model-support-investigation-start-summary"]').text()).toContain('Full');
+    expect(wrapper.get('[data-testid="model-support-start-scope-model-load"]').attributes('data-state')).toBe('selected');
+    expect(wrapper.find('[data-testid="model-support-investigation-review"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-support-stage-review"]').exists()).toBe(false);
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('validates bulk targets before starting and does not guess invalid model IDs', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`
+org/first
+https://hf.co/org/second
+not-a-model-id
+# comment
+org/first
+`);
+
+    expect(wrapper.get('[data-testid="model-support-target-errors"]').text()).toContain('Invalid model on line 4.');
+    expect(wrapper.get('[data-testid="model-support-investigation-start"]').attributes('disabled')).toBeDefined();
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('copies the canonical deduplicated target list', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`
+org/first
+https://huggingface.co/org/second
+org/first
+# comment
+`);
+    await wrapper.get('[data-testid="model-support-copy-targets"]').trigger('click');
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(`\
+org/first
+org/second`);
+    wrapper.unmount();
+  });
+
+  it('contains clipboard rejection at the Copy interaction boundary', async () => {
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('clipboard denied'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-copy-targets"]').trigger('click');
+    await flushPromises();
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('org/model');
+    expect(wrapper.get('[data-testid="model-support-target-row-org/model"]').text()).toContain('org/model');
+    wrapper.unmount();
+  });
+
+  it('shows structured local Load and phase deadlines without parsing diagnostic text', async () => {
+    const pending = Promise.withResolvers<ModelSupportInvestigationRun>();
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'progress-run', now: () => completedRun.startedAt });
+    const live: ProductionProviderInvestigationLiveProgress = {
+      progress: { phase: 'running', provider: { runId: 'progress-run', modelId: 'org/model', plan: 'first-only', run: { status: 'running' }, lifetime: 'open', activeRequest: { runId: 'progress-run', requestId: 'progress-run-first-turn', scenario: 'first-turn' }, totalRequests: 1, selectedRequests: 1, settledRequests: 0, loadStatus: 'loading' }, stopReason: undefined, cleanup: 'not-requested', sealOwnership: 'settled' },
+      deadlines: { runMs: 1800000, collectionMs: 10000, sealingMs: 30000, cleanupMs: 5000 },
+    };
+    workerMocks.runPartialInvestigation.mockImplementationOnce(({ onCheckpoint, onEvent }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint });
+      onEvent({ event: { stepId: 'loading-investigation', status: 'running', detail: 'Unstructured diagnostic that says nothing about phase', productionProviderProgress: live } });
+      return pending.promise;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-provider-progress"]').text()).toContain('Loading the local model');
+    expect(wrapper.get('[data-testid="model-support-provider-deadlines"]').text()).toContain('requests 1800s; collection 10s; evidence preparation 30s; cleanup 5s');
+    expect(wrapper.get('[data-testid="model-support-provider-retention"]').text()).toContain('reserved: 64 MiB');
+    await wrapper.get('[data-testid="model-support-investigation-stop"]').trigger('click');
+    expect(workerMocks.interrupt).toHaveBeenCalledOnce();
+    pending.resolve(checkpoint.run);
+    await flushPromises();
+    wrapper.unmount();
+  });
+
+  it('clears another target live progress while preserving a same-run checkpoint without telemetry', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint, onEvent }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: modelId === 'org/first' ? 'progress-first' : 'progress-second', now: () => completedRun.startedAt });
+      onCheckpoint?.({ checkpoint });
+      if (modelId === 'org/second') {
+        onEvent({ event: {
+          stepId: 'loading-investigation', status: 'running', detail: 'Second target only',
+          progress: {
+            kind: 'model-load', artifactSource: 'downloaded-model-cache', candidateId: 'second-only-q4', sourceStatus: 'progress',
+            currentFile: undefined, fileLoaded: undefined, fileTotal: undefined, fileProgress: undefined,
+            aggregateLoaded: undefined, aggregateTotal: undefined, aggregateProgress: undefined,
+            firstActivityAt: completedRun.startedAt, lastForwardProgressAt: undefined,
+            eventCount: 1, progressEventCount: 1, progressTotalEventCount: 0, forwardProgressCount: 1,
+            repeatedWithoutForwardProgressCount: 0, publishedSampleCount: 1, lastActivityAt: completedRun.startedAt,
+          },
+          productionProviderProgress: {
+            progress: { phase: 'running', provider: { runId: checkpoint.run.runId, modelId, plan: 'first-only', run: { status: 'running' }, lifetime: 'open', activeRequest: { runId: checkpoint.run.runId, requestId: `${checkpoint.run.runId}-first-turn`, scenario: 'first-turn' }, totalRequests: 1, selectedRequests: 1, settledRequests: 0, loadStatus: 'loading' }, stopReason: undefined, cleanup: 'not-requested', sealOwnership: 'settled' },
+            deadlines: { runMs: 1800000, collectionMs: 10000, sealingMs: 30000, cleanupMs: 5000 },
+          },
+        } });
+        // A later same-run checkpoint does not erase already received telemetry.
+        onCheckpoint?.({ checkpoint });
+      }
+      return { ...checkpoint.run, status: 'failed', completedAt: completedRun.completedAt };
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second`);
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-testid="model-support-provider-progress"]').text()).toContain('Loading the local model');
+    expect(wrapper.get('[data-testid="model-support-live-progress"]').text()).toContain('second-only-q4');
+    await wrapper.get('[data-testid="model-support-target-org/first"]').trigger('click');
+    expect(wrapper.find('[data-testid="model-support-provider-progress"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-support-live-progress"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-support-provider-deadlines"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('refuses a recording reservation before creating an investigation Worker or Load', async () => {
+    const original = providerRetention.createInvestigationProviderRetentionBudget;
+    const budget = vi.spyOn(providerRetention, 'createInvestigationProviderRetentionBudget').mockImplementation(({ retained }) => original({
+      limits: { nativeBinaryBytes: 1, nativeJsonCharacters: 1, providerJsonCharacters: 1 }, retained,
+    }));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    try {
+      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await flushPromises();
+      expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+      expect(workerMocks.dispose).not.toHaveBeenCalled();
+      expect(wrapper.text()).toContain('Investigation recording capacity is exhausted');
+    } finally {
+      budget.mockRestore();
+      wrapper.unmount();
+    }
+  });
+
+  it('holds the next target until the completed host releases pending sealing ownership', async () => {
+    const released = Promise.withResolvers<void>();
+    workerMocks.waitForEvidenceRelease.mockReturnValueOnce(released.promise);
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({ ...structuredClone(completedRun), modelId }));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second`);
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    expect(workerMocks.waitForEvidenceRelease).toHaveBeenCalledOnce();
+    released.resolve();
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it('adopts one verified sidecar per identity and reuses it for repeated checkpoints and export', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    vi.stubGlobal('crypto', webcrypto);
+    const checkpoint = await nativeCheckpoint();
+    const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar');
+    workerMocks.runPartialInvestigation.mockImplementationOnce(async ({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint }); onCheckpoint?.({ checkpoint });
+      return checkpoint.run;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(verify).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].nativeEvidence.json).toBe(checkpoint.nativeEvidence.json);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    verify.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('does not adopt late sidecar verification after close and preserves the earlier Provider prefix', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    vi.stubGlobal('crypto', webcrypto);
+    const checkpoint = await nativeCheckpoint();
+    const pending = Promise.withResolvers<typeof checkpoint.nativeEvidence>();
+    const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar').mockReturnValueOnce(pending.promise);
+    workerMocks.runPartialInvestigation.mockImplementationOnce(async ({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint }); return checkpoint.run;
+    });
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({ run: { productionProviderCapture: { runId: 'native-run' } }, nativeEvidence: undefined });
+    pending.resolve(checkpoint.nativeEvidence);
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[1]?.[0].nativeEvidence).toBeUndefined();
+    expect(verify).toHaveBeenCalledOnce();
+    verify.mockRestore();
+    reopened.unmount();
+  });
+
+  it('holds a rejected target reservation until its pending checkpoint verification settles', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    vi.stubGlobal('crypto', webcrypto);
+    const checkpoint = await nativeCheckpoint();
+    const pending = Promise.withResolvers<typeof checkpoint.nativeEvidence>();
+    const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar').mockReturnValueOnce(pending.promise);
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      if (modelId === 'org/model') {
+        onCheckpoint?.({ checkpoint }); throw new Error('Model request failed');
+      }
+      return { ...structuredClone(completedRun), modelId };
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    pending.resolve(checkpoint.nativeEvidence);
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    verify.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('preserves the current result but stops the batch when cleanup is unconfirmed', async () => {
+    workerMocks.dispose.mockRejectedValue(new Error('Cleanup remains unconfirmed'));
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({ ...structuredClone(completedRun), modelId }));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second`);
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    expect(wrapper.text()).toContain('Cleanup remains unconfirmed');
+    expect(wrapper.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('retires and disposes immediately even when retaining the last checkpoint throws', async () => {
+    const running = Promise.withResolvers<ModelSupportInvestigationRun>();
+    workerMocks.runPartialInvestigation.mockImplementationOnce(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'close-failure', now: () => completedRun.startedAt }) });
+      return running.promise;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const measure = vi.spyOn(providerRetention, 'measureInvestigationProviderRetention').mockImplementationOnce(() => {
+      throw new Error('Checkpoint retention refused');
+    });
+    try {
+      expect(() => wrapper.unmount()).not.toThrow();
+      expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    } finally {
+      measure.mockRestore();
+      running.reject(new Error('Disposed'));
+      await flushPromises();
+    }
+  });
+
+  it.each([undefined, null, new Error('Cleanup remains unconfirmed')])('keeps rejection state independently from the cleanup thrown value: %s', async (reason) => {
+    workerMocks.dispose.mockRejectedValue(reason);
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({ ...structuredClone(completedRun), modelId }));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    wrapper.unmount();
+    await flushPromises();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeUndefined();
+    expect(await createInvestigationSessionView({ initialSnapshot: undefined }).ready).toMatchObject({ status: 'failed' });
+    reopened.unmount();
+  });
+
+  it('runs multiple normalized targets sequentially and keeps per-target status', async () => {
+    const callOrder: string[] = [];
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      callOrder.push(`start:${modelId}`);
+      await Promise.resolve();
+      callOrder.push(`finish:${modelId}`);
+      return {
+        ...structuredClone(completedRun),
+        runId: `run-${modelId}`,
+        modelId,
+      };
+    });
+    workerMocks.dispose.mockImplementation(async () => {
+      callOrder.push('dispose');
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`
+https://hf.co/org/first
+org/second
+`);
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation.mock.calls.map(call => call[0].modelId)).toEqual([
+      'org/first',
+      'org/second',
+    ]);
+    expect(callOrder).toEqual([
+      'start:org/first',
+      'finish:org/first',
+      'dispose',
+      'start:org/second',
+      'finish:org/second',
+      'dispose',
+    ]);
+    expect(wrapper.get('[data-testid="model-support-target-org/first"]').attributes('data-status')).toBe('passed');
+    expect(wrapper.get('[data-testid="model-support-target-org/second"]').attributes('data-status')).toBe('passed');
+    wrapper.unmount();
+  });
+
+  it('stops only the current model, disposes its client, and continues with the next model', async () => {
+    let rejectFirst: ((error: Error) => void) | undefined;
+    const callOrder: string[] = [];
+    workerMocks.runPartialInvestigation.mockImplementation(({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      callOrder.push(`start:${modelId}`);
+      if (modelId === 'org/first') {
+        return new Promise((_resolve, reject) => {
+          rejectFirst = reject;
+        });
+      }
+      return Promise.resolve({
+        ...structuredClone(completedRun),
+        runId: `run-${modelId}`,
+        modelId,
+      });
+    });
+    workerMocks.interrupt.mockImplementation(async () => {
+      const error = new Error('Model Support Investigation was stopped by the user');
+      error.name = 'ModelSupportInvestigationUserInterruptedError';
+      rejectFirst?.(error);
+    });
+    workerMocks.dispose.mockImplementation(async () => {
+      callOrder.push('dispose');
+    });
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="model-support-investigation-skip-current"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="model-support-investigation-skip-current"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
+    expect(workerMocks.runPartialInvestigation.mock.calls.map(call => call[0].modelId)).toEqual([
+      'org/first',
+      'org/second',
+    ]);
+    expect(callOrder).toEqual([
+      'start:org/first',
+      'dispose',
+      'start:org/second',
+      'dispose',
+    ]);
+    expect(wrapper.get('[data-testid="model-support-target-org/first"]').attributes('data-status')).toBe('skipped');
+    expect(wrapper.get('[data-testid="model-support-target-org/second"]').attributes('data-status')).toBe('passed');
+
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0]).toMatchObject({
+      items: [
+        { target: 'org/first', status: 'skipped' },
+        { target: 'org/second', status: 'passed' },
+      ],
+    });
+    wrapper.unmount();
+  });
+
+  it('exports every requested model dossier together when multiple targets were investigated', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
+      ...structuredClone(completedRun),
+      runId: `run-${modelId}`,
+      modelId,
+    }));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+
+    expect(evidenceMocks.createPartialEvidence).not.toHaveBeenCalled();
+    expect(evidenceMocks.createBatchEvidence).toHaveBeenCalledTimes(1);
+    expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0]).toMatchObject({
+      batchId: expect.any(String),
+      items: [
+        {
+          target: 'org/first',
+          status: 'passed',
+          run: { modelId: 'org/first', runId: 'run-org/first' },
+          error: undefined,
+        },
+        {
+          target: 'org/second',
+          status: 'passed',
+          run: { modelId: 'org/second', runId: 'run-org/second' },
+          error: undefined,
+        },
+      ],
+    });
+    wrapper.unmount();
+  });
+
+  it('exports the complete target index even when every target fails before producing a run', async () => {
+    workerMocks.runPartialInvestigation.mockRejectedValue(new Error('worker failed before checkpoint'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+
+    expect(evidenceMocks.createPartialEvidence).not.toHaveBeenCalled();
+    expect(evidenceMocks.createBatchEvidence).toHaveBeenCalledTimes(1);
+    expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0]).toMatchObject({
+      batchId: expect.any(String),
+      items: [
+        {
+          target: 'org/first',
+          status: 'failed',
+          run: undefined,
+          recovery: undefined,
+          error: 'worker failed before checkpoint',
+        },
+        {
+          target: 'org/second',
+          status: 'failed',
+          run: undefined,
+          recovery: undefined,
+          error: 'worker failed before checkpoint',
+        },
+      ],
+    });
+    wrapper.unmount();
+  });
+
+  it('does not replace a completed target result when client disposal fails', async () => {
+    workerMocks.dispose.mockRejectedValue(new Error('dispose failed'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
+    expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('[data-testid="model-support-target-org/model"]').attributes('data-status')).toBe('passed');
+    wrapper.unmount();
+  });
+
+  it('applies investigation presets to scope and network policy before Start', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    expect(wrapper.get('[data-testid="model-support-preset-full"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-scope-model-load"]').attributes('data-state')).toBe('selected');
+
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    expect(wrapper.get('[data-testid="model-support-preset-download-focused"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-scope-repository-download"]').attributes('data-state')).toBe('selected');
+    expect(wrapper.get('[data-testid="model-support-scope-model-load"]').attributes('data-state')).toBe('not-selected');
+    expect(wrapper.get('[data-testid="model-support-scope-generation"]').attributes('data-state')).toBe('not-selected');
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: {
+        externalNetworkPolicy: 'allow',
+        scope: {
+          'repository-download': 'selected',
+          'model-load': 'not-selected',
+          generation: 'not-selected',
+          continuity: 'not-selected',
+          'capability-probes': 'not-selected',
+        },
+      },
+    }));
+    wrapper.unmount();
+  });
+
+  it('shows dependency-required scope without forcing Repository / Download', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-scope-repository-download"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-scope-continuity"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="model-support-preset-custom"]').attributes('data-active')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-scope-repository-download"]').attributes('data-state')).toBe('not-selected');
+    expect(wrapper.get('[data-testid="model-support-scope-model-load"]').attributes('data-state')).toBe('required');
+    expect(wrapper.get('[data-testid="model-support-scope-model-load"]').text()).toContain('Required by selected scope');
+    expect(wrapper.get('[data-testid="model-support-scope-generation"]').attributes('data-state')).toBe('required');
+    expect(wrapper.get('[data-testid="model-support-scope-continuity"]').attributes('data-state')).toBe('selected');
+    expect(wrapper.get('[data-testid="model-support-scope-capability-probes"]').attributes('data-state')).toBe('not-selected');
+    wrapper.unmount();
+  });
+
+  it('disables Start when no investigation scope is selected', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-scope-repository-download"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="model-support-preset-custom"]').attributes('data-active')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-investigation-start"]').attributes('disabled')).toBeDefined();
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('applies the Offline preset as full scope with external network denied', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-preset-offline"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="model-support-preset-offline"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-network-deny"]').attributes('aria-pressed')).toBe('true');
+    for (const scopeId of ['repository-download', 'model-load', 'generation', 'continuity', 'capability-probes']) {
+      expect(wrapper.get(`[data-testid="model-support-scope-${scopeId}"]`).attributes('data-state')).toBe('selected');
+    }
+    wrapper.unmount();
+  });
+
+  it('applies the external-network policy selected before Start', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    expect(wrapper.get('[data-testid="model-support-network-allow"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-network-deny"]').attributes('aria-pressed')).toBe('false');
+
+    await wrapper.get('[data-testid="model-support-network-deny"]').trigger('click');
+    expect(wrapper.get('[data-testid="model-support-network-allow"]').attributes('aria-pressed')).toBe('false');
+    expect(wrapper.get('[data-testid="model-support-network-deny"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-investigation-start"]').attributes('disabled')).toBeUndefined();
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({ externalNetworkPolicy: 'deny' }),
+    }));
+    wrapper.unmount();
+  });
+
+  it('waits for explicit Start, normalizes the seeded target, and shows partial findings', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="model-support-target-row-org/model"]').text()).toContain('org/model');
+    expect(wrapper.get('[data-testid="model-support-targets-input"]').element).toHaveProperty('value', '');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="model-support-investigation-running-results"]').classes()).toContain('overflow-y-auto');
+    expect(wrapper.find('[data-testid="model-support-investigation-setup"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-support-investigation-review"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="model-support-stage-running-results"]').attributes('data-state')).toBe('active');
     expect(workerMocks.runPartialInvestigation).toHaveBeenCalledWith({
-      modelId: 'hf.co/org/model',
+      modelId: 'org/model',
+      replayMetadataBudgetBytes: 48 * 1024 * 1024,
+      configuration: {
+        externalNetworkPolicy: 'allow',
+        scope: {
+          'repository-download': 'selected',
+          'model-load': 'selected',
+          generation: 'selected',
+          continuity: 'selected',
+          'capability-probes': 'selected',
+        },
+      },
       onEvent: expect.any(Function),
       onCheckpoint: expect.any(Function),
     });
-    expect(wrapper.text()).toContain('hf.co/org/model');
+    expect(wrapper.text()).toContain('org/model');
     expect(wrapper.text()).toContain('may be fingerprinting information');
     expect(wrapper.text()).toContain('Same-origin ONNX Runtime module, WASM, and control inference verified');
     expect(wrapper.get('[data-testid="model-support-lane-comparison"]').text()).toContain('AutoModelForCausalLM · tokenizer · standard · new_chat_model');
+    expect(wrapper.get('[data-testid="model-support-production-load-attempts"]').text()).toContain('webgpu/q4f16: failed (Error: q4f16 load failed) → webgpu/q4: passed');
     expect(wrapper.get('[data-testid="model-support-lane-comparison"]').text()).toContain('match exactly (2 tokens)');
     expect(wrapper.get('[data-testid="model-support-production-tool-result-continuation"]').text()).toContain('exact template match');
     expect(wrapper.get('[data-testid="model-support-production-tool-result-continuation"]').text()).toContain('generated=1 token(s)');
-    expect(wrapper.get('[data-testid="model-support-production-tool-result-continuation"]').text()).toContain('tool-loop termination not observed');
+    expect(wrapper.get('[data-testid="model-support-production-tool-result-continuation"]').text()).toContain('actual cross-turn tool KV reuse not observed');
     expect(wrapper.get('[data-testid="model-support-production-reasoning"]').text()).toContain('none=2 input token(s)');
     expect(wrapper.get('[data-testid="model-support-production-reasoning"]').text()).toContain('first mismatch at 1');
     expect(wrapper.get('[data-testid="model-support-production-reasoning"]').text()).toContain('output quality was not evaluated');
@@ -464,8 +1917,11 @@ describe('ModelSupportInvestigationModal', () => {
     expect(wrapper.get('[data-testid="model-support-production-multimodal"]').text()).toContain('generated=1 token(s)');
     expect(wrapper.get('[data-testid="model-support-production-multimodal"]').text()).toContain('output quality was not evaluated');
     expect(wrapper.get('[data-testid="model-support-step-runtime-assets"]').text()).toContain('Passed');
+    expect(wrapper.get('[data-testid="model-support-wasm-control"]').text()).toContain('passed');
     expect(wrapper.get('[data-testid="model-support-webgpu-control"]').text()).toContain('passed');
     expect(wrapper.get('[data-testid="model-support-runtime-environment"]').text()).toContain('GPU Vendor');
+    expect(wrapper.get('[data-testid="model-support-runtime-environment"]').text()).toContain('Wasm threads=4→1');
+    expect(wrapper.get('[data-testid="model-support-runtime-environment"]').text()).toContain('pthread lifecycle=not-observed');
     expect(wrapper.get('[data-testid="model-support-step-repository-information"]').text()).toContain('Passed');
     expect(wrapper.text()).toContain('org/model@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     expect(wrapper.text()).toContain('3 files · text-generation');
@@ -491,8 +1947,371 @@ describe('ModelSupportInvestigationModal', () => {
     expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
   });
 
+  it('lets the user stop a hung investigation without closing the modal first', async () => {
+    let rejectInvestigation: ((error: Error) => void) | undefined;
+    workerMocks.runPartialInvestigation.mockImplementation(() => new Promise((_resolve, reject) => {
+      rejectInvestigation = reject;
+    }));
+    workerMocks.interrupt.mockImplementation(async () => {
+      const error = new Error('Model Support Investigation was stopped by the user');
+      error.name = 'ModelSupportInvestigationUserInterruptedError';
+      rejectInvestigation?.(error);
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    const stop = wrapper.get('[data-testid="model-support-investigation-stop"]');
+    await stop.trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
+    expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-testid="model-support-investigation-stop"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="model-support-investigation-close"]').attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('treats Stop interrupt transport failure as best-effort cleanup', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(() => new Promise(() => {}));
+    workerMocks.interrupt
+      .mockRejectedValueOnce(new Error('interrupt transport failed'))
+      .mockResolvedValue(undefined);
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigation-stop"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
+    expect(workerMocks.dispose).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="model-support-investigation-stop"]').exists()).toBe(true);
+
+    wrapper.unmount();
+    await flushPromises();
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
+    expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('disposes on unmount without waiting for a separate interrupt transport request', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(() => new Promise(() => {}));
+    workerMocks.interrupt.mockRejectedValue(new Error('interrupt transport failed'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    wrapper.unmount();
+    await flushPromises();
+
+    expect(workerMocks.interrupt).not.toHaveBeenCalled();
+    expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('exports the last interrupted checkpoint after force-stopping a hung investigation', async () => {
+    let rejectInvestigation: ((error: Error) => void) | undefined;
+    let publishCheckpoint: ((value: unknown) => void) | undefined;
+    const runningRun = structuredClone(completedRun);
+    runningRun.currentOperation = 'production-webgpu-q4f16: model-load';
+    const completedProductionObservation = runningRun.productionLane.observation;
+    if (completedProductionObservation === undefined) throw new Error('Production fixture is unavailable');
+    const completedLoadAttempt = completedProductionObservation.loadAttempts?.[0];
+    if (completedLoadAttempt === undefined) throw new Error('Production load-attempt fixture is unavailable');
+    runningRun.productionLane = {
+      status: 'running',
+      observation: undefined,
+      partialObservation: {
+        modelId: completedProductionObservation.modelId,
+        resolvedRevision: completedProductionObservation.resolvedRevision,
+        loaderRevisionOption: null,
+        runtimeLoadDurationMs: undefined,
+        candidate: undefined,
+        loadAttempts: [completedLoadAttempt],
+        activeLoadAttempt: {
+          candidate: { device: 'webgpu', dtype: 'q4' },
+          status: 'running',
+          modelLoadDurationMs: 6_000,
+          modelLoadProgress: {
+            kind: 'model-load',
+            artifactSource: 'downloaded-model-cache',
+            candidateId: 'production-webgpu-q4',
+            sourceStatus: 'progress',
+            currentFile: 'onnx/model_q4.onnx_data',
+            fileLoaded: 64 * 1024 * 1024,
+            fileTotal: 256 * 1024 * 1024,
+            fileProgress: 25,
+            aggregateLoaded: 64 * 1024 * 1024,
+            aggregateTotal: 256 * 1024 * 1024,
+            aggregateProgress: 25,
+            eventCount: 100_000,
+            progressEventCount: 100_000,
+            progressTotalEventCount: 100_000,
+            forwardProgressCount: 100_000,
+            repeatedWithoutForwardProgressCount: 0,
+            publishedSampleCount: 2,
+            cacheMatchRequestCount: 12,
+            cacheHitCount: 11,
+            cacheMissCount: 1,
+            cacheAliasHitCount: 2,
+            cacheMatchedBytes: 1_582_178_925,
+            remoteFetchAttemptCount: 0,
+            firstActivityAt: '2026-08-06T00:00:02.000Z',
+            lastActivityAt: '2026-08-06T00:00:08.000Z',
+            lastForwardProgressAt: '2026-08-06T00:00:08.000Z',
+          },
+        },
+        route: undefined,
+        isEncoderDecoder: undefined,
+        firstTurn: undefined,
+        continuity: undefined,
+        toolResultContinuation: undefined,
+        reasoning: undefined,
+        multimodal: undefined,
+      },
+      error: undefined,
+    };
+    workerMocks.runPartialInvestigation.mockImplementation(({ onCheckpoint }) => {
+      publishCheckpoint = onCheckpoint;
+      onCheckpoint({
+        checkpoint: {
+          run: runningRun,
+          recovery: {
+            schemaVersion: 1,
+            status: 'running',
+            checkpointSequence: 20,
+            checkpointedAt: '2026-08-06T00:00:20.000Z',
+            totalEventCount: 20,
+            droppedEventCount: 0,
+            lastEvent: undefined,
+            events: [],
+            interruption: undefined,
+          },
+        },
+      });
+      return new Promise((_resolve, reject) => {
+        rejectInvestigation = reject;
+      });
+    });
+    workerMocks.interrupt.mockImplementation(async () => {
+      const error = new Error('Model Support Investigation was stopped by the user');
+      error.name = 'ModelSupportInvestigationUserInterruptedError';
+      publishCheckpoint?.({
+        checkpoint: {
+          run: {
+            ...runningRun,
+            status: 'failed',
+            currentOperation: 'Investigation interrupted after lane-comparison',
+          },
+          recovery: {
+            schemaVersion: 1,
+            status: 'interrupted',
+            checkpointSequence: 21,
+            checkpointedAt: '2026-08-06T00:00:21.000Z',
+            totalEventCount: 20,
+            droppedEventCount: 0,
+            lastEvent: undefined,
+            events: [],
+            interruption: {
+              at: '2026-08-06T00:00:21.000Z',
+              lastEventSequence: undefined,
+              error: { name: error.name, message: error.message, stack: undefined },
+            },
+          },
+        },
+      });
+      rejectInvestigation?.(error);
+    });
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-production-load-attempts"]').text()).toContain(
+      'webgpu/q4f16: failed (Error: q4f16 load failed) → webgpu/q4: running (raw-events=100000, published-samples=2, cache=11 hit/1 miss/2 alias · opfs-matched-bytes=1582178925 · remote-fetch-attempts=0)',
+    );
+    await wrapper.get('[data-testid="model-support-investigation-stop"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+
+    expect(evidenceMocks.createPartialEvidence).toHaveBeenCalledTimes(1);
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].recovery).toMatchObject({
+      status: 'interrupted',
+      interruption: {
+        error: { name: 'ModelSupportInvestigationUserInterruptedError' },
+      },
+    });
+    expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('shows persistence serialization evidence without implying physical storage I/O', async () => {
+    const persistenceRun = structuredClone(completedRun);
+    persistenceRun.persistenceRoundTrip = {
+      status: 'observed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      serializedByteLength: 321,
+      serializedSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      originalMessages: [],
+      restoredMessages: [],
+      exactModelVisibleMatch: false,
+      firstMismatchIndex: 2,
+    };
+    workerMocks.runPartialInvestigation.mockResolvedValue(persistenceRun);
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    const summary = wrapper.get('[data-testid="model-support-persistence-roundtrip"]').text();
+    expect(summary).toContain('Persistence serialization contract');
+    expect(summary).toContain('mismatch at 2');
+    expect(summary).toContain('JSON=321 bytes');
+    expect(summary).toContain('physical storage I/O=not observed');
+    wrapper.unmount();
+  });
+
+  it('shows the Production cache decision and decoded reconstructed-prefix mismatch context', async () => {
+    const continuityRun = structuredClone(completedRun);
+    const observation = continuityRun.productionLane.observation;
+    if (observation === undefined || observation.firstTurn.status !== 'passed') {
+      throw new Error('Production first-turn fixture is unavailable');
+    }
+    const secondTurn = {
+      ...structuredClone(observation.firstTurn.turn),
+      messages: [
+        { role: 'user' as const, content: 'Template probe user message.' },
+        { role: 'assistant' as const, content: 'production' },
+        { role: 'user' as const, content: 'Continue with one short sentence.' },
+      ],
+      inputTokenIds: [1, 9, 10],
+      fullConversationInput: { status: 'observed' as const, inputTokenIds: [1, 9, 10] },
+      cacheDecision: { status: 'reused' as const, reason: 'qwen3_5-no-tool-continuation' },
+      pastKeyValuesProvided: true,
+    };
+    observation.continuity = {
+      status: 'passed',
+      assistantMessage: { role: 'assistant', content: 'production' },
+      followUpMessage: { role: 'user', content: 'Continue with one short sentence.' },
+      secondTurn,
+      prefixComparison: {
+        mode: 'full-input-prefix',
+        expectedPrefixTokenIds: [1, 2, 45],
+        secondInputTokenIds: [1, 9, 10],
+        reconstructedFullInputTokenIds: [1, 9, 10],
+        comparisonInputSource: 'reconstructed-full-conversation',
+        exactPrefixMatch: false,
+        firstMismatchIndex: 1,
+        firstMismatchContext: {
+          startIndex: 0,
+          expectedTokenIds: [1, 2, 45],
+          actualTokenIds: [1, 9, 10],
+          expectedText: '<expected-prefix>',
+          actualText: '<actual-prefix>',
+        },
+      },
+    };
+    workerMocks.runPartialInvestigation.mockResolvedValue(continuityRun);
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    const summary = wrapper.get('[data-testid="model-support-production-continuity"]').text();
+    expect(summary).toContain('qwen3_5-no-tool-continuation');
+    expect(summary).toContain('reconstructed-full-conversation');
+    expect(summary).toContain('<expected-prefix>');
+    expect(summary).toContain('<actual-prefix>');
+    const feature = wrapper.get('[data-feature="production-continuity"]');
+    expect(feature.attributes('data-outcome')).toBe('passed');
+    expect(feature.text()).toContain('does not establish a feature failure');
+    wrapper.unmount();
+  });
+
+  it('shows runtime observations that were checkpointed before preflight failed', async () => {
+    const partialRuntimeRun: ModelSupportInvestigationRun = structuredClone(completedRun);
+    partialRuntimeRun.status = 'failed';
+    partialRuntimeRun.runtimeAssets = undefined;
+    partialRuntimeRun.runtimeAssetsPartial = {
+      variant: 'asyncify',
+      baseUrl: 'https://naidan.example/app/transformers/',
+      mjsUrl: 'https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.mjs',
+      wasmUrl: 'https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.wasm',
+      physicalWasmUrl: 'https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.wasm',
+      applicationOrigin: 'https://naidan.example',
+      mjsOrigin: 'https://naidan.example',
+      wasmOrigin: 'https://naidan.example',
+      physicalWasmOrigin: 'https://naidan.example',
+      environment: completedRun.runtimeAssets?.environment,
+      wasmByteLength: undefined,
+      control: {
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'wasm',
+        status: 'failed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: undefined,
+        error: 'Wasm control failed',
+      },
+      webGpuControl: {
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'webgpu',
+        status: 'passed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: 7,
+        error: undefined,
+      },
+      currentStage: undefined,
+      stageObservations: [
+        { stage: 'origin-validation', status: 'passed', detail: 'Same-origin URLs verified' },
+        { stage: 'environment', status: 'passed', detail: 'Environment observed' },
+        { stage: 'module-import', status: 'failed', detail: 'Runtime module import failed', error: 'Import failed' },
+        { stage: 'wasm-control', status: 'failed', detail: 'Wasm control failed', error: 'Wasm control failed' },
+        { stage: 'webgpu-control', status: 'passed', detail: 'WebGPU control passed' },
+      ],
+    };
+    partialRuntimeRun.steps = partialRuntimeRun.steps.map(step => step.id === 'runtime-assets'
+      ? { ...step, status: 'failed', detail: 'Runtime module import failed' }
+      : step);
+    workerMocks.runPartialInvestigation.mockResolvedValue(partialRuntimeRun);
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="model-support-step-runtime-assets"]').text()).toContain('Failed');
+    expect(wrapper.get('[data-testid="model-support-runtime-environment"]').text()).toContain('GPU Vendor');
+    expect(wrapper.get('[data-testid="model-support-wasm-control"]').text()).toContain('failed');
+    expect(wrapper.get('[data-testid="model-support-wasm-control"]').text()).toContain('Wasm control failed');
+    expect(wrapper.get('[data-testid="model-support-webgpu-control"]').text()).toContain('passed');
+
+    wrapper.unmount();
+  });
+
   it('keeps raw progress event churn out of the current operation while showing forward-progress diagnostics', async () => {
-    workerMocks.runPartialInvestigation.mockImplementation(async ({ onEvent }) => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ onEvent, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId: completedRun.modelId, runId: completedRun.runId, now: () => completedRun.startedAt });
+      onCheckpoint?.({ checkpoint });
       onEvent({
         event: {
           stepId: 'loading-investigation',
@@ -500,8 +2319,11 @@ describe('ModelSupportInvestigationModal', () => {
           detail: 'webgpu-q4f16: model-load',
           progress: {
             kind: 'model-load',
+            artifactSource: 'downloaded-model-cache',
+            artifactSourceBasis: 'load-policy',
             candidateId: 'webgpu-q4f16',
             sourceStatus: 'progress_total',
+            progressByteSemantics: 'response-body-read-not-network-proof',
             currentFile: 'onnx/model_q4f16.onnx_data',
             fileLoaded: 1048576,
             fileTotal: 4194304,
@@ -514,6 +2336,14 @@ describe('ModelSupportInvestigationModal', () => {
             progressTotalEventCount: 21,
             forwardProgressCount: 17,
             repeatedWithoutForwardProgressCount: 3,
+            publishedSampleCount: 4,
+            cacheMatchRequestCount: 7,
+            cacheHitCount: 7,
+            cacheMissCount: 0,
+            cacheAliasHitCount: 1,
+            cacheMatchedBytes: 8_388_608,
+            remoteFetchAttemptCount: 0,
+            firstActivityAt: completedRun.startedAt,
             lastActivityAt: new Date().toISOString(),
             lastForwardProgressAt: new Date().toISOString(),
           },
@@ -525,6 +2355,7 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('[data-testid="model-support-current-operation"]').text()).not.toContain('progress_total');
@@ -532,6 +2363,9 @@ describe('ModelSupportInvestigationModal', () => {
     expect(wrapper.get('[data-testid="model-support-live-progress"]').text()).toContain('progress=20');
     expect(wrapper.get('[data-testid="model-support-live-progress"]').text()).toContain('forward=17');
     expect(wrapper.get('[data-testid="model-support-live-progress"]').text()).toContain('repeated-no-forward=3');
+    expect(wrapper.get('[data-testid="model-support-live-progress"]').text()).toContain('cache=7 hit/0 miss/1 alias');
+    expect(wrapper.get('[data-testid="model-support-live-progress"]').text()).toContain('opfs-matched-bytes=8388608');
+    expect(wrapper.get('[data-testid="model-support-live-progress"]').text()).toContain('remote-fetch-attempts=0');
     wrapper.unmount();
   });
 
@@ -551,6 +2385,8 @@ describe('ModelSupportInvestigationModal', () => {
             status: 'running',
             checkpointSequence: 4,
             checkpointedAt: '2026-08-06T00:00:00.500Z',
+            totalEventCount: 0,
+            droppedEventCount: 0,
             lastEvent: undefined,
             events: [],
             interruption: undefined,
@@ -563,6 +2399,7 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     const download = wrapper.get('[data-testid="model-support-investigation-download"]');
@@ -572,14 +2409,37 @@ describe('ModelSupportInvestigationModal', () => {
     await download.trigger('click');
     await flushPromises();
 
-    expect(evidenceMocks.createPartialModelSupportEvidence).toHaveBeenCalledTimes(1);
-    const exported = evidenceMocks.createPartialModelSupportEvidence.mock.calls[0]?.[0];
-    expect(exported.run.currentOperation).not.toBe('webgpu-q4f16: model-load');
+    expect(evidenceMocks.createPartialEvidence).toHaveBeenCalledTimes(1);
+    const exported = evidenceMocks.createPartialEvidence.mock.calls[0]?.[0];
+    expect(exported.run.currentOperation).toBe('webgpu-q4f16: model-load');
     expect(exported.run.steps.find((step: { id: string }) => step.id === 'evidence-export')).toMatchObject({ status: 'passed' });
     expect(exported.recovery).toMatchObject({ status: 'running', checkpointSequence: 4 });
+    expect(wrapper.get('[data-testid="model-support-execution-summary"]').text()).toContain('investigation is running');
 
     resolveInvestigation(completedRun);
     await flushPromises();
+    wrapper.unmount();
+  });
+
+  it('clicks a connected Evidence download anchor before revoking its Object URL', async () => {
+    const click = vi.mocked(HTMLAnchorElement.prototype.click);
+    click.mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.isConnected).toBe(true);
+      expect(this.download).toBe('evidence.zip');
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    });
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await vi.waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+
+    expect(document.querySelector('a[download="evidence.zip"]')).toBeNull();
+    await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:evidence'));
     wrapper.unmount();
   });
 
@@ -587,13 +2447,14 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
     await flushPromises();
 
-    expect(evidenceMocks.createPartialModelSupportEvidence).toHaveBeenCalledTimes(1);
-    const packagedRun = evidenceMocks.createPartialModelSupportEvidence.mock.calls[0]?.[0].run as ModelSupportInvestigationRun;
+    expect(evidenceMocks.createPartialEvidence).toHaveBeenCalledTimes(1);
+    const packagedRun = evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run as ModelSupportInvestigationRun;
     expect(packagedRun.steps.find(step => step.id === 'evidence-export')).toMatchObject({
       status: 'passed',
       detail: 'Evidence Export: Passed',
@@ -602,11 +2463,73 @@ describe('ModelSupportInvestigationModal', () => {
     wrapper.unmount();
   });
 
-  it('records evidence export verification failure without downloading an archive', async () => {
-    evidenceMocks.createPartialModelSupportEvidence.mockRejectedValue(new Error('archive verification failed'));
+  it('keeps a successful evidence export successful when Evidence Worker cleanup fails', async () => {
+    evidenceMocks.dispose.mockRejectedValueOnce(new Error('cleanup failed'));
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+
+    expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Passed');
+    const exportButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-investigation-download"]');
+    exportButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
+    // Recovery may create another bounded Evidence Worker, never another
+    // investigation/Load owner after the failed cleanup.
+    expect(evidenceMocks.createClient).toHaveBeenCalledTimes(2);
+    expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
+    expect(exportButton.attributes('disabled')).toBeUndefined();
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it('blocks the next target after concurrent Evidence cleanup fails without discarding the current result', async () => {
+    const completed = { ...completedRun, modelId: 'org/first', runId: 'first-run' };
+    const pending = Promise.withResolvers<ModelSupportInvestigationRun>();
+    workerMocks.runPartialInvestigation.mockImplementation(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const initial = createInitialInvestigationCheckpoint({ modelId: completed.modelId, runId: completed.runId, now: () => completed.startedAt });
+      onCheckpoint({ checkpoint: { ...initial, run: completed } });
+      return pending.promise;
+    });
+    evidenceMocks.dispose.mockRejectedValueOnce(new Error('Concurrent export cleanup failed'));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    try {
+      await wrapper.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+      await flushPromises();
+      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+      await flushPromises();
+      expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+      pending.resolve(completed);
+      await flushPromises();
+      expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
+      expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
+      expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Concurrent export cleanup failed');
+      const exportButton = wrapper.get('[data-testid="model-support-investigation-download"]');
+      expect(exportButton.attributes('disabled')).toBeUndefined();
+      await exportButton.trigger('click');
+      await flushPromises();
+      expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
+      expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
+    } finally {
+      wrapper.unmount();
+      await flushPromises();
+    }
+  });
+
+  it('records evidence export verification failure without downloading an archive', async () => {
+    evidenceMocks.createPartialEvidence.mockRejectedValue(new Error('archive verification failed'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
@@ -615,6 +2538,27 @@ describe('ModelSupportInvestigationModal', () => {
     expect(wrapper.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Failed');
     expect(wrapper.text()).toContain('archive verification failed');
     expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('shows nested feature failures before details even when investigation collection passed', async () => {
+    const result = structuredClone(completedRun);
+    const observation = result.productionLane.observation;
+    if (!observation) throw new Error('Missing Production fixture');
+    observation.firstTurn = { status: 'failed', error: { name: 'GenerationError', message: 'first turn failed' } };
+    observation.continuity = { status: 'not-run', reason: 'First turn did not generate' };
+    workerMocks.runPartialInvestigation.mockResolvedValue(result);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: result.modelId } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const results = wrapper.get('[data-testid="model-support-feature-results"]');
+    expect(results.text()).toContain('first turn failed');
+    expect(results.text()).toContain('First turn did not generate');
+    expect(results.text()).toContain('does not certify');
+    expect(results.get('[data-feature="production-first-turn"]').attributes('data-outcome')).toBe('failed');
+    expect(results.get('[data-feature="production-continuity"]').attributes('data-outcome')).toBe('not-run');
+    expect(wrapper.get('[data-testid="model-support-target-org/model"]').text()).toContain('1 failed');
     wrapper.unmount();
   });
 
@@ -630,6 +2574,7 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('[data-testid="model-support-boundary-assessment"]').text()).toContain('transformers-js-capability');

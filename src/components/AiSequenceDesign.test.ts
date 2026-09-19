@@ -1,6 +1,7 @@
 import { toChatId } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import ToolCallGroupItem from '@/features/tools/components/ToolCallGroupItem.vue';
@@ -30,6 +31,10 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('AI Sequence Design', () => {
   const createAssistantMessage = (content: string): AssistantMessageNode => ({

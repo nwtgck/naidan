@@ -1,20 +1,47 @@
-/* eslint-disable no-restricted-imports -- Service test verifies transformers.js model registry support directly. */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import * as Comlink from 'comlink';
 import { isProxy, reactive } from 'vue';
-import { AutoModelForCausalLM } from '@huggingface/transformers';
+import { getProductionTransformersArtifact, importProductionTransformersArtifact } from './runtime/fixtures/production-transformers-artifact';
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from './runtime/fixtures/production-runtime-startup-fixture';
+
+interface ActualTransformersWebModule {
+  AutoModelForCausalLM: {
+    supports: (modelType: string) => boolean;
+  };
+}
+
+async function loadActualTransformersWebModule(): Promise<ActualTransformersWebModule> {
+  const artifact = await getProductionTransformersArtifact();
+  const moduleUrl = new URL(artifact.moduleUrl);
+  moduleUrl.searchParams.set('service-support', crypto.randomUUID());
+  return await importProductionTransformersArtifact({ moduleUrl: moduleUrl.href }) as ActualTransformersWebModule;
+}
 
 // Mock Worker class
-class MockWorker {
-  terminate = vi.fn();
-  postMessage = vi.fn();
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
-  constructor() {}
+const workers: MockWorker[] = [];
+class MockWorker extends EventTarget {
+  private active = true;
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+  terminate = vi.fn(() => {
+    this.active = false;
+  });
+  postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+  constructor(url: URL) {
+    super();
+    workers.push(this);
+    // Startup is asynchronous: let the real session install its listeners.
+    queueMicrotask(() => {
+      if (this.active && url.pathname.endsWith('/worker/bootstrap.ts')) this.startup.start();
+    });
+  }
 }
 
 vi.stubGlobal('Worker', MockWorker);
+
+afterEach(() => {
+  for (const worker of workers.splice(0)) worker.dispatchEvent(new Event('error'));
+});
 
 // Mock Comlink
 vi.mock('comlink', () => {
@@ -54,6 +81,16 @@ function createMockDir(entries: Record<string, any> = {}) {
       }
       throw new Error('Not found');
     }),
+    removeEntry: vi.fn(async (name: string, options?: FileSystemRemoveOptions) => {
+      const entry = entries[name];
+      if (entry === undefined) throw new DOMException('Synthetic missing entry', 'NotFoundError');
+      if (entry.kind === 'directory' && !options?.recursive) {
+        for await (const _ of entry.entries()) {
+          throw new DOMException('Synthetic nonempty directory', 'InvalidModificationError');
+        }
+      }
+      delete entries[name];
+    }),
     entries: vi.fn(async function* () {
       for (const [name, handle] of Object.entries(entries)) {
         yield [name, handle];
@@ -78,16 +115,21 @@ function createMockFile(size: number, lastModified: number) {
 }
 
 describe('transformersJsService', () => {
-  it('should support qwen3_5 causal LM models', () => {
-    expect((AutoModelForCausalLM as any).supports('qwen3_5')).toBe(true);
+  it('should support qwen3_5 causal LM models in the actual Transformers.js web bundle', async () => {
+    const { AutoModelForCausalLM } = await loadActualTransformersWebModule();
+    expect(AutoModelForCausalLM.supports('qwen3_5')).toBe(true);
   });
 
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
 
     // Default navigator mock
     vi.stubGlobal('navigator', {
+      userAgent: '',
+      vendor: '',
+      hardwareConcurrency: 2,
       storage: {
         getDirectory: vi.fn().mockRejectedValue(new Error('No storage')),
       },
@@ -173,6 +215,100 @@ describe('transformersJsService', () => {
     }));
   });
 
+  it('keeps committed text and retried vision visible despite an orphan writer staging file', async () => {
+    const orphanName = '.vision_encoder_q4f16.onnx.staging-f28f6802-947c-4b9d-bc99-223d8d469f4b';
+    const entries: Record<string, ReturnType<typeof createMockFile>> = {
+      'decoder_model_merged_q4f16.onnx': createMockFile(100, 1),
+      '.decoder_model_merged_q4f16.onnx.complete': createMockFile(0, 1),
+      [orphanName]: createMockFile(999, 99),
+    };
+    const revision = createMockDir(entries);
+    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(createMockDir({
+      models: createMockDir({ 'huggingface.co': createMockDir({ org: createMockDir({ repo: createMockDir({ resolve: createMockDir({
+        '0123456789abcdef0123456789abcdef01234567': revision,
+      }) }) }) }) }),
+    })) } });
+    const { transformersJsService } = await import('./index');
+    expect.soft(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ id: 'hf.co/org/repo', isComplete: true, size: 100, fileCount: 1, lastModified: 1 }));
+    // A retry commits its own final path but cannot clean a terminated writer's
+    // unique temporary file. Listing must not require deleting that orphan.
+    entries['vision_encoder_q4f16.onnx'] = createMockFile(200, 2);
+    entries['.vision_encoder_q4f16.onnx.complete'] = createMockFile(0, 2);
+    expect.soft(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ id: 'hf.co/org/repo', isComplete: true, size: 300, fileCount: 2, lastModified: 2 }));
+    expect(entries[orphanName]).toBeDefined();
+    for (const handle of Object.values(entries)) expect(handle.createWritable).not.toHaveBeenCalled();
+    delete entries['.vision_encoder_q4f16.onnx.complete'];
+    expect(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ isComplete: false }));
+  });
+
+  it('does not let a partial exact revision make a committed legacy main cache look incomplete', async () => {
+    const mockHuggingFaceDir = createMockDir({
+      org: createMockDir({
+        repo: createMockDir({
+          resolve: createMockDir({
+            main: createMockDir({
+              'model_q4.onnx': createMockFile(1200, 123456789),
+              '.model_q4.onnx.complete': createMockFile(0, 123456789),
+            }),
+            '0123456789abcdef0123456789abcdef01234567': createMockDir({
+              'model_q4.onnx': createMockFile(1200, 123456790),
+              // Exact-revision download started but has not committed yet.
+            }),
+          }),
+        }),
+      }),
+    });
+
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(createMockDir({
+          models: createMockDir({ 'huggingface.co': mockHuggingFaceDir }),
+        })),
+      },
+    });
+
+    const { transformersJsService } = await import('./index');
+    const models = await transformersJsService.listCachedModels();
+
+    expect(models).toContainEqual(expect.objectContaining({
+      id: 'hf.co/org/repo',
+      isComplete: true,
+    }));
+  });
+
+  it('keeps a repository incomplete when every revision namespace is partial', async () => {
+    const mockHuggingFaceDir = createMockDir({
+      org: createMockDir({
+        repo: createMockDir({
+          resolve: createMockDir({
+            main: createMockDir({
+              'model_q4.onnx': createMockFile(1200, 123456789),
+            }),
+            '0123456789abcdef0123456789abcdef01234567': createMockDir({
+              'model_q4.onnx': createMockFile(1200, 123456790),
+            }),
+          }),
+        }),
+      }),
+    });
+
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(createMockDir({
+          models: createMockDir({ 'huggingface.co': mockHuggingFaceDir }),
+        })),
+      },
+    });
+
+    const { transformersJsService } = await import('./index');
+    const models = await transformersJsService.listCachedModels();
+
+    expect(models).toContainEqual(expect.objectContaining({
+      id: 'hf.co/org/repo',
+      isComplete: false,
+    }));
+  });
+
   it('should include models even without completion marker but as incomplete', async () => {
     const mockLocalDir = createMockDir({
       'incomplete-model': createMockDir({
@@ -199,9 +335,9 @@ describe('transformersJsService', () => {
     }));
   });
 
-  it('should transition state correctly during loadModel', async () => {
+  it('should transition state correctly during loadDownloadedModel', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         cb({ status: 'progress', progress: 50 });
         return { device: 'webgpu' };
       }),
@@ -238,101 +374,14 @@ describe('transformersJsService', () => {
       statuses.push(status);
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
-    expect(mockRemote.loadModel).toHaveBeenCalledWith('some-model', expect.any(Function));
-    expect(mockRemote.prefetchUrls).toHaveBeenCalledWith(['https://hf.co/m/model.onnx'], expect.any(Function));
+    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('some-model', { kind: 'discover-cached' }, expect.any(Function));
+    expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
     expect(transformersJsService.getState().status).toBe('ready');
     expect(transformersJsService.getState().device).toBe('webgpu');
     expect(statuses).toContain('loading');
     expect(statuses).toContain('ready');
-  });
-
-  it('should include a processor scan task for Gemma 4 models', async () => {
-    const mockRemote = {
-      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
-      prefetchUrls: vi.fn().mockResolvedValue({
-        requestedCount: 2,
-        cachedCount: 0,
-        downloadedCount: 2,
-        failedCount: 0,
-        complete: true,
-        files: [
-          {
-            status: 'downloaded',
-            url: 'https://hf.co/m/processor_config.json',
-            path: 'models/huggingface.co/m/processor_config.json',
-            byteLength: 1,
-            expectedByteLength: 1,
-          },
-          {
-            status: 'downloaded',
-            url: 'https://hf.co/m/model.onnx',
-            path: 'models/huggingface.co/m/model.onnx',
-            byteLength: 1,
-            expectedByteLength: 1,
-          },
-        ],
-      }),
-    };
-    const scanModel = vi.fn().mockResolvedValue({
-      files: [
-        { url: 'https://hf.co/m/processor_config.json' },
-        { url: 'https://hf.co/m/model.onnx' },
-      ],
-    });
-    (Comlink.wrap as any).mockImplementation((_worker: any) => {
-      return Object.assign(mockRemote, {
-        [Comlink.releaseProxy]: vi.fn(),
-        scanModel,
-      });
-    });
-
-    const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel({ modelId: 'hf.co/onnx-community/gemma-4-E2B-it-ONNX' });
-
-    expect(scanModel).toHaveBeenCalledWith({
-      tasks: [
-        { type: 'tokenizer', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: {} },
-        { type: 'processor', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: {} },
-        { type: 'image-text-to-text', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: { dtype: 'q4f16', device: 'wasm' } },
-      ],
-    });
-  });
-
-  it('should continue authoritative downloadModel when pre-download discovers no files', async () => {
-    const mockRemote = {
-      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
-      prefetchUrls: vi.fn().mockResolvedValue({
-        requestedCount: 0,
-        cachedCount: 0,
-        downloadedCount: 0,
-        failedCount: 0,
-        complete: true,
-        files: [],
-      }),
-      downloadModel: vi.fn().mockResolvedValue(undefined),
-    };
-    const scanModel = vi.fn().mockResolvedValue({
-      files: [],
-    });
-    (Comlink.wrap as any).mockImplementation((_worker: any) => {
-      return Object.assign(mockRemote, {
-        [Comlink.releaseProxy]: vi.fn(),
-        scanModel,
-      });
-    });
-
-    const { transformersJsService } = await import('./index');
-
-    await expect(transformersJsService.downloadModel({ modelId: 'onnx-community/gemma-4-E2B-it-ONNX' }))
-      .resolves
-      .toBeUndefined();
-
-    expect(mockRemote.downloadModel).toHaveBeenCalledWith(
-      'onnx-community/gemma-4-E2B-it-ONNX',
-      expect.any(Function),
-    );
   });
 
   it('should skip scanner/prefetch when loading a fully cached model', async () => {
@@ -356,7 +405,7 @@ describe('transformersJsService', () => {
     });
 
     const mockRemote = {
-      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
+      loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
       prefetchUrls: vi.fn().mockResolvedValue({
         requestedCount: 0,
         cachedCount: 0,
@@ -378,18 +427,20 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel({ modelId: 'hf.co/some-org/some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'hf.co/some-org/some-model' });
 
-    expect(mockRemote.loadModel).toHaveBeenCalledWith('hf.co/some-org/some-model', expect.any(Function));
+    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('hf.co/some-org/some-model', { kind: 'discover-cached' }, expect.any(Function));
     expect(scanModel).not.toHaveBeenCalled();
     expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
   });
 
-  it('should prevent concurrent loading', async () => {
+  it('serializes different model Loads in arrival order', async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(() => new Promise(resolve => {
-        setTimeout(() => resolve({ device: 'wasm' }), 100);
-      })),
+      loadDownloadedModel: vi.fn().mockImplementation(async () => {
+        entered.resolve(); await release.promise; return { device: 'wasm' };
+      }),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -397,24 +448,26 @@ describe('transformersJsService', () => {
 
     const { transformersJsService } = await import('./index');
 
-    // Start first load
-    const firstLoad = transformersJsService.loadModel({ modelId: 'model-1' });
-
-    // Wait for the status to become 'loading'
-    // In our implementation, it becomes 'loading' after listCachedModels()
-    // We give it a tiny bit of time
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    // Attempt second load immediately
-    await expect(transformersJsService.loadModel({ modelId: 'model-2' })).rejects.toThrow('Another model is currently loading');
-
-    await firstLoad;
+    const firstLoad = transformersJsService.loadDownloadedModel({ modelId: 'model-1' });
+    await entered.promise;
+    const secondLoad = transformersJsService.loadDownloadedModel({ modelId: 'model-2' });
+    try {
+      expect(mockRemote.loadDownloadedModel).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+    }
+    await Promise.all([firstLoad, secondLoad]);
+    expect(mockRemote.loadDownloadedModel.mock.calls.map(([modelId]) => modelId)).toEqual(['model-1', 'model-2']);
   });
 
   it('should call interrupt when AbortSignal is triggered during generation', async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     const mockRemote = {
-      loadModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
-      generateText: vi.fn().mockResolvedValue(undefined),
+      loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
+      generateText: vi.fn().mockImplementation(async () => {
+        entered.resolve(); await release.promise;
+      }),
       interrupt: vi.fn().mockResolvedValue(undefined),
     };
     (Comlink.wrap as any).mockImplementation(() => {
@@ -422,7 +475,7 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     const controller = new AbortController();
     const genPromise = transformersJsService.generateText({
@@ -434,15 +487,18 @@ describe('transformersJsService', () => {
       signal: controller.signal,
     });
 
+    const canceled = expect(genPromise).rejects.toMatchObject({ name: 'AbortError' });
+    await entered.promise;
     controller.abort();
-    await genPromise;
+    release.resolve();
+    await canceled;
 
     expect(mockRemote.interrupt).toHaveBeenCalled();
   });
 
   it('should clone lmParameters before sending them to the worker', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
+      loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
       generateText: vi.fn().mockResolvedValue(undefined),
     };
     (Comlink.wrap as any).mockImplementation(() => {
@@ -450,7 +506,7 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     const reactiveParams = reactive({
       ...EMPTY_LM_PARAMETERS,
@@ -481,7 +537,7 @@ describe('transformersJsService', () => {
 
   it('should clone messages and tools before sending them to the worker', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
+      loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
       generateText: vi.fn().mockResolvedValue(undefined),
     };
     (Comlink.wrap as any).mockImplementation(() => {
@@ -489,7 +545,7 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     const reactiveMessages = reactive([{
       role: 'assistant',
@@ -588,9 +644,9 @@ describe('transformersJsService', () => {
     expect(onnx.getFileHandle).toHaveBeenCalledWith('model.onnx', { create: true });
   });
 
-  it('should handle loadModel errors', async () => {
+  it('should handle loadDownloadedModel errors', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockRejectedValue(new Error('Failed to load')),
+      loadDownloadedModel: vi.fn().mockRejectedValue(new Error('Failed to load')),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -598,7 +654,7 @@ describe('transformersJsService', () => {
 
     const { transformersJsService } = await import('./index');
 
-    await expect(transformersJsService.loadModel({ modelId: 'bad-model' })).rejects.toThrow('Failed to load');
+    await expect(transformersJsService.loadDownloadedModel({ modelId: 'bad-model' })).rejects.toThrow('Failed to load');
     expect(transformersJsService.getState().status).toBe('error');
     expect(transformersJsService.getState().error).toBe('Failed to load');
   });

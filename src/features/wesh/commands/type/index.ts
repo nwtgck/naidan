@@ -4,7 +4,7 @@ import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/comman
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
 } from '@/features/wesh/types';
 
@@ -164,12 +164,7 @@ function formatClassification({
   }
 }
 
-export const typeCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'type',
-    description: 'Describe how command names are interpreted',
-    usage: 'type [-afptP] name [name ...]',
-  },
+export const typeCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: typeArgvSpec }),

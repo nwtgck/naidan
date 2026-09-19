@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref } from 'vue';
 import LmToolsSettings from './LmToolsSettings.vue';
 import type { ToolConfig } from '@/01-models/tool';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mocks = vi.hoisted(() => ({
   setToolStatus: vi.fn(),

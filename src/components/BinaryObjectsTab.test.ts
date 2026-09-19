@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BinaryObjectsTab from './BinaryObjectsTab.vue';
 import { storageService } from '@/00-storage/service';
 import type { BinaryObject } from '@/01-models/types';
 import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // --- Mocks ---
 

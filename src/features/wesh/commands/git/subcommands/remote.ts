@@ -1,4 +1,6 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import { getRawConfigValue, readEffectiveConfigEntries, readLocalConfigEntries, removeLocalConfigSection, setLocalConfigValue, unsetLocalConfigValue } from '@/features/wesh/commands/git/config';
 import type { GitConfigEntry } from '@/features/wesh/commands/git/config';
@@ -43,6 +45,86 @@ async function removePathRecursively({ context, path }: { context: WeshCommandCo
   }
 }
 
+type RemoteGlobalLongOptionSemantic = 'verbose' | 'no-verbose';
+
+const REMOTE_GLOBAL_LONG_ARGV_CATALOG = defineArgvCatalog<RemoteGlobalLongOptionSemantic>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    { semantic: 'verbose', forms: [{ kind: 'long', name: 'verbose', value: { kind: 'none' } }] },
+    { semantic: 'no-verbose', forms: [{ kind: 'long', name: 'no-verbose', value: { kind: 'none' } }] },
+  ],
+});
+
+function resolveRemoteGlobalLongOption({ arg }: { arg: string }): boolean | undefined {
+  if (arg === '--' || !arg.startsWith('--')) return undefined;
+  if (arg === '--no-') {
+    throw new GitUsageError({
+      message: formatGitAmbiguousLongOption({
+        option: arg,
+        candidateOptions: ['--no-verbose', '--no-verbose'],
+      }),
+    });
+  }
+  const analysis = analyzeArgvLongForm({
+    token: arg,
+    catalog: REMOTE_GLOBAL_LONG_ARGV_CATALOG,
+    longNameMatch: 'unique-prefix',
+  });
+  switch (analysis.kind) {
+  case 'matched':
+    switch (analysis.value.kind) {
+    case 'none':
+      switch (analysis.semantic) {
+      case 'verbose':
+        return true;
+      case 'no-verbose':
+        return false;
+      default: {
+        const _ex: never = analysis.semantic;
+        throw new Error(`Unhandled remote global semantic: ${_ex}`);
+      }
+      }
+    case 'unexpected-inline': {
+      const optionName = (() => {
+        switch (analysis.semantic) {
+        case 'verbose':
+          return 'verbose';
+        case 'no-verbose':
+          return 'no-verbose';
+        default: {
+          const _ex: never = analysis.semantic;
+          throw new Error(`Unhandled remote global semantic: ${_ex}`);
+        }
+        }
+      })();
+      throw new GitUsageError({
+        message: `option \`${optionName}' takes no value`,
+      });
+    }
+    case 'inline':
+    case 'following-required':
+      throw new Error(`Unexpected remote argv-v2 value claim for ${arg}`);
+    default: {
+      const _ex: never = analysis.value;
+      throw new Error(`Unhandled remote argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+    }
+    }
+  case 'ambiguous':
+    throw new GitUsageError({
+      message: formatGitAmbiguousLongOption({
+        option: analysis.option,
+        candidateOptions: analysis.candidateOptions,
+      }),
+    });
+  case 'unknown':
+    return undefined;
+  default: {
+    const _ex: never = analysis;
+    throw new Error(`Unhandled remote argv-v2 analysis: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
 export async function runRemote({ context, args }: {
   context: WeshCommandContext,
   args: readonly string[],
@@ -58,9 +140,25 @@ export async function runRemote({ context, args }: {
   const names = remoteNames({ entries: configEntries });
   const localConfigEntries = await readLocalConfigEntries({ files: context.files, repository });
   const localRemoteNames = remoteNames({ entries: localConfigEntries });
-  const listArgs = args.at(-1) === '--' ? args.slice(0, -1) : args;
-  if (listArgs.length === 0 || (listArgs.length === 1 && listArgs[0] === '-v')) {
-    const verbose = listArgs.length === 1;
+
+  let verbose = false;
+  let globalArgCount = 0;
+  while (globalArgCount < args.length) {
+    const arg = args[globalArgCount]!;
+    if (arg === '-v') {
+      verbose = true;
+      globalArgCount += 1;
+      continue;
+    }
+    const longVerbose = resolveRemoteGlobalLongOption({ arg });
+    if (longVerbose === undefined) break;
+    verbose = longVerbose;
+    globalArgCount += 1;
+  }
+
+  const remainingArgs = args.slice(globalArgCount);
+  const listArgs = remainingArgs.at(-1) === '--' ? remainingArgs.slice(0, -1) : remainingArgs;
+  if (listArgs.length === 0) {
     for (const name of names) {
       if (!verbose) {
         await context.text().print({ text: `${name}\n` });
@@ -77,11 +175,11 @@ export async function runRemote({ context, args }: {
     return { exitCode: 0 };
   }
 
-  const commandArgs = args[1] === '--'
-    ? [args[0]!, ...args.slice(2)]
-    : args.at(-1) === '--'
-      ? args.slice(0, -1)
-      : args;
+  const commandArgs = remainingArgs[1] === '--'
+    ? [remainingArgs[0]!, ...remainingArgs.slice(2)]
+    : remainingArgs.at(-1) === '--'
+      ? remainingArgs.slice(0, -1)
+      : remainingArgs;
   const subcommand = commandArgs[0]!;
   if (subcommand.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${subcommand}` });
   switch (subcommand) {
@@ -92,12 +190,13 @@ export async function runRemote({ context, args }: {
       await context.text().error({ text: `error: remote ${name} already exists.\n` });
       return { exitCode: 3 };
     }
-    await setLocalConfigValue({ files: context.files, repository, key: `remote.${name}.url`, value: commandArgs[2]! });
+    await setLocalConfigValue({ files: context.files, repository, key: `remote.${name}.url`, value: commandArgs[2]!, valuePattern: undefined });
     await setLocalConfigValue({
       files: context.files,
       repository,
       key: `remote.${name}.fetch`,
       value: `+refs/heads/*:refs/remotes/${name}/*`,
+      valuePattern: undefined,
     });
     return { exitCode: 0 };
   }
@@ -121,7 +220,7 @@ export async function runRemote({ context, args }: {
     }
     const key = `remote.${name}.url`;
     const value = commandArgs[2]!;
-    const setResult = await setLocalConfigValue({ files: context.files, repository, key, value });
+    const setResult = await setLocalConfigValue({ files: context.files, repository, key, value, valuePattern: undefined });
     switch (setResult) {
     case 'set':
       return { exitCode: 0 };
@@ -152,11 +251,11 @@ export async function runRemote({ context, args }: {
       else branchesUsingPushRemote.add(match[1]!);
     }
     for (const branchName of branchesUsingRemote) {
-      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.remote`, all: true });
-      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.merge`, all: true });
+      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.remote`, all: true, valuePattern: undefined });
+      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.merge`, all: true, valuePattern: undefined });
     }
     for (const branchName of branchesUsingPushRemote) {
-      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.pushremote`, all: true });
+      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.pushremote`, all: true, valuePattern: undefined });
     }
     const remoteRefPrefix = `refs/remotes/${name}`;
     for (const ref of await listRefs({ files: context.files, repository, prefix: 'refs' })) {

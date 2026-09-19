@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -19,9 +20,11 @@ describe('wesh ls', () => {
   async function writeFile({
     path,
     data,
+    mtime,
   }: {
     path: string,
     data: string,
+    mtime?: number,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -38,6 +41,9 @@ describe('wesh ls', () => {
     const writable = await handle.createWritable();
     await writable.write(data);
     await writable.close();
+    if (mtime !== undefined) {
+      handle.lastModified = mtime;
+    }
   }
 
   async function execute({
@@ -49,7 +55,7 @@ describe('wesh ls', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -74,6 +80,110 @@ zeta.txt
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('supports common time, size, and reverse sorting forms', async () => {
+    await writeFile({ path: 'sorted/old.txt', data: 'aa', mtime: 1_000 });
+    await writeFile({ path: 'sorted/middle.txt', data: 'bbb', mtime: 2_000 });
+    await writeFile({ path: 'sorted/new.txt', data: 'cccc', mtime: 3_000 });
+
+    const cases = [
+      ['-t', `\
+new.txt
+middle.txt
+old.txt
+`],
+      ['--sort=time', `\
+new.txt
+middle.txt
+old.txt
+`],
+      ['-S', `\
+new.txt
+middle.txt
+old.txt
+`],
+      ['--sort=size', `\
+new.txt
+middle.txt
+old.txt
+`],
+      ['-r', `\
+old.txt
+new.txt
+middle.txt
+`],
+      ['--reverse', `\
+old.txt
+new.txt
+middle.txt
+`],
+      ['-tr', `\
+old.txt
+middle.txt
+new.txt
+`],
+      ['-Sr', `\
+old.txt
+middle.txt
+new.txt
+`],
+    ] as const;
+
+    for (const [options, expected] of cases) {
+      const result = await execute({ script: `ls ${options} sorted` });
+      expect(result.result.exitCode, options).toBe(0);
+      expect(result.stdout.text, options).toBe(expected);
+      expect(result.stderr.text, options).toBe('');
+    }
+
+    const longTime = await execute({ script: 'ls -lt sorted' });
+    const longTimeReverse = await execute({ script: 'ls -ltr sorted' });
+    const longSize = await execute({ script: 'ls -lS sorted' });
+    expect(longTime.stdout.text).toBe(`\
+-          4 new.txt
+-          3 middle.txt
+-          2 old.txt
+`);
+    expect(longTimeReverse.stdout.text).toBe(`\
+-          2 old.txt
+-          3 middle.txt
+-          4 new.txt
+`);
+    expect(longSize.stdout.text).toBe(`\
+-          4 new.txt
+-          3 middle.txt
+-          2 old.txt
+`);
+    for (const result of [longTime, longTimeReverse, longSize]) {
+      expect(result.result.exitCode).toBe(0);
+      expect(result.stderr.text).toBe('');
+    }
+  });
+
+  it('uses the last sort selector and supports --sort=name', async () => {
+    await writeFile({ path: 'modes/large-old', data: '1234567890', mtime: 1_000 });
+    await writeFile({ path: 'modes/small-new', data: 'x', mtime: 2_000 });
+
+    const timeThenSize = await execute({ script: 'ls -tS modes' });
+    const sizeThenTime = await execute({ script: 'ls -St modes' });
+    const resetToName = await execute({ script: 'ls -S --sort=name modes' });
+    const invalid = await execute({ script: 'ls --sort=bogus modes' });
+
+    expect(timeThenSize.stdout.text).toBe(`\
+large-old
+small-new
+`);
+    expect(sizeThenTime.stdout.text).toBe(`\
+small-new
+large-old
+`);
+    expect(resetToName.stdout.text).toBe(`\
+large-old
+small-new
+`);
+    expect(invalid.result.exitCode).toBe(2);
+    expect(invalid.stderr.text).toContain("invalid argument 'bogus' for '--sort'");
   });
 
   it('uses C-locale ordering and lists file operands before directories', async () => {
@@ -308,6 +418,46 @@ ordering/a-dir:
     }
   });
 
+  it('matches GNU unique-prefix acceptance and real-option ambiguity', async () => {
+    await writeFile({ path: 'tree/sub/file.txt', data: 'file' });
+
+    const abbreviated = await execute({ script: 'ls --rec tree' });
+    const canonical = await execute({ script: 'ls --recursive tree' });
+    const recursiveAmbiguous = await execute({ script: 'ls --r tree' });
+    const directoryAmbiguous = await execute({ script: 'ls --di tree' });
+    const classifyAmbiguous = await execute({ script: 'ls --c tree' });
+    const unsupportedOnlyAmbiguous = await execute({ script: 'ls --q tree' });
+    const syntheticLong = await execute({ script: 'ls --1 tree' });
+
+    expect(abbreviated.stdout.text).toBe(canonical.stdout.text);
+    expect(abbreviated.stderr.text).toBe(canonical.stderr.text);
+    expect(abbreviated.result.exitCode).toBe(canonical.result.exitCode);
+
+    expect(recursiveAmbiguous.stderr.text).toContain("option '--r' is ambiguous");
+    expect(recursiveAmbiguous.stderr.text).toContain("'--recursive'");
+    expect(recursiveAmbiguous.stderr.text).toContain("'--reverse'");
+    expect(recursiveAmbiguous.result.exitCode).toBe(2);
+
+    expect(directoryAmbiguous.stderr.text).toContain("option '--di' is ambiguous");
+    expect(directoryAmbiguous.stderr.text).toContain("'--directory'");
+    expect(directoryAmbiguous.stderr.text).toContain("'--dired'");
+    expect(directoryAmbiguous.result.exitCode).toBe(2);
+
+    expect(classifyAmbiguous.stderr.text).toContain("option '--c' is ambiguous");
+    expect(classifyAmbiguous.stderr.text).toContain("'--classify'");
+    expect(classifyAmbiguous.stderr.text).toContain("'--color'");
+    expect(classifyAmbiguous.stderr.text).toContain("'--context'");
+    expect(classifyAmbiguous.result.exitCode).toBe(2);
+
+    expect(unsupportedOnlyAmbiguous.stderr.text).toContain("option '--q' is ambiguous");
+    expect(unsupportedOnlyAmbiguous.stderr.text).toContain("'--quote-name'");
+    expect(unsupportedOnlyAmbiguous.stderr.text).toContain("'--quoting-style'");
+    expect(unsupportedOnlyAmbiguous.result.exitCode).toBe(2);
+
+    expect(syntheticLong.stderr.text).toContain("unrecognized option '--1'");
+    expect(syntheticLong.result.exitCode).toBe(2);
+  });
+
   it('lists root-relative paths correctly from /', async () => {
     await writeFile({ path: 'root.txt', data: 'root' });
 
@@ -406,7 +556,18 @@ dir
     expect(stdout.text).toContain(`\
 dir:
 file.txt`);
-    expect(stderr.text).toContain('ls: missing:');
+    expect(stderr.text).toBe('ls: missing: No such file or directory\n');
+    expect(result.exitCode).toBe(2);
+  });
+  it('normalizes browser type-mismatch errors for intermediate file path components', async () => {
+    await writeFile({ path: 'parent', data: 'file' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'ls parent/child',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('ls: parent/child: Not a directory\n');
     expect(result.exitCode).toBe(2);
   });
 });
