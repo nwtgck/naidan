@@ -2,12 +2,139 @@ import { z } from 'zod';
 import { LlamaCppBrowserError, modelSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 
-const directoryName = 'llama-cpp-browser-models-v1';
+const directoryName = 'llama-cpp-browser-models';
+const legacyDirectoryName = 'llama-cpp-browser-models-v1';
 const lockName = 'naidan-llama-cpp-browser-model-store';
 
 async function directory(): Promise<FileSystemDirectoryHandle> {
   if (!navigator.storage?.getDirectory) throw new LlamaCppBrowserError({ code: 'unavailable' });
-  return (await navigator.storage.getDirectory()).getDirectoryHandle(directoryName, { create: true });
+  const storageRoot = await navigator.storage.getDirectory();
+  const root = await storageRoot.getDirectoryHandle(directoryName, { create: true });
+  await migrateLegacyModels({ storageRoot, root });
+  return root;
+}
+function isNotFound({ error }: { error: unknown }): boolean {
+  return error instanceof DOMException && error.name === 'NotFoundError';
+}
+async function readMetadata({ folder }: { folder: FileSystemDirectoryHandle }): Promise<LocalModel | undefined> {
+  try {
+    const file = await (await folder.getFileHandle('metadata.json')).getFile();
+    if (file.size === 0 || file.size > 4096) return undefined;
+    const parsed = modelSchema.safeParse(JSON.parse(await file.text()));
+    return parsed.success ? parsed.data : undefined;
+  } catch (error) {
+    if (isNotFound({ error }) || error instanceof SyntaxError) return undefined;
+    throw error;
+  }
+}
+async function writeMetadata({ folder, model }: { folder: FileSystemDirectoryHandle, model: LocalModel }): Promise<void> {
+  const writer = await (await folder.getFileHandle('metadata.json', { create: true })).createWritable();
+  try {
+    await writer.write(JSON.stringify(model)); await writer.close();
+  } catch (error) {
+    await writer.abort().catch(() => {}); throw error;
+  }
+}
+async function copyModelFile({ source, destination }: { source: File, destination: FileSystemFileHandle }): Promise<void> {
+  const writer = await destination.createWritable();
+  const reader = source.stream().getReader(); let completed = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      await writer.write(value); completed += value.byteLength;
+    }
+    if (completed !== source.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
+    await writer.close();
+  } catch (error) {
+    await reader.cancel().catch(() => {}); await writer.abort().catch(() => {}); throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
+/** Migrate under the same exclusive lock used by readers, imports and inference.
+ * Publish metadata before transferring a legacy file, so an interrupted move is
+ * recoverable from either side. Never delete the source before the target is valid.
+ */
+async function migrateLegacyModels({ storageRoot, root }: {
+  storageRoot: FileSystemDirectoryHandle, root: FileSystemDirectoryHandle,
+}): Promise<void> {
+  let legacy: FileSystemDirectoryHandle;
+  try {
+    legacy = await storageRoot.getDirectoryHandle(legacyDirectoryName);
+  } catch (error) {
+    if (isNotFound({ error })) return;
+    throw error;
+  }
+  for await (const [id, entry] of legacy.entries()) {
+    if (entry.kind !== 'directory' || !z.uuid().safeParse(id).success) continue;
+    const model = await readMetadata({ folder: entry });
+    if (!model || model.id !== id) continue; // Do not guess ownership of damaged/foreign entries.
+    const target = await root.getDirectoryHandle(id, { create: true });
+    const existing = await readMetadata({ folder: target });
+    if (existing && (existing.id !== model.id || existing.name !== model.name || existing.size !== model.size || existing.importedAt !== model.importedAt)) {
+      throw new LlamaCppBrowserError({ code: 'storage-error' });
+    }
+    if (!existing) {
+      // Only an empty metadata file can be a recoverable previous write here.
+      // Do not overwrite populated data with an invalid or missing manifest.
+      for await (const [name, child] of target.entries()) {
+        if (name !== 'metadata.json' || child.kind !== 'file' || (await child.getFile()).size !== 0) {
+          throw new LlamaCppBrowserError({ code: 'storage-error' });
+        }
+      }
+    }
+    let transferred = false;
+    if (existing) {
+      try {
+        transferred = (await (await target.getFileHandle('model.gguf')).getFile()).size === model.size;
+      } catch (error) {
+        if (!isNotFound({ error })) throw error;
+      }
+    }
+    if (!transferred) {
+      const sourceHandle = await entry.getFileHandle('model.gguf');
+      const source = await sourceHandle.getFile();
+      if (source.size !== model.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
+      await writeMetadata({ folder: target, model });
+      const movable = sourceHandle as FileSystemFileHandle & {
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Optional native OPFS move overload uses positional arguments.
+        move?: (destination: FileSystemDirectoryHandle, name: string) => Promise<void>,
+      };
+      if (movable.move) {
+        try {
+          // Avoid making a second model-sized copy on implementations with OPFS move.
+          await movable.move(target, 'model.gguf'); transferred = true;
+        } catch (error) {
+          if (!(error instanceof TypeError) && !(error instanceof DOMException && error.name === 'NotSupportedError')) throw error;
+        }
+      }
+      if (!transferred) {
+        await copyModelFile({ source, destination: await target.getFileHandle('model.gguf', { create: true }) });
+      }
+      if ((await (await target.getFileHandle('model.gguf')).getFile()).size !== model.size) {
+        throw new LlamaCppBrowserError({ code: 'storage-error' });
+      }
+    }
+    for (const name of ['model.gguf', 'metadata.json']) {
+      try {
+        await entry.removeEntry(name);
+      } catch (error) {
+        if (!isNotFound({ error })) throw error;
+      }
+    }
+    // Only remove now-empty legacy containers, never extra user-created entries.
+    try {
+      await legacy.removeEntry(id);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'InvalidModificationError')) throw error;
+    }
+  }
+  try {
+    await storageRoot.removeEntry(legacyDirectoryName);
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === 'InvalidModificationError')) throw error;
+  }
 }
 export async function withModelStoreLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   if (!navigator.locks) throw new LlamaCppBrowserError({ code: 'unavailable' });
@@ -73,12 +200,7 @@ export async function importStoredModel({ file, onProgress }: { file: File, onPr
     }
     if (completed !== file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
     await writer.close(); writer = undefined;
-    const metadata = await (await target.getFileHandle('metadata.json', { create: true })).createWritable();
-    try {
-      await metadata.write(JSON.stringify(model)); await metadata.close();
-    } catch (error) {
-      await metadata.abort().catch(() => {}); throw error;
-    }
+    await writeMetadata({ folder: target, model });
     onProgress({ progress: { phase: 'importing', completed, total: file.size } });
     logDiagnostic({ diagnostic: { event: 'import-complete', bytes: completed, elapsedMs: performance.now() - started } });
     return model;

@@ -1713,6 +1713,16 @@ import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__we
 import type { Strings } from './en';
 
 import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/ko';
+import { llamaCppBrowser__gguf_model_files } from '@/strings/messages/llamaCppBrowser__gguf_model_files/ko';
+import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/ko';
+import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBrowser__gguf_files_only/ko';
+import { llamaCppBrowser__drop_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_gguf_files_here/ko';
+import { llamaCppBrowser__or_choose_files_from_your_device } from '@/strings/messages/llamaCppBrowser__or_choose_files_from_your_device/ko';
+import { llamaCppBrowser__inference_settings } from '@/strings/messages/llamaCppBrowser__inference_settings/ko';
+import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/ko';
+import { llamaCppBrowser__automatic_profile_description } from '@/strings/messages/llamaCppBrowser__automatic_profile_description/ko';
+import { llamaCppBrowser__imported_models } from '@/strings/messages/llamaCppBrowser__imported_models/ko';
+import { llamaCppBrowser__loading_model_list } from '@/strings/messages/llamaCppBrowser__loading_model_list/ko';
 import { llamaCppBrowser__manage_gguf_models } from '@/strings/messages/llamaCppBrowser__manage_gguf_models/ko';
 import { llamaCppBrowser__import_downloaded_gguf } from '@/strings/messages/llamaCppBrowser__import_downloaded_gguf/ko';
 import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/ko';
@@ -3445,6 +3455,16 @@ export const catalog = {
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
   llamaCppBrowser__endpoint_label,
+  llamaCppBrowser__gguf_model_files,
+  llamaCppBrowser__choose_gguf_files,
+  llamaCppBrowser__gguf_files_only,
+  llamaCppBrowser__drop_gguf_files_here,
+  llamaCppBrowser__or_choose_files_from_your_device,
+  llamaCppBrowser__inference_settings,
+  llamaCppBrowser__automatic_recommended,
+  llamaCppBrowser__automatic_profile_description,
+  llamaCppBrowser__imported_models,
+  llamaCppBrowser__loading_model_list,
   llamaCppBrowser__manage_gguf_models,
   llamaCppBrowser__import_downloaded_gguf,
   llamaCppBrowser__unavailable_in_standalone,

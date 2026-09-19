@@ -19,6 +19,9 @@ function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
     maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
 describe('serialized hosted model service', () => {
+  it('defaults to browser feature detection without an explicitly chosen profile', () => {
+    expect(service.getOptions()).toEqual({ profile: 'auto', contextSize: 4096 });
+  });
   it('snapshots inputs and options before entering the single Worker lane', async () => {
     let finish: () => void = () => {};
     worker.generate.mockImplementationOnce(() => new Promise<void>(resolve => {

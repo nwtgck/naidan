@@ -5,7 +5,7 @@ import type { LlamaCppBrowserService } from './service-contract';
 import { logDiagnostic } from './debug-log';
 
 let state: EngineState = { status: 'idle' };
-let options: RuntimeOptions = { profile: 'webgpu-wasm64-jspi', contextSize: 4096 };
+let options: RuntimeOptions = { profile: 'auto', contextSize: 4096 };
 let client: LlamaCppWorkerClient | undefined;
 let activeController: AbortController | undefined;
 let queue: Promise<void> = Promise.resolve();

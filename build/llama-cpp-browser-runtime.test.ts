@@ -43,7 +43,7 @@ describe('llama.cpp runtime distribution boundary', () => {
     const modules = Object.values(output).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     expect(modules.some(name => name.endsWith('llama-cpp-browser/index-standalone.ts'))).toBe(true);
     expect(modules.some(name => name.includes('llama-cpp-browser-core'))).toBe(false);
-    expect(modules.some(name => name.includes('client-hosted') || name.includes('index-hosted') || name.includes('model-store') || name.includes('worker/entry'))).toBe(false);
+    expect(modules.some(name => name.includes('client-hosted') || name.includes('index-hosted') || name.includes('model-store') || name.includes('detect-profile') || name.includes('worker/entry'))).toBe(false);
     expect(Object.keys(output).some(name => name.includes('llama-cpp-browser-runtime') || name.endsWith('.wasm') || name.endsWith('.wasm.gz'))).toBe(false);
   }, 30000);
   it('ships each original hosted runtime module with a lossless compressed Wasm asset', async () => {

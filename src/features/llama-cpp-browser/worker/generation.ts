@@ -3,11 +3,12 @@ import { mountReadOnlyFile } from 'llama-cpp-browser-core';
 import { LlamaCppBrowserError, usesWebGpu, type Progress } from '@/features/llama-cpp-browser/types';
 import { storedModelHandle } from '@/features/llama-cpp-browser/runtime/model-store';
 import { loadRuntime } from '@/features/llama-cpp-browser/runtime/load-runtime';
+import { resolveRuntimeProfile } from '@/features/llama-cpp-browser/runtime/detect-profile';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
 import { createOutputStream } from './output-stream';
 
-let cachedRuntime: { profile: WorkerGenerateInput['options']['profile'], assetBaseURL: string, core: Core } | undefined;
+let cachedRuntime: { profile: Awaited<ReturnType<typeof resolveRuntimeProfile>>, assetBaseURL: string, core: Core } | undefined;
 
 /** A request owns its model/context and file handle. A new request never reuses stale KV. */
 export async function generate({ request, onChunk, onProgress }: {
@@ -18,10 +19,11 @@ export async function generate({ request, onChunk, onProgress }: {
   const started = performance.now();
   const progress = ({ phase, completed, total }: Progress): void => onProgress({ progress: { phase, completed, total } });
   progress({ phase: 'initializing', completed: 0, total: 0 });
-  if (!cachedRuntime || cachedRuntime.profile !== request.options.profile || cachedRuntime.assetBaseURL !== request.assetBaseURL) {
+  const profile = await resolveRuntimeProfile({ profile: request.options.profile });
+  if (!cachedRuntime || cachedRuntime.profile !== profile || cachedRuntime.assetBaseURL !== request.assetBaseURL) {
     if (cachedRuntime) await cachedRuntime.core.api.llama_backend_free();
     cachedRuntime = undefined;
-    cachedRuntime = { profile: request.options.profile, assetBaseURL: request.assetBaseURL, core: await loadRuntime({ profile: request.options.profile, assetBaseURL: request.assetBaseURL }) };
+    cachedRuntime = { profile, assetBaseURL: request.assetBaseURL, core: await loadRuntime({ profile, assetBaseURL: request.assetBaseURL }) };
   }
   const core = cachedRuntime.core; const api = core.api;
   const handle = await storedModelHandle({ name: request.model });
@@ -55,7 +57,7 @@ export async function generate({ request, onChunk, onProgress }: {
       },
     }, { maxChunkBytes: 8 * 1024 * 1024 });
     const params = record({ name: 'llama_model_params' }); await api.llama_model_default_params(params);
-    for (const [field, value] of Object.entries({ n_gpu_layers: usesWebGpu({ profile: request.options.profile }) ? 999 : 0,
+    for (const [field, value] of Object.entries({ n_gpu_layers: usesWebGpu({ profile }) ? 999 : 0,
       load_mode: core.constant('LLAMA_LOAD_MODE_NONE'), lazy_mode: core.constant('LLAMA_LAZY_MODE_OFF'), check_tensors: 0 })) {
       core.setField('llama_model_params', params, field, value);
     }
@@ -70,7 +72,7 @@ export async function generate({ request, onChunk, onProgress }: {
     progress({ phase: 'loading', completed: 0, total: 1 });
     model = await api.llama_model_load_from_file(string({ text: mounted.path }), params);
     if (model === 0n) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-    logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: performance.now() - started, profile: request.options.profile } });
+    logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: performance.now() - started, profile } });
     const cp = record({ name: 'llama_context_params' }); await api.llama_context_default_params(cp);
     for (const [field, value] of Object.entries({ n_ctx: request.options.contextSize, n_batch: 128, n_ubatch: 128, n_threads: 1, n_threads_batch: 1 })) {
       core.setField('llama_context_params', cp, field, value);

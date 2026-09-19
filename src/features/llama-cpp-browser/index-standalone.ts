@@ -6,7 +6,7 @@ const unsupported = async (): Promise<never> => {
 /** The UI retains this surface, but no storage, worker or native runtime is imported. */
 export const llamaCppBrowserService: LlamaCppBrowserService = {
   getState: () => ({ status: 'unavailable' }),
-  getOptions: () => ({ profile: 'webgpu-wasm64-jspi', contextSize: 4096 }),
+  getOptions: () => ({ profile: 'auto', contextSize: 4096 }),
   setOptions() {},
   subscribe({ listener }) {
     listener({ state: { status: 'unavailable' } }); return () => {};

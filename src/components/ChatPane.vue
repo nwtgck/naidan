@@ -46,7 +46,6 @@ import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoic
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
-import LlamaCppBrowserLoadingIndicator from '@/features/llama-cpp-browser/components/LlamaCppBrowserLoadingIndicator.vue';
 import TransformersJsLoadingIndicator from '@/features/transformers-js/components/TransformersJsLoadingIndicator.vue';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
 import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
@@ -1614,7 +1613,6 @@ watch(
               />
             </template>
 
-            <LlamaCppBrowserLoadingIndicator v-if="resolvedSettings?.endpoint.type === 'llama_cpp_browser'" />
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->
             <TransformersJsLoadingIndicator
               v-if="resolvedSettings?.endpoint.type === 'transformers_js'"

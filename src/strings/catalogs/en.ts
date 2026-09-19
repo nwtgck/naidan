@@ -1716,6 +1716,16 @@ type BoundaryStringMessage = (() => string) | ((args: never) => string);
 type BoundaryStringCatalog = Readonly<Record<string, BoundaryStringMessage>>;
 
 import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/en';
+import { llamaCppBrowser__gguf_model_files } from '@/strings/messages/llamaCppBrowser__gguf_model_files/en';
+import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/en';
+import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBrowser__gguf_files_only/en';
+import { llamaCppBrowser__drop_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_gguf_files_here/en';
+import { llamaCppBrowser__or_choose_files_from_your_device } from '@/strings/messages/llamaCppBrowser__or_choose_files_from_your_device/en';
+import { llamaCppBrowser__inference_settings } from '@/strings/messages/llamaCppBrowser__inference_settings/en';
+import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/en';
+import { llamaCppBrowser__automatic_profile_description } from '@/strings/messages/llamaCppBrowser__automatic_profile_description/en';
+import { llamaCppBrowser__imported_models } from '@/strings/messages/llamaCppBrowser__imported_models/en';
+import { llamaCppBrowser__loading_model_list } from '@/strings/messages/llamaCppBrowser__loading_model_list/en';
 import { llamaCppBrowser__manage_gguf_models } from '@/strings/messages/llamaCppBrowser__manage_gguf_models/en';
 import { llamaCppBrowser__import_downloaded_gguf } from '@/strings/messages/llamaCppBrowser__import_downloaded_gguf/en';
 import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/en';
@@ -3448,6 +3458,16 @@ export const catalog = {
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
   llamaCppBrowser__endpoint_label,
+  llamaCppBrowser__gguf_model_files,
+  llamaCppBrowser__choose_gguf_files,
+  llamaCppBrowser__gguf_files_only,
+  llamaCppBrowser__drop_gguf_files_here,
+  llamaCppBrowser__or_choose_files_from_your_device,
+  llamaCppBrowser__inference_settings,
+  llamaCppBrowser__automatic_recommended,
+  llamaCppBrowser__automatic_profile_description,
+  llamaCppBrowser__imported_models,
+  llamaCppBrowser__loading_model_list,
   llamaCppBrowser__manage_gguf_models,
   llamaCppBrowser__import_downloaded_gguf,
   llamaCppBrowser__unavailable_in_standalone,

@@ -19,6 +19,7 @@ import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from '@/features/speech/components/SpeechLanguageSelector.vue';
 import { transformersJsService } from '@/features/transformers-js';
+import LlamaCppBrowserLoadingIndicator from '@/features/llama-cpp-browser/components/LlamaCppBrowserLoadingIndicator.vue';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
 import type { AttachmentId, BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
@@ -684,6 +685,10 @@ defineExpose({
         </div>
       </div>
       <div v-else>
+        <LlamaCppBrowserLoadingIndicator
+          v-if="isGenerating && showGeneratingIndicator && endpointType === 'llama_cpp_browser'"
+          scope="inference"
+        />
         <!-- Content Display (Always shown if present) -->
         <div v-if="displayContent" data-testid="message-content">
           <BlockMarkdownRenderer
