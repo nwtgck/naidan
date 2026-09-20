@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { ref, watch, computed, nextTick } from 'vue';
+import { useModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
@@ -22,6 +24,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // Lazily load tabs that are not visible by default, but prefetch them when idle.
 const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/recipes/components/RecipeImportTab.vue') });
 const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilesTab.vue') });
+const LlamaCppBrowserManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue') });
 const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsManager.vue') });
 const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
@@ -58,6 +61,16 @@ const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
 const { isFeatureEnabled } = useFeatureFlags();
+provideHuggingFaceSession();
+const modelPresetState = useModelPreset();
+const modelPreset = computed(() => {
+  const preset = modelPresetState?.value; const target = preset?.target;
+  switch (target) {
+  case 'settings': return preset;
+  case undefined: case 'onboarding': return undefined;
+  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  }
+});
 const route = useRoute();
 const router = useRouter();
 
@@ -113,7 +126,7 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string, ma
 }
 
 // Tab State
-type Tab = 'connection' | 'tools' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'binary_objects' | 'volumes' | 'developer' | 'about';
+type Tab = 'connection' | 'tools' | 'recipes' | 'profiles' | 'transformers_js' | 'llama_cpp_browser' | 'storage' | 'binary_objects' | 'volumes' | 'developer' | 'about';
 const isVolumesFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'volume' }));
 const activeTab = computed({
   get: () => {
@@ -121,6 +134,7 @@ const activeTab = computed({
     if (queryTab) {
       if (queryTab === 'provider-profiles') return 'profiles';
       if (queryTab === 'transformers-js') return 'transformers_js';
+      if (queryTab === 'llama-cpp-browser') return 'llama_cpp_browser';
       if (queryTab === 'binary-objects') return 'binary_objects';
       if (queryTab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
       return (queryTab as Tab);
@@ -128,6 +142,7 @@ const activeTab = computed({
     const tab = (route.params as { tab?: string }).tab;
     if (tab === 'provider-profiles') return 'profiles';
     if (tab === 'transformers-js') return 'transformers_js';
+    if (tab === 'llama-cpp-browser') return 'llama_cpp_browser';
     if (tab === 'binary-objects') return 'binary_objects';
     if (tab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
     return (tab as Tab) || 'connection';
@@ -136,6 +151,7 @@ const activeTab = computed({
     const pathMap: Record<string, string> = {
       profiles: 'provider-profiles',
       transformers_js: 'transformers-js',
+      llama_cpp_browser: 'llama-cpp-browser',
       binary_objects: 'binary-objects',
     };
     const mappedVal = pathMap[val] || val;
@@ -241,6 +257,14 @@ defineExpose({
             >
               <BookmarkPlusIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__provider_profiles() }}
+            </button>
+            <button
+              @click="activeTab = 'llama_cpp_browser'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
+              data-testid="tab-llama-cpp-browser"
+            >
+              <BrainCircuitIcon tw-class="w-4 h-4" />
+              {{ lazyStrings.SettingsModal__llama_cpp_browser() }}
             </button>
             <button
               @click="activeTab = 'transformers_js'"
@@ -351,6 +375,9 @@ defineExpose({
               <!-- Transformers.js Tab -->
               <div v-if="activeTab === 'transformers_js'" tw-class="max-w-4xl mx-auto">
                 <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
+              </div>
+              <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
+                <LlamaCppBrowserManager :model-preset="modelPreset" />
               </div>
 
               <!-- Recipes Tab -->

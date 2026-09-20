@@ -1,3 +1,6 @@
+import { normalizePrivacyFetchHeaders } from './request';
+import { isAllowedHuggingFaceResponseUrl } from './policies/huggingface';
+export { fetchPrivacyStream as privacyFetchStream } from './stream-fetch';
 import { createPrivacyFetchError } from './errors';
 import { validatePrivacyFetchUrl } from './validate-url';
 import type {
@@ -37,13 +40,19 @@ export async function privacyFetch({
     });
   }
 
+  const headers = normalizePrivacyFetchHeaders({ headers: request.headers });
   try {
     const response = await fetch(validationResult.normalizedUrl, {
       method: 'GET',
       credentials: 'omit',
       referrerPolicy: 'no-referrer',
       signal: request.signal,
+      ...(headers === undefined ? {} : { headers }),
     });
+    if (validationResult.policyName === 'huggingface_models' && !isAllowedHuggingFaceResponseUrl({ requestUrl: validationResult.normalizedUrl, responseUrl: response.url })) {
+      await response.body?.cancel();
+      throw new Error('Unsupported Hugging Face delivery URL');
+    }
     const body = await response.arrayBuffer();
 
     return {
@@ -61,7 +70,7 @@ export async function privacyFetch({
   } catch (error) {
     throw createPrivacyFetchError({
       code: request.signal?.aborted ? 'aborted' : 'fetch_failed',
-      message: String(error),
+      message: validationResult.policyName === 'huggingface_models' ? 'Hugging Face request failed' : String(error),
     });
   }
 }

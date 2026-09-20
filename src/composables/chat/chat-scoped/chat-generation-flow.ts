@@ -97,6 +97,7 @@ function isBrowserProvidedLmEndpoint({ endpoint }: { endpoint: Endpoint }): bool
     return true;
   case 'openai':
   case 'ollama':
+  case 'llama_cpp_browser':
   case 'transformers_js':
   case 'unsupported_experimental_endpoint':
     return false;
@@ -209,6 +210,7 @@ export async function sendMessageToTargetChat({
           url: endpoint.url,
           type: endpoint.type,
         };
+      case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':
         return {
@@ -425,6 +427,7 @@ export async function generateResponseForAssistant({
   };
 
   const mutableChat = getLiveChat({ chat });
+  const debug = mutableChat.debugEnabled ? 'on' : 'off';
   const assistantNode = findNodeInBranch({ items: mutableChat.root.items, targetId: assistantId });
   if (assistantNode === null || assistantNode.role !== 'assistant') {
     throw new Error('Assistant node not found');
@@ -537,6 +540,7 @@ export async function generateResponseForAssistant({
       signalReady();
       const { ensureApproval } = useApproval();
       await provider.chat({
+        debug,
         messages: finalMessages,
         model: resolvedModel,
         tools: enabledTools.length > 0 ? enabledTools : undefined,

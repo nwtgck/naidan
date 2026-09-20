@@ -1,3 +1,6 @@
+import { START_LOCATION } from 'vue-router';
+import { shallowRef } from 'vue';
+import { TEST_ONLY as modelPresetTestOnly, type ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { flushPromises, mount } from '@vue/test-utils';
 import { reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,7 +19,8 @@ function timingSnapshot(): DownloadTimingSnapshot {
       timingStatus: 'measured', wallMs: 100, truncated: false, droppedObservations: 0, observations: [] }] };
 }
 
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRoute: vi.fn(),
   useRouter: vi.fn(),
 }));
@@ -118,19 +122,45 @@ describe('AppAuxiliaryUi', () => {
     query: {} as Record<string, string>,
   });
   const push = vi.fn();
+  const replace = vi.fn();
 
   beforeEach(() => {
     route.path = '/';
     route.fullPath = '/';
     route.query = {};
-    push.mockClear();
+    push.mockClear(); replace.mockClear();
     timingMocks.snapshot.mockReset().mockReturnValue(undefined);
     isSearchOpen.value = false;
     isRecentOpen.value = false;
     vi.mocked(useRoute).mockReturnValue(route as ReturnType<typeof useRoute>);
-    vi.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<typeof useRouter>);
+    vi.mocked(useRouter).mockReturnValue({ push, replace, currentRoute: shallowRef(route) } as unknown as ReturnType<typeof useRouter>);
   });
 
+  it('opens the preset settings tab once while preserving unrelated query state', async () => {
+    route.query = { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', leaf: 'message-1' };
+    const preset = shallowRef<ModelPreset>({ input: route.query['llama-cpp-browser-model']!, target: 'settings', claim: () => true });
+    const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
+    await flushPromises();
+    expect(replace).toHaveBeenCalledWith({ path: '/', query: { ...route.query, settings: 'llama-cpp-browser' }, hash: undefined });
+    route.query = { ...route.query, settings: 'llama-cpp-browser' }; await flushPromises();
+    wrapper.vm.TEST_ONLY.closeSettings();
+    expect(push).toHaveBeenCalledWith({ path: '/', query: { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', leaf: 'message-1' } });
+    delete route.query.settings; await flushPromises(); expect(replace).toHaveBeenCalledTimes(1);
+    preset.value = { input: 'hf.co/owner/repo:Q8_0', target: 'settings', claim: () => true }; await flushPromises();
+    expect(replace).toHaveBeenCalledTimes(2); wrapper.unmount();
+  });
+  it('preserves the pending cold-link path and query before initial navigation settles', async () => {
+    const pendingRoute = { path: '/chat/chat-1', query: { leaf: 'message-2', 'llama-cpp-browser-model': 'hf.co/owner/repo' }, hash: '' };
+    vi.mocked(useRouter).mockReturnValue({ push, replace, currentRoute: shallowRef(START_LOCATION), options: { history: { location: '/chat/chat-1?leaf=message-2' } }, resolve: vi.fn().mockReturnValue(pendingRoute) } as unknown as ReturnType<typeof useRouter>);
+    const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo', target: 'settings', claim: () => true });
+    const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
+    await flushPromises(); expect(replace).toHaveBeenCalledWith({ ...pendingRoute, query: { ...pendingRoute.query, settings: 'llama-cpp-browser' } }); wrapper.unmount();
+  });
+  it('does not open settings for a preset assigned to ordinary onboarding', async () => {
+    const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo', target: 'onboarding', claim: () => true });
+    const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
+    await flushPromises(); expect(replace).not.toHaveBeenCalled(); wrapper.unmount();
+  });
   it('does not mount closed auxiliary overlays', async () => {
     const wrapper = mount(AppAuxiliaryUi);
     await flushPromises();

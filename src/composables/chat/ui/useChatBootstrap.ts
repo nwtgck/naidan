@@ -1,3 +1,4 @@
+import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { installChatBootstrap } from '@/composables/chat/chat-bootstrap';
 import { useChatModels } from '@/composables/chat/useChatModels';
@@ -69,6 +70,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
           case 'browser_provided_lm':
           case 'unsupported_experimental_endpoint':
             return;
+          case 'llama_cpp_browser':
           case 'transformers_js':
             break;
           default: {
@@ -77,14 +79,21 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
           }
           }
 
-          const unsubscribe = transformersJsService.subscribeModelList({ listener: async () => {
+          const modelService = (() => {
+            switch (type) {
+            case 'llama_cpp_browser': return llamaCppBrowserService;
+            case 'transformers_js': return transformersJsService;
+            default: { const exhaustive: never = type; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
+            }
+          })();
+          const unsubscribe = modelService.subscribeModelList({ listener: async () => {
             if (currentChatRef.value === null) {
               return;
             }
             try {
               await chatModels.fetchForChat({ chatId: currentChatRef.value.id });
             } catch (error) {
-              console.error('Failed to refresh chat models after a Transformers.js model change:', error);
+              console.error('Failed to refresh chat models after a local model change:', error);
             }
           } });
           onCleanup(() => {

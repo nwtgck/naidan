@@ -117,25 +117,25 @@ describe('LocalStorageProvider', () => {
   it('should validate persisted sidebar DTOs before mapping experimental endpoints', async () => {
     const chatId = '123e4567-e89b-12d3-a456-426614174000';
     const groupId = '123e4567-e89b-12d3-a456-426614174001';
-    const legacyEndpoint = {
+    const unsupportedEndpoint = {
       type: 'experimental_type',
-      experimental: { type: 'prompt_api' },
+      experimental: { endpoint: { type: 'prompt_api' } },
     };
 
     localStorage.setItem(`${KEY_META_PREFIX}${chatId}`, JSON.stringify({
       id: chatId,
-      title: 'Legacy chat',
+      title: 'Unsupported endpoint chat',
       createdAt: 1,
       updatedAt: 2,
       debugEnabled: false,
-      endpoint: legacyEndpoint,
+      endpoint: unsupportedEndpoint,
     }));
     localStorage.setItem(`${KEY_GROUP_PREFIX}${groupId}`, JSON.stringify({
       id: groupId,
-      name: 'Legacy group',
+      name: 'Unsupported endpoint group',
       updatedAt: 2,
       isCollapsed: false,
-      endpoint: legacyEndpoint,
+      endpoint: unsupportedEndpoint,
     }));
     await provider.saveHierarchy({ hierarchy: {
       items: [

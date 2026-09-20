@@ -35,7 +35,7 @@ export interface ProviderChatCapture {
 export function captureProviderChat({ provider, request }: {
   provider: Pick<LmProvider, 'chat'>; request: CapturedChatRequest;
 }): ProviderChatCapture {
-  const { model, messages, parameters, tools, toolApprovalContext, signal, ...unhandledRequest } = request;
+  const { model, messages, parameters, tools, toolApprovalContext, signal, debug, ...unhandledRequest } = request;
   unhandledRequest satisfies Record<PropertyKey, never>;
   const chunks: string[] = [];
   const responses: string[][] = [];
@@ -57,7 +57,7 @@ export function captureProviderChat({ provider, request }: {
   let operation: Promise<void>;
   try {
     operation = provider.chat({
-      model, messages, parameters, tools, toolApprovalContext, signal,
+      model, messages, parameters, tools, toolApprovalContext, signal, debug,
       onAssistantMessageStart: () => {
         responses.push([]);
         record({ event: { kind: 'assistant-start', assistantIndex: responses.length - 1 } });

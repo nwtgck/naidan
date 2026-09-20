@@ -4,6 +4,27 @@ import { describe, expect, it } from 'vitest';
 import { createStandaloneFacadeAliases, STANDALONE_FACADES } from './standalone-facades.js';
 
 describe('standalone facades', () => {
+  it('replaces the browser model download boundary without importing its hosted worker', () => {
+    const facadePath = '@/features/llama-cpp-browser/hugging-face/download';
+    const standalonePath = 'src/features/llama-cpp-browser/hugging-face/download-standalone.ts';
+    const managerSource = readFileSync(
+      resolve(process.cwd(), 'src/features/llama-cpp-browser/components/LlamaCppBrowserHuggingFaceManager.vue'),
+      'utf8',
+    );
+    expect(managerSource).toContain(`from '${facadePath}'`);
+
+    const aliases = createStandaloneFacadeAliases({ resolvePath: (path) => `/repo/${path}` });
+    const alias = aliases.find(({ find }) => find instanceof RegExp && find.test(facadePath));
+    expect(alias?.replacement).toBe(`/repo/${standalonePath}`);
+    expect(alias?.find).toBeInstanceOf(RegExp);
+    if (alias?.find instanceof RegExp) expect(alias.find.test(`${facadePath}-estimate`)).toBe(false);
+
+    const standaloneSource = readFileSync(resolve(process.cwd(), standalonePath), 'utf8');
+    expect(standaloneSource).not.toContain('new Worker');
+    expect(standaloneSource).not.toContain('writer-entry');
+    expect(standaloneSource).not.toMatch(/^import(?! type)[^;]*from ['"]\.\/download['"]/m);
+  });
+
   it('keeps the manager behind the exact facade instead of importing hosted UI directly', () => {
     const managerSource = readFileSync(
       resolve(process.cwd(), 'src/features/transformers-js/components/TransformersJsManager.vue'),

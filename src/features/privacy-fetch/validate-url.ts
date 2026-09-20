@@ -1,3 +1,4 @@
+import { validateHuggingFacePrivacyFetchUrl } from './policies/huggingface';
 import { validateWikipediaPrivacyFetchUrl } from './policies/wikipedia';
 import type {
   PrivacyFetchValidationRejectedCode,
@@ -62,6 +63,7 @@ export function validatePrivacyFetchUrl({
     });
   }
 
+  if (url.hostname === 'huggingface.co') return validateHuggingFacePrivacyFetchUrl({ url });
   return validateWikipediaPrivacyFetchUrl({ url });
 }
 

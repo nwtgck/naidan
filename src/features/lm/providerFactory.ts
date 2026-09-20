@@ -25,6 +25,13 @@ const transformersJsProviderModuleLoader = createModuleLoader({
   },
 });
 
+const llamaCppProviderModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/llama-cpp-browser/provider'),
+  onPrefetchError: () => {
+    console.warn('[llama-cpp-browser] provider-prefetch-failed');
+  },
+});
+
 const promptApiProviderModuleLoader = createModuleLoader({
   importModule: () => import('@/features/prompt-api/provider'),
   onPrefetchError: ({ error }) => {
@@ -57,6 +64,10 @@ export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
     const { TransformersJsProvider } = await transformersJsProviderModuleLoader.load();
     return new TransformersJsProvider();
   }
+  case 'llama_cpp_browser': {
+    const { LlamaCppBrowserProvider } = await llamaCppProviderModuleLoader.load();
+    return new LlamaCppBrowserProvider();
+  }
   case 'browser_provided_lm': {
     const { PromptApiProvider } = await promptApiProviderModuleLoader.load();
     return new PromptApiProvider();
@@ -82,6 +93,9 @@ export async function prefetchLmProvider({ endpointType }: {
     break;
   case 'transformers_js':
     await transformersJsProviderModuleLoader.prefetch();
+    break;
+  case 'llama_cpp_browser':
+    await llamaCppProviderModuleLoader.prefetch();
     break;
   case 'browser_provided_lm':
     await promptApiProviderModuleLoader.prefetch();
