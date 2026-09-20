@@ -6,7 +6,7 @@ import type { ToolApprovalContext } from '@/01-models/tool-approval';
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
 
 export interface LmProvider {
-  chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
+  chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, debug, signal }: {
     messages: ChatMessage[],
     model: string,
     onChunk: ({ chunk }: { chunk: string }) => void,
@@ -28,6 +28,8 @@ export interface LmProvider {
       result: ToolExecutionOutcome,
     }) => void,
     onAssistantMessageStart?: () => void,
+    /** Per-request debug mode; providers may ignore this preference. */
+    debug?: 'off' | 'on',
     signal?: AbortSignal,
   }): Promise<void>,
 

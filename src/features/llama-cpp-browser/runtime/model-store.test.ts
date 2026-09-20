@@ -1,3 +1,4 @@
+import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { importModelDirectory, resolveModelFiles } from './model-directory';
 import { File as NodeFile } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -274,6 +275,32 @@ describe("local GGUF model store", () => {
 });
 
 describe('directory model imports', () => {
+  it('replaces colons only in a newly imported root name and preserves relative files', async () => {
+    const model = await importModelDirectory({ signal: undefined, directory: { name: 'LiquidAI:LFM2.5-VL:GGUF', files: [
+      { path: 'weights:original/model.gguf', file: fixture({ name: 'model.gguf' }) },
+    ] }, onProgress: () => {} });
+    expect(model.id).toBe('LiquidAI_LFM2.5-VL_GGUF'); expect(model.name).toBe(model.id);
+    expect(root.children.has('LiquidAI:LFM2.5-VL:GGUF')).toBe(false);
+    expect((await storedModelDirectory({ name: model.name })).modelPath).toBe('weights:original/model.gguf');
+    expect((await listStoredModels()).map(entry => entry.name)).toEqual([model.name]);
+  });
+  it('rejects normalized root collisions without replacing existing data', async () => {
+    const existing = await root.getDirectoryHandle('owner_model', { create: true });
+    const preserved = await existing.getFileHandle('notes.txt', { create: true });
+    await expect(importModelDirectory({ signal: undefined, directory: { name: 'owner:model', files: [
+      { path: 'model.gguf', file: fixture({ name: 'model.gguf' }) },
+    ] }, onProgress: () => {} })).rejects.toThrow('duplicate-model');
+    expect(existing.children.get('notes.txt')).toBe(preserved);
+    expect(existing.children.size).toBe(1);
+  });
+  it('continues listing and loading existing roots containing colons', async () => {
+    const folder = await root.getDirectoryHandle('owner:model', { create: true });
+    (await folder.getFileHandle('model.gguf', { create: true })).content = new Uint8Array(await fixture({ name: 'model.gguf' }).arrayBuffer());
+    expect((await listStoredModels()).map(model => model.name)).toEqual(['owner:model']);
+    expect((await storedModelDirectory({ name: 'owner:model' })).modelPath).toBe('model.gguf');
+    expect(root.children.get('owner:model')).toBe(folder);
+    expect(root.children.has('owner_model')).toBe(false);
+  });
   it('keeps the dropped root name and nested relative files with no manifest', async () => {
     const model = await importModelDirectory({ signal: undefined, directory: { name: 'my-Qwen-VL-GGUF', files: [
       { path: 'weights/Qwen.gguf', file: fixture({ name: 'Qwen.gguf' }) },
@@ -310,7 +337,7 @@ describe('directory model imports', () => {
     const name = 'private-model-folder';
     await expect(importModelDirectory({ signal: undefined, directory: { name, files: ['private-model.gguf', 'mmproj-first.gguf', 'private-mmproj.gguf'].map(path => ({ path, file: fixture({ name: path }) })) }, onProgress: () => {} })).rejects.toThrow('unsupported-input');
     expect(root.children.has(name)).toBe(false); expect(committed).toEqual([]);
-    expect(vi.mocked(console.debug)).toHaveBeenCalledWith('[llama-cpp-browser]', expect.objectContaining({ stage: 'model-resolve', reason: 'model-directory-layout', code: 'unsupported-input' }));
+    expect(readDiagnostics({ calls: vi.mocked(console.debug).mock.calls })).toContainEqual(expect.objectContaining({ stage: 'model-resolve', reason: 'model-directory-layout', code: 'unsupported-input' }));
     expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private');
   });
   it('discovers Explorer-created directories and projector additions without metadata', async () => {

@@ -1,3 +1,4 @@
+import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { z } from 'zod';
 import { generateInputSchema } from '@/features/llama-cpp-browser/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
@@ -18,7 +19,7 @@ export interface LlamaCppWorkerApi {
   importDirectory(request: { directory: ModelDirectoryInput, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
   removeModel({ id }: { id: string }): Promise<void>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  generate(request: WorkerGenerateCall, onChunk: WorkerProxy<({ text }: { text: string }) => void>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<GenerationResult>;
+  generate(request: WorkerGenerateCall, onChunk: WorkerProxy<({ text }: { text: string }) => void>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
   canReuse(): boolean;

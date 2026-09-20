@@ -75,7 +75,8 @@ export type ChatPaneHeaderMoreAction =
   | 'share_url'
   | 'open_file_explorer'
   | 'toggle_wesh_terminal'
-  | 'toggle_debug';
+  | 'toggle_debug'
+  | 'open_chat_inspector';
 
 export function getHeaderCompactBoundary({
   path,

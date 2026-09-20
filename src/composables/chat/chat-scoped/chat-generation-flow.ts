@@ -427,6 +427,7 @@ export async function generateResponseForAssistant({
   };
 
   const mutableChat = getLiveChat({ chat });
+  const debug = mutableChat.debugEnabled ? 'on' : 'off';
   const assistantNode = findNodeInBranch({ items: mutableChat.root.items, targetId: assistantId });
   if (assistantNode === null || assistantNode.role !== 'assistant') {
     throw new Error('Assistant node not found');
@@ -539,6 +540,7 @@ export async function generateResponseForAssistant({
       signalReady();
       const { ensureApproval } = useApproval();
       await provider.chat({
+        debug,
         messages: finalMessages,
         model: resolvedModel,
         tools: enabledTools.length > 0 ? enabledTools : undefined,

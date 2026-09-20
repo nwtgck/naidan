@@ -67,6 +67,7 @@ export const generationResultSchema = z.object({
 export type GenerationResult = z.infer<typeof generationResultSchema>;
 export type GenerateInput = z.infer<typeof generateInputSchema>;
 export const generateInputSchema = z.object({
+  debug: z.enum(['off', 'on']).optional(),
   model: z.string().min(1).max(512),
   messages: z.array(chatMessageSchema).min(1),
   tools: z.array(z.object({ type: z.literal('function'), function: z.object({ name: z.string().min(1), description: z.string(), parameters: z.record(z.string(), z.json()) }).strict() }).strict()).optional(),

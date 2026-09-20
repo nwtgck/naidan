@@ -1,5 +1,5 @@
 import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
-import { logFailure } from '@/features/llama-cpp-browser/debug-log';
+import { logFailure, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
 import { errorCode, modelDirectoryInputSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema } from "@/features/llama-cpp-browser/types";
@@ -89,11 +89,15 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       if (active?.generationId === id) active.controller.abort();
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, callbacks are top-level arguments.
-    async generate(request, onChunk, onProgress) {
+    async generate(request, onChunk, onProgress, onDiagnostic) {
       const { generationId, ...accepted } = workerGenerateCallSchema.parse(request);
       if (active) throw new LlamaCppBrowserError({ code: "busy" });
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
+      const unsubscribe = subscribeDiagnostics({ debug: accepted.debug ?? 'off', listener: ({ diagnostic }) => {
+        if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) return Promise.resolve(onDiagnostic({ diagnostic }));
+        return undefined;
+      } });
       try {
         const result = await guarded({ operation: () => generate({ request: accepted, signal: controller.signal,
           onChunk: ({ chunk }) => {
@@ -109,6 +113,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
         }) });
         return generationResultSchema.parse(result);
       } finally {
+        unsubscribe();
         // Finish proxy callbacks before resolving RPC; otherwise an old progress
         // callback could overwrite the next request or the service's idle state.
         try {

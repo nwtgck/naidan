@@ -90,7 +90,8 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
   checkCancelled();
-  if (!allowedModelRoot({ name: directory.name }) || directory.files.length === 0) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+  const rootName = directory.name.replaceAll(':', '_');
+  if (!allowedModelRoot({ name: rootName }) || directory.files.length === 0) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   const paths = new Set<string>();
   for (const { path } of directory.files) {
     if (!path.split('/').every(name => validSegment({ name })) || path === pendingName || paths.has(path)) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
@@ -111,20 +112,20 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
   }
   for (const { file } of ggufs) if (!await validGguf({ file })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   const root = await opfsRoot();
-  // Existing chats identify legacy models by directory name, so avoid creating
-  // an ambiguous new selection without renaming the dropped directory.
+  // Existing chats identify legacy models by directory name, so reject an
+  // ambiguous selection after normalizing the imported root name.
   try {
     const legacy = await (await root.getDirectoryHandle('llama-cpp-browser-models')).getDirectoryHandle('user');
-    await legacy.getDirectoryHandle(directory.name);
+    await legacy.getDirectoryHandle(rootName);
     throw new LlamaCppBrowserError({ code: 'duplicate-model' });
   } catch (error) {
     if (!missing({ error })) throw error;
   }
   // Reject both files and folders with this name; never overwrite user data.
-  for await (const [name] of root.entries()) if (name === directory.name) throw new LlamaCppBrowserError({ code: 'duplicate-model' });
+  for await (const [name] of root.entries()) if (name === rootName) throw new LlamaCppBrowserError({ code: 'duplicate-model' });
   let completed = 0; const total = directory.files.reduce((sum, entry) => sum + entry.file.size, 0);
   if (!Number.isSafeInteger(total)) throw new LlamaCppBrowserError({ code: 'storage-error' });
-  const folder = await root.getDirectoryHandle(directory.name, { create: true });
+  const folder = await root.getDirectoryHandle(rootName, { create: true });
   try {
     await folder.getFileHandle(pendingName, { create: true });
     for (const { path, file } of directory.files) {
@@ -155,11 +156,11 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     // The pending marker guards publication only; no manifest controls later discovery.
     checkCancelled();
     await folder.removeEntry(pendingName);
-    const model = describeDirectory({ directory: await resolveDirectory({ folder, id: directory.name, name: directory.name }) });
+    const model = describeDirectory({ directory: await resolveDirectory({ folder, id: rootName, name: rootName }) });
     checkCancelled();
     return model;
   } catch (error) {
-    await root.removeEntry(directory.name, { recursive: true }).catch(() => {});
+    await root.removeEntry(rootName, { recursive: true }).catch(() => {});
     throw error;
   }
 }

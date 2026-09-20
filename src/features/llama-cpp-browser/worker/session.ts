@@ -5,13 +5,14 @@ import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile, type Progress, 
 import { storedModelDirectory } from "@/features/llama-cpp-browser/runtime/model-store";
 import { loadRuntime } from "@/features/llama-cpp-browser/runtime/load-runtime";
 import { resolveRuntimeProfile } from "@/features/llama-cpp-browser/runtime/detect-profile";
-import { logDiagnostic, logFailure } from "@/features/llama-cpp-browser/debug-log";
+import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
 import type { WorkerGenerateInput } from "./types";
+import { loadProjector, type ResidentProjector } from "./projector";
 
 export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid' };
 
 type ResidentModel = { model: bigint, context: bigint, cache: PromptCache, name: string,
-  id: string, files: ModelFile[], projector: bigint };
+  id: string, files: ModelFile[], projector: ResidentProjector | undefined };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string } | undefined;
 let resident: ResidentModel | undefined;
 
@@ -24,7 +25,7 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
       if (current.context !== 0n) await runtime.core.api.llama_free(current.context);
     } finally {
       try {
-        if (current.projector !== 0n) await runtime.core.api.mtmd_free(current.projector);
+        await current.projector?.release();
       } finally {
         await runtime.core.api.llama_model_free(current.model);
       }
@@ -74,11 +75,11 @@ export async function prepareSession({ request, onProgress, signal }: {
   if (!resident) {
     const mounts: ReturnType<typeof mountReadOnlyFile>[] = [];
     const accesses: { close(): void }[] = [];
-    const allocations: bigint[] = []; let callback: number | bigint | undefined; let model = 0n; let projector = 0n;
+    const allocations: bigint[] = []; let callback: number | bigint | undefined; let model = 0n;
     const started = performance.now();
     logDiagnostic({ diagnostic: { event: "load-start", profile } });
     try {
-      for (const entry of directory.files) {
+      for (const entry of directory.files.filter(file => file.path !== directory.projectorPath)) {
         const nativeHandle = entry.handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<{
           getSize(): number,
           // eslint-disable-next-line local-rules-named-args/require-named-args -- Native OPFS callback ABI.
@@ -123,26 +124,12 @@ export async function prepareSession({ request, onProgress, signal }: {
       } else model = await api.llama_model_load_from_file(path, params);
       checkCancelled();
       if (model === 0n) throw new LlamaCppBrowserError({ code: "runtime-error" });
-      if (directory.projectorPath) {
-        const projectorParams = core.allocRecord({ name: 'mtmd_context_params' }); allocations.push(projectorParams);
-        await api.mtmd_context_params_default(projectorParams);
-        core.setField({ name: 'mtmd_context_params', pointer: projectorParams, field: 'use_gpu', value: usesWebGpu({ profile }) ? 1 : 0 });
-        core.setField({ name: 'mtmd_context_params', pointer: projectorParams, field: 'n_threads', value: 1 });
-        const projectorPath = core.utf8({ text: `/models/${directory.projectorPath}` }); allocations.push(projectorPath);
-        try {
-          projector = await api.mtmd_init_from_file(projectorPath, model, projectorParams);
-          if (projector === 0n) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-        } catch (error) {
-          logFailure({ stage: 'projector-load', error }); throw error;
-        }
-      }
-      resident = { model, projector, context: 0n, cache: { tokens: [], validity: 'invalid' }, name: request.model, id: directory.id, files: directory.files };
-      model = 0n; projector = 0n;
+      resident = { model, projector: undefined, context: 0n, cache: { tokens: [], validity: 'invalid' }, name: request.model, id: directory.id, files: directory.files };
+      model = 0n;
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
       logDiagnostic({ diagnostic: { event: "load-complete", elapsedMs: performance.now() - started, profile } });
     } finally {
       try {
-        if (projector !== 0n) await api.mtmd_free(projector);
         if (model !== 0n) await api.llama_model_free(model);
         if (callback !== undefined) core.module.removeFunction(callback);
         for (const pointer of allocations.reverse()) core.free({ pointer: pointer });
@@ -159,6 +146,17 @@ export async function prepareSession({ request, onProgress, signal }: {
   }
   const current = resident;
   if (!current) throw new LlamaCppBrowserError({ code: "runtime-error" });
+  checkCancelled();
+  const debug = request.debug ?? 'off';
+  if (directory.projectorPath && (!current.projector || current.projector.debug !== debug)) {
+    // Debug callbacks belong only to the projector. Preserve the LM and its KV cache.
+    await current.projector?.release();
+    current.projector = undefined;
+    checkCancelled();
+    const file = directory.files.find(file => file.path === directory.projectorPath);
+    if (!file) throw new LlamaCppBrowserError({ code: 'storage-error' });
+    current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal });
+  }
   checkCancelled();
   if (current.context === 0n) {
     const cp = core.allocRecord({ name: "llama_context_params" }); const started = performance.now();
@@ -200,8 +198,9 @@ export async function prepareSession({ request, onProgress, signal }: {
     }
   }
   checkCancelled();
-  return { core, model: current.model, context: current.context, cache: current.cache, projector: current.projector };
+  return { core, model: current.model, context: current.context, cache: current.cache, projector: current.projector?.pointer ?? 0n };
 }
 export const TEST_ONLY = {
   residentContext: () => resident?.context,
+  residentModel: () => resident?.model,
 };

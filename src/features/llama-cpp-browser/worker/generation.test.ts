@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { File as NodeFile } from 'node:buffer';
 import { invalidateStoredModel, releaseSession, TEST_ONLY as sessionTesting } from './session';
 import { afterAll, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,8 @@ import { generate } from './generation';
 import { createSyntheticGguf } from './test-utils/synthetic-gguf';
 import type { WorkerGenerateInput } from './types';
 import { profileSchema } from '@/features/llama-cpp-browser/types';
+import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
+import { createProjectorTrace } from './projector-trace';
 
 // Select another installed artifact without requesting real GPU allocation.
 const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ?? 'cpu-wasm32');
@@ -73,7 +76,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const req = request({ messages: [{ role: 'user', content: 'private prompt' }] });
     try {
       await expect(generate({ request: req, signal: undefined, onChunk: () => {}, onProgress: () => {} })).rejects.toThrow('private tool');
-      expect(debug).toHaveBeenCalledWith('[llama-cpp-browser]', expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error' }));
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error' }));
       expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
       const chunks: string[] = [];
       await generate({ request: req, signal: undefined, onChunk: ({ chunk }) => {
@@ -221,7 +224,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(clear).not.toHaveBeenCalled();
       expect(batch.mock.calls.map(call => call[2])).toEqual([6, 1, 1, 1, 1, 1]);
       const warmAccepted = accept.mock.calls.map(call => call[1]);
-      expect(debug).toHaveBeenCalledWith('[llama-cpp-browser]', expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 6, reason: 'prefix-match' }));
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 6, reason: 'prefix-match' }));
       const warmPosition = await sequencePosition();
       await releaseSession({ releaseRuntime: false });
       batch.mockClear(); accept.mockClear();
@@ -249,7 +252,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(repeated).toEqual(first);
       expect(decode).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
       expect(await sequencePosition()).toBe(frontier);
-      expect(debug).toHaveBeenCalledWith('[llama-cpp-browser]', expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 0 }));
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 0 }));
     } finally {
       decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
     }
@@ -373,9 +376,45 @@ describe('native image boundaries', () => {
     try {
       await expect(generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: [{ type: 'text', text: 'describe' }, { type: 'image', blob: new Blob(['image'], { type: 'image/png' }) }] }] }), onChunk: () => {}, onProgress: () => {} })).rejects.toThrow('unsupported-input');
       await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'describe' }] }), onChunk: () => {}, onProgress: () => {} });
-      expect(debug.mock.calls.some(call => call.some(value => typeof value === 'object' && value && 'event' in value && value.event === 'cache-reuse' && 'reusedTokens' in value && value.reusedTokens === 0))).toBe(true);
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: 0 }));
     } finally {
       debug.mockRestore();
     }
   });
+  it('uses the scheduler callback signature and reads tensor shapes synchronously in actual Wasm', async () => {
+    await releaseSession({ releaseRuntime: true }); host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+    await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'fixture' }] }), onChunk: () => {}, onProgress: () => {} });
+    const core = host.core; const model = sessionTesting.residentModel();
+    if (!core || model === undefined) throw new Error('Expected resident runtime and model');
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
+    const trace = createProjectorTrace({ core });
+    const params = core.allocRecord({ name: 'llama_context_params' });
+    const batch = core.allocRecord({ name: 'llama_batch' });
+    const token = core.alloc({ bytes: 4 }); let context = 0n;
+    try {
+      await core.api.llama_context_default_params(params);
+      for (const [field, value] of Object.entries({ n_ctx: 64, n_batch: 16, n_ubatch: 16, n_threads: 1, n_threads_batch: 1 })) core.setField({ name: 'llama_context_params', pointer: params, field, value });
+      // The LM callback has the same native typedef as mtmd; production installs it only on mtmd.
+      core.setField({ name: 'llama_context_params', pointer: params, field: 'cb_eval', value: BigInt(trace.pointer) });
+      core.setField({ name: 'llama_context_params', pointer: params, field: 'cb_eval_user_data', value: 0n });
+      context = await core.api.llama_init_from_model(model, params);
+      expect(context).not.toBe(0n);
+      new DataView(core.bytes({ pointer: token, length: 4 }).buffer, Number(token), 4).setInt32(0, 1, true);
+      await core.api.llama_batch_get_one(batch, token, 1);
+      expect(await core.api.llama_decode(context, batch)).toBe(0);
+      const entries = readDiagnostics({ calls: debug.mock.calls });
+      const starts = entries.filter(entry => entry.event === 'native-node-start');
+      const completions = entries.filter(entry => entry.event === 'native-node-complete');
+      expect(starts.length).toBeGreaterThan(0); expect(completions).toHaveLength(starts.length);
+      expect(starts[0]).toEqual(expect.objectContaining({ nativeOp: expect.any(Number), nativeOpName: expect.stringMatching(/^GGML_OP_/), nativeTensorType: expect.any(Number), nativeTensorShape: expect.any(Array) }));
+      expect(entries.some(entry => entry.stage === 'projector-trace')).toBe(false);
+    } finally {
+      if (context !== 0n) await core.api.llama_free(context);
+      trace.release(); unsubscribe();
+      core.free({ pointer: params }); core.free({ pointer: batch }); core.free({ pointer: token }); debug.mockRestore();
+      await releaseSession({ releaseRuntime: true });
+    }
+  }, 30000);
+
 });

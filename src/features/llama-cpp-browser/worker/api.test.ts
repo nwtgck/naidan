@@ -1,3 +1,5 @@
+import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
+import { logNativeDiagnostic, logOperation } from '@/features/llama-cpp-browser/debug-log';
 import type { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorkerApi } from "./api";
@@ -125,5 +127,58 @@ describe('directory import RPC', () => {
     await api.cancelGeneration({ generationId: 3 }); expect(signal?.aborted).toBe(false);
     await api.cancelGeneration({ generationId: 4 }); expect(signal?.aborted).toBe(true);
     blocked.resolve(); await expect(pending).rejects.toThrow('aborted');
+  });
+});
+
+describe('native diagnostic checkpoints', () => {
+  it.each(['success', 'failure', 'cancel'] as const)('scopes detailed output to a request and releases it after %s', async outcome => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    // A resident core retains this callback, never a particular request preference.
+    const residentPrintErr = () => logNativeDiagnostic({ message: 'encoding image slice...' });
+    const blocked = deferred(); const entered = deferred();
+    const api = createWorkerApi(); const receive = vi.fn();
+    calls.generate.mockImplementationOnce(async () => {
+      await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate' } });
+      residentPrintErr(); entered.resolve(); await blocked.promise;
+      switch (outcome) {
+      case 'success': case 'cancel': return completed();
+      case 'failure': throw new Error('private failure');
+      default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+      }
+    });
+    try {
+      const pending = api.generate({ ...request({ generationId: 1 }), debug: 'on' }, () => {}, () => {}, receive);
+      const settled = pending.catch(() => undefined);
+      await entered.promise;
+      expect(readDiagnostics({ calls: debug.mock.calls }).filter(value => value.event === 'operation-start')).toHaveLength(2);
+      if (outcome === 'cancel') await api.cancelGeneration({ generationId: 1 });
+      blocked.resolve(); await settled;
+      debug.mockClear(); residentPrintErr(); expect(debug).not.toHaveBeenCalled();
+      calls.generate.mockImplementation(async () => {
+        await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate' } });
+        residentPrintErr(); return completed();
+      });
+      receive.mockClear();
+      await api.generate({ ...request({ generationId: 2 }), debug: 'off' }, () => {}, () => {}, receive);
+      expect(debug).not.toHaveBeenCalled(); expect(receive).toHaveBeenCalledTimes(2);
+      await api.generate({ ...request({ generationId: 3 }), debug: 'on' }, () => {}, () => {}, receive);
+      expect(readDiagnostics({ calls: debug.mock.calls }).filter(value => value.event === 'operation-start')).toHaveLength(2);
+    } finally {
+      debug.mockRestore();
+    }
+  });
+  it('waits for the host to record the native stage before the operation runs', async () => {
+    const blocked = deferred(); let nativeEntered = false;
+    calls.generate.mockImplementation(async () => {
+      await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', tokens: 101 } });
+      nativeEntered = true; return completed();
+    });
+    const receive = vi.fn(async () => blocked.promise);
+    const pending = createWorkerApi().generate(request({ generationId: 1 }), () => {}, () => {}, receive);
+    await vi.waitFor(() => expect(receive).toHaveBeenCalledOnce());
+    expect(nativeEntered).toBe(false); blocked.resolve(); await pending;
+    expect(nativeEntered).toBe(true);
+    await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-evaluate', statusCode: 0 } });
+    expect(receive).toHaveBeenCalledOnce();
   });
 });

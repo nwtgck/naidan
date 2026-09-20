@@ -13,6 +13,13 @@ function request(): Parameters<LmProvider['chat']>[0] {
   return { messages: [{ role: 'user', content: 'hello' }], model: 'local.gguf', onChunk: vi.fn(), onAssistantMessageStart: vi.fn() };
 }
 describe('local model provider', () => {
+  it('passes the diagnostic preference per request without retaining the preceding chat setting', async () => {
+    const provider = new LlamaCppBrowserProvider();
+    await provider.chat({ ...request(), debug: 'on' });
+    await provider.chat({ ...request(), debug: 'off' });
+    await provider.chat(request());
+    expect(service.generate.mock.calls.map(([{ input }]) => input.debug)).toEqual(['on', 'off', undefined]);
+  });
   it('maps model identity and text messages without normalizing away content', async () => {
     service.listModels.mockResolvedValue([{ id: 'user/local-GGUF/local.gguf', name: 'local-GGUF', size: 100, importedAt: 1 }]);
     const provider = new LlamaCppBrowserProvider();
@@ -53,6 +60,7 @@ describe('native tool turns on the host', () => {
     const execute = vi.fn(async () => ({ status: 'success' as const, content: '42' }));
     const { z } = await import('zod');
     const input = request();
+    input.debug = 'on';
     input.tools = [{ name: 'lookup', description: 'Lookup', parametersSchema: z.object({ value: z.string(), unit: z.string().default('count') }), execute }];
     input.onAssistantMessageStart = () => {
       events.push('assistant');
@@ -66,6 +74,7 @@ describe('native tool turns on the host', () => {
     const signal = new AbortController().signal;
     let next: Parameters<LlamaCppBrowserService['generate']>[0]['input'] | undefined;
     service.generate.mockImplementation(async ({ onResult }) => {
+      input.debug = 'off';
       next = await onResult?.({ result: { content: 'Checking.', reasoningContent: '', finishReason: 'stop',
         toolCalls: [{ id: '', type: 'function', function: { name: 'lookup', arguments: '{"value":"42"}' } }],
       }, signal });
@@ -80,6 +89,7 @@ describe('native tool turns on the host', () => {
     expect(result?.tool_call_id).toBe(assistant?.tool_calls?.[0]?.id);
     expect(result?.content).toBe('42'); expect(result?.role).toBe('tool');
     expect(next?.tools?.[0]?.function.parameters.additionalProperties).toBe(false);
+    expect(next?.debug).toBe('on');
   });
   it.each(['{"value":1,"unexpected":true}', '{'])('returns invalid arguments without executing the tool: %s', async argumentsText => {
     const { z } = await import('zod'); const execute = vi.fn(); const input = request();

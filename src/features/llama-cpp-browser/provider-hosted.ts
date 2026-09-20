@@ -15,7 +15,7 @@ export class LlamaCppBrowserProvider implements LmProvider {
   async listModels({ signal }: Parameters<LmProvider['listModels']>[0]): Promise<string[]> {
     return (await llamaCppBrowserService.listModels({ signal })).map(model => model.name);
   }
-  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: Parameters<LmProvider['chat']>[0]): Promise<void> {
+  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, debug, signal }: Parameters<LmProvider['chat']>[0]): Promise<void> {
     const callNames = new Map<string, string>();
     const usedIds = new Set<string>();
     const accepted: GenerateInput['messages'] = messages.map(message => {
@@ -42,7 +42,7 @@ export class LlamaCppBrowserProvider implements LmProvider {
       name: tool.name, description: tool.description,
       parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })),
     } }));
-    const input = (): Omit<GenerateInput, 'options'> => ({ model, messages: accepted, tools: definitions,
+    const input = (): Omit<GenerateInput, 'options'> => ({ model, debug, messages: accepted, tools: definitions,
       reasoningEffort: parameters?.reasoning.effort,
       temperature: parameters?.temperature ?? 0.7, topP: parameters?.topP ?? 0.95,
       maxTokens: parameters?.maxCompletionTokens ?? 1024, presencePenalty: parameters?.presencePenalty ?? 0,

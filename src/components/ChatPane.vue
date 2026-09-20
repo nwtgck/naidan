@@ -164,7 +164,10 @@ const contextCompactProgress = computed<ContextCompactProgress>(() => getChatCon
 const activeApprovalRequest = computed(() => approval.getActiveApprovalRequest({ chatId: props.chatId }).value);
 const activeChoiceRequest = computed(() => choices.getActiveChoiceRequest({ chatId: props.chatId }).value);
 const isGeneratingTitle = computed(() => isChatGeneratingTitle({ chatId: props.chatId }));
-const isDebugEnabled = computed(() => chat.value?.debugEnabled === true);
+const showChatInspector = ref(false);
+watch(() => props.chatId, () => {
+  showChatInspector.value = false;
+});
 const chatIdentityKey = computed(() => {
   const chatId = props.chatId;
   const leafId = chat.value?.currentLeafId ?? 'no-leaf';
@@ -1416,6 +1419,7 @@ watch(
       @open-file-explorer="openChatFileExplorer()"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
       @toggle-debug="handleToggleDebug()"
+      @open-chat-inspector="showChatInspector = true"
       @delete-chat="handleDeleteChat()"
     />
 
@@ -1640,13 +1644,13 @@ watch(
         ></div>
       </div>
 
-      <!-- Chat State Inspector (Debug Mode) -->
+      <!-- Chat State Inspector -->
       <ChatDebugInspector
-        v-if="isDebugEnabled"
-        :show="isDebugEnabled"
+        v-if="showChatInspector"
+        :show="showChatInspector"
         :chat="chat"
         :active-messages="activeMessages"
-        @close="handleToggleDebug()"
+        @close="showChatInspector = false"
         @enable-fake-lm="handleEnableFakeLmForChat()"
         data-testid="chat-inspector"
       />

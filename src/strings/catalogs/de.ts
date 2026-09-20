@@ -208,6 +208,7 @@ import { ChatPaneHeader__chat_settings_and_model_override } from '@/strings/mess
 import { ChatPaneHeader__conversation_outline } from '@/strings/messages/ChatPaneHeader__conversation_outline/de';
 import { ChatPaneHeader__copy_shareable_chat_url } from '@/strings/messages/ChatPaneHeader__copy_shareable_chat_url/de';
 import { ChatPaneHeader__custom_overrides_active } from '@/strings/messages/ChatPaneHeader__custom_overrides_active/de';
+import { ChatPaneHeader__chat_inspector } from '@/strings/messages/ChatPaneHeader__chat_inspector/de';
 import { ChatPaneHeader__debug_mode } from '@/strings/messages/ChatPaneHeader__debug_mode/de';
 import { ChatPaneHeader__delete_chat } from '@/strings/messages/ChatPaneHeader__delete_chat/de';
 import { ChatPaneHeader__edit_chat_title } from '@/strings/messages/ChatPaneHeader__edit_chat_title/de';
@@ -1954,6 +1955,7 @@ export const catalog = {
   ChatPaneHeader__conversation_outline,
   ChatPaneHeader__copy_shareable_chat_url,
   ChatPaneHeader__custom_overrides_active,
+  ChatPaneHeader__chat_inspector,
   ChatPaneHeader__debug_mode,
   ChatPaneHeader__delete_chat,
   ChatPaneHeader__edit_chat_title,

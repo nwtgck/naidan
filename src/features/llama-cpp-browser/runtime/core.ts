@@ -9,7 +9,7 @@ import type { LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 // Size-dependent C fields are accessed through the generated schema below.
 export type CoreModule = Omit<MainModule, 'addFunction'> & {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten callback registration ABI.
-  addFunction(callback: (...args: number[]) => number, signature: string): number | bigint,
+  addFunction<TArgs extends (number | bigint)[]>(callback: (...args: TArgs) => number, signature: string): number | bigint,
 };
 const kindSchema = z.enum(['pointer', 'record', 'u64', 'i64', 'float', 'signed', 'unsigned', 'boolean', 'array', 'void']);
 const schema = z.object({
@@ -95,13 +95,17 @@ export function attachCore({ module }: { module: CoreModule }) {
     if (!entry) throw new Error(`Unknown native record: ${name}`);
     return entry;
   }
-  function field({ name, pointer, field }: { name: string, pointer: bigint, field: string }) {
+  function fieldLayout({ name, field }: { name: string, field: string }) {
     const entry = record({ name }); const spec = entry.fields.find(spec => spec.name === field);
     if (!spec) throw new Error(`Unknown native field: ${name}.${field}`);
     const offset = BigInt(scalar({ name: '_lcb_offsetof_field', args: [entry.id, spec.id] }));
     const size = index({ value: scalar({ name: '_lcb_sizeof_field', args: [entry.id, spec.id] }) });
+    return { kind: spec.kind, offset, size };
+  }
+  function field({ name, pointer, field }: { name: string, pointer: bigint, field: string }) {
+    const { kind, offset, size } = fieldLayout({ name, field });
     const span = bytes({ pointer: pointer + offset, length: size });
-    return { kind: spec.kind, size, view: new DataView(span.buffer, span.byteOffset, span.byteLength) };
+    return { kind, size, view: new DataView(span.buffer, span.byteOffset, span.byteLength) };
   }
   function alloc({ bytes: length }: { bytes: NativeScalar }): bigint {
     assertIdle(); const size = index({ value: length });
@@ -112,7 +116,11 @@ export function attachCore({ module }: { module: CoreModule }) {
   }
   const recordSize = ({ name }: { name: string }): number => index({ value: scalar({ name: '_lcb_sizeof_record', args: [record({ name }).id] }) });
   return {
-    module, api: api as unknown as LowLevelFunctions, pointerBytes: pointerBytes as 4 | 8, assertIdle, bytes, alloc, recordSize,
+    module, api: api as unknown as LowLevelFunctions, pointerBytes: pointerBytes as 4 | 8, assertIdle, bytes, alloc, recordSize, fieldLayout,
+    enumValues({ prefix }: { prefix: string }): { name: string, value: number }[] {
+      assertIdle();
+      return schema.constants.flatMap((name, id) => name.startsWith(prefix) ? [{ name, value: Number(scalar({ name: '_lcb_constant', args: [id] })) }] : []);
+    },
     free({ pointer }: { pointer: bigint }): void {
       assertIdle(); native({ name: '_lcb_free' })(pointer);
     },
@@ -160,7 +168,12 @@ export function attachCore({ module }: { module: CoreModule }) {
 }
 export type Core = ReturnType<typeof attachCore>;
 export async function createCore({ profile, baseURL, moduleOptions }: {
-  profile: LlamaCppProfile, baseURL: URL | string, moduleOptions: { wasmBinary: Uint8Array, print: () => void, printErr: () => void },
+  profile: LlamaCppProfile, baseURL: URL | string, moduleOptions: { wasmBinary: Uint8Array,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.
+    print: (message: unknown) => void,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.
+    printErr: (message: unknown) => void,
+  },
 }): Promise<Core> {
   const root = new URL(`${profile}/`, baseURL);
   const imported: unknown = await import(/* @vite-ignore */ new URL('core.mjs', root).href);

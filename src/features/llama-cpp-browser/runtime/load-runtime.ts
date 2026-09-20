@@ -1,6 +1,6 @@
 import { createCore, type Core } from './core';
 import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
-import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
+import { logDiagnostic, logNativeDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 
 export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCppProfile, assetBaseURL: string }): Promise<Core> {
   const wasmFeatures: object = WebAssembly;
@@ -16,7 +16,11 @@ export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCpp
     moduleOptions: {
       wasmBinary,
       // Native messages can contain prompts, paths and arbitrary GGUF metadata.
-      print() {}, printErr() {},
+      print() {},
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.
+      printErr(message) {
+        logNativeDiagnostic({ message });
+      },
     },
   });
   await core.api.llama_backend_init();
