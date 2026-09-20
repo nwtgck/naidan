@@ -18,7 +18,7 @@ describe('resumable GGUF storage writer', () => {
     writer = createDownloadWriter(); expect(await writer.begin({ selection })).toMatchObject({ status: 'ready', journal: { bytes: [48] } });
     await writer.open({ fileIndex: 0, start: 48 }); await writer.append({ bytes: ggufBytes().slice(48) }); await writer.finishFile(); await writer.finish();
     expect(await listPendingDownloads()).toEqual([]);
-    expect(await listHuggingFaceModels()).toEqual([{ id: 'hf.co/owner/repo', name: 'hf.co/owner/repo', size: 128, importedAt: 123 }]);
+    expect(await listHuggingFaceModels()).toEqual([{ id: 'hf.co/owner/repo:nested%2Fmodel.gguf', name: 'hf.co/owner/repo:nested/model', size: 128, importedAt: 123 }]);
   });
   it('discards unrecorded suffixes and rejects smaller files than the journal', async () => {
     const writer = createDownloadWriter(); await writer.begin({ selection });
@@ -53,7 +53,7 @@ describe('resumable GGUF storage writer', () => {
     const other = await repositoryFolder({ repository: 'owner/protected', create: true });
     const nested = await other.getDirectoryHandle('nested', { create: true });
     await nested.getFileHandle('keep.txt', { create: true });
-    expect(await createDownloadWriter().begin({ selection: { ...selection, repository: 'owner/protected' } })).toEqual({ status: 'conflict', reason: 'existing-files' });
+    expect(await createDownloadWriter().begin({ selection: { ...selection, repository: 'owner/protected' } })).toMatchObject({ status: 'ready' });
     expect((await (await nested.getFileHandle('keep.txt')).getFile()).size).toBe(0);
   });
   it('rejects concurrent operations for the same repository across callers', async () => {

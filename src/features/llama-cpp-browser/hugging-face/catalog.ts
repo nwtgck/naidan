@@ -1,3 +1,4 @@
+import { modelGroups } from './model-variants';
 import { z } from 'zod';
 import { privacyFetchStream } from '@/features/privacy-fetch';
 import { resolveModelFiles } from '@/features/llama-cpp-browser/runtime/model-directory';
@@ -10,23 +11,16 @@ export function parseRepository({ input }: { input: string }): string {
   if (value.startsWith('hf.co/')) value = `https://${value}`;
   if (value.startsWith('https://')) {
     const url = new URL(value);
-    if (!['huggingface.co', 'hf.co'].includes(url.hostname) || url.port || url.search || url.hash || url.username || url.password) throw new Error('Invalid Hugging Face repository');
-    value = url.pathname.replace(/^\/+|\/+$/g, '');
+    if (!['huggingface.co', 'hf.co'].includes(url.hostname) || url.port || url.username || url.password) throw new Error('Invalid Hugging Face repository');
+    // Any URL suffix deliberately points to main, regardless of path, query or fragment.
+    value = url.pathname.replace(/^\/+/, '').split('/').slice(0, 2).join('/');
   }
   return repositorySchema.parse(value);
 }
 export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<RepositoryCatalog, 'models' | 'projectors'> {
-  const projectors: RepositoryFile[] = []; const groups = new Map<string, RepositoryFile[]>();
-  for (const file of files) {
-    if ((file.path.split('/').at(-1) ?? '').toLowerCase().includes('mmproj')) {
-      projectors.push(file); continue;
-    }
-    const split = /^(.*)-\d{5}-of-(\d{5})(\.gguf)$/i.exec(file.path);
-    const key = split ? `${split[1]}-of-${split[2]}${split[3]}` : file.path;
-    const group = groups.get(key) ?? []; group.push(file); groups.set(key, group);
-  }
+  const { models: groups, projectors } = modelGroups({ files });
   const models: ModelCandidate[] = [];
-  for (const [label, group] of groups) {
+  for (const group of groups) {
     group.sort((a, b) => a.path.localeCompare(b.path));
     try {
       resolveModelFiles({ files: group });
@@ -34,7 +28,7 @@ export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<Re
       continue;
     }
     const size = group.reduce((sum, file) => sum + file.size, 0);
-    if (Number.isSafeInteger(size)) models.push({ label, files: group, size });
+    if (Number.isSafeInteger(size)) models.push({ label: group[0]!.path, files: group, size });
   }
   return { models: models.sort((a, b) => a.label.localeCompare(b.label)), projectors: projectors.sort((a, b) => a.path.localeCompare(b.path)) };
 }

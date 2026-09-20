@@ -39,7 +39,7 @@ describe.each(['unsupported', 'supported'] as const)('download transport: %s', s
   it('publishes validated streamed bytes', async () => {
     state.support = support; vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 64), ggufBytes().slice(64)] }));
     await downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
-    expect((await listHuggingFaceModels()).map(model => model.name)).toEqual(['hf.co/owner/repo']);
+    expect((await listHuggingFaceModels()).map(model => model.name)).toEqual(['hf.co/owner/repo:model']);
     switch (support) {
     case 'supported': expect(workerCapability).toHaveBeenCalledWith({ value: { stream: expect.any(ReadableStream) }, capability: 'readable-stream-transfer' }); break;
     case 'unsupported': expect(workerCapability).not.toHaveBeenCalled(); break;

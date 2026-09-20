@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { planStoredModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
+import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
+import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId } from 'vue';
 import { AlertCircleIcon, BrainCircuitIcon, ChevronDownIcon, FileUpIcon, FolderOpenIcon, HardDriveIcon, Loader2Icon, PowerOffIcon, RefreshCcwIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-vue-next';
-import { ensureStrings, lazyStrings } from '@/strings';
-import { useConfirm } from '@/composables/useConfirm';
+import { lazyStrings } from '@/strings';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, runtimeOptionsSchema, type EngineState, type LocalModel, type ErrorCode } from '@/features/llama-cpp-browser/types';
 import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
@@ -27,7 +27,7 @@ const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
 const unavailable = computed(() => __BUILD_MODE_IS_STANDALONE__ || state.value.status === 'unavailable');
 const busy = computed(() => active.value !== undefined || downloading.value || state.value.status === 'working');
-const { showConfirm } = useConfirm();
+const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = useModelDeletionConfirm();
 let unsubscribe: (() => void) | undefined;
 let unsubscribeModels: (() => void) | undefined;
 let refreshController: AbortController | undefined;
@@ -115,15 +115,11 @@ async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
   }
 }
 async function remove({ id }: { id: string }): Promise<void> {
-  if (disposed || unavailable.value || busy.value || refreshing.value) return;
+  if (disposed || unavailable.value || active.value || downloading.value || refreshing.value) return;
   const controller = new AbortController(); active.value = controller; localError.value = undefined; removalChanged.value = false;
   try {
-    const plan = await planStoredModelRemoval({ id });
-    if (disposed || controller.signal.aborted) return;
-    if (!await showConfirm({ message: await ensureStrings.llamaCppBrowser__delete_model_confirmation(), confirmButtonVariant: 'danger',
-      details: { summary: await ensureStrings.llamaCppBrowser__files_to_delete(), items: plan.files.map(file => file.path) },
-    })) return;
-    if (disposed || controller.signal.aborted) return;
+    const plan = await confirmRemoval({ id });
+    if (!plan || disposed || controller.signal.aborted) return;
     removalChanged.value = await llamaCppBrowserService.removeModel({ plan, signal: controller.signal }) === 'changed'; await refresh();
   } catch (error) {
     if (!controller.signal.aborted) localError.value = errorCode({ error });
@@ -189,7 +185,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
     </fieldset>
     <p v-if="removalChanged" role="alert" data-testid="llama-removal-changed" tw-class="text-xs text-red-500">{{ lazyStrings.llamaCppBrowser__files_changed_review_before_deleting() }}</p>
-    <LlamaCppBrowserHuggingFaceManager :disabled="unavailable || active !== undefined || refreshing || state.status === 'working'" @busy="downloading = $event" @changed="refresh" />
+    <LlamaCppBrowserHuggingFaceManager :disabled="unavailable || active !== undefined || refreshing" @busy="downloading = $event" @changed="refresh" />
     <div v-if="active" tw-class="rounded-2xl border border-purple-100 dark:border-purple-900/30 p-4 space-y-3">
       <LlamaCppBrowserLoadingIndicator scope="import" />
       <div tw-class="flex justify-end"><button type="button" data-testid="llama-cpp-browser-cancel" tw-class="px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="cancel">{{ lazyStrings.SHARED__cancel() }}</button></div>
@@ -200,7 +196,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section tw-class="space-y-4">
       <div tw-class="flex items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
         <h3 tw-class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white"><HardDriveIcon tw-class="w-4 h-4 text-purple-500" />{{ lazyStrings.llamaCppBrowser__imported_models() }}<span tw-class="text-xs text-gray-400 tabular-nums">{{ models.length }}</span></h3>
-        <button type="button" data-testid="llama-cpp-browser-refresh" :disabled="unavailable || busy || refreshing" :aria-label="lazyStrings.llamaCppBrowser__refresh_models()" :title="lazyStrings.llamaCppBrowser__refresh_models()" tw-class="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-purple-600 dark:hover:text-purple-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="refresh"><RefreshCcwIcon :tw-class="['w-4 h-4', { 'animate-spin': refreshing }]" /></button>
+        <button type="button" data-testid="llama-cpp-browser-refresh" :disabled="unavailable || active !== undefined || refreshing" :aria-label="lazyStrings.llamaCppBrowser__refresh_models()" :title="lazyStrings.llamaCppBrowser__refresh_models()" tw-class="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-purple-600 dark:hover:text-purple-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="refresh"><RefreshCcwIcon :tw-class="['w-4 h-4', { 'animate-spin': refreshing }]" /></button>
       </div>
       <p v-if="refreshing && models.length === 0" role="status" data-testid="llama-cpp-browser-list-loading" tw-class="flex items-center justify-center gap-2 py-8 text-xs text-gray-500"><Loader2Icon tw-class="w-4 h-4 animate-spin" />{{ lazyStrings.llamaCppBrowser__loading_model_list() }}</p>
       <div v-else-if="models.length === 0" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-6 text-center text-sm text-gray-500 dark:text-gray-400"><p>{{ lazyStrings.llamaCppBrowser__no_imported_models() }}</p></div>
@@ -208,7 +204,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <li v-for="model in models" :key="model.id" tw-class="flex items-center gap-3 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900/30">
           <div tw-class="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-500 flex items-center justify-center shrink-0"><BrainCircuitIcon tw-class="w-4 h-4" /></div>
           <div tw-class="min-w-0 flex-1"><p tw-class="text-sm font-bold text-gray-800 dark:text-gray-100 break-all">{{ model.name }}</p><p tw-class="text-[10px] text-gray-400 font-mono tabular-nums mt-1">{{ formatSize({ bytes: model.size }) }} · GGUF</p></div>
-          <button type="button" :disabled="unavailable || busy || refreshing" :data-testid="`llama-cpp-browser-delete-${model.id}`" :aria-label="lazyStrings.llamaCppBrowser__delete_model()" :title="lazyStrings.llamaCppBrowser__delete_model()" tw-class="p-2 rounded-xl text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="remove({ id: model.id })"><Trash2Icon tw-class="w-4 h-4" /></button>
+          <button type="button" :disabled="unavailable || active !== undefined || downloading || refreshing" :data-testid="`llama-cpp-browser-delete-${model.id}`" :aria-label="lazyStrings.llamaCppBrowser__delete_model()" :title="lazyStrings.llamaCppBrowser__delete_model()" tw-class="p-2 rounded-xl text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="remove({ id: model.id })"><Trash2Icon tw-class="w-4 h-4" /></button>
         </li>
       </ul>
       <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowser__import_then_select() }}</p>
@@ -227,4 +223,5 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div tw-class="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-gray-100 dark:border-gray-800"><p tw-class="text-xs text-gray-500 dark:text-gray-400 flex-1">{{ lazyStrings.llamaCppBrowser__image_chat_requires_matching_projector() }}</p><button type="button" :disabled="unavailable || active !== undefined" data-testid="llama-cpp-browser-release" tw-class="inline-flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="llamaCppBrowserService.release()"><PowerOffIcon tw-class="w-4 h-4" />{{ lazyStrings.llamaCppBrowser__release_runtime() }}</button></div>
     </section>
   </section>
+  <LlamaCppBrowserDeletionDialog :request="deletionRequest" @confirm="finishDeletion({ plan: $event })" @cancel="finishDeletion({ plan: undefined })" />
 </template>

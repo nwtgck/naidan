@@ -1,3 +1,5 @@
+import { rankedProjectors } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorCode, LlamaCppBrowserError, modelSchema, type LocalModel, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 
@@ -48,9 +50,11 @@ export async function readModelFiles({ folder, prefix }: { folder: FileSystemDir
 }
 export function resolveModelFiles({ files }: { files: { path: string }[] }): { modelPath: string, projectorPath: string | undefined } {
   // Match upstream directory discovery without requiring a particular marker position.
-  const projectors = files.filter(entry => (entry.path.split('/').at(-1) ?? '').toLowerCase().includes('mmproj'));
+  // External file edits may leave several projectors. Select one deterministically;
+  // this preference does not claim model/projector compatibility.
+  const projectors = rankedProjectors({ files: files.filter(entry => isProjector({ path: entry.path })) });
   const bases = files.filter(entry => !projectors.includes(entry));
-  if (projectors.length > 1 || bases.length === 0) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+  if (bases.length === 0) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
   const first = bases[0]!;
   const split = /^(.*)-(\d{5})-of-(\d{5})(\.gguf)$/i.exec(first.path);
   if (!split) {
@@ -67,7 +71,8 @@ export async function resolveDirectory({ folder, id, name }: { folder: FileSyste
   if (await hasPendingImport({ folder })) throw new LlamaCppBrowserError({ code: 'missing-model' });
   const files = await readModelFiles({ folder, prefix: '' });
   for (const entry of files) if (!await validGguf({ file: entry.file })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-  return { id, name, files, ...resolveModelFiles({ files }) };
+  const resolved = resolveModelFiles({ files });
+  return { id, name, files: files.filter(file => !isProjector({ path: file.path }) || file.path === resolved.projectorPath), ...resolved };
 }
 export function describeDirectory({ directory }: { directory: ModelDirectory }): LocalModel {
   return modelSchema.parse({ id: directory.id, name: directory.name, size: directory.files.reduce((sum, entry) => sum + entry.file.size, 0), importedAt: Math.max(...directory.files.map(entry => entry.file.lastModified)) });

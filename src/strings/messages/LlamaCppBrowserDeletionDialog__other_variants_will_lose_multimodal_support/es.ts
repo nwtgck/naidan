@@ -1,0 +1,1 @@
+export const LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support = (): string => "Otras variantes de este repositorio también usan estos archivos y perderán la compatibilidad multimodal.";

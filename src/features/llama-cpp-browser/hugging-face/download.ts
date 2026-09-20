@@ -2,7 +2,7 @@ import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/
 import { privacyFetchStream } from '@/features/privacy-fetch';
 import { getReadableStreamTransferSupport, releaseWorkerRemote, workerProxy, workerCapability, workerTransfer, wrapWorkerRemote } from '@/utils/worker-transport';
 import { deleteRepository, withRepositoryLock } from './storage';
-import { beginDownloadResultSchema, DownloadConflictError, progressSchema, repositoryUrlPath, selectionSchema, type BeginDownloadResult, type DownloadProgress, type DownloadSelection } from './types';
+import { beginDownloadResultSchema, sharedProjectorConflictMessage, DownloadConflictError, progressSchema, repositoryUrlPath, selectionSchema, type BeginDownloadResult, type DownloadProgress, type DownloadSelection } from './types';
 import type { DownloadWriterApi } from './writer';
 
 export function responseOffset({ status, headers, offset, size }: { status: number, headers: Headers, offset: number, size: number }): number {
@@ -64,7 +64,7 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
         const file = selection.files[index]!;
         // A full-size but unverified response must be downloaded again, never
         // promoted by a 416 response or by size alone.
-        const offset = journal.bytes[index] === file.size ? 0 : journal.bytes[index]!;
+        const offset = journal.reused?.[index] || journal.bytes[index] === file.size ? 0 : journal.bytes[index]!;
         const path = file.path.split('/').map(encodeURIComponent).join('/');
         const url = `https://huggingface.co/${repositoryUrlPath({ repository: selection.repository })}/resolve/${selection.revision}/${path}`;
         const response = await privacyFetchStream({ request: { url, signal: network.signal, ...(offset > 0 ? { headers: [['Range', `bytes=${offset}-`]] } : {}) } });
@@ -104,6 +104,9 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
         }
       }
       check(); await call({ promise: writer.finish() });
+    } catch (error) {
+      if (error instanceof Error && error.message === sharedProjectorConflictMessage) throw new DownloadConflictError({ reason: 'projector-conflict' });
+      throw error;
     } finally {
       await body?.cancel().catch(() => {});
       try {

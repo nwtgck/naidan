@@ -1,5 +1,7 @@
+import { rankedProjectors } from './presentation';
+import { modelGroups, variantLabel, isProjector } from './model-variants';
 import { deletionPlanSchema, executeDeletionPlan, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
-import { describeDirectory, opfsRoot, resolveDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
+import { describeDirectory, opfsRoot, readModelFiles, resolveModelFiles, validGguf, type ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
 import { journalSchema, modelName, pendingName, repositorySchema, type DownloadJournal } from './types';
 
@@ -54,15 +56,53 @@ export async function visitRepositories({ visit }: { visit: ({ repository, folde
     }
   }
 }
-export async function listHuggingFaceModels(): Promise<LocalModel[]> {
-  const result: LocalModel[] = [];
-  await visitRepositories({ visit: async ({ repository, folder }) => {
-    const name = modelName({ repository });
+export async function repositoryDirectories({ repository }: { repository: string }): Promise<ModelDirectory[]> {
+  const folder = await repositoryFolder({ repository, create: false });
+  let pending: DownloadJournal | undefined;
+  try {
+    pending = await readJournal({ folder });
+  } catch (error) {
+    if (!isMissing({ error })) throw error;
+  }
+  const hidden = new Set(pending?.selection.files.filter((_file, index) => !pending?.reused?.[index]).map(file => file.path));
+  const actual = (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path));
+  const { models, projectors } = modelGroups({ files: actual }); const result: ModelDirectory[] = [];
+  for (const group of models) {
+    const files = [...group, ...rankedProjectors({ files: projectors }).slice(0, 1)];
     try {
-      result.push(describeDirectory({ directory: await resolveDirectory({ folder, id: name, name }) }));
+      const resolved = resolveModelFiles({ files });
+      if (!await allValid({ files })) continue;
+      const id = `${modelName({ repository })}:${encodeURIComponent(resolved.modelPath)}`;
+      const split = /-\d{5}-of-(\d{5})\.gguf$/i.exec(resolved.modelPath);
+      const label = variantLabel({ repository, path: resolved.modelPath });
+      // Split identities are visible even before a same-stem unsplit file is added.
+      const name = `${modelName({ repository })}:${label}${split ? ` (split-${split[1]})` : ''}`;
+      result.push({ id, name, files, ...resolved });
     } catch (error) {
       if (!(error instanceof LlamaCppBrowserError)) throw error;
     }
+  }
+  return result;
+}
+async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {
+  for (const entry of files) if (!await validGguf({ file: entry.file })) return false;
+  return true;
+}
+export function parseModelReference({ name }: { name: string }): { repository: string, variant: string | undefined } {
+  if (!name.startsWith('hf.co/')) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  const value = name.slice('hf.co/'.length); const colon = value.indexOf(':');
+  return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
+}
+export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
+  const { repository, variant } = parseModelReference({ name }); const models = await repositoryDirectories({ repository });
+  const matching = variant === undefined ? models : models.filter(model => model.id === name || model.name === name);
+  if (matching.length !== 1) throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
+  return matching[0]!;
+}
+export async function listHuggingFaceModels(): Promise<LocalModel[]> {
+  const result: LocalModel[] = [];
+  await visitRepositories({ visit: async ({ repository }) => {
+    result.push(...(await repositoryDirectories({ repository })).map(directory => describeDirectory({ directory })));
   } });
   return result;
 }
@@ -88,7 +128,15 @@ export async function deleteRepository({ repository, plan }: { repository: strin
   const [owner, repo] = repositorySchema.parse(repository).split('/');
   let folder = await opfsRoot();
   for (const name of ['llama-cpp-browser-models', 'huggingface.co', owner!, repo!, 'resolve']) folder = await folder.getDirectoryHandle(name);
-  const result = await executeDeletionPlan({ folder: await folder.getDirectoryHandle('main'), plan, selectedPaths: undefined });
+  const current = await folder.getDirectoryHandle('main');
+  let journal: DownloadJournal | undefined;
+  try {
+    journal = await readJournal({ folder: current });
+  } catch (error) {
+    if (!isMissing({ error })) throw error;
+  }
+  const selectedPaths = journal ? [pendingName, ...journal.selection.files.filter((_file, index) => !journal!.reused?.[index]).map(file => file.path)] : (await resolveRepositoryModel({ name: plan.id })).files.filter(file => plan.sharedProjector !== 'keep' || !isProjector({ path: file.path })).map(file => file.path);
+  const result = await executeDeletionPlan({ folder: current, plan, selectedPaths });
   switch (result) {
   case 'changed': return result;
   case 'deleted': break;

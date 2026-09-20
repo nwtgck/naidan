@@ -4,6 +4,7 @@ import { modelSchema } from '@/features/llama-cpp-browser/types';
 const relativePath = z.string().min(1).refine(path => path.split('/').every(part => part !== '' && part !== '.' && part !== '..' && !part.includes('\\') && !Array.from(part).some(character => character.charCodeAt(0) < 32)));
 export const deletionPlanSchema = z.strictObject({
   id: modelSchema.shape.id,
+  sharedProjector: z.enum(['include', 'keep']).optional(),
   files: z.array(z.strictObject({ path: relativePath, size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), lastModified: z.number().finite() })),
 });
 export type DeletionPlan = z.infer<typeof deletionPlanSchema>;
@@ -54,7 +55,7 @@ export async function executeDeletionPlan({ folder, plan, selectedPaths }: { fol
     if (latest.size !== file.size || latest.lastModified !== file.lastModified) return 'changed';
     await parent.removeEntry(name);
   }
-  if (!selectedPaths) await pruneEmptyDirectories({ folder, directories: current.directories });
+  await pruneEmptyDirectories({ folder, directories: selectedPaths ? current.directories.filter(directory => selectedPaths.some(path => path.startsWith(`${directory}/`))) : current.directories });
   return 'deleted';
 }
 export const TEST_ONLY = {

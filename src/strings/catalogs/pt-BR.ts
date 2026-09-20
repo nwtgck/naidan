@@ -1731,6 +1731,10 @@ import { LlamaCppBrowserHuggingFaceManager__checking_model } from '@/strings/mes
 import { LlamaCppBrowserHuggingFaceManager__download_paused } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_paused/pt-BR';
 import { llamaCppBrowser__files_to_delete } from '@/strings/messages/llamaCppBrowser__files_to_delete/pt-BR';
 import { llamaCppBrowser__files_changed_review_before_deleting } from '@/strings/messages/llamaCppBrowser__files_changed_review_before_deleting/pt-BR';
+import { LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files } from '@/strings/messages/LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files/pt-BR';
+import { LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support } from '@/strings/messages/LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support/pt-BR';
+import { LlamaCppBrowserHuggingFaceManager__multimodal_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_quantization/pt-BR';
+import { LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict/pt-BR';
 import { LlamaCppBrowserHuggingFaceManager__model_files_already_exist } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_files_already_exist/pt-BR';
 import { LlamaCppBrowserHuggingFaceManager__another_download_already_exists } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__another_download_already_exists/pt-BR';
 import { LlamaCppBrowserHuggingFaceManager__repository } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository/pt-BR';
@@ -3502,6 +3506,10 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__download_paused,
   llamaCppBrowser__files_to_delete,
   llamaCppBrowser__files_changed_review_before_deleting,
+  LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files,
+  LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support,
+  LlamaCppBrowserHuggingFaceManager__multimodal_quantization,
+  LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict,
   LlamaCppBrowserHuggingFaceManager__model_files_already_exist,
   LlamaCppBrowserHuggingFaceManager__another_download_already_exists,
   LlamaCppBrowserHuggingFaceManager__repository,

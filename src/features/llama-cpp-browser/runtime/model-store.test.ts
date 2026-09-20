@@ -285,7 +285,7 @@ describe('directory model imports', () => {
     let folder = root;
     for (const name of ['llama-cpp-browser-models', 'huggingface.co', 'owner', 'repo', 'resolve', 'main']) folder = await folder.getDirectoryHandle(name, { create: true });
     (await folder.getFileHandle('model.gguf', { create: true })).content = new Uint8Array(await fixture({ name: 'model.gguf' }).arrayBuffer());
-    expect((await listStoredModels()).map(model => model.name)).toEqual(['hf.co/owner/repo']);
+    expect((await listStoredModels()).map(model => model.name)).toEqual(['hf.co/owner/repo:model']);
     expect((await storedModelDirectory({ name: 'hf.co/owner/repo' })).projectorPath).toBeUndefined();
     (await folder.getFileHandle('mmproj.gguf', { create: true })).content = new Uint8Array(await fixture({ name: 'mmproj.gguf' }).arrayBuffer());
     expect((await storedModelDirectory({ name: 'hf.co/owner/repo' })).projectorPath).toBe('mmproj.gguf');
@@ -348,9 +348,9 @@ describe('directory model imports', () => {
   it('does not classify a model by a marker in its parent directory name', () => {
     expect(resolveModelFiles({ files: [{ path: 'mmproj/model.gguf' }] })).toEqual({ modelPath: 'mmproj/model.gguf', projectorPath: undefined });
   });
-  it('rejects mixed projector candidates before writing OPFS and logs only a fixed layout reason', async () => {
+  it('rejects mixed base model candidates before writing OPFS and logs only a fixed layout reason', async () => {
     const name = 'private-model-folder';
-    await expect(importModelDirectory({ signal: undefined, directory: { name, files: ['private-model.gguf', 'mmproj-first.gguf', 'private-mmproj.gguf'].map(path => ({ path, file: fixture({ name: path }) })) }, onProgress: () => {} })).rejects.toThrow('unsupported-input');
+    await expect(importModelDirectory({ signal: undefined, directory: { name, files: ['private-model.gguf', 'another-private-model.gguf', 'mmproj-first.gguf'].map(path => ({ path, file: fixture({ name: path }) })) }, onProgress: () => {} })).rejects.toThrow('unsupported-input');
     expect(root.children.has(name)).toBe(false); expect(committed).toEqual([]);
     expect(readDiagnostics({ calls: vi.mocked(console.debug).mock.calls })).toContainEqual(expect.objectContaining({ stage: 'model-resolve', reason: 'model-directory-layout', code: 'unsupported-input' }));
     expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private');
@@ -363,9 +363,9 @@ describe('directory model imports', () => {
     expect((await storedModelDirectory({ name: 'External' })).projectorPath).toBe('mmproj.gguf');
     expect((await listStoredModels()).map(model => model.name)).toEqual(['user/External']);
   });
-  it('requires complete split sets and rejects ambiguous weights or projectors', () => {
+  it('requires complete split sets and rejects ambiguous weights', () => {
     expect(resolveModelFiles({ files: [{ path: 'x/model-00001-of-00002.gguf' }, { path: 'x/model-00002-of-00002.gguf' }] }).modelPath).toBe('x/model-00001-of-00002.gguf');
-    for (const paths of [ ['model-00001-of-00002.gguf'], ['a.gguf', 'b.gguf'], ['a.gguf', 'mmproj-a.gguf', 'mmproj-b.gguf'], ['a-00001-of-00002.gguf', 'b-00002-of-00002.gguf'] ]) {
+    for (const paths of [ ['model-00001-of-00002.gguf'], ['a.gguf', 'b.gguf'], ['a-00001-of-00002.gguf', 'b-00002-of-00002.gguf'] ]) {
       expect(() => resolveModelFiles({ files: paths.map(path => ({ path })) })).toThrow();
     }
   });

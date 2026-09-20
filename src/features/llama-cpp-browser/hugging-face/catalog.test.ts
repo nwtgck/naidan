@@ -17,14 +17,18 @@ describe('Hugging Face model discovery', () => {
   it('accepts repository IDs and public repository URLs while rejecting unrelated URLs and paths', () => {
     expect(parseRepository({ input: ' https://huggingface.co/owner/repo/ ' })).toBe('owner/repo');
     for (const input of ['hf.co/LiquidAI/LFM2.5-230M-GGUF', 'https://hf.co/LiquidAI/LFM2.5-230M-GGUF/']) expect(parseRepository({ input })).toBe('LiquidAI/LFM2.5-230M-GGUF');
-    for (const input of ['hf.co/owner/repo/tree/main', 'https://hf.co/owner/repo?token=secret', 'https://hf.co.example/owner/repo', 'https://example.com/owner/repo', 'owner/../repo', 'https://huggingface.co/owner/repo?token=secret']) expect(() => parseRepository({ input })).toThrow();
+    for (const input of ['https://user:secret@hf.co/owner/repo', 'https://hf.co.example/owner/repo', 'https://example.com/owner/repo', 'owner/../repo', 'http://hf.co/owner/repo', 'https://hf.co:444/owner/repo']) expect(() => parseRepository({ input })).toThrow();
+  });
+  it('normalizes HF URLs to the repository and deliberately ignores every suffix', () => {
+    for (const input of ['https://huggingface.co/owner/repo/tree/main', 'https://huggingface.co/owner/repo/tree/other-branch/nested/path', 'hf.co/owner/repo/tree/main', 'https://hf.co/owner/repo/tree/other', 'https://huggingface.co/owner/repo/blob/other/model.gguf?download=true#file', 'hf.co/owner/repo/anything?token=ignored#ignored']) expect(parseRepository({ input })).toBe('owner/repo');
   });
   it('resolves main once then follows only the pinned tree pagination', async () => {
     const sha = 'a'.repeat(40); const prefix = `https://huggingface.co/api/models/owner/repo/tree/${sha}`;
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(jsonResponse({ value: { sha, id: 'owner/repo' }, headers: new Headers() }))
       .mockResolvedValueOnce(jsonResponse({ value: [{ type: 'directory', path: 'nested' }, { type: 'file', path: 'model.gguf', size: 128 }], headers: new Headers({ link: `<${prefix}?cursor=next>; rel="next"` }) }))
       .mockResolvedValueOnce(jsonResponse({ value: [{ type: 'file', path: 'mmproj.gguf', size: 64 }], headers: new Headers() }));
-    const result = await discoverRepository({ input: 'OWNER/REPO', signal: new AbortController().signal });
+    const result = await discoverRepository({ input: 'https://hf.co/OWNER/REPO/tree/not-main/nested', signal: new AbortController().signal });
+    expect(vi.mocked(privacyFetchStream).mock.calls.at(-3)?.[0].request.url).toBe('https://huggingface.co/api/models/OWNER/REPO/revision/main');
     expect(result.repository).toBe('owner/repo');
     expect(result.revision).toBe(sha); expect(result.models).toHaveLength(1); expect(result.projectors).toHaveLength(1);
     expect(vi.mocked(privacyFetchStream).mock.calls.at(-1)?.[0].request.url).toBe(`${prefix}?cursor=next`);

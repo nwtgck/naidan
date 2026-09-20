@@ -7,12 +7,12 @@ describe('Hugging Face candidate presentation', () => {
   it('uses a fixed Q4_K_M-first preference independently of discovery order', () => {
     const models = ['model-Q8_0.gguf', 'model-Q4_0.gguf', 'model-Q5_K_M.gguf', 'model-Q4_K_M.gguf'].map(path => model({ path }));
     const expected = ['Q4_K_M', 'Q4_0', 'Q5_K_M', 'Q8_0'];
-    expect(quantizationChoices({ models }).map(choice => choice.quantization)).toEqual(expected);
-    expect(quantizationChoices({ models: [...models].reverse() }).map(choice => choice.quantization)).toEqual(expected);
+    expect(quantizationChoices({ repository: 'owner/model-GGUF', models }).map(choice => choice.quantization)).toEqual(expected);
+    expect(quantizationChoices({ repository: 'owner/model-GGUF', models: [...models].reverse() }).map(choice => choice.quantization)).toEqual(expected);
   });
-  it('keeps same-quant variants separate inside one choice and does not invent unknown quantizations', () => {
-    const choices = quantizationChoices({ models: ['base-Q4_K_M.gguf', 'base-Q4_K_M-QAD.gguf', 'model-unknown.gguf'].map(path => model({ path })) });
-    expect(choices).toHaveLength(2); expect(choices[0]?.models).toHaveLength(2); expect(choices[1]?.quantization).toBeUndefined();
+  it('keeps same-quant variants as separate choices and does not invent unknown quantizations', () => {
+    const choices = quantizationChoices({ repository: 'owner/model-GGUF', models: ['base-Q4_K_M.gguf', 'base-Q4_K_M-QAD.gguf', 'model-unknown.gguf'].map(path => model({ path })) });
+    expect(choices).toHaveLength(3); expect(choices[0]?.models).toHaveLength(1); expect(choices[2]?.quantization).toBeUndefined();
     expect(quantizationName({ path: 'Q4_K_M/other.gguf' })).toBeUndefined();
     expect(quantizationName({ path: 'model-Q4_K_M-00001-of-00003.gguf' })).toBe('Q4_K_M');
   });

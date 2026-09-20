@@ -1,3 +1,4 @@
+import { listStoredModels, removeStoredModel, withModelMutationLock } from './runtime/model-store';
 import { createLlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/client';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { errorCode, generateInputSchema, LlamaCppBrowserError, runtimeOptionsSchema, type EngineState, type Progress, type RuntimeOptions } from './types';
@@ -88,8 +89,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       modelListeners.delete(listener);
     };
   },
-  listModels({ signal }) {
-    return run({ signal, operation: ({ worker, signal }) => worker.listModels({ signal }) });
+  async listModels({ signal }) {
+    signal?.throwIfAborted(); const models = await listStoredModels(); signal?.throwIfAborted(); return models;
   },
   importModel({ file, signal }) {
     return run({ signal, operation: async ({ worker, signal }) => {
@@ -117,17 +118,22 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       }
     } });
   },
-  removeModel({ plan, signal }) {
-    return run({ signal, operation: async ({ worker, signal }) => {
-      const result = await worker.removeModel({ plan, signal }); for (const listener of modelListeners) {
-        try {
-          listener();
-        } catch {
-          logDiagnostic({ diagnostic: { event: 'failed' } });
-        }
-      }
-      return result;
+  async removeModel({ plan, signal }) {
+    // Deletion is deliberately optimistic: it does not wait for chats or keep a
+    // usage registry. Active readers may fail normally; the next request checks
+    // the actual file identities before reusing resident native state.
+    signal?.throwIfAborted();
+    const result = await withModelMutationLock({ operation: () => {
+      signal?.throwIfAborted(); return removeStoredModel({ plan });
     } });
+    for (const listener of modelListeners) {
+      try {
+        listener();
+      } catch {
+        logDiagnostic({ diagnostic: { event: 'failed' } });
+      }
+    }
+    return result;
   },
   generate({ input, onChunk, onResult, signal }) {
     // Snapshot accepted inputs before waiting in the queue; Vue proxies never cross RPC.
