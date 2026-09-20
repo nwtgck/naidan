@@ -14,15 +14,15 @@ function request(): Parameters<LmProvider['chat']>[0] {
 }
 describe('local model provider', () => {
   it('maps model identity and text messages without normalizing away content', async () => {
-    service.listModels.mockResolvedValue([{ id: 'user/local-GGUF/local.gguf', name: 'local.gguf', size: 100, importedAt: 1 }]);
+    service.listModels.mockResolvedValue([{ id: 'user/local-GGUF/local.gguf', name: 'local-GGUF', size: 100, importedAt: 1 }]);
     const provider = new LlamaCppBrowserProvider();
-    expect(await provider.listModels({})).toEqual(['local.gguf']);
-    const input = request(); input.messages = [{ role: 'system', content: 'rules' }, { role: 'user', content: [{ type: 'text', text: 'first ' }, { type: 'text', text: 'second' }] }];
+    expect(await provider.listModels({})).toEqual(['local-GGUF']);
+    const input = request(); input.model = 'local-GGUF'; input.messages = [{ role: 'system', content: 'rules' }, { role: 'user', content: [{ type: 'text', text: 'first ' }, { type: 'text', text: 'second' }] }];
     await provider.chat(input);
     expect(input.onAssistantMessageStart).toHaveBeenCalledOnce();
     expect(service.generate).toHaveBeenCalledOnce();
     expect(service.generate.mock.calls[0]?.[0].input.messages).toEqual([{ role: 'system', content: 'rules' }, { role: 'user', content: 'first second' }]);
-    expect(service.generate.mock.calls[0]?.[0].input.model).toBe('local.gguf');
+    expect(service.generate.mock.calls[0]?.[0].input.model).toBe('local-GGUF');
     expect(service.generate.mock.calls[0]?.[0].onChunk).toBe(input.onChunk);
   });
   it('rejects images instead of silently dropping an attachment', async () => {

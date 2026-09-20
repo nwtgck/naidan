@@ -65,7 +65,21 @@ export async function fetchModelsForChat({
       && mutableChat.modelId
       && !models.includes(mutableChat.modelId)
     ) {
-      mutableChat.modelId = '';
+      let replacement = '';
+      switch (endpoint.type) {
+      case 'llama_cpp_browser': {
+        // Existing chats selected a GGUF filename before model directories became
+        // the public selection name. Resolve only its exact listed directory.
+        if (/^.+\.gguf$/i.test(mutableChat.modelId)) {
+          const directory = `${mutableChat.modelId.slice(0, -5)}-GGUF`;
+          if (models.includes(directory)) replacement = directory;
+        }
+        break;
+      }
+      case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': break;
+      default: { const exhaustive: never = endpoint; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
+      }
+      mutableChat.modelId = replacement;
       mutableChat.updatedAt = Date.now();
       triggerCurrentChat({ chatId: mutableChat.id });
     }

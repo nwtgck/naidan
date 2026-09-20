@@ -30,7 +30,7 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
   }
 }
 export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
-  if (resident && id === `user/${resident.name.slice(0, -5)}-GGUF/${resident.name}`) await releaseSession({ releaseRuntime: false });
+  if (resident && (id.split("/")[1] === resident.name || id === `user/${resident.name.slice(0, -5)}-GGUF/${resident.name}`)) await releaseSession({ releaseRuntime: false });
 }
 export async function prepareSession({ request, onProgress, signal }: {
   request: WorkerGenerateInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,

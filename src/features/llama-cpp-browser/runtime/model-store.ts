@@ -32,7 +32,8 @@ async function validHeader({ file }: { file: File }): Promise<boolean> {
     && [2, 3].includes(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4, true));
 }
 function describe({ file }: { file: File }): LocalModel {
-  return modelSchema.parse({ id: modelPath({ name: file.name }).id, name: file.name, size: file.size, importedAt: file.lastModified });
+  const path = modelPath({ name: file.name });
+  return modelSchema.parse({ id: path.id, name: path.directory, size: file.size, importedAt: file.lastModified });
 }
 export async function withModelStoreLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   if (!navigator.locks) throw new LlamaCppBrowserError({ code: "unavailable" });
@@ -145,9 +146,34 @@ export async function removeStoredModel({ id }: { id: string }): Promise<void> {
   }
 }
 export async function storedModelHandle({ name }: { name: string }): Promise<FileSystemFileHandle> {
-  const path = modelPath({ name });
+  // Saved chats may still select the original filename. New selections identify
+  // the model directory; preserve the actual filename and publication marker.
+  const directorySelected = name.endsWith("-GGUF");
+  let path = modelPath({ name: directorySelected ? `${name.slice(0, -5)}.gguf` : name });
   try {
     const folder = await (await userDirectory()).getDirectoryHandle(path.directory);
+    if (directorySelected) {
+      let selected: ReturnType<typeof modelPath> | undefined;
+      for await (const [filename, entry] of folder.entries()) {
+        switch (entry.kind) {
+        case "directory": continue;
+        case "file": break;
+        default: throw new Error(`Unexpected entry kind: ${((entry satisfies never) as { readonly kind: string }).kind}`);
+        }
+        let candidate: ReturnType<typeof modelPath>;
+        try {
+          candidate = modelPath({ name: filename });
+        } catch {
+          continue;
+        }
+        if (candidate.directory === name) {
+          if (selected) throw new LlamaCppBrowserError({ code: "unsupported-input" });
+          selected = candidate;
+        }
+      }
+      if (!selected) throw new LlamaCppBrowserError({ code: "missing-model" });
+      path = selected;
+    }
     await folder.getFileHandle(path.marker);
     const handle = await folder.getFileHandle(path.file);
     if (!await validHeader({ file: await handle.getFile() })) throw new LlamaCppBrowserError({ code: "missing-model" });

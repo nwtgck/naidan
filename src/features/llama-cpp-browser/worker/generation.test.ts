@@ -165,8 +165,11 @@ describe('Naidan generation loop with the supplied CPU Wasm', () => {
       host.sameFile = true;
     }
   }, 30000);
-  it('releases only the matching resident model before removing its stored file', async () => {
+  it.each(['private-local-name.gguf', 'private-local-name-GGUF'])('releases only the matching resident model before removing its stored file: %s', async name => {
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     const req = request({ contextSize: 256, messages: [{ role: 'user', content: 'hello' }] });
+    req.model = name;
+    await generate({ request: req, signal: undefined, onChunk: () => {}, onProgress: () => {} });
     const reads = host.reads;
     await invalidateStoredModel({ id: 'user/unrelated-GGUF/unrelated.gguf' });
     await generate({ request: req, signal: undefined, onChunk: () => {}, onProgress: () => {} });
