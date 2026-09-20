@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { errorCode, errorCodeSchema } from './types';
+import { errorCode, errorCodeSchema, profileSchema } from './types';
 
 const stageSchema = z.enum(['media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
   'reasoning-state', 'grammar-switch', 'native-sample', 'reasoning-accept', 'reasoning-replay',
@@ -47,7 +47,7 @@ export const diagnosticSchema = z.object({
   bytes: z.number().finite().nonnegative().optional(),
   tokens: z.number().int().nonnegative().optional(),
   expectedTokens: z.number().int().nonnegative().optional(),
-  profile: z.enum(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi']).optional(),
+  profile: profileSchema.optional(),
   nativeNode: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeOp: z.number().int().nonnegative().optional(),
   // Values originate only from generated GGML_OP constants, never tensor names.

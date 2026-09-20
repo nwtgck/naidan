@@ -32,7 +32,7 @@ vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => {
   host.core = await createCore({ profile: integrationProfile, baseURL: pathToFileURL(folder + '/profiles/'), moduleOptions: {
     wasmBinary: await readFile(path.join(folder, `profiles/${integrationProfile}/core.wasm`)), print() {}, printErr() {},
   } });
-  expect(host.core.pointerBytes).toBe({ 'cpu-wasm32': 4, 'cpu-wasm64': 8, 'webgpu-wasm64-jspi': 8 }[integrationProfile]);
+  expect(host.core.pointerBytes).toBe({ 'cpu-wasm32': 4, 'cpu-wasm64': 8, 'webgpu-wasm64-jspi': 8, 'webgpu-wasm32-asyncify': 4 }[integrationProfile]);
   const setField = host.core.setField;
   host.core.setField = args => setField({ ...args, value: args.name === 'llama_model_params' && args.field === 'n_gpu_layers' ? 0 : args.value });
   await host.core.api.llama_backend_init();

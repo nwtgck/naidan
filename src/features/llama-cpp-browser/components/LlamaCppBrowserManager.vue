@@ -228,7 +228,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="space-y-2">
           <label :for="`${id}-profile`" tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowser__profile() }}</label>
           <div tw-class="relative"><select :id="`${id}-profile`" v-model="options.profile" data-testid="llama-cpp-browser-profile" tw-class="appearance-none block w-full pl-3 pr-9 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all" @change="applyOptions">
-            <option value="auto">{{ lazyStrings.llamaCppBrowser__automatic_recommended() }}</option><option value="webgpu-wasm64-jspi">WebGPU / wasm64</option><option value="cpu-wasm64">CPU / wasm64</option><option value="cpu-wasm32">CPU / wasm32</option>
+            <option value="auto">{{ lazyStrings.llamaCppBrowser__automatic_recommended() }}</option><option value="webgpu-wasm64-jspi">WebGPU / wasm64</option><option value="webgpu-wasm32-asyncify">WebGPU / wasm32</option><option value="cpu-wasm64">CPU / wasm64</option><option value="cpu-wasm32">CPU / wasm32</option>
           </select><ChevronDownIcon tw-class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" /></div>
         </div>
       </fieldset>

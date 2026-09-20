@@ -29,8 +29,20 @@ describe('prebuilt runtime loading', () => {
       await core.api.llama_backend_free();
     }
   }, 30000);
-  it('reports unsupported GPU requirements without fetching a runtime or falling back silently', async () => {
+  it.each(['webgpu-wasm64-jspi', 'webgpu-wasm32-asyncify'] as const)('reports missing WebGPU for %s without fetching or silently falling back', async (profile) => {
     vi.stubGlobal('navigator', {}); const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    await expect(loadRuntime({ profile, assetBaseURL: 'https://example.invalid/runtime/' })).rejects.toThrow('unavailable');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('requests only the Asyncify artifact when WebGPU exists without JSPI', async () => {
+    vi.stubGlobal('WebAssembly', {});
+    vi.stubGlobal('navigator', { gpu: {} });
+    const fetcher = vi.fn().mockRejectedValue(new Error('runtime asset requested'));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(loadRuntime({ profile: 'webgpu-wasm32-asyncify', assetBaseURL: 'https://example.invalid/runtime/' })).rejects.toThrow('runtime asset requested');
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe('https://example.invalid/runtime/webgpu-wasm32-asyncify/core.wasm.gz');
+    fetcher.mockClear();
     await expect(loadRuntime({ profile: 'webgpu-wasm64-jspi', assetBaseURL: 'https://example.invalid/runtime/' })).rejects.toThrow('unavailable');
     expect(fetcher).not.toHaveBeenCalled();
   });

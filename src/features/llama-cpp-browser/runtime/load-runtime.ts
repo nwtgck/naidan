@@ -4,7 +4,10 @@ import { logDiagnostic, logNativeDiagnostic } from '@/features/llama-cpp-browser
 
 export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCppProfile, assetBaseURL: string }): Promise<Core> {
   const wasmFeatures: object = WebAssembly;
-  if (usesWebGpu({ profile }) && (!navigator.gpu || !('promising' in wasmFeatures) || typeof wasmFeatures.promising !== 'function' || !('Suspending' in wasmFeatures) || typeof wasmFeatures.Suspending !== 'function')) {
+  if (usesWebGpu({ profile }) && (typeof navigator === 'undefined' || !navigator.gpu)) {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
+  if (profile === 'webgpu-wasm64-jspi' && (!('promising' in wasmFeatures) || typeof wasmFeatures.promising !== 'function' || !('Suspending' in wasmFeatures) || typeof wasmFeatures.Suspending !== 'function')) {
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
   const response = await fetch(new URL(`${profile}/core.wasm.gz`, assetBaseURL));

@@ -48,7 +48,7 @@ describe('llama.cpp runtime distribution boundary', () => {
   }, 30000);
   it('ships each original hosted runtime module with a lossless compressed Wasm asset', async () => {
     const output = await bundleFeature({ standalone: false });
-    for (const profile of ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi']) {
+    for (const profile of ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi', 'webgpu-wasm32-asyncify']) {
       const prefix = `llama-cpp-browser-runtime/profiles/${profile}/`;
       const wasm = output[prefix + 'core.wasm.gz'];
       const module = output[prefix + 'core.mjs'];

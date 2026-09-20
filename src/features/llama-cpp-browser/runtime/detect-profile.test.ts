@@ -21,23 +21,22 @@ describe('automatic browser inference profile', () => {
     expect(validate).toHaveBeenCalledOnce();
     expect(validate.mock.calls[0]).toBeDefined();
   });
-  it('uses CPU wasm32 without requesting an adapter when memory64 is unavailable', async () => {
-    const { requestAdapter } = browser({ memory64: false, jspi: true, adapter: 'ready' });
-    expect(await resolveRuntimeProfile({ profile: 'auto' })).toBe('cpu-wasm32');
-    expect(requestAdapter).not.toHaveBeenCalled();
-  });
-  it('uses CPU wasm64 when JSPI is unavailable', async () => {
-    const { requestAdapter } = browser({ memory64: true, jspi: false, adapter: 'ready' });
-    expect(await resolveRuntimeProfile({ profile: 'auto' })).toBe('cpu-wasm64');
-    expect(requestAdapter).not.toHaveBeenCalled();
+  it.each([{ memory64: false, jspi: false }, { memory64: false, jspi: true }, { memory64: true, jspi: false }])('uses WebGPU Asyncify with memory64=$memory64 and JSPI=$jspi', async ({ memory64, jspi }) => {
+    const { requestAdapter } = browser({ memory64, jspi, adapter: 'ready' });
+    expect(await resolveRuntimeProfile({ profile: 'auto' })).toBe('webgpu-wasm32-asyncify');
+    expect(requestAdapter).toHaveBeenCalledOnce();
   });
   it.each(['missing', 'no-f16', 'error'] as const)('uses CPU when the adapter is %s without exposing its error', async (adapter) => {
     browser({ memory64: true, jspi: true, adapter });
     expect(await resolveRuntimeProfile({ profile: 'auto' })).toBe('cpu-wasm64');
   });
+  it.each(['missing', 'no-f16', 'error'] as const)('uses CPU wasm32 when the adapter is %s and memory64 is unavailable', async (adapter) => {
+    browser({ memory64: false, jspi: false, adapter });
+    expect(await resolveRuntimeProfile({ profile: 'auto' })).toBe('cpu-wasm32');
+  });
   it('honors all explicit selections without probing or silently falling back', async () => {
     const { requestAdapter, validate } = browser({ memory64: false, jspi: false, adapter: 'missing' });
-    for (const profile of ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi'] as const) {
+    for (const profile of ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi', 'webgpu-wasm32-asyncify'] as const) {
       expect(await resolveRuntimeProfile({ profile })).toBe(profile);
     }
     expect(validate).not.toHaveBeenCalled(); expect(requestAdapter).not.toHaveBeenCalled();
@@ -47,7 +46,7 @@ describe('automatic browser inference profile', () => {
     validate.mockImplementation(() => {
       throw new Error('unsupported proposal');
     });
-    expect(await resolveRuntimeProfile({ profile: 'auto' })).toBe('cpu-wasm32');
+    expect(await resolveRuntimeProfile({ profile: 'auto' })).toBe('webgpu-wasm32-asyncify');
   });
   it('uses CPU wasm64 when there is no GPU API', async () => {
     browser({ memory64: true, jspi: true, adapter: 'missing' }); vi.stubGlobal('navigator', {});

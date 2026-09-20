@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
-export const profileSchema = z.enum(['webgpu-wasm64-jspi', 'cpu-wasm64', 'cpu-wasm32']);
+export const profileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm64', 'cpu-wasm32']);
 export type LlamaCppProfile = z.infer<typeof profileSchema>;
 export function usesWebGpu({ profile }: { profile: LlamaCppProfile }): boolean {
   switch (profile) {
-  case 'webgpu-wasm64-jspi': return true;
+  case 'webgpu-wasm64-jspi':
+  case 'webgpu-wasm32-asyncify': return true;
   case 'cpu-wasm32':
   case 'cpu-wasm64': return false;
   default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }

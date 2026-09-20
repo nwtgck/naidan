@@ -26,7 +26,7 @@ function index({ value }: { value: NativeScalar }): number {
   if (!Number.isSafeInteger(result) || result < 0) throw new RangeError('Unsafe memory index');
   return result;
 }
-export function attachCore({ module }: { module: CoreModule }) {
+export function attachCore({ module, callMode }: { module: CoreModule, callMode: 'direct' | 'asyncify' }) {
   function native({ name }: { name: string }): NativeCall {
     const value: unknown = Reflect.get(module, name);
     if (typeof value !== 'function') throw new Error(`Missing native export: ${name}`);
@@ -84,7 +84,21 @@ export function attachCore({ module }: { module: CoreModule }) {
       }
       busy = true;
       try {
-        return await call(...args);
+        switch (callMode) {
+        case 'direct': return await call(...args);
+        case 'asyncify': {
+          // Raw Asyncify exports can return before unwinding finishes. ccall waits for
+          // the final result and keeps the serialization guard held during suspension.
+          // The generated bridge uses bigint for pointers even in the wasm32 profile.
+          const result: NativeScalar | void = await module.ccall(fn.export.slice(1),
+            fn.returnKind === 'record' || fn.returnKind === 'void' ? undefined
+              : ['pointer', 'u64', 'i64'].includes(fn.returnKind) ? 'bigint' : 'number',
+            kinds.map(kind => ['pointer', 'record', 'u64', 'i64'].includes(kind) ? 'bigint' : 'number'),
+            args, { async: true });
+          return result;
+        }
+        default: { const exhaustive: never = callMode; throw new Error(`Unhandled native call mode: ${exhaustive}`); }
+        }
       } finally {
         busy = false;
       }
@@ -182,7 +196,11 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten module initialization callback ABI.
     locateFile: (path: string) => new URL(path, root).href,
   });
-  return attachCore({ module });
+  switch (profile) {
+  case 'webgpu-wasm32-asyncify': return attachCore({ module, callMode: 'asyncify' });
+  case 'webgpu-wasm64-jspi': case 'cpu-wasm64': case 'cpu-wasm32': return attachCore({ module, callMode: 'direct' });
+  default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  }
 }
 export const TEST_ONLY = {
 };
