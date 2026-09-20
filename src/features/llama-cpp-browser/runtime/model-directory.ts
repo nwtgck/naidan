@@ -4,19 +4,22 @@ import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorCode, LlamaCppBrowserError, modelSchema, type LocalModel, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 
 const pendingName = '.llama-cpp-import-pending';
-const reservedRoots = new Set(['naidan-storage', 'models', 'terminal', 'llama-cpp-browser-models', 'llama-cpp-browser-models-v1']);
 export type ModelFile = { path: string, handle: FileSystemFileHandle, file: File };
 export type ModelDirectory = { id: string, name: string, files: ModelFile[], modelPath: string, projectorPath: string | undefined };
 
 export function validSegment({ name }: { name: string }): boolean {
   return name.length > 0 && name !== '.' && name !== '..' && !/[\\/]/.test(name) && !Array.from(name).some(character => character.charCodeAt(0) < 32) && new TextEncoder().encode(name).length <= 255;
 }
-export function allowedModelRoot({ name }: { name: string }): boolean {
-  return validSegment({ name }) && !name.startsWith('.') && !reservedRoots.has(name);
+export function allowedModelDirectory({ name }: { name: string }): boolean {
+  return validSegment({ name }) && !name.startsWith('.');
 }
 export async function opfsRoot(): Promise<FileSystemDirectoryHandle> {
   if (!navigator.storage?.getDirectory) throw new LlamaCppBrowserError({ code: 'unavailable' });
   return navigator.storage.getDirectory();
+}
+export async function userModelDirectory(): Promise<FileSystemDirectoryHandle> {
+  const models = await (await opfsRoot()).getDirectoryHandle('llama-cpp-browser-models', { create: true });
+  return models.getDirectoryHandle('user', { create: true });
 }
 function missing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && (error.name === 'NotFoundError' || error.name === 'TypeMismatchError');
@@ -77,18 +80,6 @@ export async function resolveDirectory({ folder, id, name }: { folder: FileSyste
 export function describeDirectory({ directory }: { directory: ModelDirectory }): LocalModel {
   return modelSchema.parse({ id: directory.id, name: directory.name, size: directory.files.reduce((sum, entry) => sum + entry.file.size, 0), importedAt: Math.max(...directory.files.map(entry => entry.file.lastModified)) });
 }
-export async function listRootModels(): Promise<LocalModel[]> {
-  const root = await opfsRoot(); const result: LocalModel[] = [];
-  for await (const [name, folder] of root.entries()) {
-    if (folder.kind !== 'directory' || !allowedModelRoot({ name })) continue;
-    try {
-      result.push(describeDirectory({ directory: await resolveDirectory({ folder, id: name, name }) }));
-    } catch (error) {
-      if (!(error instanceof LlamaCppBrowserError) && !missing({ error })) throw error;
-    }
-  }
-  return result;
-}
 /** A source-neutral import boundary shared by dropped folders and future downloads. */
 export async function importModelDirectory({ directory, onProgress, signal }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
   const checkCancelled = (): void => {
@@ -96,10 +87,10 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
   };
   checkCancelled();
   const rootName = directory.name.replaceAll(':', '_');
-  if (!allowedModelRoot({ name: rootName }) || directory.files.length === 0) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+  if (!allowedModelDirectory({ name: rootName }) || directory.files.length === 0) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   const paths = new Set<string>();
   for (const { path } of directory.files) {
-    if (!path.split('/').every(name => validSegment({ name })) || path === pendingName || paths.has(path)) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+    if (!path.split('/').every(name => validSegment({ name })) || path.split('/')[0] === pendingName || paths.has(path)) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
     paths.add(path);
   }
   for (const path of paths) {
@@ -116,21 +107,11 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     throw error;
   }
   for (const { file } of ggufs) if (!await validGguf({ file })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-  const root = await opfsRoot();
-  // Existing chats identify legacy models by directory name, so reject an
-  // ambiguous selection after normalizing the imported root name.
-  try {
-    const legacy = await (await root.getDirectoryHandle('llama-cpp-browser-models')).getDirectoryHandle('user');
-    await legacy.getDirectoryHandle(rootName);
-    throw new LlamaCppBrowserError({ code: 'duplicate-model' });
-  } catch (error) {
-    if (!missing({ error })) throw error;
-  }
-  // Reject both files and folders with this name; never overwrite user data.
-  for await (const [name] of root.entries()) if (name === rootName) throw new LlamaCppBrowserError({ code: 'duplicate-model' });
+  const parent = await userModelDirectory();
+  for await (const [name] of parent.entries()) if (name === rootName) throw new LlamaCppBrowserError({ code: 'duplicate-model' });
   let completed = 0; const total = directory.files.reduce((sum, entry) => sum + entry.file.size, 0);
   if (!Number.isSafeInteger(total)) throw new LlamaCppBrowserError({ code: 'storage-error' });
-  const folder = await root.getDirectoryHandle(rootName, { create: true });
+  const folder = await parent.getDirectoryHandle(rootName, { create: true });
   try {
     await folder.getFileHandle(pendingName, { create: true });
     for (const { path, file } of directory.files) {
@@ -158,14 +139,14 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
         reader.releaseLock();
       }
     }
-    // The pending marker guards publication only; no manifest controls later discovery.
+    // Only the transient pending marker guards publication; each load resolves the files anew.
     checkCancelled();
     await folder.removeEntry(pendingName);
-    const model = describeDirectory({ directory: await resolveDirectory({ folder, id: rootName, name: rootName }) });
+    const model = describeDirectory({ directory: await resolveDirectory({ folder, id: `user/${rootName}`, name: rootName }) });
     checkCancelled();
     return model;
   } catch (error) {
-    await root.removeEntry(rootName, { recursive: true }).catch(() => {});
+    await parent.removeEntry(rootName, { recursive: true }).catch(() => {});
     throw error;
   }
 }

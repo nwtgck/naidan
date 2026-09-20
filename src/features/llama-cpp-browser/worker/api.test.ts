@@ -100,9 +100,9 @@ describe("generation RPC lifecycle", () => {
     calls.remove.mockImplementation(async () => {
       order.push("remove");
     });
-    await api.removeModel({ plan: { id: "user/local-GGUF/local.gguf", files: [] } });
+    await api.removeModel({ plan: { id: "user/local-GGUF", files: [] } });
     expect(order).toEqual(["release", "remove"]);
-    expect(calls.release).toHaveBeenCalledWith({ id: "user/local-GGUF/local.gguf" });
+    expect(calls.release).toHaveBeenCalledWith({ id: "user/local-GGUF" });
     await expect(api.removeModel({ plan: { id: "../unsafe", files: [] } })).rejects.toThrow();
     expect(calls.remove).toHaveBeenCalledOnce();
   });
@@ -119,7 +119,7 @@ describe('directory import RPC', () => {
   it('routes cancellation to the importer and rejects overlapping work', async () => {
     const blocked = deferred(); let signal: AbortSignal | undefined;
     calls.importDirectory.mockImplementation(async (args: Parameters<typeof importModelDirectory>[0]) => {
-      signal = args.signal; await blocked.promise; if (signal?.aborted) throw new Error('llama.cpp browser: aborted'); return { id: 'Model', name: 'Model', size: 1, importedAt: 1 };
+      signal = args.signal; await blocked.promise; if (signal?.aborted) throw new Error('llama.cpp browser: aborted'); return { id: 'user/Model', name: 'Model', size: 1, importedAt: 1 };
     });
     const api = createWorkerApi(); const pending = api.importDirectory({ directory: { name: 'Model', files: [{ path: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, generationId: 4 }, () => {});
     await vi.waitFor(() => expect(signal).toBeDefined());

@@ -37,7 +37,7 @@ describe('local model provider', () => {
     expect(service.generate.mock.calls.map(([{ input }]) => input.debug)).toEqual(['on', 'off', undefined]);
   });
   it('maps model identity and text messages without normalizing away content', async () => {
-    service.listModels.mockResolvedValue([{ id: 'user/local-GGUF/local.gguf', name: 'local-GGUF', size: 100, importedAt: 1 }]);
+    service.listModels.mockResolvedValue([{ id: 'user/local-GGUF', name: 'local-GGUF', size: 100, importedAt: 1 }]);
     const provider = new LlamaCppBrowserProvider();
     expect(await provider.listModels({})).toEqual(['local-GGUF']);
     const input = request(); input.model = 'local-GGUF'; input.messages = [{ role: 'system', content: 'rules' }, { role: 'user', content: [{ type: 'text', text: 'first ' }, { type: 'text', text: 'second' }] }];

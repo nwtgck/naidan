@@ -18,7 +18,7 @@ import { createProjectorTrace } from './projector-trace';
 const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ?? 'cpu-wasm32');
 
 const host = vi.hoisted(() => ({ bytes: new Uint8Array(), reads: 0, maxRead: 0, revision: 123, sameFile: true, modelLoads: 0, close: vi.fn(), core: undefined as Core | undefined }));
-vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => ({ id: 'user/private-local-name-GGUF/private-local-name.gguf', name: 'fixture', modelPath: 'fixture.gguf', projectorPath: undefined, files: [{ path: 'fixture.gguf', file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }), handle: { isSameEntry: async () => host.sameFile, createSyncAccessHandle: async () => ({
+vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => ({ id: 'user/private-local-name-GGUF', name: 'fixture', modelPath: 'fixture.gguf', projectorPath: undefined, files: [{ path: 'fixture.gguf', file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }), handle: { isSameEntry: async () => host.sameFile, createSyncAccessHandle: async () => ({
   getSize: () => host.bytes.length,
   read: (target: Uint8Array, { at }: { at: number }) => {
     host.reads++; host.maxRead = Math.max(host.maxRead, target.length); const n = Math.min(target.length, host.bytes.length - at); target.set(host.bytes.subarray(at, at + n)); return n;
@@ -182,10 +182,10 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     req.model = name;
     await generate({ request: req, signal: undefined, onChunk: () => {}, onProgress: () => {} });
     const reads = host.reads;
-    await invalidateStoredModel({ id: 'user/unrelated-GGUF/unrelated.gguf' });
+    await invalidateStoredModel({ id: 'user/unrelated-GGUF' });
     await generate({ request: req, signal: undefined, onChunk: () => {}, onProgress: () => {} });
     expect(host.reads).toBe(reads);
-    await invalidateStoredModel({ id: 'user/private-local-name-GGUF/private-local-name.gguf' });
+    await invalidateStoredModel({ id: 'user/private-local-name-GGUF' });
     await generate({ request: req, signal: undefined, onChunk: () => {}, onProgress: () => {} });
     expect(host.reads).toBeGreaterThan(reads);
   }, 30000);

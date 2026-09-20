@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { memoryDirectory } from '@/features/llama-cpp-browser/hugging-face/test-opfs';
+import { userModelDirectory } from './model-directory';
 import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
 import { planStoredModelRemoval, removeStoredModel } from './model-store';
 import { createDownloadWriter } from '@/features/llama-cpp-browser/hugging-face/writer';
@@ -17,26 +18,26 @@ async function writeFile({ folder, name, value }: { folder: FileSystemDirectoryH
 }
 describe('confirmed model deletion plans', () => {
   it('previews every file, rejects additions and modifications, and removes only a fresh approved plan', async () => {
-    const root = await navigator.storage.getDirectory(); const folder = await root.getDirectoryHandle('model', { create: true });
+    const root = await userModelDirectory(); const folder = await root.getDirectoryHandle('model', { create: true });
     const nested = await folder.getDirectoryHandle('nested', { create: true });
     await writeFile({ folder: nested, name: 'model.gguf', value: 'model' });
     await writeFile({ folder, name: 'README.md', value: 'readme' });
-    const plan = await planStoredModelRemoval({ id: 'model' });
+    const plan = await planStoredModelRemoval({ id: 'user/model' });
     expect(plan.files.map(file => file.path)).toEqual(['README.md', 'nested/model.gguf']);
     await writeFile({ folder, name: 'extra.txt', value: 'external' });
     expect(await removeStoredModel({ plan })).toBe('changed');
     expect((await scanDeletionTree({ folder })).files).toHaveLength(3);
-    const next = await planStoredModelRemoval({ id: 'model' });
+    const next = await planStoredModelRemoval({ id: 'user/model' });
     await writeFile({ folder: nested, name: 'model.gguf', value: 'changed model' });
     expect(await removeStoredModel({ plan: next })).toBe('changed');
-    expect(await removeStoredModel({ plan: await planStoredModelRemoval({ id: 'model' }) })).toBe('deleted');
+    expect(await removeStoredModel({ plan: await planStoredModelRemoval({ id: 'user/model' }) })).toBe('deleted');
     await expect(root.getDirectoryHandle('model')).rejects.toMatchObject({ name: 'NotFoundError' });
   });
   it('does not sweep up a file added while approved files are being removed', async () => {
-    const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle('model', { create: true });
+    const folder = await (await userModelDirectory()).getDirectoryHandle('model', { create: true });
     const nested = await folder.getDirectoryHandle('nested', { create: true });
     await writeFile({ folder: nested, name: 'model.gguf', value: 'model' });
-    const plan = await planStoredModelRemoval({ id: 'model' }); const remove = nested.removeEntry.bind(nested);
+    const plan = await planStoredModelRemoval({ id: 'user/model' }); const remove = nested.removeEntry.bind(nested);
     vi.spyOn(nested, 'removeEntry').mockImplementation(async (name, options) => {
       await remove(name, options); await writeFile({ folder: nested, name: 'new.txt', value: 'keep' });
     });
@@ -44,9 +45,9 @@ describe('confirmed model deletion plans', () => {
     expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['nested/new.txt']);
   });
   it('preserves a file replacing an empty directory after the initial scan', async () => {
-    const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle('model', { create: true });
+    const folder = await (await userModelDirectory()).getDirectoryHandle('model', { create: true });
     await folder.getDirectoryHandle('empty', { create: true }); await writeFile({ folder, name: 'model.gguf', value: 'model' });
-    const plan = await planStoredModelRemoval({ id: 'model' }); const remove = folder.removeEntry.bind(folder);
+    const plan = await planStoredModelRemoval({ id: 'user/model' }); const remove = folder.removeEntry.bind(folder);
     vi.spyOn(folder, 'removeEntry').mockImplementation(async (name, options) => {
       await remove(name, options);
       if (name === 'model.gguf') {
@@ -56,16 +57,17 @@ describe('confirmed model deletion plans', () => {
     expect(await removeStoredModel({ plan })).toBe('deleted');
     expect((await (await folder.getFileHandle('empty')).getFile()).size).toBe(22);
   });
-  it('keeps unapproved legacy sibling files and rejects forged paths', async () => {
+  it('keeps newly added sibling files and rejects forged paths', async () => {
     const root = await navigator.storage.getDirectory();
     const folder = await (await (await root.getDirectoryHandle('llama-cpp-browser-models', { create: true })).getDirectoryHandle('user', { create: true })).getDirectoryHandle('model-GGUF', { create: true });
     await folder.getDirectoryHandle('unrelated-empty', { create: true });
-    for (const name of ['model.gguf', '.model.gguf.complete', 'notes.txt']) await writeFile({ folder, name, value: name });
-    const plan = await planStoredModelRemoval({ id: 'user/model-GGUF/model.gguf' });
-    expect(plan.files.map(file => file.path)).toEqual(['.model.gguf.complete', 'model.gguf']);
+    for (const name of ['model.gguf']) await writeFile({ folder, name, value: name });
+    const plan = await planStoredModelRemoval({ id: 'user/model-GGUF' });
+    expect(plan.files.map(file => file.path)).toEqual(['model.gguf']);
+    await writeFile({ folder, name: 'notes.txt', value: 'notes.txt' });
     await expect(removeStoredModel({ plan: { ...plan, files: [...plan.files, { path: '../other', size: 0, lastModified: 0 }] } })).rejects.toThrow();
-    expect(await removeStoredModel({ plan })).toBe('deleted');
-    expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['notes.txt']);
+    expect(await removeStoredModel({ plan })).toBe('changed');
+    expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['model.gguf', 'notes.txt']);
     expect((await folder.getDirectoryHandle('unrelated-empty')).kind).toBe('directory');
   });
   it('removes an HF partial download and permits a fresh download despite remaining ancestors', async () => {

@@ -83,7 +83,7 @@ describe('serialized hosted model service', () => {
     const unsubscribe = service.subscribeModelList({ listener: () => {
       throw new Error('private observer details');
     } });
-    await expect(service.removeModel({ plan: { id: 'user/local-GGUF/local.gguf', files: [] }, signal: undefined })).resolves.toBe('deleted');
+    await expect(service.removeModel({ plan: { id: 'user/local-GGUF', files: [] }, signal: undefined })).resolves.toBe('deleted');
     expect(worker.dispose).not.toHaveBeenCalled();
     expect(service.getState()).toEqual({ status: 'idle' });
     expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private observer');
