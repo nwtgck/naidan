@@ -1,0 +1,1 @@
+export const LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models = (): string => "Incluir archivos complementarios para modelos multimodales. Las entradas disponibles dependen del modelo y de la aplicación.";

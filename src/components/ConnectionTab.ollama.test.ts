@@ -40,6 +40,7 @@ function createSettings({ endpointType }: {
     endpoint: (() => {
       switch (endpointType) {
       case 'transformers_js':
+      case 'llama_cpp_browser':
       case 'browser_provided_lm':
         return { type: endpointType };
       case 'openai':

@@ -70,6 +70,23 @@ function createVueEslint() {
 }
 
 describe('validate-worker-api rule', () => {
+  it('allows transferred native readable streams with validated chunk types', async () => {
+    const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-stream-probe.ts')]);
+    const messages = result.messages.map(message => message.message);
+    expect(messages).toEqual([
+      expect.stringContaining('transfer-required:ReadableStream'),
+      expect.stringContaining('capability-sensitive:ReadableStream'),
+      expect.stringContaining('transfer-required:ReadableStream'),
+      expect.stringContaining('capability-sensitive:ReadableStream'),
+      expect.stringContaining('unknown'),
+      expect.stringContaining('function-must-be-proxied'),
+      expect.stringContaining('external-unreviewed:Uint8Array<SharedArrayBuffer>'),
+      expect.stringContaining('capability-sensitive:ReadableStream'),
+      expect.stringContaining('transfer-required:ReadableStream'),
+      expect.stringContaining('function-must-be-proxied'),
+    ]);
+  }, 20_000);
+
   it('accepts native ArrayBuffer-backed views with explicit TypeScript buffer arguments', async () => {
     const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-arraybuffer-view-probe.ts')]);
     expect(result.messages).toEqual([]);

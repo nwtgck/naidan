@@ -566,7 +566,7 @@ describe('Settings Mapping', () => {
       endpoint: {
         type: 'experimental_type',
         experimental: {
-          type: 'future_browser_ai',
+          endpoint: { type: 'future_browser_ai' },
           futureMode: 'local_only',
         },
       },
@@ -598,7 +598,7 @@ describe('Settings Mapping', () => {
       endpoint: {
         type: 'experimental_type',
         experimental: {
-          type: 42,
+          endpoint: { type: 42 },
           futureMode: 'local_only',
         },
       },
@@ -637,7 +637,7 @@ describe('Settings Mapping', () => {
     const dto = settingsToDto({ domain });
     expect(dto.endpoint).toEqual({
       type: 'experimental_type',
-      experimental: { type: 'browser_provided_lm' },
+      experimental: { endpoint: { type: 'browser_provided_lm' } },
     });
     const remapped = settingsToDomain({ dto });
     expect(remapped.endpoint).toEqual(domain.endpoint);
@@ -651,7 +651,7 @@ describe('Settings Mapping', () => {
       endpoint: {
         type: 'experimental_type',
         experimental: {
-          type: 'browser_provided_lm',
+          endpoint: { type: 'browser_provided_lm' },
           futureSessionMode: 'persistent',
         },
       },

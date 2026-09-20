@@ -6,6 +6,7 @@ export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
   case 'ollama':
     return true;
   case 'transformers_js':
+  case 'llama_cpp_browser':
   case 'browser_provided_lm':
   case 'unsupported_experimental_endpoint':
     return false;
@@ -21,6 +22,7 @@ export function isSupportedEndpoint(endpoint: Endpoint): endpoint is SupportedEn
   case 'openai':
   case 'ollama':
   case 'transformers_js':
+  case 'llama_cpp_browser':
   case 'browser_provided_lm':
     return true;
   case 'unsupported_experimental_endpoint':
@@ -46,6 +48,7 @@ export function isConfiguredEndpoint({ endpoint }: { endpoint: Endpoint }): bool
   case 'ollama':
     return endpoint.url !== '';
   case 'transformers_js':
+  case 'llama_cpp_browser':
   case 'browser_provided_lm':
     return true;
   case 'unsupported_experimental_endpoint':
@@ -80,8 +83,9 @@ export function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
+  case 'llama_cpp_browser':
   case 'browser_provided_lm':
-    return { type: 'browser_provided_lm' };
+    return { type: endpoint.type };
   case 'unsupported_experimental_endpoint':
     return {
       type: 'unsupported_experimental_endpoint',
@@ -145,6 +149,7 @@ export function areEndpointModelNamespacesEqual({
     }
     case 'ollama':
     case 'transformers_js':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return false;
@@ -166,6 +171,7 @@ export function areEndpointModelNamespacesEqual({
     }
     case 'openai':
     case 'transformers_js':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return false;
@@ -183,10 +189,11 @@ export function areEndpointModelNamespacesEqual({
     case 'transformers_js': {
       const { type: _rightType, ...unhandledRight } = right;
       unhandledRight satisfies Record<PropertyKey, never>;
-      return true;
+      return left.type === right.type;
     }
     case 'openai':
     case 'ollama':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return false;
@@ -196,15 +203,17 @@ export function areEndpointModelNamespacesEqual({
     }
     }
   }
+  case 'llama_cpp_browser':
   case 'browser_provided_lm': {
     const { type: _leftType, ...unhandledLeft } = left;
     unhandledLeft satisfies Record<PropertyKey, never>;
 
     switch (right.type) {
+    case 'llama_cpp_browser':
     case 'browser_provided_lm': {
       const { type: _rightType, ...unhandledRight } = right;
       unhandledRight satisfies Record<PropertyKey, never>;
-      return true;
+      return left.type === right.type;
     }
     case 'openai':
     case 'ollama':
@@ -230,6 +239,7 @@ export function areEndpointModelNamespacesEqual({
     case 'openai':
     case 'ollama':
     case 'transformers_js':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
       return false;
     default: {
@@ -265,6 +275,7 @@ export function areEndpointsEqual({
     }
     case 'ollama':
     case 'transformers_js':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return false;
@@ -286,6 +297,7 @@ export function areEndpointsEqual({
     }
     case 'openai':
     case 'transformers_js':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return false;
@@ -303,10 +315,11 @@ export function areEndpointsEqual({
     case 'transformers_js': {
       const { type: _rightType, ...unhandledRight } = right;
       unhandledRight satisfies Record<PropertyKey, never>;
-      return true;
+      return left.type === right.type;
     }
     case 'openai':
     case 'ollama':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return false;
@@ -316,15 +329,17 @@ export function areEndpointsEqual({
     }
     }
   }
+  case 'llama_cpp_browser':
   case 'browser_provided_lm': {
     const { type: _leftType, ...unhandledLeft } = left;
     unhandledLeft satisfies Record<PropertyKey, never>;
 
     switch (right.type) {
+    case 'llama_cpp_browser':
     case 'browser_provided_lm': {
       const { type: _rightType, ...unhandledRight } = right;
       unhandledRight satisfies Record<PropertyKey, never>;
-      return true;
+      return left.type === right.type;
     }
     case 'openai':
     case 'ollama':
@@ -350,6 +365,7 @@ export function areEndpointsEqual({
     case 'openai':
     case 'ollama':
     case 'transformers_js':
+    case 'llama_cpp_browser':
     case 'browser_provided_lm':
       return false;
     default: {

@@ -158,8 +158,8 @@ vi.mock('@/composables/useAppPresentation', () => ({
   }),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
     chatGroups: mockChatGroups,
@@ -1151,28 +1151,35 @@ Question`,
     expect(sendBtn.text()).toMatch(/(Enter|Cmd|Ctrl)/);
   });
 
-  it('should show the chat inspector when debug mode is enabled', async () => {
+  it('should open and close the chat inspector independently of debug mode', async () => {
     if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = true;
     wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
           ChatDebugInspector: {
-            template: '<div data-testid="chat-inspector">Chat Inspector</div>',
+            template: '<button data-testid="chat-inspector" @click="$emit(\'close\')">Chat Inspector</button>',
           },
         },
       },
     });
     await flushPromises();
 
+    expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="open-chat-inspector-button"]').trigger('click');
+    await flushPromises();
     const inspector = wrapper.find('[data-testid="chat-inspector"]');
     expect(inspector.exists()).toBe(true);
     expect(inspector.text()).toContain('Chat Inspector');
+    await inspector.trigger('click');
+    expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
+    expect(mockCurrentChat.value?.debugEnabled).toBe(true);
   });
 
   it('should configure the current chat for fake LM from the inspector shortcut', async () => {
     if (mockCurrentChat.value) {
-      mockCurrentChat.value.debugEnabled = true;
+      mockCurrentChat.value.debugEnabled = false;
       mockCurrentChat.value.endpoint = { type: 'openai', url: 'https://example.com' };
     }
 
@@ -1183,6 +1190,9 @@ Question`,
     });
     await flushPromises();
 
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="open-chat-inspector-button"]').trigger('click');
+    await flushPromises();
     await wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]').trigger('click');
     await flushPromises();
 
@@ -1211,7 +1221,7 @@ Question`,
   it('should not configure fake LM from the inspector shortcut when the facade is unavailable', async () => {
     mockFakeLmDebugModeAvailability.value = 'unavailable_in_standalone';
     if (mockCurrentChat.value) {
-      mockCurrentChat.value.debugEnabled = true;
+      mockCurrentChat.value.debugEnabled = false;
       mockCurrentChat.value.endpoint = { type: 'openai', url: 'https://example.com' };
     }
 
@@ -1222,6 +1232,9 @@ Question`,
     });
     await flushPromises();
 
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="open-chat-inspector-button"]').trigger('click');
+    await flushPromises();
     await wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]').trigger('click');
     await flushPromises();
 
@@ -1628,7 +1641,32 @@ Question`,
     expect(wrapper.find('[data-testid="stub-chat-wesh-terminal"]').attributes('data-access-scope')).toBe('current_chat_only');
   });
 
-  it('should hide the chat inspector when debug mode is disabled', async () => {
+  it('should keep the inspector closed when toggling debug and close it on chat navigation', async () => {
+    wrapper = mountChatPane({ global: { plugins: [router], stubs: {
+      ChatDebugInspector: { template: '<div data-testid="chat-inspector"></div>' },
+    } } });
+    await flushPromises();
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
+    await flushPromises();
+    expect(mockCurrentChat.value?.debugEnabled).toBe(true);
+    expect(wrapper.find('[data-testid="chat-debug-enabled"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
+    await flushPromises();
+    expect(mockCurrentChat.value?.debugEnabled).toBe(false);
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="open-chat-inspector-button"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(true);
+    expect(mockCurrentChat.value?.debugEnabled).toBe(false);
+    await wrapper.setProps({ chatId: toChatId({ raw: 'other-chat' }) });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
+  });
+
+  it('should keep the chat inspector closed until explicitly opened', async () => {
     if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = false;
     wrapper = mountChatPane( {
       global: { plugins: [router] },

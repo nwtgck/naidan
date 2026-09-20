@@ -159,9 +159,9 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
   it('should validate persisted sidebar DTOs before mapping experimental endpoints', async () => {
     const chatId = '123e4567-e89b-12d3-a456-426614174000';
     const groupId = '123e4567-e89b-12d3-a456-426614174001';
-    const legacyEndpoint = {
+    const unsupportedEndpoint = {
       type: 'experimental_type',
-      experimental: { type: 'prompt_api' },
+      experimental: { endpoint: { type: 'prompt_api' } },
     };
     const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
     const metaDir = await storageDir.getDirectoryHandle('chat-metas', { create: true });
@@ -172,21 +172,21 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     const metaWriter = await metaFile.createWritable();
     await metaWriter.write(JSON.stringify({
       id: chatId,
-      title: 'Legacy chat',
+      title: 'Unsupported endpoint chat',
       createdAt: 1,
       updatedAt: 2,
       debugEnabled: false,
-      endpoint: legacyEndpoint,
+      endpoint: unsupportedEndpoint,
     }));
     await metaWriter.close();
 
     const groupWriter = await groupFile.createWritable();
     await groupWriter.write(JSON.stringify({
       id: groupId,
-      name: 'Legacy group',
+      name: 'Unsupported endpoint group',
       updatedAt: 2,
       isCollapsed: false,
-      endpoint: legacyEndpoint,
+      endpoint: unsupportedEndpoint,
     }));
     await groupWriter.close();
 

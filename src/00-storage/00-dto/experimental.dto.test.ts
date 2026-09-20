@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EndpointSchemaDto } from './dto';
 
 import {
   ExperimentalExperimentalTypeEndpointSchemaDto,
@@ -156,18 +157,39 @@ describe('optionalExperimentalFieldSchemaDto', () => {
 
 
 describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
-  const schema = optionalExperimentalFieldSchemaDto({
-    schema: ExperimentalExperimentalTypeEndpointSchemaDto,
-  });
+  const schema = ExperimentalExperimentalTypeEndpointSchemaDto;
 
   it('keeps browser_provided_lm strongly typed', () => {
-    expect(schema.parse({ type: 'browser_provided_lm' })).toEqual({ type: 'browser_provided_lm' });
+    expect(schema.parse({ endpoint: { type: 'browser_provided_lm' } }))
+      .toStrictEqual({ endpoint: { type: 'browser_provided_lm' } });
   });
 
-  it('isolates an unknown endpoint identifier as an unreadable field', () => {
-    const parsed = schema.parse({ type: 'future_browser_ai' });
+  it.each(['browser_provided_lm', 'llama_cpp_browser'])('reads %s through the endpoint envelope', type => {
+    expect(EndpointSchemaDto.parse({ type: 'experimental_type', experimental: { endpoint: { type } } }))
+      .toStrictEqual({ type: 'experimental_type', experimental: { endpoint: { type } } });
+  });
 
-    expect(parsed).toEqual({ type: undefined });
-    expect(parsed?.unreadable).toEqual({ type: 'future_browser_ai' });
+  it.each([undefined, null, 'invalid', [], {}, { type: 42 }, { type: 'llama_cpp_browser' }, { endpoint: { type: 42 } }])(
+    'isolates an unreadable experimental payload: %j', experimental => {
+      const parsed = EndpointSchemaDto.parse({ type: 'experimental_type', experimental });
+      expect(parsed.type).toBe('experimental_type');
+      if (parsed.type !== 'experimental_type') throw new Error('Unexpected endpoint type');
+      expect(parsed.experimental?.endpoint).toBeUndefined();
+    },
+  );
+
+  it('keeps an absent experimental payload optional', () => {
+    expect(EndpointSchemaDto.parse({ type: 'experimental_type' }))
+      .toStrictEqual({ type: 'experimental_type' });
+  });
+
+  it('isolates an unknown endpoint identifier without invalidating the envelope', () => {
+    const parsed = EndpointSchemaDto.parse({
+      type: 'experimental_type',
+      experimental: { endpoint: { type: 'future_browser_ai' } },
+    });
+    expect(parsed).toStrictEqual({ type: 'experimental_type', experimental: { endpoint: undefined } });
+    if (parsed.type !== 'experimental_type') throw new Error('Unexpected endpoint type');
+    expect(parsed.experimental?.unreadable).toEqual({ endpoint: { type: 'future_browser_ai' } });
   });
 });

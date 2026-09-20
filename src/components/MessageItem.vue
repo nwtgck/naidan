@@ -19,6 +19,7 @@ import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from '@/features/speech/components/SpeechLanguageSelector.vue';
 import { transformersJsService } from '@/features/transformers-js';
+import LlamaCppBrowserLoadingIndicator from '@/features/llama-cpp-browser/components/LlamaCppBrowserLoadingIndicator.vue';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
 import type { AttachmentId, BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
@@ -75,6 +76,8 @@ const emit = defineEmits<{
   (e: 'regenerate', messageId: MessageId): void,
   (e: 'abort'): void,
 }>();
+
+const showLlamaCppStatus = computed(() => props.isGenerating && props.showGeneratingIndicator && props.endpointType === 'llama_cpp_browser');
 
 const isEditing = ref(false);
 const isAdvancedEditorOpen = ref(false);
@@ -684,6 +687,12 @@ defineExpose({
         </div>
       </div>
       <div v-else>
+        <LlamaCppBrowserLoadingIndicator
+          v-if="showLlamaCppStatus"
+          scope="inference"
+          :waiting="mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending({ content: message.content })"
+          :is-nested="isNested"
+        />
         <!-- Content Display (Always shown if present) -->
         <div v-if="displayContent" data-testid="message-content">
           <BlockMarkdownRenderer
@@ -703,7 +712,7 @@ defineExpose({
 
         <!-- Loading State (Initial Wait for regular text) -->
         <AssistantWaitingIndicator
-          v-else-if="mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending({ content: message.content })"
+          v-else-if="!showLlamaCppStatus && mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending({ content: message.content })"
           :is-nested="isNested"
           data-testid="loading-indicator"
         />

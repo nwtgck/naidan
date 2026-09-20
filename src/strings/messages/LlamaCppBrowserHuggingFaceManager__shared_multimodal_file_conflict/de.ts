@@ -1,0 +1,1 @@
+export const LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict = (): string => "Eine andere Multimodal-Datei ist bereits vorhanden. Verwende sie weiter oder lösche sie, bevor du eine andere auswählst.";

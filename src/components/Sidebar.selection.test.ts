@@ -20,8 +20,8 @@ const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChat = ref<any>(null);
 const mockCurrentChatGroup = ref<any>(null);
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
     streaming: ref(false),

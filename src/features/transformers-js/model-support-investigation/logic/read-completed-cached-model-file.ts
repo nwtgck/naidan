@@ -1,3 +1,4 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 function isNotFoundError({ error }: { error: unknown }): boolean {
   return error instanceof DOMException
     ? error.name === "NotFoundError"
@@ -16,7 +17,7 @@ export async function readCompletedCachedModelFile({
   repositoryPath: string,
 }): Promise<Uint8Array | undefined> {
   const pathParts = [
-    "models",
+    OPFS_MODELS_DIR,
     "huggingface.co",
     ...normalizedModelId.split("/"),
     "resolve",

@@ -9,20 +9,20 @@ export interface WorkerTransferMarked {
 }
 export type WorkerTransfer<T extends object> = T & WorkerTransferMarked;
 
-export type WorkerCloneCapability = 'file-system-handle-clone';
+export type WorkerTransportCapability = 'file-system-handle-clone' | 'readable-stream-transfer';
 
 declare const workerCapabilityMarker: unique symbol;
-export interface WorkerCapabilityMarked<Capability extends WorkerCloneCapability> {
+export interface WorkerCapabilityMarked<Capability extends WorkerTransportCapability> {
   readonly [workerCapabilityMarker]: Capability,
 }
 export type WorkerCapability<
   T extends object,
-  Capability extends WorkerCloneCapability,
+  Capability extends WorkerTransportCapability,
 > = T & WorkerCapabilityMarked<Capability>;
 
 type WorkerServerArgument<T> =
-  T extends WorkerCapabilityMarked<WorkerCloneCapability>
-    ? Omit<T, keyof WorkerCapabilityMarked<WorkerCloneCapability>>
+  T extends WorkerCapabilityMarked<WorkerTransportCapability>
+    ? Omit<T, keyof WorkerCapabilityMarked<WorkerTransportCapability> | keyof WorkerTransferMarked>
     : T extends WorkerTransferMarked
       ? Omit<T, keyof WorkerTransferMarked>
       : T extends Comlink.ProxyMarked
@@ -79,7 +79,7 @@ export function workerTransfer<T extends object>({
 
 export function workerCapability<
   T extends object,
-  Capability extends WorkerCloneCapability,
+  Capability extends WorkerTransportCapability,
 >({
   value,
   capability: _capability,
@@ -98,7 +98,37 @@ export function releaseWorkerRemote<Api>({
   return remote[Comlink.releaseProxy]();
 }
 
+let readableStreamTransferSupport: Promise<'supported' | 'unsupported'> | undefined;
+
+async function detectReadableStreamTransferSupport(): Promise<'supported' | 'unsupported'> {
+  if (typeof ReadableStream === 'undefined' || typeof structuredClone === 'undefined') return 'unsupported';
+  const probe = new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) {
+    controller.enqueue(new Uint8Array([78])); controller.close();
+  } });
+  try {
+    const transferred = structuredClone(probe, { transfer: [probe] });
+    const reader = transferred.getReader();
+    try {
+      const first = await reader.read();
+      const end = await reader.read();
+      return !first.done && Object.prototype.toString.call(first.value) === '[object Uint8Array]' && first.value.length === 1 && first.value[0] === 78 && end.done ? 'supported' : 'unsupported';
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+  } catch {
+    await probe.cancel().catch(() => undefined);
+    return 'unsupported';
+  }
+}
+
+export function getReadableStreamTransferSupport(): Promise<'supported' | 'unsupported'> {
+  readableStreamTransferSupport ??= detectReadableStreamTransferSupport();
+  return readableStreamTransferSupport;
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  detectReadableStreamTransferSupport,
 };

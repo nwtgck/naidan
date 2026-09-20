@@ -58,6 +58,7 @@ const emit = defineEmits<{
   (e: 'open-file-explorer'): void,
   (e: 'toggle-wesh-terminal'): void,
   (e: 'toggle-debug'): void,
+  (e: 'open-chat-inspector'): void,
   (e: 'delete-chat'): void,
 }>();
 
@@ -121,6 +122,9 @@ function emitMoreAction({ action }: {
   case 'toggle_wesh_terminal':
     emit('toggle-wesh-terminal');
     break;
+  case 'open_chat_inspector':
+    emit('open-chat-inspector');
+    break;
   case 'toggle_debug':
     emit('toggle-debug');
     break;
@@ -173,6 +177,14 @@ defineExpose({
                 {{ chat.title || lazyStrings.SHARED__new_chat() }}
               </span>
             </h2>
+            <span
+              v-if="chat.debugEnabled"
+              tw-class="flex items-center gap-1 text-blue-600 dark:text-blue-400 text-[9px] font-bold shrink-0"
+              data-testid="chat-debug-enabled"
+            >
+              <BugIcon tw-class="w-3.5 h-3.5" aria-hidden="true" />
+              {{ lazyStrings.ChatPaneHeader__debug_mode() }}
+            </span>
             <button
               @click="emit('edit-title')"
               tw-class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
@@ -385,10 +397,29 @@ defineExpose({
             :tw-class="['w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors', chat?.debugEnabled
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
               : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600']"
+            role="switch"
+            :aria-checked="chat?.debugEnabled === true"
             data-testid="toggle-debug-button"
           >
             <BugIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__debug_mode() }}</span>
+            <span
+              aria-hidden="true"
+              :tw-class="['relative ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors', chat?.debugEnabled ? 'bg-blue-600 dark:bg-blue-400' : 'bg-gray-300 dark:bg-gray-700']"
+            >
+              <span
+                :tw-class="['block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 motion-reduce:transition-none', chat?.debugEnabled ? 'translate-x-[18px]' : 'translate-x-[3px]']"
+                data-testid="debug-toggle-thumb"
+              />
+            </span>
+          </button>
+          <button
+            @click="emitMoreAction({ action: 'open_chat_inspector' })"
+            tw-class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+            data-testid="open-chat-inspector-button"
+          >
+            <SearchIcon tw-class="w-4 h-4" aria-hidden="true" />
+            <span>{{ lazyStrings.ChatPaneHeader__chat_inspector() }}</span>
           </button>
           <button
             @click="emitDeleteChat()"

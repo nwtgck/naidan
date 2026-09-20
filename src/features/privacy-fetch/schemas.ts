@@ -3,7 +3,7 @@ import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 
 const privacyFetchHeaderEntrySchema = z.tuple([z.string(), z.string()]);
 
-const privacyFetchHeaderEntriesSchema = z.array(privacyFetchHeaderEntrySchema);
+export const privacyFetchHeaderEntriesSchema = z.array(privacyFetchHeaderEntrySchema);
 
 export const privacyFetchValidationAcceptedResultSchema = z.object({
   ok: z.literal(true),
@@ -36,6 +36,7 @@ export const privacyFetchRequestMessageSchema = z.object({
   type: z.literal('request'),
   requestId: z.string().min(1),
   url: z.string().url(),
+  headers: privacyFetchHeaderEntriesSchema.optional(),
 }).strict();
 
 export const privacyFetchCancelMessageSchema = z.object({

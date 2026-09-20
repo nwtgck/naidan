@@ -1,3 +1,6 @@
+import { isAllowedHuggingFaceResponseUrl } from './policies/huggingface';
+import { streamRequestSchema } from './stream-protocol';
+import { servePrivacyStream } from './stream-port';
 import {
   privacyFetchCancelMessageSchema,
   privacyFetchRequestMessageSchema,
@@ -128,7 +131,12 @@ async function handleRequestMessage({
       credentials: 'omit',
       referrerPolicy: 'no-referrer',
       signal: controller.signal,
+      ...(message.headers === undefined ? {} : { headers: new Headers(message.headers) }),
     });
+    if (validationResult.policyName === 'huggingface_models' && !isAllowedHuggingFaceResponseUrl({ requestUrl: validationResult.normalizedUrl, responseUrl: response.url })) {
+      await response.body?.cancel();
+      throw new Error('Unsupported Hugging Face delivery URL');
+    }
     const body = await response.arrayBuffer();
     postMessageToParent({
       message: {
@@ -154,7 +162,7 @@ async function handleRequestMessage({
     sendErrorMessage({
       requestId,
       code,
-      message: String(error),
+      message: validationResult.policyName === 'huggingface_models' ? 'Hugging Face request failed' : String(error),
     });
   } finally {
     activeRequests.delete(requestId);
@@ -163,6 +171,13 @@ async function handleRequestMessage({
 
 window.addEventListener('message', (event) => {
   if (event.source !== window.parent) {
+    return;
+  }
+
+  const parsedStream = streamRequestSchema.safeParse(event.data);
+  if (parsedStream.success && event.ports.length === 1 && event.ports[0] !== undefined) {
+    const { protocol: _protocol, type: _type, ...request } = parsedStream.data;
+    servePrivacyStream({ port: event.ports[0], request });
     return;
   }
 

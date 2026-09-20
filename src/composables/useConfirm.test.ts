@@ -119,6 +119,16 @@ describe('useConfirm', () => {
     await expect(confirmPromise).resolves.toBe(false);
   });
 
+  it('keeps details within one confirmation and clears them on close', async () => {
+    const details = { summary: 'Files to delete', items: ['nested/model.gguf', 'README.md'] };
+    const first = confirmHook.showConfirm({ details });
+    await vi.waitFor(() => expect(confirmHook.confirmDetails.value).toEqual(details));
+    confirmHook.handleCancel(); await expect(first).resolves.toBe(false);
+    expect(confirmHook.confirmDetails.value).toBeUndefined();
+    const next = confirmHook.showConfirm({ message: 'Another action' });
+    await vi.waitFor(() => expect(confirmHook.isConfirmOpen.value).toBe(true));
+    expect(confirmHook.confirmDetails.value).toBeUndefined(); confirmHook.handleConfirm(); await next;
+  });
   it('passes icon correctly', async () => {
     const MockIcon = { template: '<div>Icon</div>' };
     const confirmPromise = confirmHook.showConfirm({ icon: MockIcon });

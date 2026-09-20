@@ -3,6 +3,11 @@ import type { PRIVACY_FETCH_PROTOCOL } from './protocol';
 export type PrivacyFetchRequest = {
   url: string,
   signal?: AbortSignal,
+  headers?: PrivacyFetchHeaderEntries,
+};
+
+export type PrivacyFetchStreamResponse = Omit<PrivacyFetchResponse, 'body' | 'bodyByteLength'> & {
+  body: ReadableStream<Uint8Array<ArrayBuffer>>,
 };
 
 export type PrivacyFetchHeaderEntries = Array<[string, string]>;
@@ -54,6 +59,7 @@ export type PrivacyFetchRequestMessage = {
   type: 'request',
   requestId: string,
   url: string,
+  headers?: PrivacyFetchHeaderEntries,
 };
 
 export type PrivacyFetchCancelMessage = {
@@ -123,6 +129,7 @@ export type PrivacyFetchBrokerToParentMessage =
 
 export type PrivacyFetchBrokerClient = {
   fetch({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchResponse>,
+  fetchStream({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchStreamResponse>,
   dispose(): void,
 };
 

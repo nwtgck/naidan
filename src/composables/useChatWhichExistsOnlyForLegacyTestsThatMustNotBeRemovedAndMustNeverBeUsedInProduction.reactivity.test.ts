@@ -1,0 +1,84 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { nextTick } from 'vue';
+
+// Mock storage
+vi.mock('../00-storage/service', () => ({
+  storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    listChats: vi.fn().mockResolvedValue([]),
+    loadChat: vi.fn(),
+    saveChat: vi.fn(),
+    loadChatMeta: vi.fn(),
+    loadChatContent: vi.fn().mockResolvedValue(null),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    deleteChat: vi.fn(),
+    getSidebarStructure: vi.fn().mockResolvedValue([]),
+    updateChatMeta: vi.fn().mockResolvedValue(undefined),
+    updateChatContent: vi.fn().mockResolvedValue(undefined),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
+    notify: vi.fn(),
+  },
+}));
+
+// Mock settings
+vi.mock('./useSettings', () => ({
+  useSettings: () => ({
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', defaultModelId: 'gpt-4' } },
+    isOnboardingDismissed: { value: true },
+    onboardingDraft: { value: null },
+  }),
+}));
+
+// Mock LM
+let onChunkCallback: (params: { chunk: string }) => void;
+vi.mock('../features/lm/openai', () => {
+  class MockOpenAI {
+    chat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      onChunkCallback = params.onChunk;
+      return new Promise<void>(() => {});
+    });
+    listModels = vi.fn().mockResolvedValue([]);
+  }
+  return {
+    OpenAIProvider: MockOpenAI,
+  };
+});
+
+vi.mock('../features/lm/ollama', () => ({
+  OllamaProvider: vi.fn(),
+}));
+
+describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Reactivity', () => {
+  const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
+  });
+
+  it('should reflect streamed chunks in activeMessages immediately', async () => {
+    await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+    const chat = chatStore.currentChat.value!;
+
+    // Start sending
+    void chatStore.sendMessage({ content: 'Hello' });
+
+    // Wait for activeGenerations to have the chat (signals generation started)
+    await vi.waitUntil(() => chatStore.TEST_ONLY.activeGenerations.has(chat.id), { timeout: 2000 });
+
+    expect(chatStore.activeMessages.value).toHaveLength(2);
+    expect(chatStore.activeMessages.value[1]?.content).toBe('');
+
+    // Simulate chunk
+    onChunkCallback({ chunk: 'A' });
+    await nextTick();
+    expect(chatStore.activeMessages.value[1]?.content).toBe('A');
+
+    onChunkCallback({ chunk: 'B' });
+    await nextTick();
+    expect(chatStore.activeMessages.value[1]?.content).toBe('AB');
+  });
+});

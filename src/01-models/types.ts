@@ -69,6 +69,10 @@ export type TransformersJsEndpoint = {
   type: 'transformers_js',
 };
 
+export type LlamaCppBrowserEndpoint = {
+  type: 'llama_cpp_browser',
+};
+
 export type BrowserProvidedLmEndpoint = {
   type: 'browser_provided_lm',
 };
@@ -78,7 +82,7 @@ export type UnsupportedExperimentalEndpoint = {
   persistedType: string | undefined,
 };
 
-export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint;
+export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint | LlamaCppBrowserEndpoint;
 export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
 export type EndpointType = SupportedEndpoint['type'];
 

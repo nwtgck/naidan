@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// Keep initial rendering fast with lightweight startup presentation and minimal shared UI.
+// Post-startup auxiliary UI belongs in MainApp's lazy-loaded AppAuxiliaryUi.
 import { computed, type ShallowRef } from 'vue';
 import GlobalDialogHost from '@/components/GlobalDialogHost.vue';
 import OnboardingModal from '@/components/OnboardingModal.vue';

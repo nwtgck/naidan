@@ -1,3 +1,4 @@
+import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { ref, readonly, computed, watch, type ComputedRef, type Ref } from 'vue';
 import {
   ensureStrings,
@@ -162,6 +163,7 @@ watch(
     case 'openai':
     case 'ollama':
       return;
+    case 'llama_cpp_browser':
     case 'transformers_js':
       break;
     case 'browser_provided_lm':
@@ -173,7 +175,14 @@ watch(
     }
     }
 
-    const unsubscribe = transformersJsService.subscribeModelList({ listener: async () => {
+    const modelService = (() => {
+      switch (endpointType) {
+      case 'llama_cpp_browser': return llamaCppBrowserService;
+      case 'transformers_js': return transformersJsService;
+      default: { const exhaustive: never = endpointType; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
+      }
+    })();
+    const unsubscribe = modelService.subscribeModelList({ listener: async () => {
       const { fetchModels } = useSettings();
       try {
         await fetchModels({});

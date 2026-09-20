@@ -118,3 +118,32 @@ Those injected scripts can access APIs such as `localStorage`, which fail inside
 Do not fix this by adding `allow-same-origin`.
 
 For the broker HTML only, development-injected scripts should be removed in the Vite dev server path. This should be a dev-only cleanup. It exists to preserve the same sandbox constraints used by the real broker.
+
+## Public Hugging Face models
+
+The model policy permits public model metadata, paginated repository trees, and
+GGUF resolve URLs on `huggingface.co`. It does not accept arbitrary Hugging Face
+pages or direct CDN URLs. Validated resolve requests
+may finish on the explicitly listed Hugging Face delivery hosts. Browser fetch
+follows CORS redirects internally; JavaScript cannot validate every intermediate
+redirect hop. Requests omit credentials and referrers in both hosted and
+standalone entry points.
+
+`privacyFetchStream({ request: { url, signal, headers } })` resolves
+when response headers arrive. The body is a `ReadableStream<Uint8Array>`. Caller headers are `[string, string][]` entries, normalized internally with `Headers`, and passed through both buffered and
+streaming APIs. The caller constructs Range/If-Range and validates `200`/`206`/`416`,
+content ranges, and identity.
+Only CORS-visible response headers are returned; missing headers are not inferred.
+
+Hosted streams use a dedicated MessagePort with the audited worker RPC transport.
+A small real stream-transfer probe selects direct ReadableStream transfer when
+both realms support it, without checking browser names or versions. Otherwise,
+each consumer pull requests at most one 256 KiB transferred chunk; slow OPFS writes
+therefore stop further broker reads. Stream transfer is not a zero-copy guarantee.
+Worker API stream arguments and returns require both `WorkerTransfer` and
+`WorkerCapability<..., 'readable-stream-transfer'>`; capability markers are
+applied only in the successful probe branch. Body cancellation, request abort, and broker
+disposal cancel the network reader. Errors use fixed messages so signed delivery
+URLs are not included in diagnostic error text. Standalone streams read the native response body on demand with the same
+fixed error messages. Existing buffered `privacyFetch` calls remain
+available for Wikipedia and small Hugging Face metadata responses.

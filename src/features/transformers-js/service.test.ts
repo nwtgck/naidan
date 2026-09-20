@@ -189,10 +189,12 @@ describe('transformersJsService', () => {
     }));
   });
 
-  it('preserves the base completeness behavior for .model files', async () => {
+  it('preserves .model companion completeness for an ONNX model', async () => {
     const mockHuggingFaceDir = createMockDir({
       org: createMockDir({
         repo: createMockDir({
+          'model.onnx': createMockFile(100, 123456789),
+          '.model.onnx.complete': createMockFile(0, 123456789),
           'weights.model': createMockFile(1200, 123456789),
           '.weights.model.complete': createMockFile(0, 123456789),
         }),

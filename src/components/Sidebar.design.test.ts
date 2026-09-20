@@ -4,7 +4,7 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { useRouter, useRoute } from 'vue-router';
 import Sidebar from './Sidebar.vue';
-import { useChat } from '@/composables/useChat';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useTheme } from '@/features/theme/composables/useTheme';
 import { useConfirm } from '@/composables/useConfirm';
@@ -18,8 +18,8 @@ beforeEach(async () => {
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),
 }));
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(),
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: vi.fn(),
 }));
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
@@ -72,7 +72,7 @@ describe('Sidebar Design Specifications', () => {
       setActiveFocusArea: vi.fn(),
       toggleSidebar: vi.fn(),
     });
-    (useChat as unknown as Mock).mockReturnValue({
+    (useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction as unknown as Mock).mockReturnValue({
       currentChat: ref(null),
       currentChatGroup: ref(null),
       streaming: ref(false),

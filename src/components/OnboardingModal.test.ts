@@ -1,3 +1,6 @@
+import { shallowRef } from 'vue';
+import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
+import { TEST_ONLY as modelPresetTestOnly, type ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
@@ -119,6 +122,42 @@ describe('OnboardingModal.vue', () => {
     });
   });
 
+  it('prepares local browser onboarding without saving settings and starts only after a stored model is selected', async () => {
+    const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
+    const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q4_K_M', target: 'onboarding', claim: () => true });
+    const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { props: ['modelPreset'], template: '<div data-testid="preset-manager">{{ modelPreset?.input }}</div>' } } } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="preset-manager"]').text()).toBe('hf.co/owner/repo:Q4_K_M');
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="onboarding-connect-button"]').exists()).toBe(false);
+    expect(mockSave).not.toHaveBeenCalled(); expect(listModelsMock).not.toHaveBeenCalled();
+    list.mockResolvedValue([{ id: 'model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 }]);
+    preset.value = { input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true };
+    await flushPromises();
+    // Returning to the endpoint refreshes its authoritative local model list.
+    const ollama = wrapper.findAll('button').find(button => button.text() === 'Ollama')!;
+    await ollama.trigger('click'); await wrapper.get('[data-testid="onboarding-llama-cpp-browser-button"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click'); await flushPromises();
+    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'hf.co/owner/repo:Q4_K_M' }) }));
+    wrapper.unmount(); list.mockRestore();
+  });
+  it('enables Start for the freshly prepared model before persisting endpoint settings', async () => {
+    const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
+    const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true });
+    const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['modelsChanged', 'modelSelected'], template: '<div />' } } } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
+    const child = wrapper.findComponent({ name: 'PreparedManager' });
+    const target = 'hf.co/owner/repo:Q8_0';
+    child.vm.$emit('modelsChanged', [{ id: 'first', name: 'first', size: 128, importedAt: 1 }, { id: 'target', name: target, size: 128, importedAt: 1 }]);
+    child.vm.$emit('modelSelected', target); await flushPromises();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeUndefined();
+    expect(mockSave).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click'); await flushPromises();
+    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: target }) }));
+    wrapper.unmount(); list.mockRestore();
+  });
   it('renders Step 1 by default and shows correct labels', async () => {
     const wrapper = mount(OnboardingModal);
     await vi.waitFor(() => {
@@ -353,7 +392,7 @@ describe('OnboardingModal.vue', () => {
     const wrapper = mount(OnboardingModal);
     const modalContainer = wrapper.find('.max-w-4xl');
     expect(modalContainer.exists()).toBe(true);
-    expect(modalContainer.classes()).toContain('md:h-[640px]');
+    expect(modalContainer.classes()).toContain('md:h-[720px]');
 
     expect(wrapper.findComponent(SettingsIcon).exists()).toBe(true);
   });

@@ -1,5 +1,6 @@
-export { privacyFetch } from './index-hosted';
+export { privacyFetch, privacyFetchStream } from './index-hosted';
 export type {
+  PrivacyFetchStreamResponse,
   PrivacyFetchHeaderEntries,
   PrivacyFetchRequest,
   PrivacyFetchResponse,

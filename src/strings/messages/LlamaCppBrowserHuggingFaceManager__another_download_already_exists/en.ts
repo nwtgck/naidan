@@ -1,0 +1,1 @@
+export const LlamaCppBrowserHuggingFaceManager__another_download_already_exists = (): string => "A different download already exists for this repository. Cancel and delete it before starting this download.";
