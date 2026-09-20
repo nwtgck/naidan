@@ -81,7 +81,7 @@ export const TransformersJsEndpointSchemaDto = z.object({
 /**
  * Stable persisted envelope for endpoint implementations whose identity and
  * settings are still experimental. The concrete endpoint identifier belongs
- * to `experimental.type` and is translated by the mapper into a domain
+ * to `experimental.endpoint.type` and is translated by the mapper into a domain
  * endpoint. This prevents every experimental endpoint rename or addition from
  * becoming a new top-level persisted discriminator.
  */

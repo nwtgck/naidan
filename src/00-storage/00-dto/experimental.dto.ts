@@ -67,19 +67,19 @@ export type ExperimentalToolConfigsDto = z.infer<typeof ExperimentalToolConfigsS
  * identity is stored in this payload and mapped to a normal domain endpoint;
  * `experimental_type` itself must not appear in the domain model.
  *
- * The endpoint identifier is intentionally strongly typed to the experimental
- * endpoint implementations understood by this version. Parsing is performed
- * by optionalExperimentalFieldSchemaDto one field at a time, so a newer or
- * otherwise unreadable identifier only makes this `type` field undefined and
- * records its original value in `unreadable.type`. It does not invalidate the
- * containing endpoint, settings object, or other readable experimental fields.
- *
- * Add new identifiers only after their DTO-to-domain mapper and unsupported
- * state handling have been implemented.
+ * The shared experimental reader isolates unreadable endpoint settings while
+ * allowing the containing settings to load with an unsupported endpoint.
  */
 export const ExperimentalExperimentalTypeEndpointSchemaDto =
   resolveMissingAsUndefined(z.object({
-    type: missingAsUndefined(z.enum(['browser_provided_lm', 'llama_cpp_browser'])),
+    endpoint: missingAsUndefined(z.union([
+      resolveMissingAsUndefined(z.object({
+        type: z.literal('browser_provided_lm'),
+      })),
+      resolveMissingAsUndefined(z.object({
+        type: z.literal('llama_cpp_browser'),
+      })),
+    ])),
   }));
 
 export const ExperimentalHttpEndpointSchemaDto = EmptyExperimentalSchemaDto;

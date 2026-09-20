@@ -814,6 +814,8 @@ export const lmParametersToDto = (
   return dto;
 };
 
+type ExperimentalEndpointDto = NonNullable<Extract<EndpointDto, { type: 'experimental_type' }>['experimental']>;
+
 export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
   switch (dto.type) {
   case 'openai':
@@ -854,26 +856,34 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
 
     unhandled satisfies Record<PropertyKey, never>;
 
-    const experimentalType = experimental?.type;
-    switch (experimentalType) {
-    case 'browser_provided_lm':
-      return exactObject<Extract<Endpoint, { type: 'browser_provided_lm' }>>()({ type: 'browser_provided_lm' });
-    case 'llama_cpp_browser':
-      return exactObject<Extract<Endpoint, { type: 'llama_cpp_browser' }>>()({ type: 'llama_cpp_browser' });
-    case undefined: {
-      const unreadableType = experimental?.unreadable?.type;
-      return exactObject<Extract<Endpoint, { type: 'unsupported_experimental_endpoint' }>>()({
-        type: 'unsupported_experimental_endpoint',
-        persistedType: typeof unreadableType === 'string'
-          ? unreadableType
-          : undefined,
-      });
+    const { endpoint, unreadable, ...unhandledExperimental } = experimental ?? { endpoint: undefined, unreadable: undefined };
+    unhandledExperimental satisfies Record<PropertyKey, never>;
+    if (endpoint !== undefined) {
+      switch (endpoint.type) {
+      case 'browser_provided_lm': {
+        const { type, ...unhandledEndpoint } = endpoint;
+        unhandledEndpoint satisfies Record<PropertyKey, never>;
+        return exactObject<Extract<Endpoint, { type: 'browser_provided_lm' }>>()({ type });
+      }
+      case 'llama_cpp_browser': {
+        const { type, ...unhandledEndpoint } = endpoint;
+        unhandledEndpoint satisfies Record<PropertyKey, never>;
+        return exactObject<Extract<Endpoint, { type: 'llama_cpp_browser' }>>()({ type });
+      }
+      default: {
+        const _ex: never = endpoint;
+        throw new Error(`Unhandled experimental endpoint: ${String(_ex)}`);
+      }
+      }
     }
-    default: {
-      const _ex: never = experimentalType;
-      throw new Error(`Unhandled experimental endpoint type: ${String(_ex)}`);
-    }
-    }
+    const unreadableEndpoint = unreadable?.endpoint;
+    const persistedType = typeof unreadableEndpoint === 'object' && unreadableEndpoint !== null
+      && 'type' in unreadableEndpoint && typeof unreadableEndpoint.type === 'string'
+      ? unreadableEndpoint.type : undefined;
+    return exactObject<Extract<Endpoint, { type: 'unsupported_experimental_endpoint' }>>()({
+      type: 'unsupported_experimental_endpoint',
+      persistedType,
+    });
   }
   default: {
     const _ex: never = dto;
@@ -915,24 +925,19 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       experimental: undefined,
     });
   }
-  case 'llama_cpp_browser':
-  case 'browser_provided_lm': {
-    const {
-      type,
-      ...unhandled
-    } = endpoint;
-
+  case 'llama_cpp_browser': {
+    const { type, ...unhandled } = endpoint;
     unhandled satisfies Record<PropertyKey, never>;
-
-    const experimental = exactObject<NonNullable<Extract<EndpointDto, { type: 'experimental_type' }>['experimental']>>()({
-      type,
-      unreadable: undefined,
-    });
-
-    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
-      type: 'experimental_type',
-      experimental,
-    });
+    const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'llama_cpp_browser' }>>()({ type });
+    const experimental = exactObject<ExperimentalEndpointDto>()({ endpoint: payload, unreadable: undefined });
+    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({ type: 'experimental_type', experimental });
+  }
+  case 'browser_provided_lm': {
+    const { type, ...unhandled } = endpoint;
+    unhandled satisfies Record<PropertyKey, never>;
+    const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'browser_provided_lm' }>>()({ type });
+    const experimental = exactObject<ExperimentalEndpointDto>()({ endpoint: payload, unreadable: undefined });
+    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({ type: 'experimental_type', experimental });
   }
   case 'unsupported_experimental_endpoint': {
     const {
