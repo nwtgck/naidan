@@ -142,6 +142,22 @@ describe('OnboardingModal.vue', () => {
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'hf.co/owner/repo:Q4_K_M' }) }));
     wrapper.unmount(); list.mockRestore();
   });
+  it('enables Start for the freshly prepared model before persisting endpoint settings', async () => {
+    const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
+    const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true });
+    const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['modelsChanged', 'modelSelected'], template: '<div />' } } } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
+    const child = wrapper.findComponent({ name: 'PreparedManager' });
+    const target = 'hf.co/owner/repo:Q8_0';
+    child.vm.$emit('modelsChanged', [{ id: 'first', name: 'first', size: 128, importedAt: 1 }, { id: 'target', name: target, size: 128, importedAt: 1 }]);
+    child.vm.$emit('modelSelected', target); await flushPromises();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeUndefined();
+    expect(mockSave).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click'); await flushPromises();
+    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: target }) }));
+    wrapper.unmount(); list.mockRestore();
+  });
   it('renders Step 1 by default and shows correct labels', async () => {
     const wrapper = mount(OnboardingModal);
     await vi.waitFor(() => {

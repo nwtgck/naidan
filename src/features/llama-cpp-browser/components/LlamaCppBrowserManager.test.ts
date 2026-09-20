@@ -27,7 +27,7 @@ vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
   listModels: vi.fn(async () => []), setOptions: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(),
   release: vi.fn(), cancel: vi.fn(),
 } }));
-vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(async () => []) }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(async () => []), installedSelection: vi.fn(async () => undefined) }));
 vi.mock('../runtime/model-store', () => ({ prepareModelRemoval: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: notifications.confirm }) }));
 const storedModel: LocalModel = { id: 'user/local-GGUF/local.gguf', name: 'local.gguf', size: 16384, importedAt: 1 };
@@ -50,6 +50,26 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
+  it('refreshes model choices and forwards the prepared model instead of choosing the first entry', async () => {
+    const wrapper = render(); await flushPromises();
+    const target = { ...storedModel, id: 'hf-target', name: 'hf.co/owner/repo:Q8_0' };
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel, target]);
+    wrapper.findComponent({ name: 'LlamaCppBrowserHuggingFaceManager' }).vm.$emit('modelReady', target);
+    await flushPromises();
+    expect(wrapper.emitted('modelsChanged')?.at(-1)).toEqual([[storedModel, target]]);
+    expect(wrapper.emitted('modelSelected')).toEqual([[target.name]]);
+  });
+  it('does not select an earlier prepared model after the HF selection changes during list refresh', async () => {
+    const wrapper = render(); await flushPromises();
+    const refreshed = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValue(refreshed.promise);
+    const child = wrapper.findComponent({ name: 'LlamaCppBrowserHuggingFaceManager' });
+    child.vm.$emit('modelReady', storedModel); await flushPromises();
+    child.vm.$emit('selectionChanged');
+    refreshed.resolve([storedModel]); await flushPromises();
+    expect(wrapper.emitted('modelsChanged')?.at(-1)).toEqual([[storedModel]]);
+    expect(wrapper.emitted('modelSelected')).toBeUndefined();
+  });
   it('imports a selected folder with its original root and relative paths', async () => {
     const wrapper = render(); await flushPromises();
     const file = new File(['fixture'], 'weights.gguf'); Object.defineProperty(file, 'webkitRelativePath', { value: 'my-Qwen-VL-GGUF/nested/weights.gguf' });

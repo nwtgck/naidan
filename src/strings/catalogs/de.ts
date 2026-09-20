@@ -984,6 +984,7 @@ import { SettingsModal__storage } from '@/strings/messages/SettingsModal__storag
 import { SettingsModal__successfully_imported_recipes_as_chat_groups } from '@/strings/messages/SettingsModal__successfully_imported_recipes_as_chat_groups/de';
 import { SettingsModal__tools } from '@/strings/messages/SettingsModal__tools/de';
 import { SettingsModal__transformers_js } from '@/strings/messages/SettingsModal__transformers_js/de';
+import { SettingsModal__llama_cpp_browser } from '@/strings/messages/SettingsModal__llama_cpp_browser/de';
 import { SidebarDebugControls__debug_events } from '@/strings/messages/SidebarDebugControls__debug_events/de';
 import { SidebarDebugControls__file_explorer } from '@/strings/messages/SidebarDebugControls__file_explorer/de';
 import { SidebarDebugControls__more_actions } from '@/strings/messages/SidebarDebugControls__more_actions/de';
@@ -1751,6 +1752,7 @@ import { LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection } 
 import { LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found/de';
 import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__total_download_size/de';
 import { LlamaCppBrowserHuggingFaceManager__download } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download/de';
+import { LlamaCppBrowserHuggingFaceManager__downloaded } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloaded/de';
 import { LlamaCppBrowserHuggingFaceManager__pause } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__pause/de';
 import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__resume/de';
 import { LlamaCppBrowserHuggingFaceManager__cancel_and_delete } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__cancel_and_delete/de';
@@ -2770,6 +2772,7 @@ export const catalog = {
   SettingsModal__successfully_imported_recipes_as_chat_groups,
   SettingsModal__tools,
   SettingsModal__transformers_js,
+  SettingsModal__llama_cpp_browser,
   SidebarDebugControls__debug_events,
   SidebarDebugControls__file_explorer,
   SidebarDebugControls__more_actions,
@@ -3534,6 +3537,7 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found,
   LlamaCppBrowserHuggingFaceManager__total_download_size,
   LlamaCppBrowserHuggingFaceManager__download,
+  LlamaCppBrowserHuggingFaceManager__downloaded,
   LlamaCppBrowserHuggingFaceManager__pause,
   LlamaCppBrowserHuggingFaceManager__resume,
   LlamaCppBrowserHuggingFaceManager__cancel_and_delete,

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue';
 import { useModelPresetCoordinator } from '@/features/llama-cpp-browser/model-preset';
 import { useSettings } from '@/composables/useSettings';
@@ -22,6 +23,7 @@ import ModelSelector from './ModelSelector.vue';
 const ServerSetupGuide = defineAsyncComponent(() => import('./ServerSetupGuide.vue'));
 const LlamaCppBrowserManager = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue'));
 const TransformersJsManager = defineAsyncComponent(() => import('@/features/transformers-js/components/TransformersJsManager.vue'));
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { transformersJsService } from '@/features/transformers-js';
 import { PlayIcon, ArrowLeftIcon, CheckCircle2Icon, ActivityIcon, SettingsIcon, XIcon, PlusIcon, Trash2Icon, FlaskConicalIcon } from 'lucide-vue-next';
@@ -258,12 +260,19 @@ watch(effectiveType, (type, _previous, onCleanup) => {
   void refresh();
 }, { immediate: true });
 
+function acceptLocalModels({ models }: { models: LocalModel[] }): void {
+  if (!isLlamaCppBrowser.value) return;
+  availableModels.value = models.map(model => model.name);
+  if (!availableModels.value.includes(selectedModel.value)) selectedModel.value = availableModels.value[0] ?? '';
+}
+function selectLocalModel({ name }: { name: string }): void {
+  if (isLlamaCppBrowser.value && availableModels.value.includes(name)) selectedModel.value = name;
+}
 async function refreshLocalModels({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
   try {
     const models = await llamaCppBrowserService.listModels({ signal });
     if (signal?.aborted || !isLlamaCppBrowser.value) return;
-    availableModels.value = models.map(model => model.name);
-    if (!availableModels.value.includes(selectedModel.value)) selectedModel.value = availableModels.value[0] ?? '';
+    acceptLocalModels({ models });
   } catch { /* The local manager displays the safe feature error. */ }
 }
 
@@ -535,6 +544,7 @@ async function handleFinish() {
 }
 
 
+provideHuggingFaceSession();
 const modelPresetState = useModelPresetCoordinator();
 const modelPreset = computed(() => {
   const preset = modelPresetState?.value; const target = preset?.target;
@@ -630,10 +640,7 @@ defineExpose({
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400', effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : '']"
                     >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
-                    <button
-                      @click="selectEndpointType({ type: 'transformers_js' })"
-                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
-                    >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
+                    <!-- Keep the tab label compact without changing internal provider names. -->
                     <button type="button" :disabled="isStandalone" data-testid="onboarding-llama-cpp-browser-button"
                             :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                             @click="selectEndpointType({ type: 'llama_cpp_browser' })"
@@ -641,6 +648,10 @@ defineExpose({
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5 shrink-0" role="img" :aria-label="lazyStrings.OnboardingModal__experimental()" :title="lazyStrings.OnboardingModal__experimental()" />
                       {{ lazyStrings.OnboardingModal__llama_cpp_browser() }}
                     </button>
+                    <button
+                      @click="selectEndpointType({ type: 'transformers_js' })"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
+                    >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
                     <button
                       @click="selectBrowserProvidedLm"
                       data-testid="onboarding-browser-provided-lm-button"
@@ -653,7 +664,7 @@ defineExpose({
                 </div>
 
                 <TransformersJsManager v-if="isTransformersJs" @model-loaded="modelId => handleModelLoaded({ modelId })" />
-                <LlamaCppBrowserManager v-else :model-preset="modelPreset" />
+                <LlamaCppBrowserManager v-else :model-preset="modelPreset" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ name: $event })" />
                 <div v-if="isLlamaCppBrowser && availableModels.length" tw-class="space-y-2">
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ lazyStrings.OnboardingModal__default_model() }}</label>
                   <ModelSelector v-model="selectedModel" :models="sortedModels" :loading="false" @refresh="refreshLocalModels({ signal: undefined })" :placeholder="lazyStrings.OnboardingModal__select_a_model()" />
@@ -695,19 +706,20 @@ defineExpose({
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors', effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
-                    <button
-                      @click="selectEndpointType({ type: 'transformers_js' })"
-                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
-                    >
-                      <FlaskConicalIcon tw-class="w-2.5 h-2.5" />
-                      {{ lazyStrings.OnboardingModal__transformers_js() }}
-                    </button>
+                    <!-- Keep the tab label compact without changing internal provider names. -->
                     <button type="button" :disabled="isStandalone" data-testid="onboarding-llama-cpp-browser-button"
                             :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                             @click="selectEndpointType({ type: 'llama_cpp_browser' })"
                     >
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5 shrink-0" role="img" :aria-label="lazyStrings.OnboardingModal__experimental()" :title="lazyStrings.OnboardingModal__experimental()" />
                       {{ lazyStrings.OnboardingModal__llama_cpp_browser() }}
+                    </button>
+                    <button
+                      @click="selectEndpointType({ type: 'transformers_js' })"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
+                    >
+                      <FlaskConicalIcon tw-class="w-2.5 h-2.5" />
+                      {{ lazyStrings.OnboardingModal__transformers_js() }}
                     </button>
                     <button
                       @click="selectBrowserProvidedLm"

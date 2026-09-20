@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { useRoute, useRouter } from 'vue-router';
@@ -60,6 +61,7 @@ const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
 const { isFeatureEnabled } = useFeatureFlags();
+provideHuggingFaceSession();
 const modelPresetState = useModelPreset();
 const modelPreset = computed(() => {
   const preset = modelPresetState?.value; const target = preset?.target;
@@ -257,20 +259,20 @@ defineExpose({
               {{ lazyStrings.SettingsModal__provider_profiles() }}
             </button>
             <button
+              @click="activeTab = 'llama_cpp_browser'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
+              data-testid="tab-llama-cpp-browser"
+            >
+              <BrainCircuitIcon tw-class="w-4 h-4" />
+              {{ lazyStrings.SettingsModal__llama_cpp_browser() }}
+            </button>
+            <button
               @click="activeTab = 'transformers_js'"
               :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-transformers-js"
             >
               <BrainCircuitIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__transformers_js() }}
-            </button>
-            <button
-              @click="activeTab = 'llama_cpp_browser'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-llama-cpp-browser"
-            >
-              <BrainCircuitIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.llamaCppBrowser__endpoint_label() }}
             </button>
             <button
               @click="activeTab = 'recipes'"

@@ -13,6 +13,7 @@ import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.v
 
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 const props = defineProps<{ modelPreset?: ModelPreset }>();
+const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [name: string] }>();
 const id = useId();
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const models = ref<LocalModel[]>([]);
@@ -48,7 +49,9 @@ function refresh(): Promise<void> {
       refreshRequested = false; listError.value = undefined;
       try {
         const found = await llamaCppBrowserService.listModels({ signal: controller.signal });
-        if (!disposed && !controller.signal.aborted && !refreshRequested) models.value = found;
+        if (!disposed && !controller.signal.aborted && !refreshRequested) {
+          models.value = found; emit('modelsChanged', found);
+        }
       } catch (error) {
         if (!disposed && !controller.signal.aborted) listError.value = errorCode({ error });
       }
@@ -59,6 +62,14 @@ function refresh(): Promise<void> {
     return refreshRequested && !disposed && !controller.signal.aborted ? refresh() : undefined;
   });
   return refreshPromise;
+}
+let modelSelectionVersion = 0;
+async function selectReadyModel({ model }: { model: LocalModel }): Promise<void> {
+  const version = ++modelSelectionVersion;
+  await refresh();
+  if (disposed || version !== modelSelectionVersion) return;
+  const available = models.value.find(entry => entry.id === model.id);
+  if (available) emit('modelSelected', available.name);
 }
 async function importFiles({ files, directories }: { files: File[], directories: ModelDirectoryInput[] }): Promise<void> {
   if (disposed || unavailable.value || busy.value || refreshing.value || (files.length === 0 && directories.length === 0)) return;
@@ -162,7 +173,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
       <p>{{ lazyStrings.llamaCppBrowser__unavailable_in_standalone() }}</p>
     </div>
-    <LlamaCppBrowserHuggingFaceManager :model-preset="props.modelPreset" :disabled="unavailable || active !== undefined || refreshing" @busy="downloading = $event" @changed="refresh" />
+    <LlamaCppBrowserHuggingFaceManager :model-preset="props.modelPreset" :disabled="unavailable || active !== undefined || refreshing" @busy="downloading = $event" @changed="refresh" @model-ready="selectReadyModel({ model: $event })" @selection-changed="modelSelectionVersion++" />
     <fieldset :disabled="unavailable || busy || refreshing" tw-class="space-y-3 disabled:opacity-50">
       <legend tw-class="w-full flex items-center gap-2 pb-2 mb-3 border-b border-gray-100 dark:border-gray-800">
         <FileUpIcon tw-class="w-5 h-5 text-purple-500" />

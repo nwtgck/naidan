@@ -6,18 +6,19 @@ import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 
 import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, SearchIcon, Trash2Icon } from 'lucide-vue-next';
 import { quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { lazyStrings } from '@/strings';
-import { discoverRepository, parseRepository, type RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
+import { discoverRepository, parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { cancelDownload, downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';
-import { listPendingDownloads } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { installedSelection, listPendingDownloads } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { DownloadConflictError, repositoryUrlPath, type DownloadConflict, type DownloadJournal, type DownloadProgress, type DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 
+import { useHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 const props = defineProps<{ disabled: boolean, modelPreset?: ModelPreset }>();
-const emit = defineEmits<{ changed: [], busy: [value: boolean] }>();
+const emit = defineEmits<{ changed: [], busy: [value: boolean], modelReady: [model: LocalModel], selectionChanged: [] }>();
 const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = useModelDeletionConfirm();
-const id = useId(); const input = ref(''); const checkedInput = ref(''); const catalog = shallowRef<RepositoryCatalog>();
-const requestedVariantUnresolved = ref(false);
-const quantization = ref(''); const candidate = ref(''); const projector = ref(''); const multimodal = ref<'off' | 'on'>('off'); const details = ref<HTMLDetailsElement>(); const active = ref<AbortController>();
+const { input, checkedInput, catalog, requestedVariantUnresolved, quantization, candidate, projector, multimodal } = useHuggingFaceSession();
+const id = useId(); const details = ref<HTMLDetailsElement>(); const active = ref<AbortController>();
 let inspectionPreset: ModelPreset | undefined;
 let inspecting = false;
 const progress = ref<DownloadProgress>(); const activeRepository = ref<string>(); const error = ref<DownloadConflict | 'failed' | 'changed'>(); const pending = shallowRef<DownloadJournal[]>([]);
@@ -85,6 +86,24 @@ const selectedProjectorLabel = computed(() => projectorOptions.value.find(option
 const needsVariant = computed(() => selectedChoice.value !== undefined && selected.value === undefined);
 const needsProjector = computed(() => multimodal.value === 'on' && selectedProjector.value === undefined);
 const selectedFiles = computed(() => [...(selected.value?.files ?? []), ...(selectedProjector.value ? [selectedProjector.value] : [])]);
+const selectionToCheck = computed<DownloadSelection | undefined>(() => {
+  const current = catalog.value;
+  return current && selected.value && !needsProjector.value && catalogCurrent.value ? { repository: current.repository, revision: current.revision, files: selectedFiles.value } : undefined;
+});
+const localAvailability = ref<'checking' | 'missing' | 'installed' | 'unavailable'>('missing');
+const localCheckVersion = ref(0);
+const downloadLabel = computed(() => {
+  switch (localAvailability.value) {
+  case 'checking': return lazyStrings.LlamaCppBrowserHuggingFaceManager__checking_model();
+  case 'installed': return lazyStrings.LlamaCppBrowserHuggingFaceManager__downloaded();
+  case 'missing': case 'unavailable': return lazyStrings.LlamaCppBrowserHuggingFaceManager__download();
+  default: { const exhaustive: never = localAvailability.value; throw new Error(String(exhaustive)); }
+  }
+});
+let lastAnnouncedSelection: string | undefined;
+function recheckLocalFiles(): void {
+  localCheckVersion.value++;
+}
 const total = computed(() => selectedFiles.value.reduce((sum, file) => sum + file.size, 0));
 let disposed = false; const deleting = ref(false);
 function percentage({ completed, total }: { completed: number, total: number }): number {
@@ -155,7 +174,7 @@ async function download({ selection }: { selection: DownloadSelection }): Promis
 }
 async function start(): Promise<void> {
   const current = catalog.value; const model = selected.value;
-  if (!current || !model || needsProjector.value || !catalogCurrent.value) return;
+  if (!current || !model || needsProjector.value || !catalogCurrent.value || localAvailability.value !== 'missing') return;
   await download({ selection: { repository: current.repository, revision: current.revision, files: selectedFiles.value } });
 }
 async function remove({ repository }: { repository: string }): Promise<void> {
@@ -177,6 +196,38 @@ async function remove({ repository }: { repository: string }): Promise<void> {
     deleting.value = false; emit('busy', false);
   }
 }
+watch(selectionToCheck, () => emit('selectionChanged'), { flush: 'sync' });
+watch([selectionToCheck, () => props.disabled, active, deleting, localCheckVersion], async ([selection, disabled, operation, removing], _previous, onCleanup) => {
+  let cancelled = false; onCleanup(() => {
+    cancelled = true;
+  });
+  if (!selection) {
+    localAvailability.value = 'missing'; return;
+  }
+  localAvailability.value = 'checking';
+  if (disabled || operation || removing || disposed) return;
+  try {
+    const model = await installedSelection({ selection });
+    if (cancelled || disposed) return;
+    if (!model) {
+      const wasInstalled = lastAnnouncedSelection === JSON.stringify(selection);
+      localAvailability.value = 'missing'; lastAnnouncedSelection = undefined;
+      if (wasInstalled) {
+        emit('selectionChanged'); emit('changed');
+      }
+      return;
+    }
+    localAvailability.value = 'installed';
+    const identity = JSON.stringify(selection);
+    if (identity !== lastAnnouncedSelection) {
+      lastAnnouncedSelection = identity; emit('modelReady', model);
+    }
+  } catch {
+    if (!cancelled && !disposed) {
+      localAvailability.value = 'unavailable'; error.value = 'failed';
+    }
+  }
+}, { immediate: true });
 watch(() => props.disabled, disabled => {
   if (!disabled) void refresh();
 });
@@ -192,10 +243,11 @@ watch([() => props.modelPreset, () => props.disabled, active], ([preset, disable
   void inspect();
 }, { immediate: true, flush: 'post' });
 onMounted(() => {
+  window.addEventListener('focus', recheckLocalFiles);
   void refresh();
 });
 onUnmounted(() => {
-  disposed = true; active.value?.abort(); stopEstimate();
+  disposed = true; active.value?.abort(); stopEstimate(); window.removeEventListener('focus', recheckLocalFiles);
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -246,7 +298,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
           <div tw-class="flex flex-wrap items-center gap-2 ml-auto">
             <div data-testid="llama-hf-total" :title="lazyStrings.LlamaCppBrowserHuggingFaceManager__total_download_size()" tw-class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"><HardDriveIcon tw-class="w-3.5 h-3.5" aria-hidden="true" /><span tw-class="sr-only">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__total_download_size() }}</span><span tw-class="font-bold text-gray-800 dark:text-gray-100 tabular-nums">{{ selected && !needsProjector ? size({ bytes: total }) : '—' }}</span></div>
-            <button type="button" data-testid="llama-hf-download" :disabled="!selected || needsProjector || !catalogCurrent" tw-class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="start"><DownloadIcon tw-class="w-4 h-4" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download() }}</button>
+            <button type="button" data-testid="llama-hf-download" :disabled="!selected || needsProjector || !catalogCurrent || localAvailability !== 'missing'" tw-class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="start"><Loader2Icon v-if="localAvailability === 'checking'" tw-class="w-4 h-4 animate-spin" /><DownloadIcon v-else tw-class="w-4 h-4" />{{ downloadLabel }}</button>
           </div>
         </div>
         <p v-if="requestedVariantUnresolved && !selected" role="status" data-testid="llama-hf-requested-variant-unresolved" tw-class="text-xs text-amber-700 dark:text-amber-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection() }}</p>

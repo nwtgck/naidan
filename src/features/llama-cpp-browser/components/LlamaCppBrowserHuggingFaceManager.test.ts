@@ -6,11 +6,13 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { discoverRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository, cancelDownload } from '@/features/llama-cpp-browser/hugging-face/download';
-import { listPendingDownloads } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { defineComponent, ref } from 'vue';
+import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
+import { installedSelection, listPendingDownloads } from '@/features/llama-cpp-browser/hugging-face/storage';
 import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManager.vue';
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download', () => ({ downloadRepository: vi.fn(), cancelDownload: vi.fn() }));
-vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn() }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(), installedSelection: vi.fn() }));
 const confirm = vi.hoisted(() => vi.fn());
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: confirm }) }));
 vi.mock('../runtime/model-store', () => ({ prepareModelRemoval: vi.fn() }));
@@ -21,13 +23,69 @@ function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserHuggingFaceManager, { props: { disabled: false } }); wrappers.push(wrapper); return wrapper;
 }
 beforeEach(async () => {
-  vi.resetAllMocks(); confirm.mockResolvedValue(true); vi.mocked(prepareModelRemoval).mockResolvedValue({ plan, sharedPlan: undefined, affectedVariants: 0 }); vi.mocked(cancelDownload).mockResolvedValue('deleted'); vi.mocked(listPendingDownloads).mockResolvedValue([]); await ensureAllStringsForTest({ locale: 'en' });
+  vi.resetAllMocks(); vi.mocked(installedSelection).mockResolvedValue(undefined); confirm.mockResolvedValue(true); vi.mocked(prepareModelRemoval).mockResolvedValue({ plan, sharedPlan: undefined, affectedVariants: 0 }); vi.mocked(cancelDownload).mockResolvedValue('deleted'); vi.mocked(listPendingDownloads).mockResolvedValue([]); await ensureAllStringsForTest({ locale: 'en' });
 });
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   vi.useRealTimers();
 });
 describe('Hugging Face download controls', () => {
+  it('marks existing selections downloaded and publishes the exact local model without downloading', async () => {
+    const model = { id: 'hf-model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 };
+    vi.mocked(installedSelection).mockResolvedValue(model);
+    vi.mocked(discoverRepository).mockResolvedValue({ ...selection, models: [{ label: 'model-Q4_K_M.gguf', files: selection.files, size: 128 }], projectors: [] });
+    const wrapper = render(); await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/repo');
+    await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-download"]').text()).toContain('Downloaded');
+    expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.emitted('modelReady')).toEqual([[model]]);
+    expect(downloadRepository).not.toHaveBeenCalled();
+    vi.mocked(installedSelection).mockResolvedValue(undefined);
+    window.dispatchEvent(new Event('focus')); await flushPromises();
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+    expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
+    window.dispatchEvent(new Event('focus')); await flushPromises();
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+  });
+  it('rechecks completed downloads and ignores an earlier selection check', async () => {
+    const stale = Promise.withResolvers<Awaited<ReturnType<typeof installedSelection>>>();
+    const models = ['repo-Q4_K_M.gguf', 'repo-Q8_0.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
+    const ready = { id: 'q8', name: 'hf.co/owner/repo:Q8_0', size: 128, importedAt: 1 };
+    vi.mocked(discoverRepository).mockResolvedValue({ ...selection, models, projectors: [] });
+    vi.mocked(installedSelection).mockReturnValueOnce(stale.promise);
+    const wrapper = render(); await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/repo');
+    await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="llama-hf-model"]').setValue('repo-Q8_0.gguf'); await flushPromises();
+    stale.resolve({ ...ready, id: 'q4', name: 'hf.co/owner/repo:Q4_K_M' }); await flushPromises();
+    expect(wrapper.emitted('modelReady')).toBeUndefined();
+    expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
+    vi.mocked(downloadRepository).mockImplementation(async () => {
+      vi.mocked(installedSelection).mockResolvedValue(ready);
+    });
+    await wrapper.get('[data-testid="llama-hf-download"]').trigger('click'); await flushPromises();
+    expect(wrapper.emitted('modelReady')).toEqual([[ready]]);
+    expect(wrapper.get('[data-testid="llama-hf-download"]').text()).toContain('Downloaded');
+  });
+  it('keeps prepared inputs and manual choices across modal tabs without another metadata request', async () => {
+    const models = ['repo-Q4_K_M.gguf', 'repo-Q8_0.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
+    vi.mocked(discoverRepository).mockResolvedValue({ ...selection, models, projectors: [] });
+    const visible = ref(true);
+    const modelPreset: ModelPreset = { input: 'hf.co/owner/repo:Q4_K_M', target: 'onboarding', claim: vi.fn().mockReturnValueOnce(true).mockReturnValue(false) };
+    const wrapper = mount(defineComponent({ components: { LlamaCppBrowserHuggingFaceManager }, setup() {
+      provideHuggingFaceSession(); return { visible, modelPreset };
+    }, template: '<LlamaCppBrowserHuggingFaceManager v-if="visible" :disabled="false" :model-preset="modelPreset" />' })); wrappers.push(wrapper);
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-model"]').setValue('repo-Q8_0.gguf'); await flushPromises();
+    const checks = vi.mocked(installedSelection).mock.calls.length;
+    visible.value = false; await flushPromises(); visible.value = true; await flushPromises();
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-hf-repository"]').element.value).toBe(modelPreset.input);
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toBe('repo-Q8_0.gguf');
+    expect(discoverRepository).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(installedSelection).mock.calls.length).toBeGreaterThan(checks);
+  });
   it('prepares a preset once after availability without starting a download or reapplying on remount', async () => {
     const claim = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
     const modelPreset: ModelPreset = { input: 'hf.co/owner/repo:QAD-Q4_0', target: 'settings', claim };
@@ -108,7 +166,7 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('Choose model files');
     expect(wrapper.find('[data-testid="llama-hf-requested-variant-unresolved"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeDefined();
-    await wrapper.get('[data-testid="llama-hf-model"]').setValue('repo-Q4_K_M.gguf');
+    await wrapper.get('[data-testid="llama-hf-model"]').setValue('repo-Q4_K_M.gguf'); await flushPromises();
     expect(wrapper.find('[data-testid="llama-hf-requested-variant-unresolved"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
   });
@@ -121,7 +179,7 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.find('[data-testid="llama-hf-selection-required"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.find('[data-testid="llama-hf-multimodal"]').exists()).toBe(false);
-    await wrapper.get('[data-testid="llama-hf-model"]').setValue('other-Q4_K_M.gguf');
+    await wrapper.get('[data-testid="llama-hf-model"]').setValue('other-Q4_K_M.gguf'); await flushPromises();
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.get('[data-testid="llama-hf-files"]').text()).toContain('other-Q4_K_M.gguf');
   });

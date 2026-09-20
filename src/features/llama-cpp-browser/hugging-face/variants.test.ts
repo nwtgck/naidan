@@ -2,7 +2,7 @@ import { openSyncAccess } from './sync-access';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadWriter } from './writer';
 import { ggufBytes, memoryDirectory } from './test-opfs';
-import { listHuggingFaceModels, readJournal, repositoryFolder, selectedFile, resolveRepositoryModel } from './storage';
+import { installedSelection, listHuggingFaceModels, readJournal, repositoryFolder, selectedFile, resolveRepositoryModel } from './storage';
 import { cancelDownload } from './download';
 import { planStoredModelRemoval, prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
 import { quantizationChoices } from './presentation';
@@ -27,12 +27,33 @@ async function publish({ input }: { input: DownloadSelection }): Promise<void> {
   await writer.finish();
 }
 describe('independent HF variants in one repository', () => {
+  it('checks exact selected shards and projector locally and observes external file changes', async () => {
+    const split: DownloadSelection = { repository, revision, files: [{ path: 'Model-Q4_K_M-00001-of-00002.gguf', size: 128 }, { path: 'Model-Q4_K_M-00002-of-00002.gguf', size: 128 }, projector] };
+    expect(await installedSelection({ selection: split })).toBeUndefined();
+    const writer = createDownloadWriter(); await writer.begin({ selection: split });
+    for (let fileIndex = 0; fileIndex < split.files.length; fileIndex++) {
+      await writer.open({ fileIndex, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile();
+    }
+    expect(await installedSelection({ selection: split })).toBeUndefined();
+    await writer.finish();
+    expect(await installedSelection({ selection: split })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M (split-00002)` });
+    const folder = await repositoryFolder({ repository, create: false });
+    await folder.removeEntry(projector.path);
+    expect(await installedSelection({ selection: split })).toBeUndefined();
+    expect(await installedSelection({ selection: { ...split, files: split.files.slice(0, 2) } })).toBeDefined();
+    const wrongSize = { ...split, files: split.files.slice(0, 2).map(file => ({ ...file, size: 256 })) };
+    expect(await installedSelection({ selection: wrongSize })).toBeUndefined();
+    await folder.removeEntry(split.files[1]!.path);
+    expect(await installedSelection({ selection: { ...split, files: split.files.slice(0, 2) } })).toBeUndefined();
+  });
   it('keeps Q4 available during Q8 download, cancels only owned files, and preserves Q4 identity after Q8 publication', async () => {
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
     const before = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
     const writer = createDownloadWriter(); expect(await writer.begin({ selection: selection({ quant: 'Q8_0' }) })).toMatchObject({ journal: { reused: [false, true] } });
     await writer.open({ fileIndex: 0, start: 0 }); await writer.append({ bytes: ggufBytes().slice(0, 48) }); await writer.pause();
     expect((await listHuggingFaceModels()).map(model => model.name)).toEqual([`hf.co/${repository}:Q4_K_M`]);
+    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
+    expect(await installedSelection({ selection: selection({ quant: 'Q8_0' }) })).toBeUndefined();
     expect((await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` })).files.map(file => file.path)).toEqual(before.files.map(file => file.path));
     const plan = await planStoredModelRemoval({ id: `hf.co/${repository}` });
     expect(plan.files.map(file => file.path)).toEqual(['.llama-cpp-import-pending', 'Model-Q8_0.gguf']);

@@ -3,7 +3,7 @@ import { modelGroups, variantLabel, isProjector } from './model-variants';
 import { deletionPlanSchema, executeDeletionPlan, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { describeDirectory, opfsRoot, readModelFiles, resolveModelFiles, validGguf, type ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
-import { journalSchema, modelName, pendingName, repositorySchema, type DownloadJournal } from './types';
+import { journalSchema, modelName, pendingName, repositorySchema, type DownloadJournal, type DownloadSelection } from './types';
 
 export function isMissing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError';
@@ -56,7 +56,7 @@ export async function visitRepositories({ visit }: { visit: ({ repository, folde
     }
   }
 }
-export async function repositoryDirectories({ repository }: { repository: string }): Promise<ModelDirectory[]> {
+async function repositoryFiles({ repository }: { repository: string }): Promise<ModelDirectory['files']> {
   const folder = await repositoryFolder({ repository, create: false });
   let pending: DownloadJournal | undefined;
   try {
@@ -65,7 +65,12 @@ export async function repositoryDirectories({ repository }: { repository: string
     if (!isMissing({ error })) throw error;
   }
   const hidden = new Set(pending?.selection.files.filter((_file, index) => !pending?.reused?.[index]).map(file => file.path));
-  const actual = (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path));
+  return (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path));
+}
+export async function repositoryDirectories({ repository }: { repository: string }): Promise<ModelDirectory[]> {
+  return describeRepositoryDirectories({ repository, actual: await repositoryFiles({ repository }) });
+}
+async function describeRepositoryDirectories({ repository, actual }: { repository: string, actual: ModelDirectory['files'] }): Promise<ModelDirectory[]> {
   const { models, projectors } = modelGroups({ files: actual }); const result: ModelDirectory[] = [];
   for (const group of models) {
     const files = [...group, ...rankedProjectors({ files: projectors }).slice(0, 1)];
@@ -83,6 +88,25 @@ export async function repositoryDirectories({ repository }: { repository: string
     }
   }
   return result;
+}
+export async function installedSelection({ selection }: { selection: DownloadSelection }): Promise<LocalModel | undefined> {
+  let actual: ModelDirectory['files'];
+  try {
+    actual = await repositoryFiles({ repository: selection.repository });
+  } catch (error) {
+    if (isMissing({ error })) return undefined; throw error;
+  }
+  const selectedFiles: ModelDirectory['files'] = [];
+  for (const expected of selection.files) {
+    const found = actual.find(file => file.path === expected.path && file.file.size === expected.size);
+    if (!found) return undefined;
+    selectedFiles.push(found);
+  }
+  // Availability uses local metadata and small headers, not a remote revision or checksum guarantee.
+  if (!await allValid({ files: selectedFiles })) return undefined;
+  const requested = resolveModelFiles({ files: selection.files });
+  const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual })).find(model => model.modelPath === requested.modelPath);
+  return directory ? describeDirectory({ directory }) : undefined;
 }
 async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {
   for (const entry of files) if (!await validGguf({ file: entry.file })) return false;
