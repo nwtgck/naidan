@@ -58,7 +58,8 @@ vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
   })),
 }));
 
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRouter: vi.fn(),
   useRoute: vi.fn(),
 }));
