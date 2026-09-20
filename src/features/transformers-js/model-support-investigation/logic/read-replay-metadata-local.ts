@@ -1,3 +1,4 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 export async function readReplayMetadataLocal({ storageRoot, modelId, revision, path }: {
   storageRoot: FileSystemDirectoryHandle,
   modelId: string,
@@ -6,7 +7,7 @@ export async function readReplayMetadataLocal({ storageRoot, modelId, revision, 
 }): Promise<Blob | undefined> {
   try {
     let directory = storageRoot;
-    for (const part of ['models', 'huggingface.co', ...modelId.split('/'), 'resolve', revision]) {
+    for (const part of [OPFS_MODELS_DIR, 'huggingface.co', ...modelId.split('/'), 'resolve', revision]) {
       directory = await directory.getDirectoryHandle(part, { create: false });
     }
     await directory.getFileHandle(`.${path}.complete`, { create: false });

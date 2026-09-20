@@ -30,6 +30,8 @@ export const LOCK_CHAT_CONTENT_PREFIX = `${STORAGE_KEY_PREFIX}sync:lock:chat_con
 
 // TODO(strings-localize): Separate the persisted title fallback and search-worker title from locale-specific display copy before localizing this shared domain value.
 export const UNTITLED_CHAT_TITLE = 'New Chat';
+/** Shared OPFS root for model artifacts used by all inference engines. */
+export const OPFS_MODELS_DIR = 'models';
 /** OPFS directory used for per-session shell /tmp scratch space. */
 export const OPFS_TMP_DIR = 'naidan-tmp';
 export const OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY = `${STORAGE_KEY_PREFIX}opfs_tmp:pending_owner_cleanups`;

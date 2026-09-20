@@ -1,3 +1,4 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 import type {
   ModelSupportInvestigationAutoClassName,
   ModelSupportInvestigationClassCapability,
@@ -181,7 +182,7 @@ function cachedDeclarationUrl({ runtimeTarget, path }: {
 }): string {
   const model = runtimeTarget.normalizedModelId.split("/").map(part => encodeURIComponent(part)).join("/");
   const file = path.split("/").map(part => encodeURIComponent(part)).join("/");
-  return `opfs://models/huggingface.co/${model}/resolve/${encodeURIComponent(runtimeTarget.evidenceRevision)}/${file}`;
+  return `opfs://${OPFS_MODELS_DIR}/huggingface.co/${model}/resolve/${encodeURIComponent(runtimeTarget.evidenceRevision)}/${file}`;
 }
 
 function completedCachedDeclarationPaths({

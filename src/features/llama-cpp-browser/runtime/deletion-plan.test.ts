@@ -17,21 +17,21 @@ async function writeFile({ folder, name, value }: { folder: FileSystemDirectoryH
   const writer = await (await folder.getFileHandle(name, { create: true })).createWritable(); await writer.write(value); await writer.close();
 }
 describe('confirmed model deletion plans', () => {
-  it('previews every file, rejects additions and modifications, and removes only a fresh approved plan', async () => {
+  it('previews GGUF files, rejects their additions and modifications, and preserves unrelated files', async () => {
     const root = await userModelDirectory(); const folder = await root.getDirectoryHandle('model', { create: true });
     const nested = await folder.getDirectoryHandle('nested', { create: true });
     await writeFile({ folder: nested, name: 'model.gguf', value: 'model' });
     await writeFile({ folder, name: 'README.md', value: 'readme' });
     const plan = await planStoredModelRemoval({ id: 'user/model' });
-    expect(plan.files.map(file => file.path)).toEqual(['README.md', 'nested/model.gguf']);
-    await writeFile({ folder, name: 'extra.txt', value: 'external' });
+    expect(plan.files.map(file => file.path)).toEqual(['nested/model.gguf']);
+    await writeFile({ folder, name: 'extra.gguf', value: 'external' });
     expect(await removeStoredModel({ plan })).toBe('changed');
     expect((await scanDeletionTree({ folder })).files).toHaveLength(3);
     const next = await planStoredModelRemoval({ id: 'user/model' });
     await writeFile({ folder: nested, name: 'model.gguf', value: 'changed model' });
     expect(await removeStoredModel({ plan: next })).toBe('changed');
     expect(await removeStoredModel({ plan: await planStoredModelRemoval({ id: 'user/model' }) })).toBe('deleted');
-    await expect(root.getDirectoryHandle('model')).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['README.md']);
   });
   it('does not sweep up a file added while approved files are being removed', async () => {
     const folder = await (await userModelDirectory()).getDirectoryHandle('model', { create: true });
@@ -59,15 +59,15 @@ describe('confirmed model deletion plans', () => {
   });
   it('keeps newly added sibling files and rejects forged paths', async () => {
     const root = await navigator.storage.getDirectory();
-    const folder = await (await (await root.getDirectoryHandle('llama-cpp-browser-models', { create: true })).getDirectoryHandle('user', { create: true })).getDirectoryHandle('model-GGUF', { create: true });
+    const folder = await (await (await root.getDirectoryHandle('models', { create: true })).getDirectoryHandle('user', { create: true })).getDirectoryHandle('model-GGUF', { create: true });
     await folder.getDirectoryHandle('unrelated-empty', { create: true });
     for (const name of ['model.gguf']) await writeFile({ folder, name, value: name });
     const plan = await planStoredModelRemoval({ id: 'user/model-GGUF' });
     expect(plan.files.map(file => file.path)).toEqual(['model.gguf']);
-    await writeFile({ folder, name: 'notes.txt', value: 'notes.txt' });
+    await writeFile({ folder, name: 'extra.gguf', value: 'notes.txt' });
     await expect(removeStoredModel({ plan: { ...plan, files: [...plan.files, { path: '../other', size: 0, lastModified: 0 }] } })).rejects.toThrow();
     expect(await removeStoredModel({ plan })).toBe('changed');
-    expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['model.gguf', 'notes.txt']);
+    expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['extra.gguf', 'model.gguf']);
     expect((await folder.getDirectoryHandle('unrelated-empty')).kind).toBe('directory');
   });
   it('removes an HF partial download and permits a fresh download despite remaining ancestors', async () => {

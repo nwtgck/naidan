@@ -1,3 +1,4 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
@@ -18,7 +19,7 @@ export async function opfsRoot(): Promise<FileSystemDirectoryHandle> {
   return navigator.storage.getDirectory();
 }
 export async function userModelDirectory(): Promise<FileSystemDirectoryHandle> {
-  const models = await (await opfsRoot()).getDirectoryHandle('llama-cpp-browser-models', { create: true });
+  const models = await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
   return models.getDirectoryHandle('user', { create: true });
 }
 function missing({ error }: { error: unknown }): boolean {

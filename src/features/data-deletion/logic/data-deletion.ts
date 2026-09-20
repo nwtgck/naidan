@@ -6,6 +6,7 @@ import {
   LOCK_METADATA,
   OPFS_TMP_CLEANUP_LOCK_KEY,
   OPFS_TMP_DIR,
+  OPFS_MODELS_DIR,
   OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY,
   STORAGE_BOOTSTRAP_KEY,
   STORAGE_KEY_PREFIX,
@@ -71,7 +72,6 @@ type DeleteSelectorResult =
   | { status: 'skipped', message: string };
 
 const NAIDAN_STORAGE_DIR = 'naidan-storage';
-const MODELS_DIR = 'models';
 const HOST_VOLUME_DB_NAME = 'naidan-volumes';
 const LOCAL_STORAGE_NAIDAN_SYNC_PREFIX = `${STORAGE_KEY_PREFIX}sync:`;
 const LOCAL_STORAGE_UNAVAILABLE_MESSAGE = 'localStorage is unavailable in this runtime.';
@@ -261,8 +261,8 @@ export const DATA_DELETION_OPTIONS = [
     id: 'opfs-models',
     group: 'opfs',
     label: 'OPFS: /models',
-    description: 'Transformers.js model cache.',
-    selector: { kind: 'opfsPath', path: `/${MODELS_DIR}` },
+    description: 'Shared model files for local inference engines.',
+    selector: { kind: 'opfsPath', path: `/${OPFS_MODELS_DIR}` },
     advanced: false,
   },
   {
@@ -270,7 +270,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /models/user',
     description: 'User-provided local model cache.',
-    selector: { kind: 'opfsPath', path: `/${MODELS_DIR}/user` },
+    selector: { kind: 'opfsPath', path: `/${OPFS_MODELS_DIR}/user` },
     advanced: true,
   },
   {
@@ -471,7 +471,7 @@ function selectorIncludes({ parent, child }: { parent: DataDeletionSelector, chi
     case 'opfsPath':
       return isSameOrChildPath({ parentPath: parent.path, childPath: child.path });
     case 'opfsRemoteModels':
-      return isSameOrChildPath({ parentPath: parent.path, childPath: `/${MODELS_DIR}` });
+      return isSameOrChildPath({ parentPath: parent.path, childPath: `/${OPFS_MODELS_DIR}` });
     case 'localStoragePrefix':
     case 'localStorageKey':
     case 'localStorageUnknownNaidanKeys':
@@ -700,18 +700,18 @@ async function previewRemoteModelsSelector(): Promise<{ entries: readonly DataDe
     };
   }
 
-  const models = await getChildDirectoryIfExists({ parent: root, name: MODELS_DIR });
+  const models = await getChildDirectoryIfExists({ parent: root, name: OPFS_MODELS_DIR });
   if (models === undefined) {
     return {
       entries: [],
-      notes: [`OPFS path not found: /${MODELS_DIR}`],
+      notes: [`OPFS path not found: /${OPFS_MODELS_DIR}`],
     };
   }
 
   const entries: DataDeletionPreviewEntry[] = [];
   for await (const child of models.values()) {
     if (child.kind === 'directory' && child.name !== 'user') {
-      entries.push({ path: `/${MODELS_DIR}/${child.name}`, location: 'OPFS' });
+      entries.push({ path: `/${OPFS_MODELS_DIR}/${child.name}`, location: 'OPFS' });
     }
   }
 
@@ -747,7 +747,7 @@ async function deleteOpfsPath({ path }: { path: string }): Promise<DeleteSelecto
 async function deleteRemoteModelDirectories(): Promise<DeleteSelectorResult> {
   const root = await getOpfsRoot();
   if (root === undefined) return { status: 'skipped', message: OPFS_UNAVAILABLE_MESSAGE };
-  const models = await getChildDirectoryIfExists({ parent: root, name: MODELS_DIR });
+  const models = await getChildDirectoryIfExists({ parent: root, name: OPFS_MODELS_DIR });
   if (models === undefined) return { status: 'deleted' };
   const names: string[] = [];
   for await (const child of models.values()) {

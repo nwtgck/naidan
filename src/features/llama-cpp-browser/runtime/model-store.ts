@@ -1,3 +1,4 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { deletionPlanSchema, executeDeletionPlan, scanDeletionTree, type DeletionPlan, type DeletionResult } from './deletion-plan';
 import { listHuggingFaceModels, withRepositoryLock, resolveRepositoryModel, parseModelReference, readJournal, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
@@ -59,7 +60,7 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
   if (id.startsWith('hf.co/')) {
     const { repository, variant } = parseModelReference({ name: id });
     parent = await opfsRoot();
-    for (const segment of ['llama-cpp-browser-models', 'huggingface.co', ...repository.split('/'), 'resolve']) parent = await parent.getDirectoryHandle(segment);
+    for (const segment of [OPFS_MODELS_DIR, 'huggingface.co', ...repository.split('/'), 'resolve']) parent = await parent.getDirectoryHandle(segment);
     name = 'main'; const folder = await parent.getDirectoryHandle(name);
     let pending;
     if (variant === undefined) {
@@ -82,7 +83,9 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
     parent = await userModelDirectory();
     const files = (await scanDeletionTree({ folder: await parent.getDirectoryHandle(name) })).files;
     projectors = files.filter(file => /\.gguf$/i.test(file.path) && isProjector({ path: file.path })).map(file => file.path);
-    selectedPaths = !includeSharedProjector({ choice: sharedProjector }) ? files.filter(file => !projectors.includes(file.path)).map(file => file.path) : undefined;
+    // User model directories can also contain another engine's artifacts.
+    // Select GGUF files and our transient marker; shared metadata is not ours.
+    selectedPaths = files.filter(file => (file.path === pendingName || /\.gguf$/i.test(file.path)) && !projectors.includes(file.path)).map(file => file.path);
   }
   if (includeSharedProjector({ choice: sharedProjector })) selectedPaths?.push(...projectors);
   return { parent, name, folder: await parent.getDirectoryHandle(name), selectedPaths, projectors, affectedVariants };

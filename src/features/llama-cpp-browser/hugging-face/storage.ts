@@ -1,3 +1,4 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from './presentation';
 import { modelGroups, variantLabel, isProjector } from './model-variants';
 import { deletionPlanSchema, executeDeletionPlan, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
@@ -11,7 +12,7 @@ export function isMissing({ error }: { error: unknown }): boolean {
 export async function repositoryFolder({ repository, create }: { repository: string, create: boolean }): Promise<FileSystemDirectoryHandle> {
   const [owner, repo] = repositorySchema.parse(repository).split('/');
   let folder = await opfsRoot();
-  for (const name of ['llama-cpp-browser-models', 'huggingface.co', owner!, repo!, 'resolve', 'main']) folder = await folder.getDirectoryHandle(name, { create });
+  for (const name of [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve', 'main']) folder = await folder.getDirectoryHandle(name, { create });
   return folder;
 }
 export async function selectedFile({ folder, path, create }: { folder: FileSystemDirectoryHandle, path: string, create: boolean }): Promise<FileSystemFileHandle> {
@@ -35,7 +36,7 @@ export async function writeJournal({ folder, journal }: { folder: FileSystemDire
 export async function visitRepositories({ visit }: { visit: ({ repository, folder }: { repository: string, folder: FileSystemDirectoryHandle }) => Promise<void> }): Promise<void> {
   let host: FileSystemDirectoryHandle;
   try {
-    host = await (await (await opfsRoot()).getDirectoryHandle('llama-cpp-browser-models')).getDirectoryHandle('huggingface.co');
+    host = await (await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR)).getDirectoryHandle('huggingface.co');
   } catch (error) {
     if (isMissing({ error })) return; throw error;
   }
@@ -151,7 +152,7 @@ export async function deleteRepository({ repository, plan }: { repository: strin
   if (plan.id !== modelName({ repository })) throw new Error('Deletion plan does not match the repository');
   const [owner, repo] = repositorySchema.parse(repository).split('/');
   let folder = await opfsRoot();
-  for (const name of ['llama-cpp-browser-models', 'huggingface.co', owner!, repo!, 'resolve']) folder = await folder.getDirectoryHandle(name);
+  for (const name of [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve']) folder = await folder.getDirectoryHandle(name);
   const current = await folder.getDirectoryHandle('main');
   let journal: DownloadJournal | undefined;
   try {

@@ -1,3 +1,4 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 import { createOpfsStagingFileName } from './runtime/opfs-staging-file';
 import { assertOpfsFileLease, withOpfsFileLease, type OpfsFileLease } from './runtime/opfs-access';
 
@@ -22,10 +23,10 @@ export function urlToPath({ url }: { url: string }): string | null {
 
     if (isLocalOrigin) {
       const first = pathParts[0];
-      if (first === 'user' || first === 'local' || first === 'models') {
+      if (first === 'user' || first === 'local' || first === OPFS_MODELS_DIR) {
         let startIndex = 0;
         switch (first) {
-        case 'models':
+        case OPFS_MODELS_DIR:
           startIndex++;
           break;
         case 'user':
@@ -39,21 +40,21 @@ export function urlToPath({ url }: { url: string }): string | null {
         if (pathParts[startIndex] === 'user' || pathParts[startIndex] === 'local') startIndex++;
 
         const cleanParts = pathParts.slice(startIndex);
-        const resolved = `models/user/${cleanParts.join('/')}`;
+        const resolved = `${OPFS_MODELS_DIR}/user/${cleanParts.join('/')}`;
         return resolved;
       }
       return null;
     }
 
-    const resolved = `models/${parsed.hostname}/${pathParts.join('/')}`;
+    const resolved = `${OPFS_MODELS_DIR}/${parsed.hostname}/${pathParts.join('/')}`;
     return resolved;
   } catch {
     const parts = url.split('/').filter(p => !!p);
     const first = parts[0];
-    if (first === 'user' || first === 'local' || first === 'models') {
+    if (first === 'user' || first === 'local' || first === OPFS_MODELS_DIR) {
       let startIndex = 0;
       switch (first) {
-      case 'models':
+      case OPFS_MODELS_DIR:
         startIndex++;
         break;
       case 'user':
@@ -65,7 +66,7 @@ export function urlToPath({ url }: { url: string }): string | null {
       }
       }
       if (parts[startIndex] === 'user' || parts[startIndex] === 'local') startIndex++;
-      const resolved = `models/user/${parts.slice(startIndex).join('/')}`;
+      const resolved = `${OPFS_MODELS_DIR}/user/${parts.slice(startIndex).join('/')}`;
       return resolved;
     }
     return null;

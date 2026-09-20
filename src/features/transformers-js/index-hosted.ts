@@ -1,6 +1,8 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 import type { ChatMessage, LmParameters } from '@/01-models/types';
 import { cloneChatMessages, cloneLmParameters, cloneWorkerTools } from './inference-input-snapshot';
 import { isOpfsStagingFileName } from './runtime/opfs-staging-file';
+import { removeTransformersModelFiles } from './runtime/model-storage';
 import { withOpfsFileLease, withOpfsModelDeletion, withOpfsRootDeletion } from './runtime/opfs-access';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
@@ -556,20 +558,20 @@ export function createTransformersJsService({ createWorkerClient }: {
         const root = await navigator.storage.getDirectory();
         let modelsDir: FileSystemDirectoryHandle;
         try {
-          modelsDir = await root.getDirectoryHandle('models', { create: false });
+          modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
         } catch {
           return [];
         }
 
         // Helper to calculate directory stats and check for marker
-        const getDirStats = async ({ dir }: { dir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean }> => {
+        const getDirStats = async ({ dir }: { dir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean, hasOnnx: boolean }> => {
           let size = 0;
           let fileCount = 0;
           let lastModified = 0;
 
           const files = new Set<string>();
           const markers = new Set<string>();
-          let hasWeights = false;
+          let hasOnnx = false;
 
           const scan = async ({ dir, path = '' }: { dir: FileSystemDirectoryHandle, path?: string }) => {
             for await (const [name, handle] of dir.entries()) {
@@ -580,10 +582,13 @@ export function createTransformersJsService({ createWorkerClient }: {
               case 'file': {
                 // Interrupted writers may leave unique temporary files. They
                 // are not committed resources; listing is read-only, not cleanup.
-                if (isOpfsStagingFileName({ fileName: name })) break;
+                if (isOpfsStagingFileName({ fileName: name }) || /\.gguf$/i.test(name)) break;
                 if (name.startsWith('.') && name.endsWith('.complete')) {
                   markers.add(fullPath);
                 } else {
+                  // Shared model roots may contain another engine's transient metadata.
+                  if (name.startsWith('.')) break;
+                  if (/\.onnx$/i.test(name)) hasOnnx = true;
                   files.add(fullPath);
                   const file = await (h as FileSystemFileHandle).getFile();
                   size += file.size;
@@ -606,7 +611,7 @@ export function createTransformersJsService({ createWorkerClient }: {
 
           // A model is considered complete if:
           // 1. Every file present has a corresponding .complete marker
-          // 2. There is at least one weight file and it is complete
+          // 2. There is an ONNX graph; tokenizer-only and GGUF folders are not TJS models
           let allFilesComplete = true;
           for (const file of files) {
             const pathParts = file.split('/');
@@ -619,21 +624,18 @@ export function createTransformersJsService({ createWorkerClient }: {
               break;
             }
 
-            // Weight detection (similar to updateProgress logic)
-            if (/\.(onnx|safetensors|bin|pth|model|data)$/i.test(fileName) || fileName.includes('_data')) {
-              hasWeights = true;
-            }
           }
 
           return {
             size,
             fileCount,
             lastModified,
-            isComplete: files.size > 0 && allFilesComplete && hasWeights,
+            isComplete: allFilesComplete && hasOnnx,
+            hasOnnx,
           };
         };
 
-        const getHuggingFaceRepoStats = async ({ repoDir }: { repoDir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean }> => {
+        const getHuggingFaceRepoStats = async ({ repoDir }: { repoDir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean, hasOnnx: boolean }> => {
           const aggregate = await getDirStats({ dir: repoDir });
           let resolveDir: FileSystemDirectoryHandle;
           try {
@@ -680,6 +682,7 @@ export function createTransformersJsService({ createWorkerClient }: {
             switch (h.kind) {
             case 'directory': {
               const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
+              if (!stats.hasOnnx) break;
               results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
               break;
             }
@@ -702,6 +705,7 @@ export function createTransformersJsService({ createWorkerClient }: {
             case 'directory': {
               const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
               // We still label it as 'user/' to the rest of the app
+              if (!stats.hasOnnx) break;
               results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
               break;
             }
@@ -727,6 +731,7 @@ export function createTransformersJsService({ createWorkerClient }: {
                 switch (rh.kind) {
                 case 'directory': {
                   const stats = await getHuggingFaceRepoStats({ repoDir: rh as FileSystemDirectoryHandle });
+                  if (!stats.hasOnnx) break;
                   results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
                   break;
                 }
@@ -757,10 +762,10 @@ export function createTransformersJsService({ createWorkerClient }: {
 
     async importFile({ modelName, fileName, data }: { modelName: string, fileName: string, data: ArrayBuffer | ReadableStream }) {
       ensureOpen();
-      const storagePath = `models/user/${modelName}/${fileName.split('/').filter(part => part.length > 0).join('/')}`;
+      const storagePath = `${OPFS_MODELS_DIR}/user/${modelName}/${fileName.split('/').filter(part => part.length > 0).join('/')}`;
       await withOpfsFileLease({ path: storagePath, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
         const root = await navigator.storage.getDirectory();
-        const modelsDir = await root.getDirectoryHandle('models', { create: true });
+        const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
         const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
         const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
 
@@ -809,41 +814,41 @@ export function createTransformersJsService({ createWorkerClient }: {
       ensureOpen();
       if (modelId.startsWith('user/')) {
         const name = modelId.substring(5);
-        const removed = await withOpfsModelDeletion({ modelPath: `models/user/${name}`, run: async () => {
+        const removed = await withOpfsModelDeletion({ modelPath: `${OPFS_MODELS_DIR}/user/${name}`, run: async () => {
           const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle('models', { create: true });
+          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
           try {
             const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-            await userDir.removeEntry(name, { recursive: true });
+            await removeTransformersModelFiles({ parent: userDir, name });
             return true;
           } catch {
             return false;
           }
         } });
-        if (!removed) await withOpfsModelDeletion({ modelPath: `models/local/${name}`, run: async () => {
+        if (!removed) await withOpfsModelDeletion({ modelPath: `${OPFS_MODELS_DIR}/local/${name}`, run: async () => {
           const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle('models', { create: true });
+          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
           try {
             const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-            await localDir.removeEntry(name, { recursive: true });
+            await removeTransformersModelFiles({ parent: localDir, name });
           } catch { /* Preserve the legacy absent-local fallback. */ }
         } });
       } else if (modelId.startsWith('hf.co/')) {
         const [org, repo] = modelId.substring(6).split('/');
         if (org && repo) {
-          await withOpfsModelDeletion({ modelPath: `models/huggingface.co/${org}/${repo}`, run: async () => {
+          await withOpfsModelDeletion({ modelPath: `${OPFS_MODELS_DIR}/huggingface.co/${org}/${repo}`, run: async () => {
             const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle('models', { create: true });
+            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
             const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
             const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
-            await orgDir.removeEntry(repo, { recursive: true });
+            await removeTransformersModelFiles({ parent: orgDir, name: repo });
           } });
           // Release model/root shared ownership before acquiring root exclusive.
           // Re-resolve the directory and recheck emptiness under the parent lease.
           await withOpfsRootDeletion({ run: async () => {
             const root = await navigator.storage.getDirectory();
             try {
-              const modelsDir = await root.getDirectoryHandle('models', { create: false });
+              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
               const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
               const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
               for await (const _ of orgDir.entries()) return;
@@ -855,9 +860,9 @@ export function createTransformersJsService({ createWorkerClient }: {
         } else if (org) {
           await withOpfsRootDeletion({ run: async () => {
             const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle('models', { create: true });
+            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
             const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-            await hfDir.removeEntry(org, { recursive: true });
+            await removeTransformersModelFiles({ parent: hfDir, name: org });
           } });
         }
       } else {
@@ -865,13 +870,13 @@ export function createTransformersJsService({ createWorkerClient }: {
         // namespace rather than guessing a single model key.
         await withOpfsRootDeletion({ run: async () => {
           const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle('models', { create: true });
+          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
           try {
             const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-            await localDir.removeEntry(modelId, { recursive: true });
+            await removeTransformersModelFiles({ parent: localDir, name: modelId });
           } catch {
             const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-            await hfDir.removeEntry(modelId, { recursive: true });
+            await removeTransformersModelFiles({ parent: hfDir, name: modelId });
           }
         } });
       }
