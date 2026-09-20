@@ -1,4 +1,5 @@
 export const STANDALONE_FACADES = [
+  { facadePath: '@/features/llama-cpp-browser/hugging-face/download', standalonePath: 'src/features/llama-cpp-browser/hugging-face/download-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/worker/client', standalonePath: 'src/features/llama-cpp-browser/worker/client-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/provider', standalonePath: 'src/features/llama-cpp-browser/provider-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser', standalonePath: 'src/features/llama-cpp-browser/index-standalone.ts' },
