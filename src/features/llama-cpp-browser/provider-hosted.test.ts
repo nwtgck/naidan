@@ -1,3 +1,4 @@
+import { generateInputSchema } from './types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,21 @@ function request(): Parameters<LmProvider['chat']>[0] {
   return { messages: [{ role: 'user', content: 'hello' }], model: 'local.gguf', onChunk: vi.fn(), onAssistantMessageStart: vi.fn() };
 }
 describe('local model provider', () => {
+  it('leaves an omitted completion limit unset and preserves explicit limit validation', async () => {
+    const provider = new LlamaCppBrowserProvider();
+    await provider.chat(request());
+    await provider.chat({ ...request(), parameters: { ...EMPTY_LM_PARAMETERS, maxCompletionTokens: 37 } });
+    const inputs = service.generate.mock.calls.map(([{ input }]) => input);
+    expect(inputs.map(input => input.maxTokens)).toEqual([undefined, 37]);
+    const input = { ...inputs[0]!, options: { profile: 'cpu-wasm32' } };
+    expect(generateInputSchema.safeParse(input).success).toBe(true);
+    expect(generateInputSchema.safeParse({ ...input, maxTokens: 32768 }).success).toBe(true);
+    expect(generateInputSchema.safeParse({ ...input, maxTokens: 65536 }).success).toBe(true);
+    expect(generateInputSchema.safeParse({ ...input, maxTokens: Number.MAX_SAFE_INTEGER }).success).toBe(true);
+    for (const maxTokens of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(generateInputSchema.safeParse({ ...input, maxTokens }).success).toBe(false);
+    }
+  });
   it('passes the diagnostic preference per request without retaining the preceding chat setting', async () => {
     const provider = new LlamaCppBrowserProvider();
     await provider.chat({ ...request(), debug: 'on' });

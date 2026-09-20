@@ -210,7 +210,8 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     const decoder = new TextDecoder(); const nextToken = alloc({ bytes: 4 });
     const position = multimodal ? alloc({ bytes: 4 }) : undefined;
     let piece = alloc({ bytes: 256 }); let pieceCapacity = 256;
-    const maximum = Math.min(request.maxTokens, capacity - Math.max(tokenCount, nextPosition));
+    const remaining = capacity - Math.max(tokenCount, nextPosition);
+    const maximum = request.maxTokens === undefined ? remaining : Math.min(request.maxTokens, remaining);
     logDiagnostic({ diagnostic: { event: 'generation-start', imageCount: chat.images.length, tokens: tokenCount, pointerBytes: core.pointerBytes, toolCount: request.tools?.length ?? 0 } });
     for (; generated < maximum; generated++) {
       checkCancelled();

@@ -298,6 +298,36 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       decode.mockRestore();
     }
   }, 30000);
+  it('uses remaining context for omitted or oversized completion limits and respects smaller limits', async () => {
+    await releaseSession({ releaseRuntime: false });
+    const core = host.core!;
+    const training = vi.spyOn(core.api, 'llama_model_n_ctx_train').mockResolvedValue(2048);
+    const chunks: string[] = [];
+    const req = { ...request({ messages: [{ role: 'user' as const, content: 'continue' }] }), maxTokens: undefined };
+    try {
+      const result = await generate({ request: req, signal: undefined, onChunk: ({ chunk }) => {
+        chunks.push(chunk);
+      }, onProgress: () => {} });
+      expect(chunks.join('').length).toBeGreaterThan(1024);
+      expect(result.finishReason).toBe('length');
+      const capacity = await core.api.llama_n_ctx(sessionTesting.residentContext()!);
+      expect(await sequencePosition()).toBe(capacity - 1);
+      const limited: string[] = [];
+      await generate({ request: { ...req, maxTokens: 3 }, signal: undefined, onChunk: ({ chunk }) => {
+        limited.push(chunk);
+      }, onProgress: () => {} });
+      expect(limited.join('')).toBe('AAA');
+      const oversized: string[] = [];
+      const bounded = await generate({ request: { ...req, maxTokens: 65536 }, signal: undefined, onChunk: ({ chunk }) => {
+        oversized.push(chunk);
+      }, onProgress: () => {} });
+      expect(oversized.join('')).toBe(chunks.join(''));
+      expect(bounded.finishReason).toBe('length');
+      expect(await sequencePosition()).toBe(capacity - 1);
+    } finally {
+      training.mockRestore(); await releaseSession({ releaseRuntime: false });
+    }
+  }, 30000);
   it('targets 32K, retries only normal allocation failure and retains the smaller context', async () => {
     await releaseSession({ releaseRuntime: false });
     const core = host.core!;

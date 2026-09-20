@@ -73,7 +73,7 @@ export const generateInputSchema = z.object({
   tools: z.array(z.object({ type: z.literal('function'), function: z.object({ name: z.string().min(1), description: z.string(), parameters: z.record(z.string(), z.json()) }).strict() }).strict()).optional(),
   reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
   temperature: z.number().min(0).max(10), topP: z.number().min(0).max(1),
-  maxTokens: z.number().int().min(1).max(32768),
+  maxTokens: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
   presencePenalty: z.number().min(-2).max(2), frequencyPenalty: z.number().min(-2).max(2),
   stop: z.array(z.string().min(1).max(512)).max(32), options: runtimeOptionsSchema,
 }).strict();

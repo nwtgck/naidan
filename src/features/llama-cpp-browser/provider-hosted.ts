@@ -45,7 +45,7 @@ export class LlamaCppBrowserProvider implements LmProvider {
     const input = (): Omit<GenerateInput, 'options'> => ({ model, debug, messages: accepted, tools: definitions,
       reasoningEffort: parameters?.reasoning.effort,
       temperature: parameters?.temperature ?? 0.7, topP: parameters?.topP ?? 0.95,
-      maxTokens: parameters?.maxCompletionTokens ?? 1024, presencePenalty: parameters?.presencePenalty ?? 0,
+      maxTokens: parameters?.maxCompletionTokens, presencePenalty: parameters?.presencePenalty ?? 0,
       frequencyPenalty: parameters?.frequencyPenalty ?? 0, stop: parameters?.stop ? [...parameters.stop] : [] });
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
     onAssistantMessageStart?.();
