@@ -12,7 +12,6 @@ export function usesWebGpu({ profile }: { profile: LlamaCppProfile }): boolean {
 }
 export const runtimeOptionsSchema = z.object({
   profile: z.union([z.literal('auto'), profileSchema]),
-  contextSize: z.number().int().min(128).max(32768),
 }).strict();
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 export const modelSchema = z.object({

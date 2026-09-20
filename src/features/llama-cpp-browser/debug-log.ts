@@ -11,15 +11,18 @@ const failureKindSchema = z.enum(['wasm-trap', 'native-exception', 'binding-erro
 
 const diagnosticSchema = z.object({
   event: z.enum(['import-start', 'import-complete', 'runtime-ready', 'load-complete',
-    'load-start', 'model-reused', 'context-start', 'context-ready', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-complete', 'cancelled', 'released', 'failed']),
+    'load-start', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-complete', 'cancelled', 'released', 'failed']),
   stage: stageSchema.optional(),
   failureKind: failureKindSchema.optional(),
   code: errorCodeSchema.optional(),
-  reason: z.enum(['non-monotonic-content', 'non-monotonic-reasoning', 'decode-status', 'invalid-token-piece', 'missing-native-binding']).optional(),
+  reason: z.enum(['non-monotonic-content', 'non-monotonic-reasoning', 'decode-status', 'invalid-token-piece', 'missing-native-binding', 'context-allocation', 'prefix-match', 'prefix-mismatch', 'cache-invalid', 'cache-position']).optional(),
   grammar: z.boolean().optional(),
   grammarLazy: z.boolean().optional(),
   reasoning: z.boolean().optional(),
   pointerBytes: z.union([z.literal(4), z.literal(8)]).optional(),
+  contextTokens: z.number().int().positive().optional(),
+  reusedTokens: z.number().int().nonnegative().optional(),
+  evaluatedTokens: z.number().int().nonnegative().optional(),
   toolCount: z.number().int().nonnegative().optional(),
   elapsedMs: z.number().finite().nonnegative().optional(),
   bytes: z.number().finite().nonnegative().optional(),
@@ -62,6 +65,11 @@ const failureDescriptions = {
   'unknown-exception': 'The exception could not be classified safely.',
 } satisfies Record<z.infer<typeof failureKindSchema>, string>;
 const reasonDescriptions = {
+  'context-allocation': 'Context allocation returned no context; retrying a smaller capacity.',
+  'prefix-match': 'Reusing the complete decoded token prefix.',
+  'prefix-mismatch': 'The prompt changed before the end of the decoded prefix; evaluating it again.',
+  'cache-invalid': 'No verified decoded prefix is available; evaluating the full prompt.',
+  'cache-position': 'Native memory does not match the recorded token frontier; evaluating the full prompt.',
   'missing-native-binding': 'The installed runtime must be updated to provide the owned reasoning end-match binding.',
   'non-monotonic-content': 'The parser revised content that had already been streamed.',
   'non-monotonic-reasoning': 'The parser revised reasoning that had already been streamed.',
@@ -88,6 +96,7 @@ export function logDiagnostic({ diagnostic }: { diagnostic: z.infer<typeof diagn
   case 'import-start': case 'import-complete': case 'runtime-ready': case 'load-complete':
   case 'load-start': case 'model-reused': case 'context-start': case 'context-ready':
   case 'prefill-start': case 'prefill-complete': case 'generation-start': case 'sampler-ready':
+  case 'context-retry': case 'cache-reuse':
   case 'first-token-sampled': case 'generation-complete': case 'cancelled': case 'released':
     console.debug('[llama-cpp-browser]', safe.data); return;
   default: { const exhaustive: never = safe.data.event; throw new Error(`Unknown diagnostic event: ${exhaustive}`); }

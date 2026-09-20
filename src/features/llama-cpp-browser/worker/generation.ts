@@ -6,7 +6,7 @@ import { prepareSession } from './session';
 import { prepareChat } from './native-chat';
 import { createChatSampler } from './chat-sampler';
 
-/** Request-local tokens/sampling; weights and the context allocation stay resident. */
+/** Reuse only a verified decoded prefix; sampling and parsing stay request-local. */
 export async function generate({ request, onChunk, onProgress, signal }: {
   request: WorkerGenerateInput,
   signal: AbortSignal | undefined,
@@ -20,7 +20,7 @@ export async function generate({ request, onChunk, onProgress, signal }: {
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  const { core, model, context } = await prepareSession({ request, onProgress, signal });
+  const { core, model, context, cache } = await prepareSession({ request, onProgress, signal });
   const api = core.api;
   let chat: ReturnType<typeof prepareChat> | undefined;
   let chatSampler: Awaited<ReturnType<typeof createChatSampler>> | undefined;
@@ -52,6 +52,7 @@ export async function generate({ request, onChunk, onProgress, signal }: {
         }
       }
     } catch (error) {
+      cache.validity = 'invalid';
       logFailure({ stage: 'cleanup', error }); throw error;
     }
   };
@@ -62,7 +63,6 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     progress({ phase: 'prefill', completed: 0, total: 0 });
     logDiagnostic({ diagnostic: { event: 'prefill-start' } });
     const memory = await api.llama_get_memory(context);
-    if (memory !== 0n) await api.llama_memory_clear(memory, 1);
     abortCallback = core.module.addFunction(() => signal?.aborted ? 1 : 0, core.pointerBytes === 8 ? 'ij' : 'ii');
     await api.llama_set_abort_callback(context, BigInt(abortCallback), 0n);
     stage = 'template';
@@ -79,9 +79,35 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     if (tokenCount < 1 || tokenCount >= capacity) throw new LlamaCppBrowserError({ code: 'context-full' });
     const tokens = alloc({ bytes: tokenCount * 4 });
     if (await api.llama_tokenize(vocab, prompt, promptLength, tokens, tokenCount, 1, 1) !== tokenCount) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+    const promptBytes = core.bytes({ pointer: tokens, length: tokenCount * 4 });
+    const promptView = new DataView(promptBytes.buffer, promptBytes.byteOffset, promptBytes.byteLength);
+    const promptTokens = Array.from({ length: tokenCount }, (_, index) => promptView.getInt32(index * 4, true));
+    const cacheValid = (() => {
+      switch (cache.validity) {
+      case 'valid': return true;
+      case 'invalid': return false;
+      default: { const exhaustive: never = cache.validity; throw new Error(`Unknown cache validity: ${exhaustive}`); }
+      }
+    })();
+    const prefixMatches = cacheValid && cache.tokens.length > 0
+      && cache.tokens.length <= tokenCount && cache.tokens.every((token, index) => token === promptTokens[index]);
+    // The last successful decode owns the context logits. Native CPU sampling
+    // copies them into candidates; no evaluation runs between resident requests.
+    const reuse = memory !== 0n && prefixMatches
+      && await api.llama_memory_seq_pos_max(memory, 0) === cache.tokens.length - 1;
+    const reusedTokens = reuse ? cache.tokens.length : 0;
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', reusedTokens, evaluatedTokens: tokenCount - reusedTokens,
+      reason: reuse ? 'prefix-match' : !cacheValid ? 'cache-invalid' : !prefixMatches ? 'prefix-mismatch' : 'cache-position' } });
+    // No rollback or state transfer: edited/shortened prompts and uncertain state
+    // rebuild the cache, including for recurrent and sliding-window models.
+    cache.validity = 'invalid';
+    if (!reuse) {
+      cache.tokens = [];
+      if (memory !== 0n) await api.llama_memory_clear(memory, 1);
+    }
     const batch = record({ name: 'llama_batch' });
     stage = 'prefill-decode';
-    for (let offset = 0; offset < tokenCount; offset += 128) {
+    for (let offset = reusedTokens; offset < tokenCount; offset += 128) {
       checkCancelled();
       const count = Math.min(128, tokenCount - offset);
       await api.llama_batch_get_one(batch, tokens + BigInt(offset * 4), count);
@@ -91,11 +117,14 @@ export async function generate({ request, onChunk, onProgress, signal }: {
         logDiagnostic({ diagnostic: { event: 'failed', stage, reason: 'decode-status' } });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
+      cache.tokens.push(...promptTokens.slice(offset, offset + count));
       progress({ phase: 'prefill', completed: offset + count, total: tokenCount });
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
     checkCancelled();
-    logDiagnostic({ diagnostic: { event: 'prefill-complete', tokens: tokenCount } });
+    progress({ phase: 'prefill', completed: tokenCount, total: tokenCount });
+    checkCancelled();
+    logDiagnostic({ diagnostic: { event: 'prefill-complete', tokens: tokenCount, reusedTokens, evaluatedTokens: tokenCount - reusedTokens } });
     stage = 'sampler-create';
     const sp = record({ name: 'llama_sampler_chain_params' }); await api.llama_sampler_chain_default_params(sp);
     sampler = await api.llama_sampler_chain_init(sp);
@@ -193,6 +222,8 @@ export async function generate({ request, onChunk, onProgress, signal }: {
         logDiagnostic({ diagnostic: { event: 'failed', stage, reason: 'decode-status' } });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
+      // Sampled stop/EOG tokens are deliberately excluded until actually decoded.
+      cache.tokens.push(token);
       progress({ phase: 'generating', completed: generated + 1, total: maximum });
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
@@ -206,15 +237,16 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       onChunk({ chunk: '</think>' }); checkCancelled();
     }
     logDiagnostic({ diagnostic: { event: 'generation-complete', tokens: generated, elapsedMs: performance.now() - started } });
+    cache.validity = memory !== 0n ? 'valid' : 'invalid';
     return { ...parsed, finishReason };
   } catch (error) {
+    cache.validity = 'invalid';
     logFailure({ stage, error });
     logDiagnostic({ diagnostic: { event: 'failed', stage, tokens: generated } });
     throw error;
   } finally {
     await cleanup();
-    // Do not free model/context here: the next request clears KV before prefill.
-    // The owning Worker or a model/profile/context change releases these resources.
+    // The owning worker or a model/profile/file change releases the resident cache.
   }
 }
 export const TEST_ONLY = {

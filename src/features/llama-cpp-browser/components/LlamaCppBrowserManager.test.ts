@@ -12,7 +12,7 @@ const notifications = vi.hoisted(() => ({
 }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
   getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
-  getOptions: vi.fn(() => ({ profile: 'auto', contextSize: 4096 })),
+  getOptions: vi.fn(() => ({ profile: 'auto' })),
   subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
     notifications.state.add(listener); return () => {
       notifications.state.delete(listener);
@@ -211,6 +211,7 @@ describe('local GGUF manager', () => {
   it('allows an explicit profile override without changing the default on its own', async () => {
     const wrapper = render(); await flushPromises();
     await wrapper.get('[data-testid="llama-cpp-browser-profile"]').setValue('cpu-wasm32');
-    expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'cpu-wasm32', contextSize: 4096 } });
+    expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'cpu-wasm32' } });
+    expect(wrapper.find('[data-testid="llama-cpp-browser-context"]').exists()).toBe(false);
   });
 });

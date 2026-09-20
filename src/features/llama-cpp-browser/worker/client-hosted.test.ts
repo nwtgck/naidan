@@ -64,7 +64,7 @@ describe('hosted Worker lifetime', () => {
 
 function generationInput(): GenerateInput {
   return { model: 'local.gguf', messages: [{ role: 'user', content: 'private prompt' }], temperature: 0,
-    topP: 1, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32', contextSize: 256 } };
+    topP: 1, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32' } };
 }
 describe('cooperative generation cancellation', () => {
   it('waits for native cleanup, preserves the Worker, and suppresses cancelled or late events', async () => {

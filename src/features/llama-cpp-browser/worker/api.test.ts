@@ -11,7 +11,7 @@ vi.mock("./session", () => ({ invalidateStoredModel: calls.release }));
 vi.mock("../runtime/model-store", () => ({ withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
   importStoredModel: calls.import, removeStoredModel: calls.remove, listStoredModels: calls.list }));
 function request({ generationId }: { generationId: number }): WorkerGenerateCall {
-  return { generationId, model: "local.gguf", assetBaseURL: "https://example.invalid/profiles/", options: { profile: "cpu-wasm32", contextSize: 256 },
+  return { generationId, model: "local.gguf", assetBaseURL: "https://example.invalid/profiles/", options: { profile: "cpu-wasm32" },
     messages: [{ role: "user", content: "hello" }], temperature: 0, topP: 1, maxTokens: 10, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
 function deferred() {

@@ -7,13 +7,15 @@ import { resolveRuntimeProfile } from "@/features/llama-cpp-browser/runtime/dete
 import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
 import type { WorkerGenerateInput } from "./types";
 
-type ResidentModel = { model: bigint, context: bigint, contextSize: number, name: string,
+export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid' };
+
+type ResidentModel = { model: bigint, context: bigint, cache: PromptCache, name: string,
   handle: FileSystemFileHandle, size: number, modified: number };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string } | undefined;
 let resident: ResidentModel | undefined;
 
 /** Keep one model resident. Storage locks/handles are only needed while reading,
- * not throughout the idle GPU lifetime. KV and samplers remain request-local. */
+ * not throughout the idle GPU lifetime. The decoded token prefix stays with its context; samplers remain request-local. */
 export async function releaseSession({ releaseRuntime }: { releaseRuntime: boolean }): Promise<void> {
   const current = resident; resident = undefined;
   if (runtime && current) {
@@ -34,9 +36,12 @@ export async function invalidateStoredModel({ id }: { id: string }): Promise<voi
 }
 export async function prepareSession({ request, onProgress, signal }: {
   request: WorkerGenerateInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
-}): Promise<{ core: Core, model: bigint, context: bigint }> {
+}): Promise<{ core: Core, model: bigint, context: bigint, cache: PromptCache }> {
   const checkCancelled = (): void => {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: "aborted" });
+    if (signal?.aborted) {
+      if (resident) resident.cache.validity = 'invalid';
+      throw new LlamaCppBrowserError({ code: "aborted" });
+    }
   };
   checkCancelled();
   const profile = runtime?.requestedProfile === request.options.profile && runtime.assetBaseURL === request.assetBaseURL
@@ -91,7 +96,7 @@ export async function prepareSession({ request, onProgress, signal }: {
       model = await api.llama_model_load_from_file(path, params);
       checkCancelled();
       if (model === 0n) throw new LlamaCppBrowserError({ code: "runtime-error" });
-      resident = { model, context: 0n, contextSize: 0, name: request.model, handle, size: file.size, modified: file.lastModified };
+      resident = { model, context: 0n, cache: { tokens: [], validity: 'invalid' }, name: request.model, handle, size: file.size, modified: file.lastModified };
       model = 0n;
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
       logDiagnostic({ diagnostic: { event: "load-complete", elapsedMs: performance.now() - started, profile } });
@@ -114,28 +119,47 @@ export async function prepareSession({ request, onProgress, signal }: {
   const current = resident;
   if (!current) throw new LlamaCppBrowserError({ code: "runtime-error" });
   checkCancelled();
-  if (current.context === 0n || current.contextSize !== request.options.contextSize) {
-    const old = current.context; current.context = 0n;
-    if (old !== 0n) await api.llama_free(old);
+  if (current.context === 0n) {
     const cp = core.allocRecord({ name: "llama_context_params" }); const started = performance.now();
     onProgress({ progress: { phase: "initializing", completed: 0, total: 0 } });
     logDiagnostic({ diagnostic: { event: "context-start", profile } });
+    let failed = false;
     try {
       await api.llama_context_default_params(cp);
-      for (const [field, value] of Object.entries({ n_ctx: request.options.contextSize, n_batch: 128, n_ubatch: 128, n_threads: 1, n_threads_batch: 1 })) {
+      for (const [field, value] of Object.entries({ n_batch: 128, n_ubatch: 128, n_threads: 1, n_threads_batch: 1 })) {
         core.setField({ name: "llama_context_params", pointer: cp, field: field, value: value });
       }
-      current.context = await api.llama_init_from_model(current.model, cp);
-      current.contextSize = request.options.contextSize;
-      checkCancelled();
-      if (current.context === 0n) throw new LlamaCppBrowserError({ code: "runtime-error" });
-      logDiagnostic({ diagnostic: { event: "context-ready", elapsedMs: performance.now() - started, profile } });
+      const trainingSize = await api.llama_model_n_ctx_train(current.model);
+      // This is an application allocation target, not an estimate of free device memory.
+      // Reject unknown metadata; n_ctx=0 delegates to the model training capacity.
+      if (!Number.isSafeInteger(trainingSize) || trainingSize < 1) throw new LlamaCppBrowserError({ code: "runtime-error" });
+      const target = Math.min(32768, trainingSize);
+      const floor = Math.min(4096, target);
+      let requested = target;
+      while (true) {
+        core.setField({ name: "llama_context_params", pointer: cp, field: "n_ctx", value: requested });
+        current.context = await api.llama_init_from_model(current.model, cp);
+        checkCancelled();
+        if (current.context !== 0n) break;
+        // A normal null return is recoverable; exceptions/traps must never enter this loop.
+        if (requested === floor) throw new LlamaCppBrowserError({ code: "runtime-error" });
+        requested = Math.max(floor, Math.floor(requested / 2));
+        logDiagnostic({ diagnostic: { event: "context-retry", contextTokens: requested, reason: 'context-allocation' } });
+      }
+      logDiagnostic({ diagnostic: { event: "context-ready", contextTokens: await api.llama_n_ctx(current.context), elapsedMs: performance.now() - started, profile } });
+    } catch (error) {
+      failed = true;
+      throw error;
     } finally {
-      core.free({ pointer: cp });
+      try {
+        core.free({ pointer: cp });
+      } finally {
+        if (failed) await releaseSession({ releaseRuntime: true });
+      }
     }
   }
   checkCancelled();
-  return { core, model: current.model, context: current.context };
+  return { core, model: current.model, context: current.context, cache: current.cache };
 }
 export const TEST_ONLY = {
   residentContext: () => resident?.context,

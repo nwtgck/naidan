@@ -22,7 +22,7 @@ function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
 }
 describe('serialized hosted model service', () => {
   it('defaults to browser feature detection without an explicitly chosen profile', () => {
-    expect(service.getOptions()).toEqual({ profile: 'auto', contextSize: 4096 });
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
   });
   it('snapshots inputs and options before entering the single Worker lane', async () => {
     let finish: () => void = () => {};
@@ -31,15 +31,15 @@ describe('serialized hosted model service', () => {
     }));
     const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
-    service.setOptions({ options: { profile: 'cpu-wasm32', contextSize: 256 } });
+    service.setOptions({ options: { profile: 'cpu-wasm32' } });
     const pendingInput = input(); const second = service.generate({ input: pendingInput, onChunk: () => {}, signal: undefined });
     pendingInput.messages[0]!.content = 'mutated';
-    service.setOptions({ options: { profile: 'cpu-wasm64', contextSize: 512 } });
+    service.setOptions({ options: { profile: 'cpu-wasm64' } });
     expect(worker.generate).toHaveBeenCalledOnce();
     finish(); await first; await second;
     expect(worker.generate).toHaveBeenCalledTimes(2);
     expect(worker.generate.mock.calls[1]?.[0].request.messages).toEqual([{ role: 'user', content: 'original' }]);
-    expect(worker.generate.mock.calls[1]?.[0].request.options).toEqual({ profile: 'cpu-wasm32', contextSize: 256 });
+    expect(worker.generate.mock.calls[1]?.[0].request.options).toEqual({ profile: 'cpu-wasm32' });
     expect(factory).toHaveBeenCalledOnce();
   });
   it('does not run a cancelled queued request and continues the lane afterward', async () => {
