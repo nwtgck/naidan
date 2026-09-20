@@ -23,7 +23,7 @@ export class DownloadConflictError extends Error {
     super('Model download conflicts with existing data'); this.name = 'DownloadConflictError'; this.reason = reason;
   }
 }
-export const progressSchema = z.object({ completed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), total: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
+export const progressSchema = z.object({ phase: z.enum(['transferring', 'verifying']), processed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), completed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), total: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
 export type DownloadProgress = z.infer<typeof progressSchema>;
 export const pendingName = '.llama-cpp-import-pending';
 export function modelName({ repository }: { repository: string }): string {

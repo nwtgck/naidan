@@ -6,7 +6,7 @@ import { createDownloadWriter } from './writer';
 import { downloadRepository, cancelDownload } from './download';
 import { listHuggingFaceModels, listPendingDownloads, repositoryFolder } from './storage';
 import { memoryDirectory, ggufBytes } from './test-opfs';
-import type { DownloadSelection } from './types';
+import type { DownloadSelection, DownloadProgress } from './types';
 const state = vi.hoisted(() => ({ support: 'unsupported' as 'supported' | 'unsupported', worker: undefined as EventTarget | undefined, appendGate: undefined as Promise<void> | undefined }));
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => {
@@ -47,6 +47,25 @@ describe.each(['unsupported', 'supported'] as const)('download transport: %s', s
     }
     expect(vi.mocked(privacyFetchStream).mock.calls[0]?.[0].request.url).toContain(`/resolve/${selection.revision}/model.gguf`);
   });
+  it('counts only current work across resumed shards and shared projector verification', async () => {
+    state.support = support;
+    const projector = { path: 'mmproj.gguf', size: 128 };
+    const original = { ...selection, files: [...selection.files, projector] };
+    const first = createDownloadWriter(); await first.begin({ selection: original });
+    for (const fileIndex of [0, 1]) {
+      await first.open({ fileIndex, start: 0 }); await first.append({ bytes: ggufBytes() }); await first.finishFile();
+    }
+    await first.finish();
+    const next = { ...selection, files: [{ path: 'split-00001-of-00002.gguf', size: 128 }, { path: 'split-00002-of-00002.gguf', size: 128 }, projector] };
+    const partial = createDownloadWriter(); await partial.begin({ selection: next }); await partial.open({ fileIndex: 0, start: 0 }); await partial.append({ bytes: ggufBytes() }); await partial.finishFile(); await partial.pause();
+    for (let fileIndex = 0; fileIndex < 2; fileIndex++) vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes()] }));
+    const progress: DownloadProgress[] = [];
+    await downloadRepository({ selection: next, signal: new AbortController().signal, onProgress: ({ progress: event }) => progress.push(event) });
+    expect(progress[0]).toEqual({ completed: 128, total: 384, processed: 0, phase: 'transferring' });
+    expect(progress).toContainEqual({ completed: 256, total: 384, processed: 128, phase: 'transferring' });
+    expect(progress.at(-1)).toEqual({ completed: 384, total: 384, processed: 256, phase: 'verifying' });
+    expect(privacyFetchStream).toHaveBeenCalledTimes(2);
+  });
   it('keeps short and oversized responses unpublished', async () => {
     state.support = support; vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 64)] }));
     await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toThrow();
@@ -65,14 +84,21 @@ describe('download orchestration', () => {
     } })).rejects.toThrow();
     expect((await listPendingDownloads())[0]?.bytes).toEqual([64]);
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 206, offset: 64, bytes: [ggufBytes().slice(64)] }));
-    await downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
+    const progress: DownloadProgress[] = [];
+    await downloadRepository({ selection, signal: new AbortController().signal, onProgress: ({ progress: next }) => progress.push(next) });
+    expect(progress[0]).toMatchObject({ completed: 64, processed: 0, phase: 'transferring' });
+    expect(progress.at(-1)).toEqual({ completed: 128, total: 128, processed: 64, phase: 'verifying' });
     expect(vi.mocked(privacyFetchStream).mock.calls[1]?.[0].request.headers).toEqual([['Range', 'bytes=64-']]); expect(await listPendingDownloads()).toEqual([]);
   });
   it('restarts a 200 response and allows explicit cancel-delete of a paused job', async () => {
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 48)] }));
     await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toThrow();
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes()] }));
-    await downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
+    const progress: DownloadProgress[] = [];
+    await downloadRepository({ selection, signal: new AbortController().signal, onProgress: ({ progress: next }) => progress.push(next) });
+    expect(progress[0]).toMatchObject({ completed: 48, processed: 0 });
+    expect(progress).toContainEqual({ completed: 0, total: 128, processed: 0, phase: 'transferring' });
+    expect(progress.at(-1)).toEqual({ completed: 128, total: 128, processed: 128, phase: 'verifying' });
     expect((await listHuggingFaceModels())[0]?.size).toBe(128);
     await cancelDownload({ repository: selection.repository, plan: { id: 'hf.co/owner/repo', files: (await scanDeletionTree({ folder: await repositoryFolder({ repository: selection.repository, create: false }) })).files } }); expect(await listHuggingFaceModels()).toEqual([]);
   });

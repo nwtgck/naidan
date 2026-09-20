@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { advanceThroughputSample, remainingEstimate, startThroughputSample, type ThroughputSample } from '@/features/llama-cpp-browser/hugging-face/download-estimate';
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
@@ -28,6 +29,34 @@ const errorMessage = computed(() => {
   }
 });
 const visiblePending = computed(() => pending.value.filter(job => job.selection.repository !== activeRepository.value));
+const throughput = shallowRef<ThroughputSample>(); const sampledNow = ref(0);
+let estimateTimer: ReturnType<typeof setInterval> | undefined;
+function stopEstimate(): void {
+  if (estimateTimer !== undefined) clearInterval(estimateTimer);
+  estimateTimer = undefined; throughput.value = undefined;
+}
+function startEstimate(): void {
+  stopEstimate(); sampledNow.value = performance.now(); throughput.value = startThroughputSample({ now: sampledNow.value });
+  estimateTimer = setInterval(() => {
+    sampledNow.value = performance.now();
+    if (throughput.value) throughput.value = advanceThroughputSample({ sample: throughput.value, now: sampledNow.value, processed: progress.value?.processed ?? 0 });
+  }, 1000);
+}
+const estimateText = computed(() => {
+  if (!throughput.value || !progress.value) return undefined;
+  const estimate = remainingEstimate({ sample: throughput.value, now: sampledNow.value, remaining: progress.value.total - progress.value.completed, phase: progress.value.phase });
+  switch (estimate.status) {
+  case 'estimating': return lazyStrings.LlamaCppBrowserHuggingFaceManager__estimating_remaining_time();
+  case 'verifying': return lazyStrings.LlamaCppBrowserHuggingFaceManager__performing_final_checks();
+  case 'remaining': {
+    if (estimate.seconds < 60) return lazyStrings.LlamaCppBrowserHuggingFaceManager__about_seconds_remaining({ seconds: Math.max(5, Math.ceil(estimate.seconds / 5) * 5) });
+    if (estimate.seconds < 3600) return lazyStrings.LlamaCppBrowserHuggingFaceManager__about_minutes_remaining({ minutes: Math.ceil(estimate.seconds / 60) });
+    const minutes = Math.ceil(estimate.seconds / 600) * 10; const hours = Math.floor(minutes / 60);
+    return minutes % 60 === 0 ? lazyStrings.LlamaCppBrowserHuggingFaceManager__about_hours_remaining({ hours }) : lazyStrings.LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining({ hours, minutes: minutes % 60 });
+  }
+  default: { const exhaustive: never = estimate; throw new Error(String(exhaustive)); }
+  }
+});
 const downloadPercentage = computed(() => progress.value ? percentage({ completed: progress.value.completed, total: progress.value.total }) : undefined);
 const catalogCurrent = computed(() => input.value.trim() === checkedInput.value);
 const choices = computed(() => quantizationChoices({ repository: catalog.value?.repository ?? '', models: catalog.value?.models ?? [] }));
@@ -94,14 +123,16 @@ async function inspect(): Promise<void> {
 async function download({ selection }: { selection: DownloadSelection }): Promise<void> {
   if (active.value || props.disabled) return;
   const controller = new AbortController(); active.value = controller; emit('busy', true); error.value = undefined;
-  activeRepository.value = selection.repository;
+  activeRepository.value = selection.repository; startEstimate();
+  controller.signal.addEventListener('abort', stopEstimate, { once: true });
   try {
     await downloadRepository({ selection, signal: controller.signal, onProgress: ({ progress: next }) => {
-      progress.value = next;
+      if (!disposed && !controller.signal.aborted) progress.value = next;
     } }); emit('changed');
   } catch (failure) {
     if (!controller.signal.aborted) error.value = failure instanceof DownloadConflictError ? failure.reason : 'failed';
   } finally {
+    stopEstimate(); controller.signal.removeEventListener('abort', stopEstimate);
     active.value = undefined; emit('busy', false); progress.value = undefined; activeRepository.value = undefined; await refresh();
   }
 }
@@ -136,7 +167,7 @@ onMounted(() => {
   void refresh();
 });
 onUnmounted(() => {
-  disposed = true; active.value?.abort();
+  disposed = true; active.value?.abort(); stopEstimate();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -219,7 +250,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </div>
       <div tw-class="ml-11 flex flex-wrap items-center justify-between gap-3">
-        <p v-if="progress" tw-class="text-[9px] text-gray-400 font-medium tabular-nums">{{ size({ bytes: progress.completed }) }} / {{ size({ bytes: progress.total }) }}</p>
+        <div tw-class="space-y-0.5">
+          <p v-if="progress" tw-class="text-[9px] text-gray-400 font-medium tabular-nums">{{ size({ bytes: progress.completed }) }} / {{ size({ bytes: progress.total }) }}</p>
+          <p v-if="estimateText" data-testid="llama-hf-remaining" tw-class="text-[9px] text-gray-400 font-medium tabular-nums">{{ estimateText }}</p>
+        </div>
         <button type="button" data-testid="llama-hf-pause" tw-class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-purple-600 dark:hover:text-purple-400 transition-colors" @click="active?.abort()"><PauseIcon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__pause() }}</button>
       </div>
     </div>

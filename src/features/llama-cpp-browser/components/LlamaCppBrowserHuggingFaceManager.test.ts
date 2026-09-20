@@ -24,6 +24,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  vi.useRealTimers();
 });
 describe('Hugging Face download controls', () => {
   it('selects a complete quantization group and an independent optional projector', async () => {
@@ -93,10 +94,41 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('Deletion stopped because the files changed');
     expect(listPendingDownloads).toHaveBeenCalledTimes(2);
   });
+  it.each(['complete', 'pause', 'unmount'] as const)('updates remaining time independently of events and disposes its clock on %s', async ending => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+    vi.mocked(listPendingDownloads).mockResolvedValue([{ version: 1, selection, bytes: [64], complete: [false] }]);
+    const gate = Promise.withResolvers<void>();
+    let report: Parameters<typeof downloadRepository>[0]['onProgress'] | undefined;
+    vi.mocked(downloadRepository).mockImplementation(({ signal, onProgress }) => {
+      report = onProgress; onProgress({ progress: { completed: 64, total: 128, processed: 0, phase: 'transferring' } });
+      signal.addEventListener('abort', () => gate.reject(new DOMException('paused', 'AbortError')), { once: true }); return gate.promise;
+    });
+    const wrapper = render(); await flushPromises(); await wrapper.get('[data-testid="llama-hf-resume"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-remaining"]').text()).toBe('Estimating remaining time…');
+    for (let tick = 1; tick <= 3; tick++) {
+      report!({ progress: { completed: 64 + tick * 10, total: 128, processed: tick * 10, phase: 'transferring' } });
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(wrapper.get('[data-testid="llama-hf-remaining"]').text()).toBe('About 5 seconds remaining');
+    report!({ progress: { completed: 94, total: 36104, processed: 30, phase: 'transferring' } }); await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-remaining"]').text()).toBe('About 1 h 10 min remaining');
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(wrapper.get('[data-testid="llama-hf-remaining"]').text()).toBe('Estimating remaining time…');
+    report!({ progress: { completed: 128, total: 128, processed: 64, phase: 'verifying' } }); await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-remaining"]').text()).toBe('Performing final checks…');
+    expect(vi.getTimerCount()).toBe(1);
+    switch (ending) {
+    case 'complete': gate.resolve(); break;
+    case 'pause': await wrapper.get('[data-testid="llama-hf-pause"]').trigger('click'); break;
+    case 'unmount': wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1); break;
+    default: { const exhaustive: never = ending; throw new Error(String(exhaustive)); }
+    }
+    await flushPromises(); expect(vi.getTimerCount()).toBe(0);
+  });
   it('restores pending downloads on mount and supports resume, pause and cancel-delete', async () => {
     vi.mocked(listPendingDownloads).mockResolvedValue([{ version: 1, selection, bytes: [48], complete: [false] }]);
     vi.mocked(downloadRepository).mockImplementation(({ signal, onProgress }) => {
-      onProgress({ progress: { completed: 64, total: 128 } }); return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
+      onProgress({ progress: { completed: 64, total: 128, processed: 16, phase: 'transferring' } }); return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
     });
     const wrapper = render(); await flushPromises();
     expect(wrapper.get('[data-testid="llama-hf-pending"]').text()).toContain('hf.co/owner/repo');

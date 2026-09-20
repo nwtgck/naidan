@@ -56,8 +56,14 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
       default: { const exhaustive: never = started; throw new Error(String(exhaustive)); }
       }
       const journal = started.journal;
+      // Full-size but unverified files will restart, so they are still remaining work.
+      journal.bytes = journal.bytes.map((bytes, index) => !journal.complete[index] && bytes === selection.files[index]!.size ? 0 : bytes);
       const total = selection.files.reduce((sum, file) => sum + file.size, 0);
-      const report = (): void => onProgress({ progress: progressSchema.parse({ completed: journal.bytes.reduce((sum, bytes) => sum + bytes, 0), total }) });
+      let processed = 0;
+      const report = (): void => {
+        const completed = journal.bytes.reduce((sum, bytes) => sum + bytes, 0);
+        onProgress({ progress: progressSchema.parse({ completed, total, processed, phase: completed === total ? 'verifying' : 'transferring' }) });
+      };
       report();
       for (let index = 0; index < selection.files.length; index++) {
         check(); if (journal.complete[index]) continue;
@@ -70,12 +76,14 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
         const response = await privacyFetchStream({ request: { url, signal: network.signal, ...(offset > 0 ? { headers: [['Range', `bytes=${offset}-`]] } : {}) } });
         body = response.body;
         const start = responseOffset({ status: response.status, headers: response.headers, offset, size: file.size });
-        check(); await call({ promise: writer.open({ fileIndex: index, start }) }); journal.bytes[index] = start;
+        check(); await call({ promise: writer.open({ fileIndex: index, start }) }); journal.bytes[index] = start; report();
         switch (streamTransfer) {
         case 'supported': {
           const stream = body; body = undefined;
+          let previousPosition = start;
           const onPosition = workerProxy({ value: async ({ position }: { position: number }): Promise<void> => {
-            if (!Number.isSafeInteger(position) || position < start || position > file.size) throw new Error('Invalid download progress');
+            if (!Number.isSafeInteger(position) || position < previousPosition || position > file.size) throw new Error('Invalid download progress');
+            processed += position - previousPosition; previousPosition = position;
             journal.bytes[index] = position; report();
           } });
           await call({ promise: writer.consume(workerTransfer({ value: workerCapability({ value: { stream }, capability: 'readable-stream-transfer' }), transferables: [stream] }), onPosition) });
@@ -91,7 +99,10 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
             if (received + value.byteLength > file.size) throw new Error('Download exceeds expected size');
             for (let position = 0; position < value.byteLength; position += 1024 * 1024) {
               check(); const bytes = value.slice(position, position + 1024 * 1024);
+              const previousPosition = received;
               received = await call({ promise: writer.append(workerTransfer({ value: { bytes }, transferables: [bytes.buffer] })) });
+              if (!Number.isSafeInteger(received) || received < previousPosition || received > file.size) throw new Error('Invalid download progress');
+              processed += received - previousPosition;
               journal.bytes[index] = received; report();
             }
           }

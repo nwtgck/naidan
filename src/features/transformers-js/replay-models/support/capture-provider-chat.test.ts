@@ -13,7 +13,7 @@ function request(): CapturedChatRequest {
 describe('public chat observation mechanics', () => {
   it('forwards the literal request and original tool without invoking or wrapping its implementation', async () => {
     const execute = vi.fn(async () => ({ status: 'success' as const, content: 'fixed' }));
-    const supplied: CapturedChatRequest = { ...request(), tools: [{ name: 'fixed_tool', description: 'Fixed', parametersSchema: z.object({}), execute }],
+    const supplied: CapturedChatRequest = { ...request(), debug: 'on', tools: [{ name: 'fixed_tool', description: 'Fixed', parametersSchema: z.object({}), execute }],
       parameters: { maxCompletionTokens: 16, temperature: 0, topP: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
     const chat = vi.fn<LmProvider['chat']>(async args => {
       args.onAssistantMessageStart?.(); args.onChunk({ chunk: 'A' });
@@ -25,6 +25,7 @@ describe('public chat observation mechanics', () => {
     expect(chat.mock.calls[0]?.[0].tools).toBe(supplied.tools);
     expect(chat.mock.calls[0]?.[0].parameters).toBe(supplied.parameters);
     expect(chat.mock.calls[0]?.[0].signal).toBe(supplied.signal);
+    expect(chat.mock.calls[0]?.[0].debug).toBe('on');
     expect(execute).not.toHaveBeenCalled();
     await capture.completion;
     expect(capture.snapshot()).toEqual({
