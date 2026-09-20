@@ -1,3 +1,4 @@
+import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { z } from 'zod';
 import { generateInputSchema } from '@/features/llama-cpp-browser/types';
@@ -17,7 +18,7 @@ export interface LlamaCppWorkerApi {
   importModel(request: { file: File }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level callback.
   importDirectory(request: { directory: ModelDirectoryInput, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
-  removeModel({ id }: { id: string }): Promise<void>;
+  removeModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
   generate(request: WorkerGenerateCall, onChunk: WorkerProxy<({ text }: { text: string }) => void>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
@@ -26,7 +27,7 @@ export interface LlamaCppWorkerClient {
   listModels({ signal }: { signal: AbortSignal | undefined }): Promise<LocalModel[]>;
   importModel({ file, onProgress, signal }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;
   importDirectory({ directory, onProgress, signal }: { directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;
-  removeModel({ id, signal }: { id: string, signal: AbortSignal | undefined }): Promise<void>;
+  removeModel({ plan, signal }: { plan: DeletionPlan, signal: AbortSignal | undefined }): Promise<DeletionResult>;
   generate({ request, onChunk, onProgress, signal }: { request: GenerateInput, onChunk: ({ chunk }: { chunk: string }) => void, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<GenerationResult>;
   dispose(): void;
 }

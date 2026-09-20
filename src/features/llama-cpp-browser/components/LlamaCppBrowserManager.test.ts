@@ -1,3 +1,4 @@
+import { planStoredModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -26,6 +27,8 @@ vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
   listModels: vi.fn(async () => []), setOptions: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(),
   release: vi.fn(), cancel: vi.fn(),
 } }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(async () => []) }));
+vi.mock('../runtime/model-store', () => ({ planStoredModelRemoval: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: notifications.confirm }) }));
 const storedModel: LocalModel = { id: 'user/local-GGUF/local.gguf', name: 'local.gguf', size: 16384, importedAt: 1 };
 const wrappers: VueWrapper[] = [];
@@ -38,7 +41,8 @@ beforeEach(async () => {
   vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'idle' });
   vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([]);
   vi.mocked(llamaCppBrowserService.importModel).mockResolvedValue(undefined);
-  vi.mocked(llamaCppBrowserService.removeModel).mockResolvedValue(undefined);
+  vi.mocked(llamaCppBrowserService.removeModel).mockResolvedValue('deleted');
+  vi.mocked(planStoredModelRemoval).mockResolvedValue({ id: storedModel.id, files: [{ path: 'local.gguf', size: 16384, lastModified: 1 }] });
   await ensureAllStringsForTest({ locale: 'en' });
 });
 afterEach(() => {
@@ -204,6 +208,16 @@ describe('local GGUF manager', () => {
     await wrapper.get('[data-testid="llama-cpp-browser-refresh"]').trigger('click'); await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
+  });
+  it('previews the confirmed files and explains stale plans without raw errors', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
+    vi.mocked(llamaCppBrowserService.removeModel).mockResolvedValueOnce('changed');
+    const wrapper = render(); await flushPromises();
+    await wrapper.get(`[data-testid="llama-cpp-browser-delete-${storedModel.id}"]`).trigger('click'); await flushPromises();
+    expect(notifications.confirm).toHaveBeenCalledWith(expect.objectContaining({ details: { summary: 'Files to delete', items: ['local.gguf'] } }));
+    expect(llamaCppBrowserService.removeModel).toHaveBeenCalledWith({ plan: { id: storedModel.id, files: [{ path: 'local.gguf', size: 16384, lastModified: 1 }] }, signal: expect.any(AbortSignal) });
+    expect(wrapper.get('[data-testid="llama-removal-changed"]').text()).toContain('Deletion stopped because the files changed');
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
   });
   it('does not delete after confirmation if the manager has been unmounted', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);

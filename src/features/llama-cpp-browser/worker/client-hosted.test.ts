@@ -56,6 +56,16 @@ describe('hosted Worker lifetime', () => {
     await expect(client.listModels({ signal: undefined })).rejects.toThrow('busy');
     client.dispose(); await expect(first).rejects.toThrow('worker-failed');
   });
+  it('transmits the confirmed deletion plan and validates the deletion result', async () => {
+    const client = createLlamaCppWorkerClient();
+    const plan = { id: 'hf.co/owner/repo', files: [{ path: 'nested/model.gguf', size: 128, lastModified: 1 }] };
+    transport.remote.removeModel.mockResolvedValueOnce('changed');
+    expect(await client.removeModel({ plan, signal: undefined })).toBe('changed');
+    expect(transport.remote.removeModel).toHaveBeenCalledWith({ plan });
+    transport.remote.removeModel.mockResolvedValueOnce({ private: 'invalid reply' });
+    await expect(client.removeModel({ plan, signal: undefined })).rejects.toThrow();
+    client.dispose();
+  });
   it('validates model inventory received from the Worker', async () => {
     transport.remote.listModels.mockResolvedValue([{ id: '../invalid', name: 'private.gguf', size: 1, importedAt: 0 }]);
     const client = createLlamaCppWorkerClient();

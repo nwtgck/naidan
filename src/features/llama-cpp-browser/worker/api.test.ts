@@ -100,10 +100,10 @@ describe("generation RPC lifecycle", () => {
     calls.remove.mockImplementation(async () => {
       order.push("remove");
     });
-    await api.removeModel({ id: "user/local-GGUF/local.gguf" });
+    await api.removeModel({ plan: { id: "user/local-GGUF/local.gguf", files: [] } });
     expect(order).toEqual(["release", "remove"]);
     expect(calls.release).toHaveBeenCalledWith({ id: "user/local-GGUF/local.gguf" });
-    await expect(api.removeModel({ id: "../unsafe" })).rejects.toThrow();
+    await expect(api.removeModel({ plan: { id: "../unsafe", files: [] } })).rejects.toThrow();
     expect(calls.remove).toHaveBeenCalledOnce();
   });
   it("does not reuse an active id after a generation error", async () => {

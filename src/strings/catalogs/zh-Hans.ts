@@ -1716,6 +1716,33 @@ import type { Strings } from './en';
 import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/zh-Hans';
 import { llamaCppBrowser__gguf_model_files } from '@/strings/messages/llamaCppBrowser__gguf_model_files/zh-Hans';
 import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__check_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__check_model/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__multimodal_support } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_support/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__no_companion_files_available } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_companion_files_available/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download_details } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_details/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__model_variant } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_variant/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__companion_file } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__companion_file/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__choose_companion_file } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_companion_file/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__downloading_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloading_model/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__checking_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__checking_model/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download_paused } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_paused/zh-Hans';
+import { llamaCppBrowser__files_to_delete } from '@/strings/messages/llamaCppBrowser__files_to_delete/zh-Hans';
+import { llamaCppBrowser__files_changed_review_before_deleting } from '@/strings/messages/llamaCppBrowser__files_changed_review_before_deleting/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__model_files_already_exist } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_files_already_exist/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__another_download_already_exists } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__another_download_already_exists/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__repository } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__quantization/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__choose_model_files } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_model_files/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__total_download_size/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__pause } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__pause/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__resume/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__cancel_and_delete } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__cancel_and_delete/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume/zh-Hans';
 import { llamaCppBrowser__choose_model_folder } from '@/strings/messages/llamaCppBrowser__choose_model_folder/zh-Hans';
 import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBrowser__gguf_files_only/zh-Hans';
 import { llamaCppBrowser__drop_model_folders_or_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_model_folders_or_gguf_files_here/zh-Hans';
@@ -3460,6 +3487,33 @@ export const catalog = {
   llamaCppBrowser__endpoint_label,
   llamaCppBrowser__gguf_model_files,
   llamaCppBrowser__choose_gguf_files,
+  LlamaCppBrowserHuggingFaceManager__check_model,
+  LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
+  LlamaCppBrowserHuggingFaceManager__multimodal_support,
+  LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models,
+  LlamaCppBrowserHuggingFaceManager__no_companion_files_available,
+  LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details,
+  LlamaCppBrowserHuggingFaceManager__download_details,
+  LlamaCppBrowserHuggingFaceManager__model_variant,
+  LlamaCppBrowserHuggingFaceManager__companion_file,
+  LlamaCppBrowserHuggingFaceManager__choose_companion_file,
+  LlamaCppBrowserHuggingFaceManager__downloading_model,
+  LlamaCppBrowserHuggingFaceManager__checking_model,
+  LlamaCppBrowserHuggingFaceManager__download_paused,
+  llamaCppBrowser__files_to_delete,
+  llamaCppBrowser__files_changed_review_before_deleting,
+  LlamaCppBrowserHuggingFaceManager__model_files_already_exist,
+  LlamaCppBrowserHuggingFaceManager__another_download_already_exists,
+  LlamaCppBrowserHuggingFaceManager__repository,
+  LlamaCppBrowserHuggingFaceManager__quantization,
+  LlamaCppBrowserHuggingFaceManager__choose_model_files,
+  LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found,
+  LlamaCppBrowserHuggingFaceManager__total_download_size,
+  LlamaCppBrowserHuggingFaceManager__download,
+  LlamaCppBrowserHuggingFaceManager__pause,
+  LlamaCppBrowserHuggingFaceManager__resume,
+  LlamaCppBrowserHuggingFaceManager__cancel_and_delete,
+  LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume,
   llamaCppBrowser__choose_model_folder,
   llamaCppBrowser__gguf_files_only,
   llamaCppBrowser__drop_model_folders_or_gguf_files_here,

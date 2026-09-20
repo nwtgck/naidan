@@ -111,4 +111,15 @@ describe('privacyFetch standalone client', () => {
       && error.message.includes('network failed')
     ));
   });
+  it('forwards caller headers in buffered requests', async () => {
+    const response = new Response('{}');
+    Object.defineProperty(response, 'url', { value: VALID_SEARCH_URL });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
+    vi.stubGlobal('fetch', fetchMock);
+    await privacyFetch({ request: { url: VALID_SEARCH_URL, headers: [['Accept', 'application/json'], ['X-Test', 'value']] } });
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get('accept')).toBe('application/json');
+    expect(headers.get('x-test')).toBe('value');
+  });
+
 });

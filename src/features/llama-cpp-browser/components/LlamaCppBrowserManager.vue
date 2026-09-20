@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { planStoredModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId } from 'vue';
 import { AlertCircleIcon, BrainCircuitIcon, ChevronDownIcon, FileUpIcon, FolderOpenIcon, HardDriveIcon, Loader2Icon, PowerOffIcon, RefreshCcwIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-vue-next';
 import { ensureStrings, lazyStrings } from '@/strings';
@@ -7,6 +8,7 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, runtimeOptionsSchema, type EngineState, type LocalModel, type ErrorCode } from '@/features/llama-cpp-browser/types';
 import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
 import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManager.vue';
 import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.vue';
 
 const id = useId();
@@ -14,15 +16,17 @@ const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const models = ref<LocalModel[]>([]);
 const options = ref(llamaCppBrowserService.getOptions());
 const localError = ref<ErrorCode>();
+const removalChanged = ref(false);
 const listError = ref<ErrorCode>();
 const displayedError = computed(() => localError.value ?? listError.value);
 const active = ref<AbortController>();
 const refreshing = ref(false);
+const downloading = ref(false);
 const dragDepth = ref(0);
 const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
 const unavailable = computed(() => __BUILD_MODE_IS_STANDALONE__ || state.value.status === 'unavailable');
-const busy = computed(() => active.value !== undefined || state.value.status === 'working');
+const busy = computed(() => active.value !== undefined || downloading.value || state.value.status === 'working');
 const { showConfirm } = useConfirm();
 let unsubscribe: (() => void) | undefined;
 let unsubscribeModels: (() => void) | undefined;
@@ -112,11 +116,15 @@ async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
 }
 async function remove({ id }: { id: string }): Promise<void> {
   if (disposed || unavailable.value || busy.value || refreshing.value) return;
-  if (!await showConfirm({ message: await ensureStrings.llamaCppBrowser__delete_model_confirmation(), confirmButtonVariant: 'danger' })) return;
-  if (disposed || unavailable.value || busy.value || refreshing.value) return;
-  const controller = new AbortController(); active.value = controller; localError.value = undefined;
+  const controller = new AbortController(); active.value = controller; localError.value = undefined; removalChanged.value = false;
   try {
-    await llamaCppBrowserService.removeModel({ id, signal: controller.signal }); await refresh();
+    const plan = await planStoredModelRemoval({ id });
+    if (disposed || controller.signal.aborted) return;
+    if (!await showConfirm({ message: await ensureStrings.llamaCppBrowser__delete_model_confirmation(), confirmButtonVariant: 'danger',
+      details: { summary: await ensureStrings.llamaCppBrowser__files_to_delete(), items: plan.files.map(file => file.path) },
+    })) return;
+    if (disposed || controller.signal.aborted) return;
+    removalChanged.value = await llamaCppBrowserService.removeModel({ plan, signal: controller.signal }) === 'changed'; await refresh();
   } catch (error) {
     if (!controller.signal.aborted) localError.value = errorCode({ error });
   } finally {
@@ -180,6 +188,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </button>
       </div>
     </fieldset>
+    <p v-if="removalChanged" role="alert" data-testid="llama-removal-changed" tw-class="text-xs text-red-500">{{ lazyStrings.llamaCppBrowser__files_changed_review_before_deleting() }}</p>
+    <LlamaCppBrowserHuggingFaceManager :disabled="unavailable || active !== undefined || refreshing || state.status === 'working'" @busy="downloading = $event" @changed="refresh" />
     <div v-if="active" tw-class="rounded-2xl border border-purple-100 dark:border-purple-900/30 p-4 space-y-3">
       <LlamaCppBrowserLoadingIndicator scope="import" />
       <div tw-class="flex justify-end"><button type="button" data-testid="llama-cpp-browser-cancel" tw-class="px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="cancel">{{ lazyStrings.SHARED__cancel() }}</button></div>

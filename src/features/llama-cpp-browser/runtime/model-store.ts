@@ -1,3 +1,6 @@
+import { deletionPlanSchema, executeDeletionPlan, scanDeletionTree, type DeletionPlan, type DeletionResult } from './deletion-plan';
+import { listHuggingFaceModels, repositoryFolder, withRepositoryLock } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { modelName, repositorySchema } from '@/features/llama-cpp-browser/hugging-face/types';
 import { allowedModelRoot, listRootModels, opfsRoot, resolveDirectory, type ModelDirectory } from './model-directory';
 import { LlamaCppBrowserError, modelSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
@@ -73,7 +76,9 @@ export async function listStoredModels(): Promise<LocalModel[]> {
   // A read never repairs, migrates or deletes files. Incomplete imports remain
   // unlisted; only an explicit import retry or deletion may modify this tree.
   result.push(...await listRootModels());
-  return result.sort((a, b) => a.name.localeCompare(b.name));
+  const named = result.map(model => ({ ...model, name: `user/${model.name}` }));
+  named.push(...await listHuggingFaceModels());
+  return named.sort((a, b) => a.name.localeCompare(b.name));
 }
 export async function importStoredModel({ file, onProgress }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
   const path = modelPath({ name: file.name });
@@ -128,30 +133,51 @@ export async function importStoredModel({ file, onProgress }: { file: File, onPr
     throw error;
   }
 }
-export async function removeStoredModel({ id }: { id: string }): Promise<void> {
-  if (!id.includes("/")) {
-    if (!allowedModelRoot({ name: id })) throw new LlamaCppBrowserError({ code: "missing-model" });
-    const root = await opfsRoot();
-    await resolveDirectory({ folder: await root.getDirectoryHandle(id), id, name: id });
-    await root.removeEntry(id, { recursive: true }); return;
+async function removalTarget({ id }: { id: string }): Promise<{ parent: FileSystemDirectoryHandle, name: string, folder: FileSystemDirectoryHandle, selectedPaths: string[] | undefined }> {
+  let parent: FileSystemDirectoryHandle; let name: string; let selectedPaths: string[] | undefined;
+  if (id.startsWith('hf.co/')) {
+    const repository = repositorySchema.parse(id.slice('hf.co/'.length));
+    parent = await opfsRoot();
+    for (const segment of ['llama-cpp-browser-models', 'huggingface.co', ...repository.split('/'), 'resolve']) parent = await parent.getDirectoryHandle(segment);
+    name = 'main';
+  } else if (!id.includes('/')) {
+    if (!allowedModelRoot({ name: id })) throw new LlamaCppBrowserError({ code: 'missing-model' });
+    parent = await opfsRoot(); name = id;
+  } else {
+    const filename = id.split('/')[2];
+    if (filename === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+    const path = modelPath({ name: filename });
+    if (id !== path.id) throw new LlamaCppBrowserError({ code: 'missing-model' });
+    parent = await userDirectory(); name = path.directory; selectedPaths = [path.file, path.marker];
   }
-  const name = id.split("/")[2];
-  if (name === undefined) throw new LlamaCppBrowserError({ code: "missing-model" });
-  const path = modelPath({ name });
-  if (id !== path.id) throw new LlamaCppBrowserError({ code: "missing-model" });
-  const root = await userDirectory(); const folder = await root.getDirectoryHandle(path.directory);
-  for (const name of [path.marker, path.file]) {
-    try {
-      await folder.removeEntry(name);
-    } catch (error) {
-      if (!isMissing({ error })) throw error;
+  return { parent, name, folder: await parent.getDirectoryHandle(name), selectedPaths };
+}
+async function withRemovalRepositoryLock<T>({ id, operation }: { id: string, operation: () => Promise<T> }): Promise<T> {
+  return id.startsWith('hf.co/') ? withRepositoryLock({ repository: repositorySchema.parse(id.slice('hf.co/'.length)), operation }) : operation();
+}
+export async function planStoredModelRemoval({ id }: { id: string }): Promise<DeletionPlan> {
+  return withModelStoreLock({ operation: () => withRemovalRepositoryLock({ id, operation: async () => {
+    const { folder, selectedPaths } = await removalTarget({ id }); const { files } = await scanDeletionTree({ folder });
+    return deletionPlanSchema.parse({ id, files: selectedPaths ? files.filter(file => selectedPaths.includes(file.path)) : files });
+  } }) });
+}
+export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult> {
+  plan = deletionPlanSchema.parse(plan);
+  return withRemovalRepositoryLock({ id: plan.id, operation: async () => {
+    const { parent, name, folder, selectedPaths } = await removalTarget({ id: plan.id });
+    const result = await executeDeletionPlan({ folder, plan, selectedPaths });
+    switch (result) {
+    case 'changed': return result;
+    case 'deleted': break;
+    default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
     }
-  }
-  try {
-    await root.removeEntry(path.directory);
-  } catch (error) {
-    if (!(error instanceof DOMException && error.name === "InvalidModificationError")) throw error;
-  }
+    try {
+      await parent.getDirectoryHandle(name); await parent.removeEntry(name);
+    } catch (error) {
+      if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) throw error;
+    }
+    return result;
+  } });
 }
 export async function storedModelHandle({ name }: { name: string }): Promise<FileSystemFileHandle> {
   // Saved chats may still select the original filename. New selections identify
@@ -193,6 +219,17 @@ export async function storedModelHandle({ name }: { name: string }): Promise<Fil
 }
 
 export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {
+  if (name.startsWith('hf.co/')) {
+    const repository = repositorySchema.parse(name.slice('hf.co/'.length));
+    const canonical = modelName({ repository });
+    return resolveDirectory({ folder: await repositoryFolder({ repository, create: false }), id: canonical, name: canonical });
+  }
+  if (name.startsWith('user/')) {
+    const parts = name.split('/');
+    if (parts.length === 2 && allowedModelRoot({ name: parts[1]! })) name = parts[1]!;
+    else if (parts.length === 3 && modelPath({ name: parts[2]! }).id === name) name = parts[2]!;
+    else throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
   if (allowedModelRoot({ name })) {
     const root = await opfsRoot();
     try {

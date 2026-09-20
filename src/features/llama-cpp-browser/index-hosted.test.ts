@@ -67,11 +67,11 @@ describe('serialized hosted model service', () => {
     expect(service.getState()).toEqual({ status: 'idle' });
   });
   it('does not let a model-list observer turn a completed deletion into a storage failure', async () => {
-    worker.removeModel.mockResolvedValue();
+    worker.removeModel.mockResolvedValue('deleted');
     const unsubscribe = service.subscribeModelList({ listener: () => {
       throw new Error('private observer details');
     } });
-    await expect(service.removeModel({ id: 'user/local-GGUF/local.gguf', signal: undefined })).resolves.toBeUndefined();
+    await expect(service.removeModel({ plan: { id: 'user/local-GGUF/local.gguf', files: [] }, signal: undefined })).resolves.toBe('deleted');
     expect(worker.dispose).not.toHaveBeenCalled();
     expect(service.getState()).toEqual({ status: 'idle' });
     expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private observer');

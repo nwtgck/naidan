@@ -117,15 +117,16 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       }
     } });
   },
-  removeModel({ id, signal }) {
+  removeModel({ plan, signal }) {
     return run({ signal, operation: async ({ worker, signal }) => {
-      await worker.removeModel({ id, signal }); for (const listener of modelListeners) {
+      const result = await worker.removeModel({ plan, signal }); for (const listener of modelListeners) {
         try {
           listener();
         } catch {
           logDiagnostic({ diagnostic: { event: 'failed' } });
         }
       }
+      return result;
     } });
   },
   generate({ input, onChunk, onResult, signal }) {

@@ -73,6 +73,16 @@ function isTypeScriptLibSymbol({ symbol }) {
   );
 }
 
+function isNativeReadableStreamSymbol({ symbol }) {
+  const declarations = symbol?.declarations;
+  if (symbol?.getName() !== "ReadableStream" || !declarations?.length) return false;
+  const paths = declarations.map(declaration => declaration.getSourceFile().fileName.replace(/\\/g, "/"));
+  // Node typings augment the DOM stream when both libraries are present.
+  return paths.some(path => /\/typescript\/lib\/lib\.dom(?:\.[^/]+)?\.d\.ts$/.test(path))
+    && paths.every(path => /\/typescript\/lib\/lib\.[^/]+\.d\.ts$/.test(path)
+      || /\/@types\/node\/stream\/web\.d\.ts$/.test(path));
+}
+
 function firstReturnViolation({ type, checker, path, depth = 24, seen = new Set(), analysis = { remaining: DEFAULT_ANALYSIS_BUDGET } }) {
   const members = type.isUnion() ? type.types : [type];
   for (const member of members) {
@@ -84,6 +94,8 @@ function firstReturnViolation({ type, checker, path, depth = 24, seen = new Set(
       depth,
       seen,
       analysis,
+      allowTransfer: true,
+      allowCapability: true,
     });
     if (violation) return violation;
   }
@@ -177,53 +189,34 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
     return proxyTargetViolation({ type, checker, path, depth, seen, analysis });
   }
 
-  if (hasTransferMarker(type)) {
-    if (!allowTransfer) return { path, reason: "transfer-must-be-top-level" };
-    if (type.isIntersection()) {
-      for (const member of type.types) {
-        if (hasTransferMarker(member)) continue;
-        const violation = firstViolation({
-          type: member,
-          checker,
-          path,
-          depth: depth - 1,
-          seen,
-          analysis,
-          transferScope: true,
-          capabilityScope,
-        });
-        if (violation) return violation;
-      }
-      return undefined;
-    }
-    transferScope = true;
-  }
-
+  const transferMarker = hasTransferMarker(type);
   const capabilityMarker = getCapabilityMarker(type, checker);
+  if (transferMarker && !allowTransfer) return { path, reason: "transfer-must-be-top-level" };
   if (capabilityMarker !== undefined) {
     if (!allowCapability) return { path, reason: "capability-marker-must-be-top-level" };
-    if (capabilityMarker !== "file-system-handle-clone") {
+    if (capabilityMarker !== "file-system-handle-clone" && capabilityMarker !== "readable-stream-transfer") {
       return { path, reason: `unknown-capability:${capabilityMarker}` };
     }
+  }
+  if (transferMarker || capabilityMarker !== undefined) {
+    // A top-level argument or return value can require both a transfer list and
+    // an environment capability. Collect both markers before inspecting data.
+    const nextCapabilityScope = new Set(capabilityScope);
+    if (capabilityMarker !== undefined) nextCapabilityScope.add(capabilityMarker);
     if (type.isIntersection()) {
-      const nextCapabilityScope = new Set(capabilityScope);
-      nextCapabilityScope.add(capabilityMarker);
       for (const member of type.types) {
-        if (hasCapabilityMarker(member, checker)) continue;
+        if (hasTransferMarker(member) || hasCapabilityMarker(member, checker)) continue;
         const violation = firstViolation({
-          type: member,
-          checker,
-          path,
-          depth: depth - 1,
-          seen,
-          analysis,
-          transferScope,
+          type: member, checker, path, depth: depth - 1, seen, analysis,
+          transferScope: transferScope || transferMarker,
           capabilityScope: nextCapabilityScope,
         });
         if (violation) return violation;
       }
       return undefined;
     }
+    transferScope ||= transferMarker;
+    capabilityScope = nextCapabilityScope;
   }
 
   if (type.isUnionOrIntersection()) {
@@ -242,6 +235,15 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
   if (isKnownAtomic({ type, checker })) return undefined;
 
   const name = getTypeName(type, checker);
+  const streamSymbol = type.getSymbol();
+  if (isNativeReadableStreamSymbol({ symbol: streamSymbol })
+      && (type.objectFlags & ts.ObjectFlags.Reference)) {
+    if (!transferScope) return { path, reason: "transfer-required:ReadableStream" };
+    if (!capabilityScope.has("readable-stream-transfer")) return { path, reason: "capability-sensitive:ReadableStream" };
+    const args = checker.getTypeArguments(type);
+    if (args.length !== 1) return { path, reason: "unreviewed-stream-chunk" };
+    return firstViolation({ type: args[0], checker, path: `${path}.chunk`, depth: depth - 1, seen, analysis });
+  }
   if (name === "MessagePort") {
     return transferScope ? undefined : { path, reason: "transfer-required:MessagePort" };
   }

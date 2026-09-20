@@ -15,7 +15,7 @@ export const runtimeOptionsSchema = z.object({
 }).strict();
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 export const modelSchema = z.object({
-  id: z.string().min(1).max(1024).regex(/^(?!\.{1,2}$)(?:[^/\\]+|user\/[^/\\]+-GGUF\/[^/\\]+\.gguf)$/i).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)), name: z.string().min(1).max(512),
+  id: z.string().min(1).max(1024).regex(/^(?!\.{1,2}$)(?:hf\.co\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*|[^/\\]+|user\/[^/\\]+-GGUF\/[^/\\]+\.gguf)$/i).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)), name: z.string().min(1).max(512),
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   importedAt: z.number().int().nonnegative(),
 }).strict();

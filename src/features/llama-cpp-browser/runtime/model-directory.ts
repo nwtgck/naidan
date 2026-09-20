@@ -26,7 +26,7 @@ export async function hasPendingImport({ folder }: { folder: FileSystemDirectory
     if (missing({ error })) return false; throw error;
   }
 }
-async function validGguf({ file }: { file: File }): Promise<boolean> {
+export async function validGguf({ file }: { file: File }): Promise<boolean> {
   if (file.size < 24 || !Number.isSafeInteger(file.size)) return false;
   const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
   return bytes.length === 8 && bytes[0] === 71 && bytes[1] === 71 && bytes[2] === 85 && bytes[3] === 70 && [2, 3].includes(new DataView(bytes.buffer).getUint32(4, true));

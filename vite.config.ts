@@ -24,6 +24,8 @@ import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
+import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
+import { createPrivacyFetchBrokerDevHeadersPlugin } from './build/privacy-fetch-broker-dev';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
 import { createZipPackages } from './build/zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
@@ -34,19 +36,6 @@ import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
-
-function setCrossOriginResourcePolicy({ res }: {
-  res: import('node:http').ServerResponse,
-}): void {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-}
-
-function setCrossOriginModuleHeaders({ res }: {
-  res: import('node:http').ServerResponse,
-}): void {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-}
 
 const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
@@ -65,39 +54,7 @@ const standaloneBuildBudgets = {
   maxInitialRequestBytes: 1_200_000,
 } as const;
 
-const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch';
-const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/features/privacy-fetch/';
-const ZOD_MODULE_PATH_SEGMENT = '/node_modules/zod/';
 const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker';
-
-function normalizeModulePathForChunkRouting(modulePath: string): string {
-  return modulePath.replaceAll('\\', '/');
-}
-
-function isPrivacyFetchBrokerChunk(chunkInfo: {
-  name: string,
-  facadeModuleId?: string | null,
-  moduleIds?: string[],
-}): boolean {
-  if (chunkInfo.name.includes(PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER)) {
-    return true;
-  }
-
-  if (chunkInfo.facadeModuleId !== undefined && chunkInfo.facadeModuleId !== null) {
-    const normalizedFacadeModuleId = normalizeModulePathForChunkRouting(chunkInfo.facadeModuleId);
-    if (normalizedFacadeModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)) {
-      return true;
-    }
-  }
-
-  // Keep zod-backed validation chunks alongside the broker bundle so shared
-  // dependencies still stay inside the broker asset subtree for auditing.
-  return chunkInfo.moduleIds?.some((moduleId) => {
-    const normalizedModuleId = normalizeModulePathForChunkRouting(moduleId);
-    return normalizedModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)
-      || normalizedModuleId.includes(ZOD_MODULE_PATH_SEGMENT);
-  }) ?? false;
-}
 
 // Dev-server-only HTML cleanup for the privacy fetch broker page.
 // This targets only /privacy-fetch-broker.html, which runs inside a sandboxed
@@ -142,30 +99,6 @@ function stripPrivacyFetchBrokerDevInjectedScriptsPlugin(): import('vite').Plugi
     },
   };
 }
-
-const privacyFetchBrokerDevHeadersPlugin = () => ({
-  name: 'privacy-fetch-broker-dev-headers',
-  configureServer(server: import('vite').ViteDevServer) {
-    server.middlewares.use((req, res, next) => {
-      const url = req.url ?? '';
-
-      if (url === '/privacy-fetch-broker.html') {
-        setCrossOriginResourcePolicy({ res });
-      }
-
-      if (
-        url.startsWith('/src/features/privacy-fetch/')
-        || url.startsWith('/node_modules/')
-        || url.startsWith('/@vite/')
-        || url.startsWith('/@id/')
-      ) {
-        setCrossOriginModuleHeaders({ res });
-      }
-
-      next();
-    });
-  },
-});
 
 function ensureExistingPath(relativePath: string): string {
   const absolutePath = path.resolve(__dirname, relativePath);
@@ -328,7 +261,7 @@ export default defineConfig(({ mode }) => {
         },
       }),
       stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
-      privacyFetchBrokerDevHeadersPlugin(),
+      createPrivacyFetchBrokerDevHeadersPlugin(),
       !isStandalone && !isHosted && viteStaticCopy({
         targets: [
           {
@@ -447,7 +380,7 @@ export default defineConfig(({ mode }) => {
         input: rollupInput,
         output: {
           entryFileNames: (chunkInfo) => {
-            if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
+            if (!isStandalone && isPrivacyFetchBrokerChunk({ chunkInfo })) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
             // The semantic marker describes the emitted System.register format.
@@ -459,7 +392,7 @@ export default defineConfig(({ mode }) => {
               : 'assets/[name]-[hash].js';
           },
           chunkFileNames: (chunkInfo) => {
-            if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
+            if (!isStandalone && isPrivacyFetchBrokerChunk({ chunkInfo })) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
             // Keep the same SystemJS marker on lazy chunks so output format

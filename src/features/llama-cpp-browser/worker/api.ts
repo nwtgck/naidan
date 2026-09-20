@@ -1,3 +1,4 @@
+import { deletionPlanSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { logFailure, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { z } from "zod";
@@ -80,8 +81,8 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, validate the wire object before use.
     removeModel: (request) => guarded({ operation: async () => {
-      const { id } = z.object({ id: modelSchema.shape.id }).strict().parse(request);
-      await invalidateStoredModel({ id }); await removeStoredModel({ id });
+      const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
+      await invalidateStoredModel({ id: plan.id }); return removeStoredModel({ plan });
     } }),
     // Cancellation intentionally bypasses the store lock held by generation.
     async cancelGeneration({ generationId }) {

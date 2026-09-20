@@ -1,3 +1,4 @@
+import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { z } from 'zod';
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
@@ -124,8 +125,8 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
         },
       }));
     },
-    removeModel: async ({ id, signal }) => {
-      await invoke({ call: () => remote.removeModel({ id: modelSchema.shape.id.parse(id) }), signal, onAbort: undefined });
+    removeModel: async ({ plan, signal }) => {
+      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined }));
     },
     generate: async ({ request, onChunk, onProgress, signal }) => {
       const accepted = workerGenerateCallSchema.parse({ ...request, generationId: ++nextGenerationId,
