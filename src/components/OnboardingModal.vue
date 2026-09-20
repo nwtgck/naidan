@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue';
+import { useModelPresetCoordinator } from '@/features/llama-cpp-browser/model-preset';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { ensureStrings, lazyStrings } from '@/strings';
@@ -247,14 +248,7 @@ let abortController: AbortController | null = null;
 watch(effectiveType, (type, _previous, onCleanup) => {
   if (type !== 'llama_cpp_browser' || isStandalone) return;
   const controller = new AbortController();
-  const refresh = async (): Promise<void> => {
-    try {
-      const models = await llamaCppBrowserService.listModels({ signal: controller.signal });
-      if (controller.signal.aborted) return;
-      availableModels.value = models.map(model => model.name);
-      if (!availableModels.value.includes(selectedModel.value)) selectedModel.value = availableModels.value[0] ?? '';
-    } catch { /* The local manager displays the safe feature error. */ }
-  };
+  const refresh = (): Promise<void> => refreshLocalModels({ signal: controller.signal });
   const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: () => {
     void refresh();
   } });
@@ -263,6 +257,15 @@ watch(effectiveType, (type, _previous, onCleanup) => {
   });
   void refresh();
 }, { immediate: true });
+
+async function refreshLocalModels({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
+  try {
+    const models = await llamaCppBrowserService.listModels({ signal });
+    if (signal?.aborted || !isLlamaCppBrowser.value) return;
+    availableModels.value = models.map(model => model.name);
+    if (!availableModels.value.includes(selectedModel.value)) selectedModel.value = availableModels.value[0] ?? '';
+  } catch { /* The local manager displays the safe feature error. */ }
+}
 
 function addHeader() {
   customHeaders.value.push(['', '']);
@@ -532,6 +535,19 @@ async function handleFinish() {
 }
 
 
+const modelPresetState = useModelPresetCoordinator();
+const modelPreset = computed(() => {
+  const preset = modelPresetState?.value; const target = preset?.target;
+  switch (target) {
+  case 'onboarding': return preset;
+  case undefined: case 'settings': return undefined;
+  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  }
+});
+watch(modelPreset, preset => {
+  if (preset) selectEndpointType({ type: 'llama_cpp_browser' });
+}, { immediate: true });
+
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
@@ -555,7 +571,7 @@ defineExpose({
       aria-modal="true"
       aria-labelledby="onboarding-title"
       tabindex="-1"
-      class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative outline-none"
+      class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[720px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative outline-none"
     >
       <!-- Header Actions (Top Right) -->
       <div tw-class="absolute top-4 right-4 z-10 flex items-center gap-2">
@@ -588,13 +604,13 @@ defineExpose({
 
           <!-- Left Column: Configuration (Primary) -->
 
-          <div :tw-class="['p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs || isLlamaCppBrowser || isBrowserProvidedLm ? 'w-full' : 'w-full lg:w-[62%]']">
+          <div :tw-class="[isLlamaCppBrowser ? 'p-4 md:p-6 space-y-4' : 'p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs || isLlamaCppBrowser || isBrowserProvidedLm ? 'w-full' : 'w-full lg:w-[62%]']">
 
-            <template v-if="isTransformersJs">
-              <!-- Transformers.js Integrated View -->
-              <div class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-6 md:space-y-8 duration-300">
+            <template v-if="isTransformersJs || isLlamaCppBrowser">
+              <!-- Local browser inference setup -->
+              <div class="animate-in fade-in slide-in-from-bottom-2" :tw-class="['duration-300', isLlamaCppBrowser ? 'space-y-4' : 'space-y-6 md:space-y-8']">
                 <!-- Type Switcher (Repeated here for easy switching) -->
-                <div tw-class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                <div :tw-class="['flex flex-col items-start border-b border-gray-100 dark:border-gray-800', isLlamaCppBrowser ? 'gap-2 pb-3' : 'gap-4 pb-4']">
                   <div>
                     <h3 tw-class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
                       <FlaskConicalIcon tw-class="w-4 h-4 text-purple-500" />
@@ -603,7 +619,7 @@ defineExpose({
                     </h3>
                     <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{{ lazyStrings.OnboardingModal__run_models_in_browser() }}</p>
                   </div>
-                  <div tw-class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit shrink-0">
+                  <div tw-class="flex flex-wrap max-w-full bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
                     <button
                       @click="selectEndpointType({ type: 'openai' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400', effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : '']"
@@ -619,9 +635,12 @@ defineExpose({
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
                     <button type="button" :disabled="isStandalone" data-testid="onboarding-llama-cpp-browser-button"
-                            tw-class="px-2 py-1 text-[10px] font-bold text-purple-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                            :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                             @click="selectEndpointType({ type: 'llama_cpp_browser' })"
-                    >{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</button>
+                    >
+                      <FlaskConicalIcon tw-class="w-2.5 h-2.5 shrink-0" role="img" :aria-label="lazyStrings.OnboardingModal__experimental()" :title="lazyStrings.OnboardingModal__experimental()" />
+                      {{ lazyStrings.OnboardingModal__llama_cpp_browser() }}
+                    </button>
                     <button
                       @click="selectBrowserProvidedLm"
                       data-testid="onboarding-browser-provided-lm-button"
@@ -633,22 +652,14 @@ defineExpose({
                   </div>
                 </div>
 
-                <TransformersJsManager @model-loaded="modelId => handleModelLoaded({ modelId })" />
-
-                <div tw-class="flex flex-col sm:flex-row items-center gap-4 pt-6 border-t border-gray-100 dark:border-gray-800">
-                  <button
-                    @click="handleFinish"
-                    :disabled="!selectedModel"
-                    tw-class="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
-                  >
-                    <PlayIcon tw-class="w-5 h-5 fill-current" />
-                    <span>{{ lazyStrings.OnboardingModal__get_started() }}</span>
-                  </button>
-                  <p tw-class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
-                    <SettingsIcon tw-class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
-                    {{ lazyStrings.OnboardingModal__settings_saved_for_local_inference() }}
-                  </p>
+                <TransformersJsManager v-if="isTransformersJs" @model-loaded="modelId => handleModelLoaded({ modelId })" />
+                <LlamaCppBrowserManager v-else :model-preset="modelPreset" />
+                <div v-if="isLlamaCppBrowser && availableModels.length" tw-class="space-y-2">
+                  <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ lazyStrings.OnboardingModal__default_model() }}</label>
+                  <ModelSelector v-model="selectedModel" :models="sortedModels" :loading="false" @refresh="refreshLocalModels({ signal: undefined })" :placeholder="lazyStrings.OnboardingModal__select_a_model()" />
                 </div>
+                <p v-if="isLlamaCppBrowser && error" role="alert" tw-class="text-xs text-red-500">{{ error }}</p>
+
               </div>
             </template>
 
@@ -671,9 +682,9 @@ defineExpose({
                 </div>
               </div>
               <div tw-class="space-y-3">
-                <div tw-class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div tw-class="flex flex-col items-start gap-2">
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ lazyStrings.OnboardingModal__endpoint_configuration() }}</label>
-                  <div tw-class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
+                  <div tw-class="flex flex-wrap max-w-full bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
                     <button
                       @click="selectEndpointType({ type: 'openai' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400']"
@@ -692,9 +703,12 @@ defineExpose({
                       {{ lazyStrings.OnboardingModal__transformers_js() }}
                     </button>
                     <button type="button" :disabled="isStandalone" data-testid="onboarding-llama-cpp-browser-button"
-                            tw-class="px-2 py-1 text-[10px] font-bold text-purple-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                            :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                             @click="selectEndpointType({ type: 'llama_cpp_browser' })"
-                    >{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</button>
+                    >
+                      <FlaskConicalIcon tw-class="w-2.5 h-2.5 shrink-0" role="img" :aria-label="lazyStrings.OnboardingModal__experimental()" :title="lazyStrings.OnboardingModal__experimental()" />
+                      {{ lazyStrings.OnboardingModal__llama_cpp_browser() }}
+                    </button>
                     <button
                       @click="selectBrowserProvidedLm"
                       data-testid="onboarding-browser-provided-lm-button"
@@ -706,7 +720,6 @@ defineExpose({
                   </div>
 
                 </div>
-                <LlamaCppBrowserManager v-if="isLlamaCppBrowser" />
                 <PromptApiStatus v-if="isBrowserProvidedLm" show-ready />
                 <input
                   v-if="isHttpEndpointType"
@@ -869,6 +882,23 @@ defineExpose({
           </div>
         </div>
       </div>
+      <footer v-if="isTransformersJs || isLlamaCppBrowser" tw-class="shrink-0 px-6 md:px-10 py-3.5 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <div tw-class="flex items-center justify-between gap-3">
+          <p tw-class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
+            <SettingsIcon tw-class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
+            {{ lazyStrings.OnboardingModal__settings_saved_for_local_inference() }}
+          </p>
+          <button
+            @click="handleFinish"
+            data-testid="onboarding-local-start"
+            :disabled="!selectedModel || (isLlamaCppBrowser && isStandalone)"
+            tw-class="ml-auto shrink-0 px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
+          >
+            <PlayIcon tw-class="w-4 h-4 fill-current" />
+            <span>{{ lazyStrings.OnboardingModal__get_started() }}</span>
+          </button>
+        </div>
+      </footer>
     </div>
   </div>
 </template>

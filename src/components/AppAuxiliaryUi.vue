@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useModelPresetCoordinator } from '@/features/llama-cpp-browser/model-preset';
+import { resolveInitialRoute } from '@/logic/startup/startup-route';
+import { START_LOCATION, useRoute, useRouter } from 'vue-router';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useLayout } from '@/composables/useLayout';
@@ -31,6 +33,17 @@ const { isFileExplorerOpen } = useFileExplorerModal();
 const { isSearchOpen } = useGlobalSearch();
 const { isRecentOpen } = useRecentChats();
 const { activePrintMode } = usePrint();
+const modelPreset = useModelPresetCoordinator();
+watch(() => modelPreset?.value, preset => {
+  const target = preset?.target;
+  switch (target) {
+  case undefined: case 'onboarding': return;
+  case 'settings': break;
+  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  }
+  const destination = router.currentRoute.value === START_LOCATION ? resolveInitialRoute({ router }) : route;
+  void router.replace({ path: destination.path, query: { ...destination.query, settings: 'llama-cpp-browser' }, hash: destination.hash });
+}, { immediate: true });
 const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
 const modelSupportInvestigationModelId = ref<string | undefined>(undefined);
 const ordinaryDownloadTiming = shallowRef<DownloadTimingSnapshot | undefined>(undefined);

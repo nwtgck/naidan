@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
+import { useModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
@@ -59,6 +60,15 @@ const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
 const { isFeatureEnabled } = useFeatureFlags();
+const modelPresetState = useModelPreset();
+const modelPreset = computed(() => {
+  const preset = modelPresetState?.value; const target = preset?.target;
+  switch (target) {
+  case 'settings': return preset;
+  case undefined: case 'onboarding': return undefined;
+  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  }
+});
 const route = useRoute();
 const router = useRouter();
 
@@ -365,7 +375,7 @@ defineExpose({
                 <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
-                <LlamaCppBrowserManager />
+                <LlamaCppBrowserManager :model-preset="modelPreset" />
               </div>
 
               <!-- Recipes Tab -->

@@ -15,19 +15,27 @@ describe('Hugging Face model discovery', () => {
     expect(result.projectors.map(file => file.path)).toEqual(['model-mmproj-F16.gguf']);
   });
   it('accepts repository IDs and public repository URLs while rejecting unrelated URLs and paths', () => {
-    expect(parseRepository({ input: ' https://huggingface.co/owner/repo/ ' })).toBe('owner/repo');
-    for (const input of ['hf.co/LiquidAI/LFM2.5-230M-GGUF', 'https://hf.co/LiquidAI/LFM2.5-230M-GGUF/']) expect(parseRepository({ input })).toBe('LiquidAI/LFM2.5-230M-GGUF');
+    expect(parseRepository({ input: ' https://huggingface.co/owner/repo/ ' })).toEqual({ repository: 'owner/repo', requestedVariant: undefined });
+    for (const input of ['hf.co/LiquidAI/LFM2.5-230M-GGUF', 'https://hf.co/LiquidAI/LFM2.5-230M-GGUF/']) expect(parseRepository({ input })).toEqual({ repository: 'LiquidAI/LFM2.5-230M-GGUF', requestedVariant: undefined });
     for (const input of ['https://user:secret@hf.co/owner/repo', 'https://hf.co.example/owner/repo', 'https://example.com/owner/repo', 'owner/../repo', 'http://hf.co/owner/repo', 'https://hf.co:444/owner/repo']) expect(() => parseRepository({ input })).toThrow();
   });
   it('normalizes HF URLs to the repository and deliberately ignores every suffix', () => {
-    for (const input of ['https://huggingface.co/owner/repo/tree/main', 'https://huggingface.co/owner/repo/tree/other-branch/nested/path', 'hf.co/owner/repo/tree/main', 'https://hf.co/owner/repo/tree/other', 'https://huggingface.co/owner/repo/blob/other/model.gguf?download=true#file', 'hf.co/owner/repo/anything?token=ignored#ignored']) expect(parseRepository({ input })).toBe('owner/repo');
+    for (const input of ['https://huggingface.co/owner/repo/tree/main', 'https://huggingface.co/owner/repo/tree/other-branch/nested/path', 'hf.co/owner/repo/tree/main', 'https://hf.co/owner/repo/tree/other', 'https://huggingface.co/owner/repo/blob/other/model.gguf?download=true#file', 'hf.co/owner/repo/anything?token=ignored#ignored']) expect(parseRepository({ input })).toEqual({ repository: 'owner/repo', requestedVariant: undefined });
+  });
+  it('separates explicit variants from the repository without reading ignored URL suffixes', () => {
+    for (const input of ['owner/repo:QAD-Q4_0', 'hf.co/owner/repo:QAD-Q4_0', 'https://huggingface.co/owner/repo:QAD-Q4_0/tree/other:anything?ignored=true']) {
+      expect(parseRepository({ input })).toEqual({ repository: 'owner/repo', requestedVariant: 'QAD-Q4_0' });
+    }
+    expect(parseRepository({ input: 'hf.co/owner/repo/tree/other:Q8_0' })).toEqual({ repository: 'owner/repo', requestedVariant: undefined });
+    expect(parseRepository({ input: 'hf.co/owner/repo:UD-Q4_K_XL' })).toEqual({ repository: 'owner/repo', requestedVariant: 'UD-Q4_K_XL' });
+    expect(() => parseRepository({ input: 'owner/repo:' })).toThrow();
   });
   it('resolves main once then follows only the pinned tree pagination', async () => {
     const sha = 'a'.repeat(40); const prefix = `https://huggingface.co/api/models/owner/repo/tree/${sha}`;
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(jsonResponse({ value: { sha, id: 'owner/repo' }, headers: new Headers() }))
       .mockResolvedValueOnce(jsonResponse({ value: [{ type: 'directory', path: 'nested' }, { type: 'file', path: 'model.gguf', size: 128 }], headers: new Headers({ link: `<${prefix}?cursor=next>; rel="next"` }) }))
       .mockResolvedValueOnce(jsonResponse({ value: [{ type: 'file', path: 'mmproj.gguf', size: 64 }], headers: new Headers() }));
-    const result = await discoverRepository({ input: 'https://hf.co/OWNER/REPO/tree/not-main/nested', signal: new AbortController().signal });
+    const result = await discoverRepository({ input: 'https://hf.co/OWNER/REPO:QAD-Q4_0/tree/not-main/nested', signal: new AbortController().signal });
     expect(vi.mocked(privacyFetchStream).mock.calls.at(-3)?.[0].request.url).toBe('https://huggingface.co/api/models/OWNER/REPO/revision/main');
     expect(result.repository).toBe('owner/repo');
     expect(result.revision).toBe(sha); expect(result.models).toHaveLength(1); expect(result.projectors).toHaveLength(1);

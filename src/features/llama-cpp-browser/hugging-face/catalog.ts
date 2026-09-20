@@ -6,16 +6,19 @@ import { repositoryFileSchema, repositorySchema, repositoryUrlPath, revisionSche
 
 export type ModelCandidate = { label: string, files: RepositoryFile[], size: number };
 export type RepositoryCatalog = { repository: string, revision: string, models: ModelCandidate[], projectors: RepositoryFile[] };
-export function parseRepository({ input }: { input: string }): string {
+export function parseRepository({ input }: { input: string }): { repository: string, requestedVariant: string | undefined } {
   let value = input.trim();
   if (value.startsWith('hf.co/')) value = `https://${value}`;
   if (value.startsWith('https://')) {
     const url = new URL(value);
     if (!['huggingface.co', 'hf.co'].includes(url.hostname) || url.port || url.username || url.password) throw new Error('Invalid Hugging Face repository');
     // Any URL suffix deliberately points to main, regardless of path, query or fragment.
-    value = url.pathname.replace(/^\/+/, '').split('/').slice(0, 2).join('/');
+    value = url.pathname.replace(/^\/+/, '').split('/').slice(0, 2).map(part => decodeURIComponent(part)).join('/');
   }
-  return repositorySchema.parse(value);
+  const separator = value.indexOf(':');
+  const repository = repositorySchema.parse(separator < 0 ? value : value.slice(0, separator));
+  const requestedVariant = separator < 0 ? undefined : z.string().min(1).regex(/^[^\p{Cc}]+$/u).parse(value.slice(separator + 1));
+  return { repository, requestedVariant };
 }
 export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<RepositoryCatalog, 'models' | 'projectors'> {
   const { models: groups, projectors } = modelGroups({ files });
@@ -59,7 +62,7 @@ const treeSchema = z.array(z.discriminatedUnion('type', [
   z.object({ type: z.literal('directory'), path: z.string() }),
 ]));
 export async function discoverRepository({ input, signal }: { input: string, signal: AbortSignal }): Promise<RepositoryCatalog> {
-  const requested = parseRepository({ input }); const requestedPath = repositoryUrlPath({ repository: requested });
+  const { repository: requested } = parseRepository({ input }); const requestedPath = repositoryUrlPath({ repository: requested });
   const metadata = await fetchJson({ url: `https://huggingface.co/api/models/${requestedPath}/revision/main`, signal });
   const { sha: revision, id: repository } = z.object({ sha: revisionSchema, id: repositorySchema }).parse(metadata.value);
   const path = repositoryUrlPath({ repository });
