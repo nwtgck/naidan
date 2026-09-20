@@ -1,5 +1,5 @@
 /** A deterministic, untrained one-layer F32 fixture. Never used by application code. */
-export function createSyntheticGguf(): Uint8Array {
+export function createSyntheticGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
   function join({ parts }: { parts: Uint8Array[] }): Uint8Array {
     const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
     let offset = 0; for (const part of parts) {
@@ -24,12 +24,14 @@ export function createSyntheticGguf(): Uint8Array {
   }
   const vocab = ['<unk>', '<s>', '</s>', ...Array.from({ length: 256 }, (_, i) => `<0x${i.toString(16).toUpperCase().padStart(2, '0')}>`)];
   const metadata: Uint8Array[] = [];
-  for (const [name, value] of [['general.architecture', 'llama'], ['general.name', 'untrained integration fixture'], ['tokenizer.ggml.model', 'llama'], ['tokenizer.chat_template', 'chatml']] satisfies [string, string][]) {
+  for (const [name, value] of [['general.architecture', 'llama'], ['general.name', 'untrained integration fixture'], ['tokenizer.ggml.model', 'llama'], ['tokenizer.chat_template', chatTemplate]] satisfies [string, string][]) {
     metadata.push(entry({ name, type: 8, data: text({ value }) }));
   }
   for (const [name, value] of [['llama.context_length', 256], ['llama.embedding_length', 32], ['llama.block_count', 1], ['llama.feed_forward_length', 64], ['llama.attention.head_count', 4], ['llama.attention.head_count_kv', 4], ['llama.rope.dimension_count', 8], ['tokenizer.ggml.bos_token_id', 1], ['tokenizer.ggml.eos_token_id', 2], ['tokenizer.ggml.unknown_token_id', 0]] satisfies [string, number][]) {
     metadata.push(entry({ name, type: 4, data: u32({ value }) }));
   }
+  // Byte fixtures must not silently prepend a space to each separately tokenized marker.
+  metadata.push(entry({ name: 'tokenizer.ggml.add_space_prefix', type: 7, data: new Uint8Array([0]) }));
   metadata.push(entry({ name: 'llama.attention.layer_norm_rms_epsilon', type: 6, data: f32({ value: 1e-5 }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.tokens', type: 9, data: join({ parts: [u32({ value: 8 }), u64({ value: vocab.length }), ...vocab.map(value => text({ value }))] }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.scores', type: 9, data: join({ parts: [u32({ value: 6 }), u64({ value: vocab.length }), ...vocab.map(() => f32({ value: 0 }))] }) }));
@@ -48,6 +50,12 @@ export function createSyntheticGguf(): Uint8Array {
     if (name.includes('norm.weight')) {
       const view = new DataView(data.buffer); for (let i = 0; i < data.length; i += 4) view.setFloat32(i, 1, true);
     }
+    // Keep inference deterministic while emitting an ordinary byte token ('A').
+    if (name === 'token_embd.weight') {
+      const view = new DataView(data.buffer);
+      for (let offset = 0; offset < data.length; offset += 32 * 4) view.setFloat32(offset, 1, true);
+    }
+    if (name === 'output.weight') new DataView(data.buffer).setFloat32((3 + 65) * 32 * 4, 1, true);
     payload.push(data); offset += data.length;
   }
   const header = join({ parts: [new TextEncoder().encode('GGUF'), u32({ value: 3 }), u64({ value: shapes.length }), u64({ value: metadata.length }), ...metadata, ...descriptors] });

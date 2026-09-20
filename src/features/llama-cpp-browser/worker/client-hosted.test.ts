@@ -85,7 +85,7 @@ describe('cooperative generation cancellation', () => {
     onChunk({ text: 'private trailing content' }); onProgress({ phase: 'loading', completed: 1, total: 1 });
     finish(); await rejectCheck;
     expect(client.canReuse()).toBe(true); expect(chunk).not.toHaveBeenCalled(); expect(progress).not.toHaveBeenCalled();
-    transport.remote.generate.mockResolvedValueOnce(undefined);
+    transport.remote.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     await client.generate({ request: generationInput(), onChunk: chunk, onProgress: progress, signal: undefined });
     expect(transport.remote.generate.mock.calls[1]?.[0].generationId).toBe(2);
     onProgress({ phase: 'loading', completed: 1, total: 1 }); expect(progress).not.toHaveBeenCalled();

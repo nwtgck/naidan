@@ -3,6 +3,8 @@ import { createWorkerApi } from "./api";
 import type { WorkerGenerateCall } from "./types";
 import type { generate } from "./generation";
 
+const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
+const completed = () => ({ ...result, toolCalls: [] });
 const calls = vi.hoisted(() => ({ generate: vi.fn<typeof generate>(), release: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn() }));
 vi.mock("./generation", () => ({ generate: calls.generate }));
 vi.mock("./session", () => ({ invalidateStoredModel: calls.release }));
@@ -29,6 +31,7 @@ describe("generation RPC lifecycle", () => {
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
       onProgress({ progress: { phase: "prefill", completed: 2, total: 2 } });
       onChunk({ chunk: "first" }); onChunk({ chunk: "second" });
+      return completed();
     });
     const api = createWorkerApi(); let settled = false;
     const pending = api.generate(request({ generationId: 1 }), async ({ text }) => {
@@ -47,6 +50,7 @@ describe("generation RPC lifecycle", () => {
     const blocked = deferred(); let signal: AbortSignal | undefined;
     calls.generate.mockImplementation(async args => {
       signal = args.signal; await blocked.promise;
+      return completed();
     });
     const api = createWorkerApi(); const pending = api.generate(request({ generationId: 1 }), () => {}, () => {});
     await vi.waitFor(() => expect(signal).toBeDefined());
@@ -56,6 +60,7 @@ describe("generation RPC lifecycle", () => {
     blocked.resolve(); await pending;
     calls.generate.mockImplementation(async args => {
       signal = args.signal;
+      return completed();
     });
     await api.generate(request({ generationId: 2 }), () => {}, () => {});
     await api.cancelGeneration({ generationId: 1 }); expect(signal?.aborted).toBe(false);
@@ -65,6 +70,7 @@ describe("generation RPC lifecycle", () => {
     calls.generate.mockImplementation(async ({ onProgress, onChunk }) => {
       onProgress({ progress: { phase: "loading", completed: 0, total: 1 } }); await blocked.promise;
       onChunk({ chunk: "not sent" });
+      return completed();
     });
     const api = createWorkerApi(); const pending = api.generate(request({ generationId: 1 }), chunk, first);
     await vi.waitFor(() => expect(first).toHaveBeenCalledOnce());
@@ -74,12 +80,13 @@ describe("generation RPC lifecycle", () => {
   it("sanitizes proxy failures and can accept a later generation instead of keeping a stuck active owner", async () => {
     calls.generate.mockImplementation(async ({ onChunk }) => {
       onChunk({ chunk: "not logged" });
+      return completed();
     });
     const api = createWorkerApi();
     await expect(api.generate(request({ generationId: 1 }), async () => {
       throw new Error("private callback detail");
     }, () => {})).rejects.toThrow("llama.cpp browser: worker-failed");
-    await expect(api.generate(request({ generationId: 2 }), () => {}, () => {})).resolves.toBeUndefined();
+    await expect(api.generate(request({ generationId: 2 }), () => {}, () => {})).resolves.toEqual(completed());
   });
   it("invalidates resident weights before deleting their stored model", async () => {
     const api = createWorkerApi(); const order: string[] = [];
@@ -99,7 +106,7 @@ describe("generation RPC lifecycle", () => {
     calls.generate.mockRejectedValueOnce(new Error("private native detail"));
     const api = createWorkerApi();
     await expect(api.generate(request({ generationId: 1 }), () => {}, () => {})).rejects.toThrow("llama.cpp browser: runtime-error");
-    calls.generate.mockResolvedValueOnce();
-    await expect(api.generate(request({ generationId: 2 }), () => {}, () => {})).resolves.toBeUndefined();
+    calls.generate.mockResolvedValueOnce(completed());
+    await expect(api.generate(request({ generationId: 2 }), () => {}, () => {})).resolves.toEqual(completed());
   });
 });

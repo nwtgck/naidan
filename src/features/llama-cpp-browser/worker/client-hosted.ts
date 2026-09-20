@@ -1,6 +1,7 @@
+import { logFailure } from '@/features/llama-cpp-browser/debug-log';
 import { z } from 'zod';
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
-import { errorCode, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema } from '@/features/llama-cpp-browser/types';
+import { errorCode, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema } from '@/features/llama-cpp-browser/types';
 import { workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
 export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
@@ -26,9 +27,12 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     }
   };
   worker.addEventListener('error', (event) => {
+    logFailure({ stage: 'worker-error', error: undefined });
     event.preventDefault(); dispose();
   });
-  worker.addEventListener('messageerror', dispose);
+  worker.addEventListener('messageerror', () => {
+    logFailure({ stage: 'worker-messageerror', error: undefined }); dispose();
+  });
   async function invoke<T>({ call, signal, onAbort }: { call: () => Promise<T>, signal: AbortSignal | undefined, onAbort: (() => void) | undefined }): Promise<T> {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
     if (disposed) throw new LlamaCppBrowserError({ code: 'worker-failed' });
@@ -53,6 +57,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
       return result;
     } catch (error) {
+      logFailure({ stage: 'worker-rpc', error });
       const code = errorCode({ error });
       if (signal?.aborted && (code === 'runtime-error' || code === 'worker-failed')) dispose();
       throw new LlamaCppBrowserError({ code: signal?.aborted ? 'aborted' : errorCode({ error }) });
@@ -78,7 +83,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       });
       let acceptingEvents = true;
       try {
-        await invoke({ call: () => remote.generate(accepted,
+        const result = await invoke({ call: () => remote.generate(accepted,
           workerProxy({ value: ({ ...event }) => {
             if (acceptingEvents && !disposed && !signal?.aborted) onChunk({ chunk: z.object({ text: z.string() }).strict().parse(event).text });
           } }),
@@ -87,6 +92,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
           } })), signal, onAbort: () => {
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
         } });
+        return generationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
       }

@@ -21,6 +21,7 @@ describe('prebuilt runtime loading', () => {
       expect(fetcher).toHaveBeenCalledOnce();
       expect(String(fetcher.mock.calls[0]?.[0])).toBe(new URL('cpu-wasm32/core.wasm.gz', base).href);
       expect(core.pointerBytes).toBe(4);
+      expect(Object.getPrototypeOf(core.api)).toBeNull();
       expect(await core.api.ggml_backend_dev_count()).toBeGreaterThan(0n);
       expect(JSON.stringify(debug.mock.calls)).toContain('runtime-ready');
       expect(JSON.stringify(debug.mock.calls)).not.toContain(base.href);

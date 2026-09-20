@@ -1,6 +1,7 @@
+import { logFailure } from '@/features/llama-cpp-browser/debug-log';
 import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
-import { errorCode, LlamaCppBrowserError, modelSchema, modelsSchema } from "@/features/llama-cpp-browser/types";
+import { errorCode, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema } from "@/features/llama-cpp-browser/types";
 import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreLock } from "@/features/llama-cpp-browser/runtime/model-store";
 import { invalidateStoredModel } from "./session";
 import { generate } from "./generation";
@@ -10,6 +11,7 @@ async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promi
   try {
     return await withModelStoreLock({ operation });
   } catch (error) {
+    logFailure({ stage: 'worker-operation', error });
     throw new LlamaCppBrowserError({ code: errorCode({ error }) });
   }
 }
@@ -22,12 +24,14 @@ function eventQueue() {
       // callback. Deferring it through .then() would hide CPU loading progress
       // until the entire Wasm call has returned. Drain acknowledgements at RPC end.
       try {
-        const event = Promise.resolve(operation()).then(() => {}, () => {
+        const event = Promise.resolve(operation()).then(() => {}, error => {
+          logFailure({ stage: 'worker-callback', error });
           failed = true;
         });
         pending.add(event);
         void event.then(() => pending.delete(event));
-      } catch {
+      } catch (error) {
+        logFailure({ stage: 'worker-callback', error });
         failed = true;
       }
     },
@@ -70,7 +74,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
       try {
-        await guarded({ operation: () => generate({ request: accepted, signal: controller.signal,
+        const result = await guarded({ operation: () => generate({ request: accepted, signal: controller.signal,
           onChunk: ({ chunk }) => {
             events.send({ operation: () => {
               if (!controller.signal.aborted) return onChunk({ text: chunk });
@@ -82,6 +86,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
             } });
           },
         }) });
+        return generationResultSchema.parse(result);
       } finally {
         // Finish proxy callbacks before resolving RPC; otherwise an old progress
         // callback could overwrite the next request or the service's idle state.

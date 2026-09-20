@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createCore, type Core } from 'llama-cpp-browser-core';
+import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { generate } from './generation';
 import { createSyntheticGguf } from './test-utils/synthetic-gguf';
 import type { WorkerGenerateInput } from './types';
@@ -42,7 +42,7 @@ async function sequencePosition(): Promise<number> {
 }
 describe('Naidan generation loop with the supplied CPU Wasm', () => {
   it('loads a chat-template GGUF, prefills, generates and closes the reader without logging content', async () => {
-    host.bytes = Uint8Array.from(createSyntheticGguf());
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
     const chunks: string[] = []; const phases: string[] = [];
     await generate({ signal: undefined, request: request({ contextSize: 256, messages: [{ role: 'user', content: 'private prompt' }] }),
@@ -51,13 +51,31 @@ describe('Naidan generation loop with the supplied CPU Wasm', () => {
       }, onProgress: ({ progress }) => {
         phases.push(progress.phase);
       } });
-    expect(chunks.join('')).toBe('<unk><unk><unk><unk><unk>');
+    expect(chunks.join('')).toBe('AAAAA');
     expect(phases).toContain('loading'); expect(phases).toContain('prefill'); expect(phases).toContain('generating');
     expect(host.reads).toBeGreaterThan(0); expect(host.maxRead).toBeLessThanOrEqual(8 * 1024 * 1024);
     expect(host.close).toHaveBeenCalledOnce();
     expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
-    expect(JSON.stringify(debug.mock.calls)).not.toContain('<unk>');
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('AAAAA');
     debug.mockRestore();
+  }, 30000);
+  it('diagnoses a sampling failure without logging the exception and releases the sampler for retry', async () => {
+    const core = host.core; if (!core) throw new Error('Expected resident native runtime');
+    const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockRejectedValueOnce(new TypeError('private tool schema and prompt'));
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const req = request({ contextSize: 256, messages: [{ role: 'user', content: 'private prompt' }] });
+    try {
+      await expect(generate({ request: req, signal: undefined, onChunk: () => {}, onProgress: () => {} })).rejects.toThrow('private tool');
+      expect(debug).toHaveBeenCalledWith('[llama-cpp-browser]', expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error' }));
+      expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
+      const chunks: string[] = [];
+      await generate({ request: req, signal: undefined, onChunk: ({ chunk }) => {
+        chunks.push(chunk);
+      }, onProgress: () => {} });
+      expect(chunks.join('')).toBe('AAAAA');
+    } finally {
+      sample.mockRestore(); debug.mockRestore();
+    }
   }, 30000);
   it('rejects an oversized prompt without rereading the resident model', async () => {
     const before = host.close.mock.calls.length;

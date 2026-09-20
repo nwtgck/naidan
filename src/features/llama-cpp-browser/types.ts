@@ -53,16 +53,23 @@ export type EngineState =
   | { status: 'idle' }
   | { status: 'working', progress: Progress }
   | { status: 'error', code: ErrorCode };
-export type GenerateInput = {
-  model: string,
-  messages: Array<{ role: 'system' | 'user' | 'assistant', content: string }>,
-  temperature: number, topP: number, maxTokens: number,
-  presencePenalty: number, frequencyPenalty: number,
-  stop: string[], options: RuntimeOptions,
-};
+export const toolCallSchema = z.object({ id: z.string(), type: z.literal('function'), function: z.object({ name: z.string(), arguments: z.string() }).strict() }).strict();
+const chatMessageSchema = z.object({
+  role: z.enum(['system', 'user', 'assistant', 'tool']), content: z.string(),
+  reasoning_content: z.string().optional(), tool_calls: z.array(toolCallSchema).optional(),
+  tool_call_id: z.string().optional(), name: z.string().optional(),
+}).strict();
+export const generationResultSchema = z.object({
+  content: z.string(), reasoningContent: z.string(), toolCalls: z.array(toolCallSchema),
+  finishReason: z.enum(['stop', 'length']),
+}).strict();
+export type GenerationResult = z.infer<typeof generationResultSchema>;
+export type GenerateInput = z.infer<typeof generateInputSchema>;
 export const generateInputSchema = z.object({
   model: z.string().min(1).max(512),
-  messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()).min(1),
+  messages: z.array(chatMessageSchema).min(1),
+  tools: z.array(z.object({ type: z.literal('function'), function: z.object({ name: z.string().min(1), description: z.string(), parameters: z.record(z.string(), z.json()) }).strict() }).strict()).optional(),
+  reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
   temperature: z.number().min(0).max(10), topP: z.number().min(0).max(1),
   maxTokens: z.number().int().min(1).max(32768),
   presencePenalty: z.number().min(-2).max(2), frequencyPenalty: z.number().min(-2).max(2),

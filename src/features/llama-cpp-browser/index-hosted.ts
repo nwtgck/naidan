@@ -115,13 +115,22 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       }
     } });
   },
-  generate({ input, onChunk, signal }) {
+  generate({ input, onChunk, onResult, signal }) {
     // Snapshot accepted inputs before waiting in the queue; Vue proxies never cross RPC.
-    const request = generateInputSchema.parse({ ...input, options: { ...options } });
+    const initialRequest = generateInputSchema.parse({ ...input, options: { ...options } });
     return run({ signal, operation: async ({ worker, signal }) => {
       // Only the Worker knows whether weights/context actually need preparation.
       progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
-      await worker.generate({ request, onChunk, onProgress: progress, signal });
+      let request = initialRequest;
+      while (true) {
+        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+        const result = await worker.generate({ request, onChunk, onProgress: progress, signal });
+        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+        const next = await onResult?.({ result, signal });
+        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+        if (!next) break;
+        request = generateInputSchema.parse({ ...next, options: initialRequest.options });
+      }
     } });
   },
   cancel() {

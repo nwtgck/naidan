@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
-import { LlamaCppBrowserError } from './types';
+import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { LlamaCppBrowserService } from './service-contract';
 const worker = vi.hoisted(() => ({ listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => worker));
@@ -9,7 +9,7 @@ let service: LlamaCppBrowserService;
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks();
   worker.canReuse.mockReturnValue(true);
-  worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue();
+  worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   service = (await import('./index-hosted')).llamaCppBrowserService;
   vi.spyOn(console, 'debug').mockImplementation(() => {});
 });
@@ -26,8 +26,8 @@ describe('serialized hosted model service', () => {
   });
   it('snapshots inputs and options before entering the single Worker lane', async () => {
     let finish: () => void = () => {};
-    worker.generate.mockImplementationOnce(() => new Promise<void>(resolve => {
-      finish = resolve;
+    worker.generate.mockImplementationOnce(() => new Promise<GenerationResult>(resolve => {
+      finish = () => resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     }));
     const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
@@ -44,8 +44,8 @@ describe('serialized hosted model service', () => {
   });
   it('does not run a cancelled queued request and continues the lane afterward', async () => {
     let finish: () => void = () => {};
-    worker.generate.mockImplementationOnce(() => new Promise<void>(resolve => {
-      finish = resolve;
+    worker.generate.mockImplementationOnce(() => new Promise<GenerationResult>(resolve => {
+      finish = () => resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     }));
     const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
@@ -103,5 +103,48 @@ describe('resident Worker reuse at the service boundary', () => {
     await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('context-full');
     await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
     expect(worker.dispose).not.toHaveBeenCalled(); expect(factory).toHaveBeenCalledOnce();
+  });
+});
+
+describe('tool work holds the generation lane', () => {
+  it('keeps queued requests behind tool completion and the following model turn', async () => {
+    let finish: () => void = () => {};
+    const blocked = new Promise<void>(resolve => {
+      finish = resolve;
+    });
+    let turns = 0;
+    const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined,
+      onResult: async () => {
+        if (turns++ === 0) {
+          await blocked; return input();
+        }
+        return undefined;
+      },
+    });
+    await vi.waitFor(() => expect(turns).toBe(1));
+    const second = service.listModels({ signal: undefined });
+    expect(worker.listModels).not.toHaveBeenCalled();
+    finish(); await first; await second;
+    expect(worker.generate).toHaveBeenCalledTimes(2);
+    expect(worker.listModels).toHaveBeenCalledOnce();
+  });
+  it('service cancellation reaches tool work and waits for it to settle before accepting the next request', async () => {
+    let releaseTool: () => void = () => {};
+    const blocked = new Promise<void>(resolve => {
+      releaseTool = resolve;
+    });
+    let toolSignal: AbortSignal | undefined;
+    const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined,
+      onResult: async ({ signal }) => {
+        toolSignal = signal; await blocked; return input();
+      },
+    });
+    const rejected = expect(first).rejects.toThrow('aborted');
+    await vi.waitFor(() => expect(toolSignal).toBeDefined());
+    service.cancel(); expect(toolSignal?.aborted).toBe(true);
+    const second = service.listModels({ signal: undefined });
+    expect(worker.listModels).not.toHaveBeenCalled();
+    releaseTool(); await rejected; await second;
+    expect(worker.generate).toHaveBeenCalledOnce(); expect(worker.listModels).toHaveBeenCalledOnce();
   });
 });

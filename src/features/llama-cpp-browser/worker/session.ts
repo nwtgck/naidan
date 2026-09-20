@@ -1,4 +1,5 @@
-import { mountReadOnlyFile, type Core } from "llama-cpp-browser-core";
+import type { Core } from "@/features/llama-cpp-browser/runtime/core";
+import { mountReadOnlyFile } from "@/features/llama-cpp-browser/runtime/read-only-file";
 import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile, type Progress, type RuntimeOptions } from "@/features/llama-cpp-browser/types";
 import { storedModelHandle } from "@/features/llama-cpp-browser/runtime/model-store";
 import { loadRuntime } from "@/features/llama-cpp-browser/runtime/load-runtime";
@@ -68,14 +69,14 @@ export async function prepareSession({ request, onProgress, signal }: {
     logDiagnostic({ diagnostic: { event: "load-start", profile } });
     try {
       if (access.getSize() !== file.size) throw new LlamaCppBrowserError({ code: "storage-error" });
-      mounted = mountReadOnlyFile(core, "/models/model.gguf", { size: access.getSize(), read(destination, offset) {
+      mounted = mountReadOnlyFile({ core, path: "/models/model.gguf", source: { size: access.getSize(), read({ destination, offset }) {
         return access.read(destination, { at: offset });
-      } }, { maxChunkBytes: 8 * 1024 * 1024 });
-      const params = core.allocRecord("llama_model_params"); allocations.push(params);
+      } }, maxChunkBytes: 8 * 1024 * 1024 });
+      const params = core.allocRecord({ name: "llama_model_params" }); allocations.push(params);
       await api.llama_model_default_params(params);
       for (const [field, value] of Object.entries({ n_gpu_layers: usesWebGpu({ profile }) ? 999 : 0,
-        load_mode: core.constant("LLAMA_LOAD_MODE_NONE"), lazy_mode: core.constant("LLAMA_LAZY_MODE_OFF"), check_tensors: 0 })) {
-        core.setField("llama_model_params", params, field, value);
+        load_mode: core.constant({ name: "LLAMA_LOAD_MODE_NONE" }), lazy_mode: core.constant({ name: "LLAMA_LAZY_MODE_OFF" }), check_tensors: 0 })) {
+        core.setField({ name: "llama_model_params", pointer: params, field: field, value: value });
       }
       let lastProgress = 0;
       callback = core.module.addFunction((amount: number) => {
@@ -84,8 +85,8 @@ export async function prepareSession({ request, onProgress, signal }: {
         }
         return signal?.aborted ? 0 : 1;
       }, core.pointerBytes === 8 ? "ifj" : "ifi");
-      core.setField("llama_model_params", params, "progress_callback", BigInt(callback));
-      const path = core.utf8(mounted.path); allocations.push(path);
+      core.setField({ name: "llama_model_params", pointer: params, field: "progress_callback", value: BigInt(callback) });
+      const path = core.utf8({ text: mounted.path }); allocations.push(path);
       onProgress({ progress: { phase: "loading", completed: 0, total: 1 } });
       model = await api.llama_model_load_from_file(path, params);
       checkCancelled();
@@ -98,7 +99,7 @@ export async function prepareSession({ request, onProgress, signal }: {
       try {
         if (model !== 0n) await api.llama_model_free(model);
         if (callback !== undefined) core.module.removeFunction(callback);
-        for (const pointer of allocations.reverse()) core.free(pointer);
+        for (const pointer of allocations.reverse()) core.free({ pointer: pointer });
       } finally {
         try {
           mounted?.remove();
@@ -116,13 +117,13 @@ export async function prepareSession({ request, onProgress, signal }: {
   if (current.context === 0n || current.contextSize !== request.options.contextSize) {
     const old = current.context; current.context = 0n;
     if (old !== 0n) await api.llama_free(old);
-    const cp = core.allocRecord("llama_context_params"); const started = performance.now();
+    const cp = core.allocRecord({ name: "llama_context_params" }); const started = performance.now();
     onProgress({ progress: { phase: "initializing", completed: 0, total: 0 } });
     logDiagnostic({ diagnostic: { event: "context-start", profile } });
     try {
       await api.llama_context_default_params(cp);
       for (const [field, value] of Object.entries({ n_ctx: request.options.contextSize, n_batch: 128, n_ubatch: 128, n_threads: 1, n_threads_batch: 1 })) {
-        core.setField("llama_context_params", cp, field, value);
+        core.setField({ name: "llama_context_params", pointer: cp, field: field, value: value });
       }
       current.context = await api.llama_init_from_model(current.model, cp);
       current.contextSize = request.options.contextSize;
@@ -130,7 +131,7 @@ export async function prepareSession({ request, onProgress, signal }: {
       if (current.context === 0n) throw new LlamaCppBrowserError({ code: "runtime-error" });
       logDiagnostic({ diagnostic: { event: "context-ready", elapsedMs: performance.now() - started, profile } });
     } finally {
-      core.free(cp);
+      core.free({ pointer: cp });
     }
   }
   checkCancelled();
