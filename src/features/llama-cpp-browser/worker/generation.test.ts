@@ -15,13 +15,13 @@ import { profileSchema } from '@/features/llama-cpp-browser/types';
 const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ?? 'cpu-wasm32');
 
 const host = vi.hoisted(() => ({ bytes: new Uint8Array(), reads: 0, maxRead: 0, revision: 123, sameFile: true, modelLoads: 0, close: vi.fn(), core: undefined as Core | undefined }));
-vi.mock('../runtime/model-store', () => ({ storedModelHandle: async () => ({ getFile: async () => new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }), isSameEntry: async () => host.sameFile, createSyncAccessHandle: async () => ({
+vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => ({ id: 'user/private-local-name-GGUF/private-local-name.gguf', name: 'fixture', modelPath: 'fixture.gguf', projectorPath: undefined, files: [{ path: 'fixture.gguf', file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }), handle: { isSameEntry: async () => host.sameFile, createSyncAccessHandle: async () => ({
   getSize: () => host.bytes.length,
   read: (target: Uint8Array, { at }: { at: number }) => {
     host.reads++; host.maxRead = Math.max(host.maxRead, target.length); const n = Math.min(target.length, host.bytes.length - at); target.set(host.bytes.subarray(at, at + n)); return n;
   },
   close: host.close,
-}) }) }));
+}) } }] }) }));
 vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => {
   // Real supplied Wasm, not a mock core. Only file access and runtime deployment are injected.
   const folder = path.resolve('node_modules/llama-cpp-browser-core');
@@ -347,4 +347,35 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     }
   }, 30000);
 
+});
+
+describe('native image boundaries', () => {
+  it('copies RGB pixels into the actual supplied mtmd bitmap and releases it', async () => {
+    if (!host.core) throw new Error('Expected initialized native runtime');
+    const core = host.core; const data = core.alloc({ bytes: 3 }); core.bytes({ pointer: data, length: 3 }).set([10, 20, 30]);
+    let bitmap = 0n;
+    try {
+      bitmap = await core.api.mtmd_bitmap_init(1, 1, data);
+    } finally {
+      core.free({ pointer: data });
+    }
+    try {
+      expect(bitmap).not.toBe(0n); expect(await core.api.mtmd_bitmap_get_nx(bitmap)).toBe(1);
+      expect(await core.api.mtmd_bitmap_get_n_bytes(bitmap)).toBe(3n);
+      expect(Array.from(core.bytes({ pointer: await core.api.mtmd_bitmap_get_data(bitmap), length: 3 }))).toEqual([10, 20, 30]);
+    } finally {
+      if (bitmap !== 0n) await core.api.mtmd_bitmap_free(bitmap);
+    }
+  });
+  it('rejects image requests on text-only models without reusing stale text KV afterwards', async () => {
+    await releaseSession({ releaseRuntime: true }); host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    try {
+      await expect(generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: [{ type: 'text', text: 'describe' }, { type: 'image', blob: new Blob(['image'], { type: 'image/png' }) }] }] }), onChunk: () => {}, onProgress: () => {} })).rejects.toThrow('unsupported-input');
+      await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'describe' }] }), onChunk: () => {}, onProgress: () => {} });
+      expect(debug.mock.calls.some(call => call.some(value => typeof value === 'object' && value && 'event' in value && value.event === 'cache-reuse' && 'reusedTokens' in value && value.reusedTokens === 0))).toBe(true);
+    } finally {
+      debug.mockRestore();
+    }
+  });
 });

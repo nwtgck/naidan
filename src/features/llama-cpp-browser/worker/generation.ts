@@ -1,3 +1,4 @@
+import { prepareMultimodal } from './multimodal';
 import { LlamaCppBrowserError, type GenerationResult, type Progress } from '@/features/llama-cpp-browser/types';
 import { logDiagnostic, logFailure, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
@@ -20,9 +21,10 @@ export async function generate({ request, onChunk, onProgress, signal }: {
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  const { core, model, context, cache } = await prepareSession({ request, onProgress, signal });
+  const { core, model, context, cache, projector } = await prepareSession({ request, onProgress, signal });
   const api = core.api;
   let chat: ReturnType<typeof prepareChat> | undefined;
+  let multimodal: Awaited<ReturnType<typeof prepareMultimodal>> | undefined;
   let chatSampler: Awaited<ReturnType<typeof createChatSampler>> | undefined;
   const allocations: bigint[] = []; let sampler = 0n; let abortCallback: number | bigint | undefined;
   const alloc = ({ bytes }: { bytes: number | bigint }): bigint => {
@@ -45,7 +47,11 @@ export async function generate({ request, onChunk, onProgress, signal }: {
         }
       } finally {
         try {
-          chat?.dispose();
+          try {
+            if (multimodal) await multimodal.dispose();
+          } finally {
+            chat?.dispose();
+          }
         } finally {
           if (abortCallback !== undefined) core.module.removeFunction(abortCallback);
           for (const pointer of allocations.reverse()) core.free({ pointer });
@@ -71,17 +77,31 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     const promptText = chat.params.prompt;
     const promptLength = new TextEncoder().encode(promptText).length;
     if (promptLength > 4 * 1024 * 1024) throw new LlamaCppBrowserError({ code: 'context-full' });
-    const prompt = string({ text: promptText });
     const vocab = await api.llama_model_get_vocab(model);
-    const countResult = await api.llama_tokenize(vocab, prompt, promptLength, 0n, 0, 1, 1);
-    const tokenCount = Math.abs(countResult);
     const capacity = await api.llama_n_ctx(context);
-    if (tokenCount < 1 || tokenCount >= capacity) throw new LlamaCppBrowserError({ code: 'context-full' });
-    const tokens = alloc({ bytes: tokenCount * 4 });
-    if (await api.llama_tokenize(vocab, prompt, promptLength, tokens, tokenCount, 1, 1) !== tokenCount) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-    const promptBytes = core.bytes({ pointer: tokens, length: tokenCount * 4 });
-    const promptView = new DataView(promptBytes.buffer, promptBytes.byteOffset, promptBytes.byteLength);
-    const promptTokens = Array.from({ length: tokenCount }, (_, index) => promptView.getInt32(index * 4, true));
+    let promptTokens: number[];
+    let tokens: bigint;
+    if (chat.images.length) {
+      // Image identity and native positions are not represented by a token prefix.
+      cache.validity = 'invalid'; cache.tokens = [];
+      multimodal = await prepareMultimodal({ core, projector, prompt: promptText, images: chat.images });
+      promptTokens = multimodal.textTokens;
+      tokens = alloc({ bytes: Math.max(4, promptTokens.length * 4) });
+      const bytes = core.bytes({ pointer: tokens, length: promptTokens.length * 4 }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      promptTokens.forEach((token, index) => view.setInt32(index * 4, token, true));
+    } else {
+      const prompt = string({ text: promptText });
+      const countResult = await api.llama_tokenize(vocab, prompt, promptLength, 0n, 0, 1, 1);
+      const count = Math.abs(countResult);
+      if (count < 1 || count >= capacity) throw new LlamaCppBrowserError({ code: 'context-full' });
+      tokens = alloc({ bytes: count * 4 });
+      if (await api.llama_tokenize(vocab, prompt, promptLength, tokens, count, 1, 1) !== count) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      const bytes = core.bytes({ pointer: tokens, length: count * 4 }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      promptTokens = Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true));
+    }
+    const tokenCount = multimodal?.tokenCount ?? promptTokens.length;
+    let nextPosition = multimodal?.positions ?? tokenCount;
+    if (tokenCount >= capacity || nextPosition >= capacity) throw new LlamaCppBrowserError({ code: 'context-full' });
     const cacheValid = (() => {
       switch (cache.validity) {
       case 'valid': return true;
@@ -93,7 +113,7 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       && cache.tokens.length <= tokenCount && cache.tokens.every((token, index) => token === promptTokens[index]);
     // The last successful decode owns the context logits. Native CPU sampling
     // copies them into candidates; no evaluation runs between resident requests.
-    const reuse = memory !== 0n && prefixMatches
+    const reuse = !multimodal && memory !== 0n && prefixMatches
       && await api.llama_memory_seq_pos_max(memory, 0) === cache.tokens.length - 1;
     const reusedTokens = reuse ? cache.tokens.length : 0;
     logDiagnostic({ diagnostic: { event: 'cache-reuse', reusedTokens, evaluatedTokens: tokenCount - reusedTokens,
@@ -107,7 +127,11 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     }
     const batch = record({ name: 'llama_batch' });
     stage = 'prefill-decode';
-    for (let offset = reusedTokens; offset < tokenCount; offset += 128) {
+    if (multimodal) {
+      checkCancelled();
+      nextPosition = await multimodal.evaluate({ context, capacity });
+      checkCancelled();
+    } else for (let offset = reusedTokens; offset < tokenCount; offset += 128) {
       checkCancelled();
       const count = Math.min(128, tokenCount - offset);
       await api.llama_batch_get_one(batch, tokens + BigInt(offset * 4), count);
@@ -141,7 +165,7 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       await addSampler({ child: await api.llama_sampler_init_penalties(await api.llama_vocab_n_tokens(vocab), capacity, 1, request.frequencyPenalty, request.presencePenalty) });
     }
     if (request.presencePenalty !== 0 || request.frequencyPenalty !== 0) {
-      for (let index = 0; index < tokenCount; index++) {
+      for (let index = 0; index < promptTokens.length; index++) {
         const bytes = core.bytes({ pointer: tokens + BigInt(index * 4), length: 4 });
         await api.llama_sampler_accept(sampler, new DataView(bytes.buffer, bytes.byteOffset, 4).getInt32(0, true));
       }
@@ -184,9 +208,10 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     };
     let finishReason: GenerationResult['finishReason'] = 'length';
     const decoder = new TextDecoder(); const nextToken = alloc({ bytes: 4 });
+    const position = multimodal ? alloc({ bytes: 4 }) : undefined;
     let piece = alloc({ bytes: 256 }); let pieceCapacity = 256;
-    const maximum = Math.min(request.maxTokens, capacity - tokenCount);
-    logDiagnostic({ diagnostic: { event: 'generation-start', tokens: tokenCount, pointerBytes: core.pointerBytes, toolCount: request.tools?.length ?? 0 } });
+    const maximum = Math.min(request.maxTokens, capacity - Math.max(tokenCount, nextPosition));
+    logDiagnostic({ diagnostic: { event: 'generation-start', imageCount: chat.images.length, tokens: tokenCount, pointerBytes: core.pointerBytes, toolCount: request.tools?.length ?? 0 } });
     for (; generated < maximum; generated++) {
       checkCancelled();
       stage = 'native-sample';
@@ -216,6 +241,10 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       stage = 'generation-decode';
       const tokenBytes = core.bytes({ pointer: nextToken, length: 4 }); new DataView(tokenBytes.buffer, tokenBytes.byteOffset, 4).setInt32(0, token, true);
       await api.llama_batch_get_one(batch, nextToken, 1);
+      if (position !== undefined) {
+        const bytes = core.bytes({ pointer: position, length: 4 }); new DataView(bytes.buffer, bytes.byteOffset, 4).setInt32(0, nextPosition, true);
+        core.setField({ name: 'llama_batch', pointer: batch, field: 'pos', value: position });
+      }
       const status = await api.llama_decode(context, batch);
       checkCancelled();
       if (status !== 0) {
@@ -223,7 +252,8 @@ export async function generate({ request, onChunk, onProgress, signal }: {
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
       // Sampled stop/EOG tokens are deliberately excluded until actually decoded.
-      cache.tokens.push(token);
+      if (!multimodal) cache.tokens.push(token);
+      nextPosition++;
       progress({ phase: 'generating', completed: generated + 1, total: maximum });
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
@@ -237,7 +267,7 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       onChunk({ chunk: '</think>' }); checkCancelled();
     }
     logDiagnostic({ diagnostic: { event: 'generation-complete', tokens: generated, elapsedMs: performance.now() - started } });
-    cache.validity = memory !== 0n ? 'valid' : 'invalid';
+    cache.validity = !multimodal && memory !== 0n ? 'valid' : 'invalid';
     return { ...parsed, finishReason };
   } catch (error) {
     cache.validity = 'invalid';

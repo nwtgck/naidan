@@ -1,3 +1,4 @@
+import type { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorkerApi } from "./api";
 import type { WorkerGenerateCall } from "./types";
@@ -5,7 +6,8 @@ import type { generate } from "./generation";
 
 const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
 const completed = () => ({ ...result, toolCalls: [] });
-const calls = vi.hoisted(() => ({ generate: vi.fn<typeof generate>(), release: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn() }));
+const calls = vi.hoisted(() => ({ generate: vi.fn<typeof generate>(), release: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
 vi.mock("./generation", () => ({ generate: calls.generate }));
 vi.mock("./session", () => ({ invalidateStoredModel: calls.release }));
 vi.mock("../runtime/model-store", () => ({ withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
@@ -108,5 +110,20 @@ describe("generation RPC lifecycle", () => {
     await expect(api.generate(request({ generationId: 1 }), () => {}, () => {})).rejects.toThrow("llama.cpp browser: runtime-error");
     calls.generate.mockResolvedValueOnce(completed());
     await expect(api.generate(request({ generationId: 2 }), () => {}, () => {})).resolves.toEqual(completed());
+  });
+});
+
+describe('directory import RPC', () => {
+  it('routes cancellation to the importer and rejects overlapping work', async () => {
+    const blocked = deferred(); let signal: AbortSignal | undefined;
+    calls.importDirectory.mockImplementation(async (args: Parameters<typeof importModelDirectory>[0]) => {
+      signal = args.signal; await blocked.promise; if (signal?.aborted) throw new Error('llama.cpp browser: aborted'); return { id: 'Model', name: 'Model', size: 1, importedAt: 1 };
+    });
+    const api = createWorkerApi(); const pending = api.importDirectory({ directory: { name: 'Model', files: [{ path: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, generationId: 4 }, () => {});
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    await expect(api.generate(request({ generationId: 5 }), () => {}, () => {})).rejects.toThrow('busy');
+    await api.cancelGeneration({ generationId: 3 }); expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 4 }); expect(signal?.aborted).toBe(true);
+    blocked.resolve(); await expect(pending).rejects.toThrow('aborted');
   });
 });

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
 import { createLlamaCppWorkerClient } from './client-hosted';
-const transport = vi.hoisted(() => ({ remote: { listModels: vi.fn(), importModel: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
+const transport = vi.hoisted(() => ({ remote: { listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
   releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
 class TestWorker extends EventTarget {
@@ -55,7 +55,7 @@ describe('hosted Worker lifetime', () => {
     client.dispose(); await expect(first).rejects.toThrow('worker-failed');
   });
   it('validates model inventory received from the Worker', async () => {
-    transport.remote.listModels.mockResolvedValue([{ id: 'not-a-uuid', name: 'private.gguf', size: 1, importedAt: 0 }]);
+    transport.remote.listModels.mockResolvedValue([{ id: '../invalid', name: 'private.gguf', size: 1, importedAt: 0 }]);
     const client = createLlamaCppWorkerClient();
     await expect(client.listModels({ signal: undefined })).rejects.toThrow();
     client.dispose();
@@ -114,6 +114,23 @@ describe('cooperative generation cancellation', () => {
     transport.remote.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'aborted' }));
     const client = createLlamaCppWorkerClient();
     await expect(client.generate({ request: generationInput(), onChunk: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow('aborted');
+    expect(client.canReuse()).toBe(true); client.dispose();
+  });
+});
+
+describe('directory import cancellation', () => {
+  it('requests cooperative cancellation so the worker can roll back before responding', async () => {
+    let rejectImport: (error: Error) => void = () => {};
+    transport.remote.importDirectory.mockImplementation(() => new Promise((_resolve, reject) => {
+      rejectImport = reject;
+    }));
+    const client = createLlamaCppWorkerClient(); const controller = new AbortController();
+    const pending = client.importDirectory({ directory: { name: 'Model', files: [{ path: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, signal: controller.signal, onProgress: () => {} });
+    controller.abort();
+    expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: 1 });
+    expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
+    rejectImport(new LlamaCppBrowserError({ code: 'aborted' }));
+    await expect(pending).rejects.toThrow('aborted');
     expect(client.canReuse()).toBe(true); client.dispose();
   });
 });

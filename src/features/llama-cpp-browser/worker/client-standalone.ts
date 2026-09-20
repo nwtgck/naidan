@@ -4,7 +4,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
   const unavailable = async (): Promise<never> => {
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   };
-  return { listModels: unavailable, importModel: unavailable, removeModel: unavailable, generate: unavailable, canReuse: () => false, dispose() {} };
+  return { listModels: unavailable, importModel: unavailable, importDirectory: unavailable, removeModel: unavailable, generate: unavailable, canReuse: () => false, dispose() {} };
 }
 export const TEST_ONLY = {
 };

@@ -1,0 +1,1 @@
+export const llamaCppBrowser__image_chat_requires_matching_projector = (): string => "Para usar imagens, inclua um GGUF mmproj compatível na pasta do modelo. Entradas de áudio e vídeo não são compatíveis.";

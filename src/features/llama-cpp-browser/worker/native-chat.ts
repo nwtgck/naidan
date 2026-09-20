@@ -15,9 +15,22 @@ export function prepareChat({ core, model, request }: { core: Core, model: bigin
   };
   try {
     templates = new native.common_chat_templates(model, '', '', '');
+    const images: { marker: string, blob: Blob }[] = [];
+    const messages = request.messages.map(message => ({ ...message, content: typeof message.content === 'string' ? message.content : message.content.map(part => {
+      switch (part.type) {
+      case 'text': return part;
+      case 'image': {
+        // An unpredictable marker keeps literal user text distinct from media.
+        const marker = `<__image_${crypto.randomUUID()}__>`;
+        images.push({ marker, blob: part.blob });
+        return { type: 'media_marker', text: marker };
+      }
+      default: { const exhaustive: never = part; throw new Error(`Unknown part: ${exhaustive}`); }
+      }
+    }) }));
     const inputs = new native.common_chat_templates_inputs();
     try {
-      const messagesJson = native.common_json.parse(JSON.stringify(request.messages));
+      const messagesJson = native.common_json.parse(JSON.stringify(messages));
       try {
         const messages = native.common_chat_msgs_parse_oaicompat(messagesJson);
         try {
@@ -82,7 +95,7 @@ export function prepareChat({ core, model, request }: { core: Core, model: bigin
       stops.delete();
     }
     const parserParams = parser;
-    return { params, additionalStops, dispose,
+    return { params, additionalStops, images, dispose,
       parse({ text, partial }: { text: string, partial: boolean }): Omit<GenerationResult, 'finishReason'> {
         core.assertIdle();
         const message = native.common_chat_parse(text, partial, parserParams);

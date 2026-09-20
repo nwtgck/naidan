@@ -14,7 +14,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   subscribeModelList() {
     return () => {};
   },
-  listModels: async () => [], importModel: unsupported, removeModel: unsupported, generate: unsupported,
+  listModels: async () => [], importModel: unsupported, importDirectory: unsupported, removeModel: unsupported, generate: unsupported,
   cancel() {}, release() {},
 };
 export const TEST_ONLY = {

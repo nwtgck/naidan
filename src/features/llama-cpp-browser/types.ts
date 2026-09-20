@@ -15,10 +15,12 @@ export const runtimeOptionsSchema = z.object({
 }).strict();
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 export const modelSchema = z.object({
-  id: z.string().max(1024).regex(/^user\/[^/]+-GGUF\/[^/]+\.gguf$/i), name: z.string().min(1).max(512),
+  id: z.string().min(1).max(1024).regex(/^(?!\.{1,2}$)(?:[^/\\]+|user\/[^/\\]+-GGUF\/[^/\\]+\.gguf)$/i).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)), name: z.string().min(1).max(512),
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   importedAt: z.number().int().nonnegative(),
 }).strict();
+export const modelDirectoryInputSchema = z.object({ name: z.string().min(1), files: z.array(z.object({ path: z.string().min(1), file: z.instanceof(File) }).strict()).min(1) }).strict();
+export type ModelDirectoryInput = z.infer<typeof modelDirectoryInputSchema>;
 export type LocalModel = z.infer<typeof modelSchema>;
 export const modelsSchema = z.array(modelSchema);
 export const errorCodeSchema = z.enum([
@@ -54,7 +56,7 @@ export type EngineState =
   | { status: 'error', code: ErrorCode };
 export const toolCallSchema = z.object({ id: z.string(), type: z.literal('function'), function: z.object({ name: z.string(), arguments: z.string() }).strict() }).strict();
 const chatMessageSchema = z.object({
-  role: z.enum(['system', 'user', 'assistant', 'tool']), content: z.string(),
+  role: z.enum(['system', 'user', 'assistant', 'tool']), content: z.union([z.string(), z.array(z.discriminatedUnion('type', [z.object({ type: z.literal('text'), text: z.string() }).strict(), z.object({ type: z.literal('image'), blob: z.instanceof(Blob) }).strict()]))]),
   reasoning_content: z.string().optional(), tool_calls: z.array(toolCallSchema).optional(),
   tool_call_id: z.string().optional(), name: z.string().optional(),
 }).strict();

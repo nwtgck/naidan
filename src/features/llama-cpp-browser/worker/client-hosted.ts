@@ -9,7 +9,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     const unavailable = async (): Promise<never> => {
       throw new LlamaCppBrowserError({ code: 'unavailable' });
     };
-    return { listModels: unavailable, importModel: unavailable, removeModel: unavailable, generate: unavailable, canReuse: () => false, dispose() {} };
+    return { listModels: unavailable, importModel: unavailable, importDirectory: unavailable, removeModel: unavailable, generate: unavailable, canReuse: () => false, dispose() {} };
   }
   const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-llama-cpp-browser' });
   const remote = wrapWorkerRemote<LlamaCppWorkerApi>({ endpoint: worker });
@@ -74,6 +74,16 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
         if (!disposed) onProgress({ progress: progressSchema.parse(event) });
       } })), signal, onAbort: undefined,
     })),
+    importDirectory: async ({ directory, onProgress, signal }) => {
+      const generationId = ++nextGenerationId;
+      return modelSchema.parse(await invoke({
+        call: () => remote.importDirectory({ directory, generationId }, workerProxy({ value: ({ ...event }) => {
+          if (!disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+        } })), signal, onAbort: () => {
+          void remote.cancelGeneration({ generationId }).catch(dispose);
+        },
+      }));
+    },
     removeModel: async ({ id, signal }) => {
       await invoke({ call: () => remote.removeModel({ id: modelSchema.shape.id.parse(id) }), signal, onAbort: undefined });
     },

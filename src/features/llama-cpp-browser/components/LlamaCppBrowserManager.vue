@@ -5,6 +5,8 @@ import { ensureStrings, lazyStrings } from '@/strings';
 import { useConfirm } from '@/composables/useConfirm';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, runtimeOptionsSchema, type EngineState, type LocalModel, type ErrorCode } from '@/features/llama-cpp-browser/types';
+import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
+import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.vue';
 
 const id = useId();
@@ -18,6 +20,7 @@ const active = ref<AbortController>();
 const refreshing = ref(false);
 const dragDepth = ref(0);
 const fileInput = ref<HTMLInputElement>();
+const directoryInput = ref<HTMLInputElement>();
 const unavailable = computed(() => __BUILD_MODE_IS_STANDALONE__ || state.value.status === 'unavailable');
 const busy = computed(() => active.value !== undefined || state.value.status === 'working');
 const { showConfirm } = useConfirm();
@@ -51,14 +54,18 @@ function refresh(): Promise<void> {
   });
   return refreshPromise;
 }
-async function importFiles({ files }: { files: File[] }): Promise<void> {
-  if (disposed || unavailable.value || busy.value || refreshing.value || files.length === 0) return;
+async function importFiles({ files, directories }: { files: File[], directories: ModelDirectoryInput[] }): Promise<void> {
+  if (disposed || unavailable.value || busy.value || refreshing.value || (files.length === 0 && directories.length === 0)) return;
   localError.value = undefined;
   if (files.some(file => !file.name.toLowerCase().endsWith('.gguf'))) {
     localError.value = 'invalid-gguf'; return;
   }
   const controller = new AbortController(); active.value = controller;
   try {
+    for (const directory of directories) {
+      if (controller.signal.aborted) break;
+      await llamaCppBrowserService.importDirectory({ directory, signal: controller.signal });
+    }
     for (const file of files) {
       if (controller.signal.aborted) break;
       await llamaCppBrowserService.importModel({ file, signal: controller.signal });
@@ -74,7 +81,18 @@ async function importFile({ event }: { event: Event }): Promise<void> {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
   const files = Array.from(input.files ?? []); input.value = '';
-  await importFiles({ files });
+  await importFiles({ files, directories: [] });
+}
+async function importDirectory({ event }: { event: Event }): Promise<void> {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  const files = Array.from(input.files ?? []); input.value = '';
+  if (!files.length) return;
+  try {
+    await importFiles({ files: [], directories: [directoryFromFiles({ files })] });
+  } catch (error) {
+    localError.value = errorCode({ error });
+  }
 }
 function dragEnter({ event }: { event: DragEvent }): void {
   if (unavailable.value || busy.value || refreshing.value || !event.dataTransfer?.types.includes('Files')) return;
@@ -85,7 +103,12 @@ function dragOver({ event }: { event: DragEvent }): void {
 }
 async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
   dragDepth.value = 0;
-  await importFiles({ files: Array.from(event.dataTransfer?.files ?? []) });
+  if (!event.dataTransfer || disposed || unavailable.value || busy.value || refreshing.value) return;
+  try {
+    await importFiles(await droppedModels({ transfer: event.dataTransfer }));
+  } catch (error) {
+    localError.value = errorCode({ error });
+  }
 }
 async function remove({ id }: { id: string }): Promise<void> {
   if (disposed || unavailable.value || busy.value || refreshing.value) return;
@@ -147,9 +170,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         @drop.prevent.stop="dropFiles({ event: $event })"
       >
         <div tw-class="w-12 h-12 rounded-2xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center mx-auto mb-4"><FileUpIcon tw-class="w-6 h-6" /></div>
-        <p tw-class="text-sm font-bold text-gray-800 dark:text-white">{{ lazyStrings.llamaCppBrowser__drop_gguf_files_here() }}</p>
+        <p tw-class="text-sm font-bold text-gray-800 dark:text-white">{{ lazyStrings.llamaCppBrowser__drop_model_folders_or_gguf_files_here() }}</p>
         <p :id="`${id}-file-help`" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-2 mb-5">{{ lazyStrings.llamaCppBrowser__or_choose_files_from_your_device() }}</p>
         <input ref="fileInput" type="file" accept=".gguf" multiple tabindex="-1" :aria-label="lazyStrings.llamaCppBrowser__choose_gguf_files()" :aria-describedby="`${id}-file-help`" data-testid="llama-cpp-browser-file" tw-class="sr-only" @change="importFile({ event: $event })" />
+        <input ref="directoryInput" type="file" webkitdirectory multiple tabindex="-1" :aria-label="lazyStrings.llamaCppBrowser__choose_model_folder()" data-testid="llama-cpp-browser-directory" tw-class="sr-only" @change="importDirectory({ event: $event })" />
+        <button type="button" data-testid="llama-cpp-browser-choose-directory" tw-class="inline-flex items-center justify-center gap-2 px-5 py-3 text-xs font-bold rounded-xl bg-purple-600 text-white hover:bg-purple-700" @click="directoryInput?.click()"><FolderOpenIcon tw-class="w-4 h-4" />{{ lazyStrings.llamaCppBrowser__choose_model_folder() }}</button>
         <button type="button" data-testid="llama-cpp-browser-choose-files" tw-class="inline-flex items-center justify-center gap-2 px-5 py-3 text-xs font-bold rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-purple-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" @click="fileInput?.click()">
           <FolderOpenIcon tw-class="w-4 h-4" />{{ lazyStrings.llamaCppBrowser__choose_gguf_files() }}
         </button>
@@ -189,7 +214,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </fieldset>
       <p v-if="options.profile === 'auto'" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowser__automatic_profile_description() }}</p>
-      <div tw-class="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-gray-100 dark:border-gray-800"><p tw-class="text-xs text-gray-500 dark:text-gray-400 flex-1">{{ lazyStrings.llamaCppBrowser__text_chat_only() }}</p><button type="button" :disabled="unavailable || active !== undefined" data-testid="llama-cpp-browser-release" tw-class="inline-flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="llamaCppBrowserService.release()"><PowerOffIcon tw-class="w-4 h-4" />{{ lazyStrings.llamaCppBrowser__release_runtime() }}</button></div>
+      <div tw-class="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-gray-100 dark:border-gray-800"><p tw-class="text-xs text-gray-500 dark:text-gray-400 flex-1">{{ lazyStrings.llamaCppBrowser__image_chat_requires_matching_projector() }}</p><button type="button" :disabled="unavailable || active !== undefined" data-testid="llama-cpp-browser-release" tw-class="inline-flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="llamaCppBrowserService.release()"><PowerOffIcon tw-class="w-4 h-4" />{{ lazyStrings.llamaCppBrowser__release_runtime() }}</button></div>
     </section>
   </section>
 </template>

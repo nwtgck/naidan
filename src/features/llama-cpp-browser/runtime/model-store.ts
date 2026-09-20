@@ -1,3 +1,4 @@
+import { allowedModelRoot, listRootModels, opfsRoot, resolveDirectory, type ModelDirectory } from './model-directory';
 import { LlamaCppBrowserError, modelSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
 
@@ -71,6 +72,7 @@ export async function listStoredModels(): Promise<LocalModel[]> {
   }
   // A read never repairs, migrates or deletes files. Incomplete imports remain
   // unlisted; only an explicit import retry or deletion may modify this tree.
+  result.push(...await listRootModels());
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 export async function importStoredModel({ file, onProgress }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
@@ -127,6 +129,12 @@ export async function importStoredModel({ file, onProgress }: { file: File, onPr
   }
 }
 export async function removeStoredModel({ id }: { id: string }): Promise<void> {
+  if (!id.includes("/")) {
+    if (!allowedModelRoot({ name: id })) throw new LlamaCppBrowserError({ code: "missing-model" });
+    const root = await opfsRoot();
+    await resolveDirectory({ folder: await root.getDirectoryHandle(id), id, name: id });
+    await root.removeEntry(id, { recursive: true }); return;
+  }
   const name = id.split("/")[2];
   if (name === undefined) throw new LlamaCppBrowserError({ code: "missing-model" });
   const path = modelPath({ name });
@@ -183,5 +191,30 @@ export async function storedModelHandle({ name }: { name: string }): Promise<Fil
     throw error;
   }
 }
+
+export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {
+  if (allowedModelRoot({ name })) {
+    const root = await opfsRoot();
+    try {
+      const folder = await root.getDirectoryHandle(name);
+      // Legacy chats also store the displayed directory name. A collision must
+      // never silently select the newly imported root directory instead.
+      try {
+        await storedModelHandle({ name });
+      } catch (error) {
+        if (error instanceof LlamaCppBrowserError && (error.message.endsWith('missing-model') || error.message.endsWith('invalid-gguf'))) return await resolveDirectory({ folder, id: name, name });
+        throw error;
+      }
+      throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+    } catch (error) {
+      if (!isMissing({ error })) throw error;
+    }
+  }
+  const handle = await storedModelHandle({ name });
+  const file = await handle.getFile(); const path = modelPath({ name: file.name });
+  const folder = await (await userDirectory()).getDirectoryHandle(path.directory);
+  return resolveDirectory({ folder, id: path.id, name: path.directory });
+}
+
 export const TEST_ONLY = {
 };

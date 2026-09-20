@@ -23,7 +23,7 @@ vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
       notifications.models.delete(listener);
     };
   }),
-  listModels: vi.fn(async () => []), setOptions: vi.fn(), importModel: vi.fn(), removeModel: vi.fn(),
+  listModels: vi.fn(async () => []), setOptions: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(),
   release: vi.fn(), cancel: vi.fn(),
 } }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: notifications.confirm }) }));
@@ -46,6 +46,15 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
+  it('imports a selected folder with its original root and relative paths', async () => {
+    const wrapper = render(); await flushPromises();
+    const file = new File(['fixture'], 'weights.gguf'); Object.defineProperty(file, 'webkitRelativePath', { value: 'my-Qwen-VL-GGUF/nested/weights.gguf' });
+    const input = wrapper.get('[data-testid="llama-cpp-browser-directory"]');
+    expect(input.attributes('webkitdirectory')).toBeDefined(); Object.defineProperty(input.element, 'files', { value: [file] });
+    await input.trigger('change'); await flushPromises();
+    expect(llamaCppBrowserService.importDirectory).toHaveBeenCalledWith({ directory: { name: 'my-Qwen-VL-GGUF', files: [{ path: 'nested/weights.gguf', file }] }, signal: expect.any(AbortSignal) });
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+  });
   it('renders the standalone feature and controls but disables them without reading OPFS', async () => {
     vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'unavailable' });
     const wrapper = render(); await flushPromises();

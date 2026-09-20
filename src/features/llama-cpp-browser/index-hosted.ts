@@ -104,6 +104,19 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       }
     } });
   },
+  importDirectory({ directory, signal }) {
+    return run({ signal, operation: async ({ worker, signal }) => {
+      progress({ progress: { phase: 'importing', completed: 0, total: directory.files.reduce((total, entry) => total + entry.file.size, 0) } });
+      await worker.importDirectory({ directory, onProgress: progress, signal });
+      for (const listener of modelListeners) {
+        try {
+          listener();
+        } catch {
+          logDiagnostic({ diagnostic: { event: 'failed' } });
+        }
+      }
+    } });
+  },
   removeModel({ id, signal }) {
     return run({ signal, operation: async ({ worker, signal }) => {
       await worker.removeModel({ id, signal }); for (const listener of modelListeners) {

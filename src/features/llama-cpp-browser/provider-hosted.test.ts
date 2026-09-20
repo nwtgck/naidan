@@ -25,10 +25,15 @@ describe('local model provider', () => {
     expect(service.generate.mock.calls[0]?.[0].input.model).toBe('local-GGUF');
     expect(service.generate.mock.calls[0]?.[0].onChunk).toBe(input.onChunk);
   });
-  it('rejects images instead of silently dropping an attachment', async () => {
-    const input = request(); input.messages = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,private' } }] }];
+  it('rejects remote image URLs instead of fetching arbitrary resources', async () => {
+    const input = request(); input.messages = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'https://private.invalid/image.png' } }] }];
     await expect(new LlamaCppBrowserProvider().chat(input)).rejects.toThrow('unsupported-input');
     expect(input.onAssistantMessageStart).not.toHaveBeenCalled(); expect(service.generate).not.toHaveBeenCalled();
+  });
+  it('preserves ordered local image and text parts across the worker boundary', async () => {
+    const input = request(); input.messages = [{ role: 'user', content: [{ type: 'text', text: 'before' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } }, { type: 'text', text: 'after' }] }];
+    await new LlamaCppBrowserProvider().chat(input);
+    expect(service.generate.mock.calls[0]?.[0].input.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: 'before' }, { type: 'image', blob: expect.any(Blob) }, { type: 'text', text: 'after' }] }]);
   });
   it('does not turn tool-role messages into ordinary assistant text', async () => {
     const input = request(); input.messages = [{ role: 'tool', content: 'private tool result' }];

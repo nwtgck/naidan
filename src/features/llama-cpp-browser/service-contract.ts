@@ -1,4 +1,4 @@
-import type { EngineState, GenerateInput, GenerationResult, LocalModel, RuntimeOptions } from './types';
+import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult, LocalModel, RuntimeOptions } from './types';
 
 export interface LlamaCppBrowserService {
   getState(): EngineState;
@@ -8,6 +8,7 @@ export interface LlamaCppBrowserService {
   subscribeModelList({ listener }: { listener: () => void }): () => void;
   listModels({ signal }: { signal: AbortSignal | undefined }): Promise<LocalModel[]>;
   importModel({ file, signal }: { file: File, signal: AbortSignal | undefined }): Promise<void>;
+  importDirectory({ directory, signal }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined }): Promise<void>;
   removeModel({ id, signal }: { id: string, signal: AbortSignal | undefined }): Promise<void>;
   generate({ input, onChunk, signal }: {
     onResult?: ({ result, signal }: { result: GenerationResult, signal: AbortSignal }) => Promise<Omit<GenerateInput, 'options'> | undefined>,

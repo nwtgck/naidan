@@ -1715,8 +1715,9 @@ import type { Strings } from './en';
 import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/ko';
 import { llamaCppBrowser__gguf_model_files } from '@/strings/messages/llamaCppBrowser__gguf_model_files/ko';
 import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/ko';
+import { llamaCppBrowser__choose_model_folder } from '@/strings/messages/llamaCppBrowser__choose_model_folder/ko';
 import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBrowser__gguf_files_only/ko';
-import { llamaCppBrowser__drop_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_gguf_files_here/ko';
+import { llamaCppBrowser__drop_model_folders_or_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_model_folders_or_gguf_files_here/ko';
 import { llamaCppBrowser__or_choose_files_from_your_device } from '@/strings/messages/llamaCppBrowser__or_choose_files_from_your_device/ko';
 import { llamaCppBrowser__inference_settings } from '@/strings/messages/llamaCppBrowser__inference_settings/ko';
 import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/ko';
@@ -1726,7 +1727,7 @@ import { llamaCppBrowser__loading_model_list } from '@/strings/messages/llamaCpp
 import { llamaCppBrowser__manage_gguf_models } from '@/strings/messages/llamaCppBrowser__manage_gguf_models/ko';
 import { llamaCppBrowser__import_downloaded_gguf } from '@/strings/messages/llamaCppBrowser__import_downloaded_gguf/ko';
 import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/ko';
-import { llamaCppBrowser__text_chat_only } from '@/strings/messages/llamaCppBrowser__text_chat_only/ko';
+import { llamaCppBrowser__image_chat_requires_matching_projector } from '@/strings/messages/llamaCppBrowser__image_chat_requires_matching_projector/ko';
 import { llamaCppBrowser__import_gguf } from '@/strings/messages/llamaCppBrowser__import_gguf/ko';
 import { llamaCppBrowser__profile } from '@/strings/messages/llamaCppBrowser__profile/ko';
 import { llamaCppBrowser__context_size } from '@/strings/messages/llamaCppBrowser__context_size/ko';
@@ -3457,8 +3458,9 @@ export const catalog = {
   llamaCppBrowser__endpoint_label,
   llamaCppBrowser__gguf_model_files,
   llamaCppBrowser__choose_gguf_files,
+  llamaCppBrowser__choose_model_folder,
   llamaCppBrowser__gguf_files_only,
-  llamaCppBrowser__drop_gguf_files_here,
+  llamaCppBrowser__drop_model_folders_or_gguf_files_here,
   llamaCppBrowser__or_choose_files_from_your_device,
   llamaCppBrowser__inference_settings,
   llamaCppBrowser__automatic_recommended,
@@ -3468,7 +3470,7 @@ export const catalog = {
   llamaCppBrowser__manage_gguf_models,
   llamaCppBrowser__import_downloaded_gguf,
   llamaCppBrowser__unavailable_in_standalone,
-  llamaCppBrowser__text_chat_only,
+  llamaCppBrowser__image_chat_requires_matching_projector,
   llamaCppBrowser__import_gguf,
   llamaCppBrowser__profile,
   llamaCppBrowser__context_size,

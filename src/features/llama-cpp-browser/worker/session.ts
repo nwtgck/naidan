@@ -1,16 +1,17 @@
+import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { Core } from "@/features/llama-cpp-browser/runtime/core";
 import { mountReadOnlyFile } from "@/features/llama-cpp-browser/runtime/read-only-file";
 import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile, type Progress, type RuntimeOptions } from "@/features/llama-cpp-browser/types";
-import { storedModelHandle } from "@/features/llama-cpp-browser/runtime/model-store";
+import { storedModelDirectory } from "@/features/llama-cpp-browser/runtime/model-store";
 import { loadRuntime } from "@/features/llama-cpp-browser/runtime/load-runtime";
 import { resolveRuntimeProfile } from "@/features/llama-cpp-browser/runtime/detect-profile";
-import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
+import { logDiagnostic, logFailure } from "@/features/llama-cpp-browser/debug-log";
 import type { WorkerGenerateInput } from "./types";
 
 export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid' };
 
 type ResidentModel = { model: bigint, context: bigint, cache: PromptCache, name: string,
-  handle: FileSystemFileHandle, size: number, modified: number };
+  id: string, files: ModelFile[], projector: bigint };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string } | undefined;
 let resident: ResidentModel | undefined;
 
@@ -22,7 +23,11 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
     try {
       if (current.context !== 0n) await runtime.core.api.llama_free(current.context);
     } finally {
-      await runtime.core.api.llama_model_free(current.model);
+      try {
+        if (current.projector !== 0n) await runtime.core.api.mtmd_free(current.projector);
+      } finally {
+        await runtime.core.api.llama_model_free(current.model);
+      }
     }
     logDiagnostic({ diagnostic: { event: "released" } });
   }
@@ -32,11 +37,11 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
   }
 }
 export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
-  if (resident && (id.split("/")[1] === resident.name || id === `user/${resident.name.slice(0, -5)}-GGUF/${resident.name}`)) await releaseSession({ releaseRuntime: false });
+  if (resident && resident.id === id) await releaseSession({ releaseRuntime: false });
 }
 export async function prepareSession({ request, onProgress, signal }: {
   request: WorkerGenerateInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
-}): Promise<{ core: Core, model: bigint, context: bigint, cache: PromptCache }> {
+}): Promise<{ core: Core, model: bigint, context: bigint, cache: PromptCache, projector: bigint }> {
   const checkCancelled = (): void => {
     if (signal?.aborted) {
       if (resident) resident.cache.validity = 'invalid';
@@ -54,29 +59,39 @@ export async function prepareSession({ request, onProgress, signal }: {
   }
   runtime.requestedProfile = request.options.profile;
   const core = runtime.core; const api = core.api;
-  const handle = await storedModelHandle({ name: request.model });
-  const file = await handle.getFile();
-  if (resident && (resident.name !== request.model || resident.size !== file.size || resident.modified !== file.lastModified
-    || !await resident.handle.isSameEntry(handle))) await releaseSession({ releaseRuntime: false });
+  const directory = await storedModelDirectory({ name: request.model });
+  let unchanged = resident?.id === directory.id && resident.files.length === directory.files.length;
+  if (unchanged && resident) {
+    for (let index = 0; index < directory.files.length; index++) {
+      const next = directory.files[index]!; const previous = resident.files[index]!;
+      if (previous.path !== next.path || previous.file.size !== next.file.size || previous.file.lastModified !== next.file.lastModified || !await previous.handle.isSameEntry(next.handle)) {
+        unchanged = false; break;
+      }
+    }
+  }
+  if (resident && !unchanged) await releaseSession({ releaseRuntime: false });
   checkCancelled();
   if (!resident) {
-    const nativeHandle = handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<{
-      getSize(): number,
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Native FileSystemSyncAccessHandle has positional arguments.
-      read(destination: Uint8Array, options: { at: number }): number,
-      close(): void,
-    }> };
-    if (!nativeHandle.createSyncAccessHandle) throw new LlamaCppBrowserError({ code: "unavailable" });
-    const access = await nativeHandle.createSyncAccessHandle();
-    let mounted: ReturnType<typeof mountReadOnlyFile> | undefined;
-    const allocations: bigint[] = []; let callback: number | bigint | undefined; let model = 0n;
+    const mounts: ReturnType<typeof mountReadOnlyFile>[] = [];
+    const accesses: { close(): void }[] = [];
+    const allocations: bigint[] = []; let callback: number | bigint | undefined; let model = 0n; let projector = 0n;
     const started = performance.now();
     logDiagnostic({ diagnostic: { event: "load-start", profile } });
     try {
-      if (access.getSize() !== file.size) throw new LlamaCppBrowserError({ code: "storage-error" });
-      mounted = mountReadOnlyFile({ core, path: "/models/model.gguf", source: { size: access.getSize(), read({ destination, offset }) {
-        return access.read(destination, { at: offset });
-      } }, maxChunkBytes: 8 * 1024 * 1024 });
+      for (const entry of directory.files) {
+        const nativeHandle = entry.handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<{
+          getSize(): number,
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Native OPFS callback ABI.
+          read(destination: Uint8Array, options: { at: number }): number,
+          close(): void,
+        }> };
+        if (!nativeHandle.createSyncAccessHandle) throw new LlamaCppBrowserError({ code: 'unavailable' });
+        const access = await nativeHandle.createSyncAccessHandle(); accesses.push(access);
+        if (access.getSize() !== entry.file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
+        mounts.push(mountReadOnlyFile({ core, path: `/models/${entry.path}`, source: { size: access.getSize(), read({ destination, offset }) {
+          return access.read(destination, { at: offset });
+        } }, maxChunkBytes: 8 * 1024 * 1024 }));
+      }
       const params = core.allocRecord({ name: "llama_model_params" }); allocations.push(params);
       await api.llama_model_default_params(params);
       for (const [field, value] of Object.entries({ n_gpu_layers: usesWebGpu({ profile }) ? 999 : 0,
@@ -91,25 +106,51 @@ export async function prepareSession({ request, onProgress, signal }: {
         return signal?.aborted ? 0 : 1;
       }, core.pointerBytes === 8 ? "ifj" : "ifi");
       core.setField({ name: "llama_model_params", pointer: params, field: "progress_callback", value: BigInt(callback) });
-      const path = core.utf8({ text: mounted.path }); allocations.push(path);
+      const path = core.utf8({ text: `/models/${directory.modelPath}` }); allocations.push(path);
       onProgress({ progress: { phase: "loading", completed: 0, total: 1 } });
-      model = await api.llama_model_load_from_file(path, params);
+      const weights = directory.files.filter(entry => entry.path !== directory.projectorPath);
+      if (weights.length > 1) {
+        const pointers = core.alloc({ bytes: weights.length * core.pointerBytes }); allocations.push(pointers);
+        const paths = weights.map(entry => {
+          const value = core.utf8({ text: `/models/${entry.path}` }); allocations.push(value); return value;
+        });
+        const bytes = core.bytes({ pointer: pointers, length: paths.length * core.pointerBytes }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        paths.forEach((value, index) => {
+          if (core.pointerBytes === 8) view.setBigUint64(index * 8, value, true); else view.setUint32(index * 4, Number(value), true);
+        });
+        // Explicit paths preserve original casing and nested placement for every shard.
+        model = await api.llama_model_load_from_splits(pointers, BigInt(weights.length), params);
+      } else model = await api.llama_model_load_from_file(path, params);
       checkCancelled();
       if (model === 0n) throw new LlamaCppBrowserError({ code: "runtime-error" });
-      resident = { model, context: 0n, cache: { tokens: [], validity: 'invalid' }, name: request.model, handle, size: file.size, modified: file.lastModified };
-      model = 0n;
+      if (directory.projectorPath) {
+        const projectorParams = core.allocRecord({ name: 'mtmd_context_params' }); allocations.push(projectorParams);
+        await api.mtmd_context_params_default(projectorParams);
+        core.setField({ name: 'mtmd_context_params', pointer: projectorParams, field: 'use_gpu', value: usesWebGpu({ profile }) ? 1 : 0 });
+        core.setField({ name: 'mtmd_context_params', pointer: projectorParams, field: 'n_threads', value: 1 });
+        const projectorPath = core.utf8({ text: `/models/${directory.projectorPath}` }); allocations.push(projectorPath);
+        try {
+          projector = await api.mtmd_init_from_file(projectorPath, model, projectorParams);
+          if (projector === 0n) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+        } catch (error) {
+          logFailure({ stage: 'projector-load', error }); throw error;
+        }
+      }
+      resident = { model, projector, context: 0n, cache: { tokens: [], validity: 'invalid' }, name: request.model, id: directory.id, files: directory.files };
+      model = 0n; projector = 0n;
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
       logDiagnostic({ diagnostic: { event: "load-complete", elapsedMs: performance.now() - started, profile } });
     } finally {
       try {
+        if (projector !== 0n) await api.mtmd_free(projector);
         if (model !== 0n) await api.llama_model_free(model);
         if (callback !== undefined) core.module.removeFunction(callback);
         for (const pointer of allocations.reverse()) core.free({ pointer: pointer });
       } finally {
         try {
-          mounted?.remove();
+          for (const mounted of mounts.reverse()) mounted.remove();
         } finally {
-          access.close();
+          for (const access of accesses.reverse()) access.close();
         }
       }
     }
@@ -159,7 +200,7 @@ export async function prepareSession({ request, onProgress, signal }: {
     }
   }
   checkCancelled();
-  return { core, model: current.model, context: current.context, cache: current.cache };
+  return { core, model: current.model, context: current.context, cache: current.cache, projector: current.projector };
 }
 export const TEST_ONLY = {
   residentContext: () => resident?.context,

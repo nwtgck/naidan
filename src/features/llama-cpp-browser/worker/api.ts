@@ -1,7 +1,8 @@
+import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { logFailure } from '@/features/llama-cpp-browser/debug-log';
 import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
-import { errorCode, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema } from "@/features/llama-cpp-browser/types";
+import { errorCode, modelDirectoryInputSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema } from "@/features/llama-cpp-browser/types";
 import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreLock } from "@/features/llama-cpp-browser/runtime/model-store";
 import { invalidateStoredModel } from "./session";
 import { generate } from "./generation";
@@ -57,6 +58,26 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
         await events.finish();
       }
     } }),
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with a top-level callback.
+    importDirectory: async (request, onProgress) => {
+      const { directory, generationId } = z.object({ directory: modelDirectoryInputSchema, generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().parse(request);
+      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      const controller = new AbortController(); active = { generationId, controller };
+      const events = eventQueue();
+      try {
+        return await guarded({ operation: async () => modelSchema.parse(await importModelDirectory({ directory, signal: controller.signal, onProgress: ({ progress }) => {
+          events.send({ operation: () => {
+            if (!controller.signal.aborted) return onProgress(progress);
+          } });
+        } })) });
+      } finally {
+        try {
+          await events.finish();
+        } finally {
+          active = undefined;
+        }
+      }
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, validate the wire object before use.
     removeModel: (request) => guarded({ operation: async () => {
       const { id } = z.object({ id: modelSchema.shape.id }).strict().parse(request);

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { errorCode, errorCodeSchema } from './types';
 
-const stageSchema = z.enum(['session', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
+const stageSchema = z.enum(['model-resolve', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
   'reasoning-state', 'grammar-switch', 'native-sample', 'reasoning-accept', 'reasoning-replay',
   'token-render', 'partial-parse', 'stream-emit', 'generation-decode', 'final-parse', 'cleanup',
   'worker-operation', 'worker-callback', 'worker-rpc', 'worker-error', 'worker-messageerror']);
@@ -15,7 +15,7 @@ const diagnosticSchema = z.object({
   stage: stageSchema.optional(),
   failureKind: failureKindSchema.optional(),
   code: errorCodeSchema.optional(),
-  reason: z.enum(['non-monotonic-content', 'non-monotonic-reasoning', 'decode-status', 'invalid-token-piece', 'missing-native-binding', 'context-allocation', 'prefix-match', 'prefix-mismatch', 'cache-invalid', 'cache-position']).optional(),
+  reason: z.enum(['model-directory-layout', 'non-monotonic-content', 'non-monotonic-reasoning', 'decode-status', 'invalid-token-piece', 'missing-native-binding', 'context-allocation', 'prefix-match', 'prefix-mismatch', 'cache-invalid', 'cache-position']).optional(),
   grammar: z.boolean().optional(),
   grammarLazy: z.boolean().optional(),
   reasoning: z.boolean().optional(),
@@ -23,6 +23,7 @@ const diagnosticSchema = z.object({
   contextTokens: z.number().int().positive().optional(),
   reusedTokens: z.number().int().nonnegative().optional(),
   evaluatedTokens: z.number().int().nonnegative().optional(),
+  imageCount: z.number().int().nonnegative().optional(),
   toolCount: z.number().int().nonnegative().optional(),
   elapsedMs: z.number().finite().nonnegative().optional(),
   bytes: z.number().finite().nonnegative().optional(),
@@ -30,6 +31,11 @@ const diagnosticSchema = z.object({
   profile: z.enum(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi']).optional(),
 }).strict();
 const stageDescriptions = {
+  'model-resolve': 'resolving the model directory layout',
+  'projector-load': 'loading the matching image projector',
+  'image-decode': 'decoding an image with the browser',
+  'image-tokenize': 'preparing image and text chunks with native mtmd',
+  'image-evaluate': 'evaluating image and text chunks with native mtmd',
   session: 'preparing the resident model and context',
   prefill: 'preparing the prompt evaluation',
   template: 'applying the native chat template',
@@ -65,6 +71,7 @@ const failureDescriptions = {
   'unknown-exception': 'The exception could not be classified safely.',
 } satisfies Record<z.infer<typeof failureKindSchema>, string>;
 const reasonDescriptions = {
+  'model-directory-layout': 'Expected one model or a complete split set, with at most one projector candidate.',
   'context-allocation': 'Context allocation returned no context; retrying a smaller capacity.',
   'prefix-match': 'Reusing the complete decoded token prefix.',
   'prefix-mismatch': 'The prompt changed before the end of the decoded prefix; evaluating it again.',

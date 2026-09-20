@@ -5,6 +5,7 @@ import { idToRaw, toToolCallId } from '@/01-models/ids';
 import { formatToolExecutionOutcomeForLm, type ToolExecutionOutcome } from '@/01-models/tool';
 import { zodToJsonSchema } from '@/utils/lm-tools';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
+import { imageFromDataUrl } from './runtime/image-input';
 import { LlamaCppBrowserError, type GenerateInput } from './types';
 
 // Short alphanumeric IDs also fit templates that enforce nine-character IDs.
@@ -21,13 +22,13 @@ export class LlamaCppBrowserProvider implements LmProvider {
       const { role, content: sourceContent, tool_calls, tool_call_id, ...unhandled } = message;
       unhandled satisfies Record<PropertyKey, never>;
       if (role !== 'user' && role !== 'assistant' && role !== 'system' && role !== 'tool') throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-      const content = typeof sourceContent === 'string' ? sourceContent : sourceContent.map(part => {
+      const content = typeof sourceContent === 'string' ? sourceContent : sourceContent.every(part => part.type === 'text') ? sourceContent.map(part => part.text).join('') : sourceContent.map(part => {
         switch (part.type) {
-        case 'text': return part.text;
-        case 'image_url': throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+        case 'text': return { type: 'text' as const, text: part.text };
+        case 'image_url': return { type: 'image' as const, blob: imageFromDataUrl({ url: part.image_url.url }) };
         default: { const exhaustive: never = part; throw new Error(String(exhaustive)); }
         }
-      }).join('');
+      });
       const calls = tool_calls?.map(({ id, type, function: fn, ...rest }) => {
         rest satisfies Record<PropertyKey, never>;
         const raw = idToRaw({ id }); usedIds.add(raw); callNames.set(raw, fn.name);
