@@ -1,0 +1,177 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ref, reactive } from 'vue';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+
+// Mock useSettings
+vi.mock('./useSettings', () => ({
+  useSettings: vi.fn().mockReturnValue({
+    settings: ref({
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost:11434/v1',
+      },
+      defaultModelId: 'gpt-4',
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+    }),
+    setHeavyContentAlertDismissed: vi.fn(),
+    setOnboardingDraft: vi.fn(),
+    setIsOnboardingDismissed: vi.fn(),
+  }),
+}));
+
+// Mock LM providers
+const mockLmChat = vi.fn();
+vi.mock('../features/lm/openai', () => ({
+  OpenAIProvider: class {
+    chat = mockLmChat;
+    listModels = vi.fn().mockResolvedValue(['gpt-4']);
+  },
+}));
+
+vi.mock('../features/lm/ollama', () => ({
+  OllamaProvider: class {
+    chat = vi.fn();
+    listModels = vi.fn().mockResolvedValue([]);
+  },
+}));
+
+// Mock storage service
+vi.mock('../00-storage/service', () => ({
+  storageService: {
+    getSidebarStructure: vi.fn().mockResolvedValue([]),
+    loadChat: vi.fn(),
+    updateChatContent: vi.fn().mockResolvedValue(undefined),
+    updateChatMeta: vi.fn().mockResolvedValue(undefined),
+    updateHierarchy: vi.fn().mockResolvedValue(undefined),
+    subscribeToChanges: vi.fn(),
+    notify: vi.fn(),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
+    getFile: vi.fn(),
+    canPersistBinary: true,
+  },
+}));
+
+describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Interruption', () => {
+  const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+  const { TEST_ONLY: { __testOnlySetCurrentChat } } = chatStore;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
+  });
+
+  it('should interrupt current generation and start new one when regenerateMessage is called', async () => {
+    const { sendMessage, regenerateMessage, streaming } = chatStore;
+
+    const chat = reactive({
+      id: 'regen-interrupt-test',
+      title: 'Regen Interrupt',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any;
+    __testOnlySetCurrentChat({ chat });
+
+    // 1. Start a slow generation
+    let firstGenAborted = false;
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
+      const { onChunk, signal } = params;
+      signal.addEventListener('abort', () => {
+        firstGenAborted = true;
+      });
+      if (signal.aborted) {
+        firstGenAborted = true;
+        return;
+      }
+      onChunk({ chunk: 'First chunk' });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (signal.aborted) {
+        firstGenAborted = true;
+        return;
+      }
+      onChunk({ chunk: 'Second chunk' });
+    });
+
+    const sendSuccess = await sendMessage({ content: 'Hello' });
+    expect(sendSuccess).toBe(true);
+
+    // Wait for it to start streaming
+    await vi.waitUntil(() => streaming.value);
+
+    const userMsg = chat.root.items[0];
+    const firstAssistantMsgId = userMsg.replies.items[0].id;
+
+    // 2. Call regenerate while first one is still running
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Second Response' });
+    });
+
+    await regenerateMessage({ failedMessageId: firstAssistantMsgId });
+
+    // Expect first generation to be aborted
+    expect(firstGenAborted).toBe(true);
+
+    // Expect a second assistant message to be created
+    expect(userMsg.replies.items).toHaveLength(2);
+
+    // Wait for second generation to finish
+    await vi.waitUntil(() => !streaming.value);
+
+    const secondAssistantMsg = userMsg.replies.items[1];
+    expect(secondAssistantMsg.content).toBe('Second Response');
+    expect(chat.currentLeafId).toBe(secondAssistantMsg.id);
+  });
+
+  it('should interrupt current generation and start new one when editMessage (resend) is called', async () => {
+    const { sendMessage, editMessage, streaming } = chatStore;
+
+    const chat = reactive({
+      id: 'edit-interrupt-test',
+      title: 'Edit Interrupt',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any;
+    __testOnlySetCurrentChat({ chat });
+
+    // 1. Start a slow generation
+    let firstGenAborted = false;
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
+      const { onChunk, signal } = params;
+      signal.addEventListener('abort', () => {
+        firstGenAborted = true;
+      });
+      onChunk({ chunk: 'First chunk' });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (signal.aborted) return;
+      onChunk({ chunk: 'Second chunk' });
+    });
+
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => streaming.value);
+
+    const userMsg = chat.root.items[0];
+
+    // 2. Call editMessage (resend) while first one is still running
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Edited Response' });
+    });
+
+    await editMessage({ messageId: userMsg.id, newContent: 'Hello Again' });
+
+    // Expect first generation to be aborted
+    expect(firstGenAborted).toBe(true);
+
+    // Wait for second generation to finish
+    await vi.waitUntil(() => !streaming.value);
+
+    // Initial 'Hello' and new 'Hello Again'
+    expect(chat.root.items).toHaveLength(2);
+
+    const secondAssistantMsg = chat.root.items[1].replies.items[0];
+    expect(secondAssistantMsg.content).toBe('Edited Response');
+  });
+});

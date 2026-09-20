@@ -1,0 +1,151 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { storageService } from '@/00-storage/service';
+import { reactive } from 'vue';
+import type { Chat, SidebarItem, ChatGroup } from '@/01-models/types';
+import { toChatGroupId, toChatId } from '@/01-models/ids';
+
+// Mock storage service state
+const mockRootItems: SidebarItem[] = [];
+
+vi.mock('../00-storage/service', () => ({
+  storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    listChats: vi.fn().mockResolvedValue([]),
+    loadChat: vi.fn(),
+    saveChat: vi.fn(),
+    deleteChat: vi.fn(),
+    updateChatGroup: vi.fn(),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
+    getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
+    deleteChatGroup: vi.fn(),
+  },
+}));
+
+vi.mock('./useSettings', () => ({
+  useSettings: () => ({
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } }, defaultModelId: 'gpt-4' } },
+  }),
+}));
+
+vi.mock('./useToast', () => ({
+  useToast: () => ({
+    addToast: vi.fn(),
+  }),
+}));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+
+describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Group Deletion', () => {
+  const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+  const { deleteChatGroup, rootItems, currentChat, TEST_ONLY } = chatStore;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRootItems.length = 0;
+    rootItems.value = [];
+    __testOnlySetCurrentChat({ chat: null });
+  });
+
+  it('should delete a chat group and all its contained chats', async () => {
+    // Setup: Group with 2 chats
+    const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
+    const chat1: Chat = { id: toChatId({ raw: 'c1' }), title: 'Chat 1', groupId: toChatGroupId({ raw: 'g1' }), root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const chat2: Chat = { id: toChatId({ raw: 'c2' }), title: 'Chat 2', groupId: toChatGroupId({ raw: 'g1' }), root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+
+    // Populate mock storage structure
+    const sidebarItem1: SidebarItem = { id: 'chat:c1', type: 'chat', chat: chat1 };
+    const sidebarItem2: SidebarItem = { id: 'chat:c2', type: 'chat', chat: chat2 };
+    group.items = [sidebarItem1, sidebarItem2];
+
+    const groupItem: SidebarItem = { id: 'chat_group:g1', type: 'chat_group', chatGroup: group };
+    mockRootItems.push(groupItem);
+
+    // Mock loadChat behavior for deleteChat's verification steps
+    vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
+      if (id === toChatId({ raw: 'c1' })) return chat1;
+      if (id === toChatId({ raw: 'c2' })) return chat2;
+      return null;
+    });
+
+    await chatStore.loadChats();
+    expect(rootItems.value).toHaveLength(1);
+
+    // Act
+    await deleteChatGroup({ id: toChatGroupId({ raw: 'g1' }) });
+
+    // Assert
+    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith({ id: toChatId({ raw: 'c1' }) });
+    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith({ id: toChatId({ raw: 'c2' }) });
+    expect(vi.mocked(storageService.deleteChatGroup)).toHaveBeenCalledWith({ id: toChatGroupId({ raw: 'g1' }) });
+  });
+
+  it('should NOT delete chats that are outside the group', async () => {
+    // Setup: Group with 1 chat, and 1 independent chat
+    const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
+    const chatInGroup: Chat = { id: toChatId({ raw: 'c_in' }), title: 'Inside', groupId: toChatGroupId({ raw: 'g1' }), root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const chatOut: Chat = { id: toChatId({ raw: 'c_out' }), title: 'Outside', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+
+    group.items = [{ id: 'chat:c_in', type: 'chat', chat: chatInGroup }];
+    mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
+    mockRootItems.push({ id: 'chat:c_out', type: 'chat', chat: chatOut });
+
+    vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
+      if (id === toChatId({ raw: 'c_in' })) return chatInGroup;
+      if (id === toChatId({ raw: 'c_out' })) return chatOut;
+      return null;
+    });
+
+    await chatStore.loadChats();
+
+    // Act
+    await deleteChatGroup({ id: toChatGroupId({ raw: 'g1' }) });
+
+    // Assert
+    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith({ id: toChatId({ raw: 'c_in' }) });
+    expect(vi.mocked(storageService.deleteChat)).not.toHaveBeenCalledWith({ id: toChatId({ raw: 'c_out' }) });
+    expect(vi.mocked(storageService.deleteChatGroup)).toHaveBeenCalledWith({ id: toChatGroupId({ raw: 'g1' }) });
+  });
+
+  it('should clear currentChat if the active chat was in the deleted group', async () => {
+    const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
+    const chat1: Chat = { id: toChatId({ raw: 'c1' }), title: 'Chat 1', groupId: toChatGroupId({ raw: 'g1' }), root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+
+    group.items = [{ id: 'chat:c1', type: 'chat', chat: chat1 }];
+    mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
+
+    vi.mocked(storageService.loadChat).mockResolvedValue(chat1);
+
+    await chatStore.loadChats();
+    __testOnlySetCurrentChat({ chat: reactive(chat1) as any });
+
+    await deleteChatGroup({ id: toChatGroupId({ raw: 'g1' }) });
+
+    expect(currentChat.value).toBeNull();
+  });
+
+  it('should NOT clear currentChat if the active chat was outside the deleted group', async () => {
+    const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
+    const chatOut: Chat = { id: toChatId({ raw: 'c_out' }), title: 'Outside', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+
+    mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
+    mockRootItems.push({ id: 'chat:c_out', type: 'chat', chat: chatOut });
+
+    vi.mocked(storageService.loadChat).mockResolvedValue(chatOut);
+
+    await chatStore.loadChats();
+    __testOnlySetCurrentChat({ chat: reactive(chatOut) as any });
+
+    await deleteChatGroup({ id: toChatGroupId({ raw: 'g1' }) });
+
+    expect(currentChat.value).not.toBeNull();
+    expect(currentChat.value?.id).toBe(toChatId({ raw: 'c_out' }));
+  });
+});

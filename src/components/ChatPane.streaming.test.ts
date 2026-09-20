@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { useChat } from '@/composables/useChat';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
@@ -124,14 +124,14 @@ function mountChatPane({
 }) {
   return mount(ChatPane, {
     props: {
-      chatId: useChat().currentChat.value?.id ?? toChatId({ raw: 'chat-1' }),
+      chatId: useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction().currentChat.value?.id ?? toChatId({ raw: 'chat-1' }),
     },
     global,
   });
 }
 
 describe('ChatPane Streaming DOM Test', () => {
-  const chatStore = useChat();
+  const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -140,7 +140,7 @@ describe('ChatPane Streaming DOM Test', () => {
   });
 
   it('should render assistant chunks in the DOM in real-time', async () => {
-    const { createNewChat } = useChat();
+    const { createNewChat } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
     await createNewChat({
       groupId: undefined,
       modelId: undefined,
@@ -178,7 +178,7 @@ describe('ChatPane Streaming DOM Test', () => {
     const html = wrapper.html();
     if (!html.includes('Live')) {
       console.log('DOM after first chunk:', html);
-      const { activeMessages } = useChat();
+      const { activeMessages } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
       console.log('activeMessages state:', JSON.stringify(activeMessages.value, null, 2));
     }
     expect(wrapper.html()).toContain('Live');

@@ -248,8 +248,8 @@ vi.mock('../composables/useReasoning', () => ({
   useReasoning: () => mockReasoningStore,
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
     availableModels: ref([]),
@@ -350,8 +350,8 @@ const mockChatStore = {
   updateChatMount: vi.fn(),
 };
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => mockChatStore,
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => mockChatStore,
 }));
 
 vi.mock('../composables/chat/useChatConversation', () => ({

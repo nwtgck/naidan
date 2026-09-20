@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import Sidebar from './Sidebar.vue';
-import { useChat } from '@/composables/useChat';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -13,7 +13,7 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
-vi.mock('../composables/useChat');
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction');
 vi.mock('../composables/useSettings');
 vi.mock('../composables/useLayout');
 vi.mock('../composables/chat/ui/useCurrentChatState');
@@ -79,7 +79,7 @@ describe('Sidebar DND Improvements', () => {
       setChatGroupCollapsed: vi.fn(),
       persistSidebarStructure: vi.fn(),
     };
-    (useChat as any).mockReturnValue(mockChatStore);
+    (useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction as any).mockReturnValue(mockChatStore);
     (useCurrentChatState as any).mockReturnValue({
       currentChat: mockChatStore.currentChat,
       currentChatGroup: mockChatStore.currentChatGroup,

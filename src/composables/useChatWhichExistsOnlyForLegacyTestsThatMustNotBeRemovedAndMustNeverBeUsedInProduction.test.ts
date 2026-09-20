@@ -1,0 +1,1415 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { flushPromises } from '@vue/test-utils';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction, type AddToastOptions } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { storageService } from '@/00-storage/service';
+import { OpenAIProvider } from '@/features/lm/openai';
+import { reactive, triggerRef, toRaw } from 'vue';
+import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { useGlobalEvents } from './useGlobalEvents';
+import { TEST_ONLY as CHAT_TREE_TEST_ONLY } from '@/logic/chat-tree';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+
+const { mocks } = vi.hoisted(() => ({
+  mocks: {
+    capturedListener: null as (({ event }: { event: any }) => void | Promise<void>) | null,
+    settings: {
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost',
+      },
+      storageType: 'local',
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      defaultModelId: 'gpt-4',
+      providerProfiles: [],
+      mounts: [],
+      experimental: undefined as { toolConfigPersistence?: 'disabled' | 'enabled', sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
+    },
+  },
+}));
+
+// Mock storage service state
+const mockRootItems: SidebarItem[] = [];
+let mockHierarchy: Hierarchy = { items: [] };
+
+vi.mock('../00-storage/service', () => ({
+  storageService: {
+    init: vi.fn(),
+    listChats: vi.fn().mockResolvedValue([]),
+    loadChat: vi.fn(),
+    saveChat: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatContent: vi.fn(),
+    updateHierarchy: vi.fn(),
+    loadHierarchy: vi.fn(),
+    deleteChat: vi.fn(),
+    updateChatGroup: vi.fn(),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
+    getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
+    deleteChatGroup: vi.fn(),
+    getFile: vi.fn().mockResolvedValue(new Blob([])),
+    subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
+      mocks.capturedListener = listener;
+      return () => {};
+    }),
+    notify: vi.fn(),
+  },
+}));
+
+// Mock settings
+vi.mock('./useSettings', () => ({
+  useSettings: () => ({
+    settings: { value: mocks.settings },
+    isOnboardingDismissed: { value: true },
+    onboardingDraft: { value: null },
+  }),
+}));
+
+// Mock LM Provider
+const mockLmChat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+  params.onChunk({ chunk: 'Hello' });
+  await new Promise(r => setTimeout(r, 10)); // Simulate network delay
+  params.onChunk({ chunk: ' World' });
+});
+
+vi.mock('../features/lm/openai', () => {
+  return {
+    OpenAIProvider: function() {
+      return {
+        chat: mockLmChat,
+        listModels: vi.fn().mockResolvedValue(['gpt-4']),
+      };
+    },
+  };
+});
+
+vi.mock('../features/lm/ollama', () => {
+  return {
+    OllamaProvider: function() {
+      return {
+        chat: mockLmChat,
+        listModels: vi.fn().mockResolvedValue(['gpt-4']),
+      };
+    },
+  };
+});
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+
+describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Composable Logic', () => {
+  const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+  const {
+    activeMessages, sendMessage, currentChat, rootItems, TEST_ONLY,
+  } = chatStore;
+  const { __testOnlySetCurrentChat, __testOnlySetContextCompactProgress } = TEST_ONLY;
+
+  const { errorCount, clearEvents } = useGlobalEvents();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __testOnlySetCurrentChat({ chat: null });
+    rootItems.value = [];
+    mockRootItems.length = 0;
+    mockHierarchy = { items: [] };
+    mocks.settings.experimental = undefined;
+    clearEvents();
+
+    // Setup persistence mocks
+    vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
+    vi.mocked(storageService.updateChatContent).mockImplementation(({ updater }) => {
+      return Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } })) as any;
+    });
+    vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
+
+    vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
+
+    vi.mocked(storageService.updateHierarchy).mockImplementation(async ({ updater }) => {
+      mockHierarchy = await updater({ current: mockHierarchy });
+      // Synchronize mockRootItems ONLY when hierarchy is explicitly updated
+      mockRootItems.length = 0;
+      mockHierarchy.items.forEach(node => {
+        if (node.type === 'chat') {
+          mockRootItems.push({ id: `chat:${idToRaw({ id: node.id })}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0, groupId: null } });
+        } else {
+          mockRootItems.push({ id: `chat_group:${idToRaw({ id: node.id })}`, type: 'chat_group', chatGroup: { id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map(cid => ({ id: `chat:${idToRaw({ id: cid })}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0, groupId: node.id } })) } });
+        }
+      });
+      return Promise.resolve();
+    });
+
+    vi.mocked(storageService.loadChat).mockImplementation(({ id }) => {
+      if (currentChat.value?.id === id) return Promise.resolve(currentChat.value as any);
+      return Promise.resolve(null);
+    });
+  });
+
+  afterEach(() => {
+    expect(errorCount.value).toBe(0);
+  });
+
+  const simulateExternalEvent = async (event: any) => {
+    if (!mocks.capturedListener) return;
+    await mocks.capturedListener({ event });
+    await Promise.resolve();
+  };
+
+  it('should update activeMessages in real-time during streaming', async () => {
+    __testOnlySetCurrentChat({ chat: reactive({
+      id: 'chat-1', title: 'Test', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any });
+    const sendPromise = sendMessage({ content: 'Ping' });
+    await new Promise(r => setTimeout(r, 20));
+    triggerRef(currentChat);
+    expect(['Hello', 'Hello World']).toContain(activeMessages.value[1]?.content);
+    await sendPromise;
+    // Wait for streaming to finish since sendMessage is now fire-and-forget
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    triggerRef(currentChat);
+    expect(activeMessages.value[1]?.content).toBe('Hello World');
+  });
+
+  it('should return true from sendMessage immediately while generation continues in background (Regression Test)', async () => {
+    __testOnlySetCurrentChat({ chat: reactive({
+      id: 'bg-gen-test', title: 'BG Test', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any });
+
+    // Mock a slow LM response
+    let resolveGen: () => void;
+    const genStarted = new Promise<void>(resolve => resolveGen = resolve);
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Started...' });
+      resolveGen();
+      await new Promise(r => setTimeout(r, 100)); // Simulate slow generation
+      params.onChunk({ chunk: ' Finished' });
+    });
+
+    const result = await sendMessage({ content: 'Start background generation' });
+
+    // Result should be true immediately (after storage commit)
+    expect(result).toBe(true);
+
+    // Generation should still be running
+    await genStarted;
+    expect(chatStore.streaming.value).toBe(true);
+    expect(activeMessages.value[1]?.content).toContain('Started...');
+
+    // Wait for it to finish to clean up
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    expect(activeMessages.value[1]?.content).toBe('Started... Finished');
+  });
+
+  it('should rename a chat and update storage', async () => {
+    const { renameChat, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    const mockChat: Chat = { id: toChatId({ raw: '1' }), title: 'Old', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    rootItems.value = [{ id: 'chat:1', type: 'chat', chat: { id: toChatId({ raw: '1' }), title: 'Old', updatedAt: 0 } }];
+    mockRootItems.push(...rootItems.value);
+    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
+
+    await renameChat({ id: '1', newTitle: 'New' });
+    expect(storageService.updateChatMeta).toHaveBeenCalled();
+    const [{ id, updater }] = vi.mocked(storageService.updateChatMeta).mock.calls[0]!;
+    expect(id).toBe('1');
+    const result = await (updater as any)({ current: mockChat });
+    expect(result.title).toBe('New');
+  });
+
+  it('should fork a chat up to a specific message', async () => {
+    const { forkChat, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    // Create a tree: m1 -> m2
+    const m2: MessageNode = { id: toMessageId({ raw: 'm2' }), role: 'assistant', content: 'Msg 2', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Msg 1', replies: { items: [m2] }, timestamp: 0 };
+
+    const mockChat: Chat = {
+      id: toChatId({ raw: 'old-chat' }),
+      title: 'Original',
+      root: { items: [m1] },
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+      modelId: 'special-model',
+    };
+
+    __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
+    rootItems.value = [{ id: 'chat:old-chat', type: 'chat', chat: { id: toChatId({ raw: 'old-chat' }), title: 'Original', updatedAt: 0 } }];
+    mockRootItems.push(...rootItems.value);
+    mockHierarchy.items = [{ type: 'chat', id: toChatId({ raw: 'old-chat' }) }];
+
+    vi.mocked(storageService.listChats).mockResolvedValue([]);
+
+    // Fork at message 'm1'
+    const newId = await forkChat({ messageId: 'm1' });
+
+    expect(newId).toBeDefined();
+    expect(storageService.updateChatMeta).toHaveBeenCalledWith({ id: newId, updater: expect.any(Function) });
+    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(c => idToRaw({ id: c[0].id }) === newId)![0].updater;
+    const result = await (updater as any)({});
+    expect(result.title).toBe('Fork of Original');
+    expect(idToRaw({ id: result.currentLeafId })).toBe('m1');
+    expect(storageService.updateHierarchy).toHaveBeenCalled();
+  });
+
+  it('should clear completed compact progress after a short delay', async () => {
+    vi.useFakeTimers();
+    try {
+      __testOnlySetContextCompactProgress({
+        chatId: toChatId({ raw: 'chat-compact' }),
+        progress: {
+          phase: 'complete',
+          requestPreview: undefined,
+          outputPreview: '# Compact Context',
+        },
+      });
+
+      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+        phase: 'complete',
+        requestPreview: undefined,
+        outputPreview: '# Compact Context',
+      });
+
+      await vi.advanceTimersByTimeAsync(399);
+      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+        phase: 'complete',
+        requestPreview: undefined,
+        outputPreview: '# Compact Context',
+      });
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+        phase: 'idle',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should insert forked chat at the correct position (g1, g2, c_new, c1) matching createNewChat', async () => {
+    const { forkChat } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    // Initial state: g1, c1
+    mockHierarchy.items = [
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
+    ];
+
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
+    __testOnlySetCurrentChat({ chat: reactive({
+      id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [m1] },
+      createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null,
+    }) as any });
+
+    await forkChat({ messageId: 'm1' });
+
+    // Expected: g1, fork_of_c1, c1
+    expect(mockHierarchy.items).toHaveLength(3);
+    expect(idToRaw({ id: mockHierarchy.items[0]!.id })).toBe('g1');
+    expect(mockHierarchy.items[1]?.type).toBe('chat');
+    expect(idToRaw({ id: mockHierarchy.items[1]!.id })).not.toBe('c1');
+    expect(idToRaw({ id: mockHierarchy.items[2]!.id })).toBe('c1');
+  });
+
+  it('should inherit attachments and modelId during fork', async () => {
+    const { forkChat } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const att: Attachment = { id: toAttachmentId({ raw: 'a1' }), binaryObjectId: toBinaryObjectId({ raw: 'a1' }), originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
+    const m1: MessageNode = {
+      id: toMessageId({ raw: 'm1' }),
+      role: 'user',
+      content: 'Msg 1',
+      attachments: [att],
+      modelId: undefined,
+      thinking: undefined,
+      error: undefined,
+      replies: { items: [] },
+      timestamp: 0,
+      lmParameters: EMPTY_LM_PARAMETERS,
+    };
+
+    const mockChat: Chat = {
+      id: toChatId({ raw: 'old-chat' }),
+      title: 'Original',
+      root: { items: [m1] },
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+      modelId: 'special-model',
+      toolConfigs: [{
+        key: 'builtin.wesh',
+        status: 'enabled',
+        naidanSysfs: { accessScope: 'main_chats' },
+      }],
+    };
+
+    __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
+    mockHierarchy.items = [{ type: 'chat', id: toChatId({ raw: 'old-chat' }) }];
+
+    const newId = await forkChat({ messageId: 'm1' });
+
+    const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId);
+    const contentUpdater = updaterCall?.[0].updater;
+    const savedContent = await (contentUpdater as any)(null);
+    const clonedNode = savedContent?.root.items[0];
+    expect(clonedNode?.attachments).toEqual([att]);
+
+    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId)?.[0].updater;
+    const savedMeta = await (updater as any)({});
+    expect(savedMeta?.modelId).toBe('special-model');
+    expect(savedMeta?.toolConfigs).toEqual(mockChat.toolConfigs);
+    expect(savedMeta?.toolConfigs).not.toBe(mockChat.toolConfigs);
+    expect(savedMeta?.toolConfigs?.[0]).not.toBe(mockChat.toolConfigs?.[0]);
+    if (savedMeta?.toolConfigs?.[0]?.key === 'builtin.wesh' && mockChat.toolConfigs?.[0]?.key === 'builtin.wesh') {
+      expect(savedMeta.toolConfigs[0].naidanSysfs).not.toBe(mockChat.toolConfigs[0].naidanSysfs);
+    }
+  });
+
+  it('should preserve attachments during editMessage', async () => {
+    const { editMessage, currentChat } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const att: Attachment = { id: toAttachmentId({ raw: 'a1' }), binaryObjectId: toBinaryObjectId({ raw: 'a1' }), originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
+    const m1: MessageNode = {
+      id: toMessageId({ raw: 'm1' }),
+      role: 'user',
+      content: 'Original Content',
+      attachments: [att],
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      replies: { items: [] },
+      timestamp: 0,
+      lmParameters: EMPTY_LM_PARAMETERS,
+    };
+
+    __testOnlySetCurrentChat({ chat: reactive({
+      id: 'c1',
+      title: 'T',
+      root: { items: [m1] },
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+    }) as any });
+
+    // Edit assistant message
+    await editMessage({ messageId: 'm1', newContent: 'New Content' });
+
+    expect(currentChat.value?.root.items).toHaveLength(2);
+    const newMsg = currentChat.value?.root.items[1];
+    expect(newMsg?.content).toBe('New Content');
+    expect(newMsg?.attachments).toEqual([att]);
+  });
+
+  it('should support rewriting the very first message', async () => {
+    const { sendMessage, editMessage, currentChat, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const chatObj: Chat = {
+      id: toChatId({ raw: 'chat-root-test' }),
+      title: 'Root Test',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    };
+    __testOnlySetCurrentChat({ chat: reactive(chatObj) as any });
+    const initial = [{ id: 'chat:chat-root-test', type: 'chat', chat: { id: toChatId({ raw: 'chat-root-test' }), title: 'Root Test', updatedAt: Date.now() } }] as SidebarItem[];
+    rootItems.value = initial;
+    mockRootItems.push(...initial);
+
+    // 1. Send first message
+    await sendMessage({ content: 'First version' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    triggerRef(currentChat);
+    expect(currentChat.value?.root.items).toHaveLength(1);
+    const firstId = currentChat.value?.root.items[0]?.id;
+
+    // 2. Rewrite the first message
+    await editMessage({ messageId: idToRaw({ id: firstId! }), newContent: 'Second version' });
+    await vi.waitUntil(() => (currentChat.value?.root.items.length ?? 0) >= 2);
+    triggerRef(currentChat);
+
+    // 3. Verify
+    expect(currentChat.value?.root.items).toHaveLength(2);
+    expect(currentChat.value?.root.items[0]?.content).toBe('First version');
+    expect(currentChat.value?.root.items[1]?.content).toBe('Second version');
+  });
+
+  it('should support manual editing of assistant messages', async () => {
+    const { sendMessage, editMessage, currentChat, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const chatObj: Chat = {
+      id: toChatId({ raw: 'assistant-edit-test' }),
+      title: 'Assistant Edit',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    };
+    __testOnlySetCurrentChat({ chat: reactive(chatObj) as any });
+    const initial = [{ id: 'chat:assistant-edit-test', type: 'chat', chat: { id: toChatId({ raw: 'assistant-edit-test' }), title: 'Assistant Edit', updatedAt: Date.now() } }] as SidebarItem[];
+    rootItems.value = initial;
+    mockRootItems.push(...initial);
+
+    // 1. Send first message pair
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    triggerRef(currentChat);
+    const userMsg = currentChat.value?.root.items[0];
+    const assistantMsg = userMsg?.replies.items[0];
+    expect(assistantMsg?.role).toBe('assistant');
+
+    // 2. Manually edit the assistant's message
+    await editMessage({ messageId: idToRaw({ id: assistantMsg!.id }), newContent: 'Manually corrected answer' });
+    await vi.waitUntil(() => (currentChat.value?.root.items[0]?.replies.items.length ?? 0) >= 2);
+    triggerRef(currentChat);
+
+    // 3. Verify
+    // The user message should now have TWO replies (branches)
+    const userMsgAfter = currentChat.value?.root.items[0];
+    expect(userMsgAfter?.replies.items).toHaveLength(2);
+    expect(activeMessages.value).toHaveLength(2);
+    expect(activeMessages.value[1]?.content).toBe('Manually corrected answer');
+  });
+
+  it('should branch into a new version when regenerateMessage is called', async () => {
+    const { sendMessage, regenerateMessage, switchVersion } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    __testOnlySetCurrentChat({ chat: reactive({
+      id: 'regen-test', title: 'Regen', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any });
+
+    // 1. Send first message and get first response
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'First Response' });
+    });
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first generation to complete
+    triggerRef(currentChat);
+
+    const userMsg = currentChat.value?.root.items[0];
+    const firstAssistantMsg = userMsg?.replies.items[0];
+    expect(userMsg?.replies.items).toHaveLength(1);
+    expect(firstAssistantMsg?.content).toBe('First Response');
+    expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
+
+    // 2. Regenerate
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Second Response' });
+    });
+    await regenerateMessage({ failedMessageId: idToRaw({ id: firstAssistantMsg!.id }) });
+    await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2);
+    await vi.waitUntil(() => !chatStore.streaming.value); // Also wait for content to be fully there
+    triggerRef(currentChat);
+
+    // 3. Verify branching
+    expect(userMsg?.replies.items).toHaveLength(2);
+    const secondAssistantMsg = userMsg?.replies.items[1];
+    expect(secondAssistantMsg?.content).toBe('Second Response');
+    expect(secondAssistantMsg?.id).not.toBe(firstAssistantMsg?.id);
+
+    // 4. Verify current view points to the new version
+    expect(currentChat.value?.currentLeafId).toBe(secondAssistantMsg?.id);
+    expect(activeMessages.value[1]?.content).toBe('Second Response');
+
+    await switchVersion({ messageId: idToRaw({ id: firstAssistantMsg!.id }) });
+    triggerRef(currentChat);
+
+    expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
+    expect(activeMessages.value[1]?.content).toBe('First Response');
+    expect(storageService.updateChatContent).toHaveBeenCalledWith({
+      id: 'regen-test',
+      updater: expect.any(Function),
+    });
+  });
+
+  it('should store lmParameters in UserMessageNode and AssistantMessageNode after sendMessage', async () => {
+    const { sendMessage, currentChat } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    __testOnlySetCurrentChat({ chat: reactive({
+      id: 'store-params-test', title: 'Store Params', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any });
+
+    const customParams = {
+      ...EMPTY_LM_PARAMETERS,
+      temperature: 0.8,
+      reasoning: { effort: 'medium' as const },
+    };
+
+    await sendMessage({ content: 'Test message', parentId: null, attachments: [], chatTarget: undefined, lmParameters: customParams });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    triggerRef(currentChat);
+
+    const userMsg = currentChat.value?.root.items[0] as UserMessageNode;
+    expect(userMsg.lmParameters).toEqual(customParams);
+
+    const assistantMsg = userMsg.replies.items[0] as AssistantMessageNode;
+    expect(assistantMsg.lmParameters).toEqual(customParams);
+    expect(assistantMsg.modelId).toBe('gpt-4');
+  });
+
+  it('should maintain the new order after reordering items', async () => {
+    const { persistSidebarStructure, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const mockChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group A', isCollapsed: false, items: [], updatedAt: 0 };
+    const mockChat = { id: toChatId({ raw: 'c1' }), title: 'Chat B', updatedAt: 0 };
+
+    const initial: SidebarItem[] = [
+      { id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup },
+      { id: 'chat:c1', type: 'chat', chat: mockChat },
+    ];
+    rootItems.value = initial;
+    mockRootItems.push(...initial);
+    mockHierarchy.items = [
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
+    ];
+
+    const newItems: SidebarItem[] = [
+      { id: 'chat:c1', type: 'chat' as const, chat: mockChat },
+      { id: 'chat_group:g1', type: 'chat_group' as const, chatGroup: { ...mockChatGroup, items: [] } },
+    ];
+
+    await persistSidebarStructure({ topLevelItems: newItems });
+
+    expect(mockHierarchy.items[0]?.id).toBe('c1');
+  });
+
+  it('should handle moving a chat into a chat group', async () => {
+    const { persistSidebarStructure, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const mockChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group A', isCollapsed: false, items: [], updatedAt: 0 };
+    const mockChat = { id: toChatId({ raw: 'c1' }), title: 'Chat B', updatedAt: 0, groupId: null };
+
+    const initial: SidebarItem[] = [
+      { id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup },
+      { id: 'chat:c1', type: 'chat', chat: mockChat },
+    ];
+    rootItems.value = initial;
+    mockRootItems.push(...initial);
+    mockHierarchy.items = [
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
+    ];
+
+    const newItems: SidebarItem[] = [
+      {
+        id: 'chat_group:g1',
+        type: 'chat_group' as const,
+        chatGroup: {
+          ...mockChatGroup,
+          items: [
+            { id: 'chat:c1', type: 'chat' as const, chat: { ...mockChat, groupId: toChatGroupId({ raw: 'g1' }) } },
+          ],
+        },
+      },
+    ];
+
+    await persistSidebarStructure({ topLevelItems: newItems });
+    const groupNode = mockHierarchy.items.find(i => i.type === 'chat_group' && idToRaw({ id: i.id }) === 'g1') as HierarchyChatGroupNode;
+    expect(groupNode.chat_ids.map(id => idToRaw({ id }))).toContain('c1');
+  });
+
+  it('should handle reordering chats within a chat group', async () => {
+    const { persistSidebarStructure, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+    const chat2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+    const mockChatGroup = {
+      id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0,
+      items: [
+        { id: 'chat:c1', type: 'chat' as const, chat: chat1 },
+        { id: 'chat:c2', type: 'chat' as const, chat: chat2 },
+      ],
+    };
+
+    const initial: SidebarItem[] = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup }];
+    rootItems.value = initial;
+    mockRootItems.push(...initial);
+    mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' })] }];
+
+    const newItems: SidebarItem[] = [
+      {
+        id: 'chat_group:g1',
+        type: 'chat_group' as const,
+        chatGroup: {
+          ...mockChatGroup,
+          items: [
+            { id: 'chat:c2', type: 'chat' as const, chat: { ...chat2 } },
+            { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1 } },
+          ],
+        },
+      },
+    ];
+
+    await persistSidebarStructure({ topLevelItems: newItems });
+    const groupNode = mockHierarchy.items[0] as HierarchyChatGroupNode;
+    expect(groupNode.chat_ids[0]).toBe('c2');
+    expect(groupNode.chat_ids[1]).toBe('c1');
+  });
+
+  it('should handle moving a chat out of a chat group to the root', async () => {
+    const { persistSidebarStructure, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+    const mockChatGroup = {
+      id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0,
+      items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }],
+    };
+
+    const initial: SidebarItem[] = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup }];
+    rootItems.value = initial;
+    mockRootItems.push(...initial);
+    mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [toChatId({ raw: 'c1' })] }];
+
+    const newItems: SidebarItem[] = [
+      { id: 'chat_group:g1', type: 'chat_group' as const, chatGroup: { ...mockChatGroup, items: [] } },
+      { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: null } },
+    ];
+
+    await persistSidebarStructure({ topLevelItems: newItems });
+    expect(mockHierarchy.items.find(i => i.type === 'chat' && idToRaw({ id: i.id }) === 'c1')).toBeDefined();
+  });
+
+  it('should handle moving a chat from one chat group to another', async () => {
+    const { persistSidebarStructure, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+    const groupA = {
+      id: toChatGroupId({ raw: 'g1' }), name: 'GA', isCollapsed: false, updatedAt: 0,
+      items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }],
+    };
+    const groupB = {
+      id: toChatGroupId({ raw: 'g2' }), name: 'GB', isCollapsed: false, updatedAt: 0,
+      items: [],
+    };
+
+    const initial: SidebarItem[] = [
+      { id: 'chat_group:g1', type: 'chat_group', chatGroup: groupA },
+      { id: 'chat_group:g2', type: 'chat_group', chatGroup: groupB },
+    ];
+    rootItems.value = initial;
+    mockRootItems.push(...initial);
+    mockHierarchy.items = [
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [toChatId({ raw: 'c1' })] },
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
+    ];
+
+    const newItems: SidebarItem[] = [
+      { id: 'chat_group:g1', type: 'chat_group' as const, chatGroup: { ...groupA, items: [] } },
+      {
+        id: 'chat_group:g2',
+        type: 'chat_group' as const,
+        chatGroup: {
+          ...groupB,
+          items: [{ id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: toChatGroupId({ raw: 'g2' }) } }],
+        },
+      },
+    ];
+
+    await persistSidebarStructure({ topLevelItems: newItems });
+    const groupNode = mockHierarchy.items.find(i => i.type === 'chat_group' && idToRaw({ id: i.id }) === 'g2') as HierarchyChatGroupNode;
+    expect(groupNode.chat_ids.map(id => idToRaw({ id }))).toContain('c1');
+  });
+
+  it('should preserve lmParameters when regenerating a message', async () => {
+    const { sendMessage, regenerateMessage, currentChat, TEST_ONLY } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    const { __testOnlySetCurrentChat } = TEST_ONLY;
+
+    const mockChat: Chat = {
+      id: toChatId({ raw: 'c1' }), title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+    };
+    __testOnlySetCurrentChat({ chat: mockChat });
+
+    const customParams = {
+      ...EMPTY_LM_PARAMETERS,
+      temperature: 0.5,
+      reasoning: { effort: 'high' as const },
+    };
+
+    // 1. Send first message with custom params
+    await sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: undefined, lmParameters: customParams });
+    await flushPromises();
+
+    // The mockLmChat should have been called with customParams
+    expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: expect.objectContaining({
+        reasoning: { effort: 'high' },
+      }),
+    }));
+
+    const assistantMsgId = currentChat.value!.currentLeafId!;
+    mockLmChat.mockClear();
+
+    // 2. Regenerate the message
+    await regenerateMessage({ failedMessageId: idToRaw({ id: assistantMsgId }) });
+    await flushPromises();
+
+    // 3. Verify that the second call ALSO used the same customParams
+    expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: expect.objectContaining({
+        reasoning: { effort: 'high' },
+      }),
+    }));
+  });
+
+  it('should apply new lmParameters when editing a message', async () => {
+    const { sendMessage, editMessage, currentChat, getLiveChat, TEST_ONLY } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    const { __testOnlySetCurrentChat } = TEST_ONLY;
+
+    const mockChat: Chat = {
+      id: toChatId({ raw: 'c1' }), title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+    };
+    __testOnlySetCurrentChat({ chat: mockChat });
+
+    // 1. Send first message with default params
+    await sendMessage({ content: 'Hello', parentId: null });
+    await flushPromises();
+
+    const newParams = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' as const } };
+
+    // In some mock environments, the recursive tree might be flat or detached.
+    // Let's try to get the User message ID.
+    // We know it's the first message sent in this clean chat.
+    const liveChat = getLiveChat({ chat: toRaw(currentChat.value!) as Chat });
+    const userMsgId = liveChat.root.items[0]?.id;
+
+    if (!userMsgId) {
+      // Fallback: if root is empty, something is wrong with sendMessage mock synchronization
+      // but we can still test the logic by manually inserting a node
+      const manualId = 'manual-u1';
+      liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] }, thinking: undefined, modelId: undefined });
+      await editMessage({ messageId: manualId, newContent: 'Updated Hello', lmParameters: newParams });
+    } else {
+      mockLmChat.mockClear();
+      // 2. Edit the message with NEW lmParameters
+      await editMessage({ messageId: idToRaw({ id: userMsgId }), newContent: 'Updated Hello', lmParameters: newParams });
+    }
+
+    await flushPromises();
+
+    // 3. Verify that the resulting generation used the NEW parameters
+    expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: expect.objectContaining({
+        reasoning: { effort: 'low' },
+      }),
+    }));
+  });
+
+  it('should keep the assistant error on the failed message after generation fails', async () => {
+    __testOnlySetCurrentChat({ chat: reactive({
+      id: 'chat-error', title: 'Test', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any });
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockLmChat.mockImplementationOnce(async () => {
+      throw new Error('Could not be cloned');
+    });
+
+    const result = await sendMessage({ content: 'Ping' });
+    expect(result).toBe(true);
+
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    triggerRef(currentChat);
+
+    const assistantMessage = activeMessages.value.find(message => message.role === 'assistant') as AssistantMessageNode | undefined;
+    expect(assistantMessage?.error).toBe('Could not be cloned');
+    consoleError.mockRestore();
+  });
+
+  it('should reapply volatile assistant errors after chat content reloads from storage', async () => {
+    __testOnlySetCurrentChat({ chat: reactive({
+      id: 'chat-error-reload', title: 'Test', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any });
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockLmChat.mockImplementationOnce(async () => {
+      throw new Error('Could not be cloned');
+    });
+
+    const result = await sendMessage({ content: 'Ping' });
+    expect(result).toBe(true);
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    const fresh = JSON.parse(JSON.stringify(toRaw(currentChat.value!))) as Chat;
+    const userNode = fresh.root.items[0] as UserMessageNode;
+    const assistantNode = userNode.replies.items[0] as AssistantMessageNode;
+    assistantNode.error = undefined;
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(fresh);
+
+    await simulateExternalEvent({ type: 'chat_content', id: fresh.id });
+    triggerRef(currentChat);
+
+    const reloadedAssistantMessage = activeMessages.value.find(message => message.role === 'assistant') as AssistantMessageNode | undefined;
+    expect(reloadedAssistantMessage?.error).toBe('Could not be cloned');
+    consoleError.mockRestore();
+  });
+
+  it('should insert a new chat before the first individual chat', async () => {
+    // 1. Setup initial state in MOCK storage
+    const initial: SidebarItem[] = [
+      { id: 'chat_group:g1', type: 'chat_group', chatGroup: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] } },
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } },
+    ];
+    mockRootItems.push(...initial);
+    mockHierarchy.items = [
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
+    ];
+
+    await chatStore.loadChats();
+    expect(rootItems.value).toHaveLength(2);
+
+    await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+
+    expect(mockHierarchy.items).toHaveLength(3);
+    expect(mockHierarchy.items[0]?.id).toBe('g1');
+    expect(mockHierarchy.items[1]?.type).toBe('chat');
+    expect(mockHierarchy.items[2]?.id).toBe('c1');
+  });
+
+  describe('New Chat Insertion Order', () => {
+    it('should insert a new chat AFTER leading groups and BEFORE the first individual chat', async () => {
+      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      const g2 = { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: false, updatedAt: 0, items: [] };
+      const c1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 };
+
+      const initial: SidebarItem[] = [
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+        { id: 'chat_group:g2', type: 'chat_group', chatGroup: g2 },
+        { id: 'chat:c1', type: 'chat', chat: c1 },
+      ];
+      mockRootItems.push(...initial);
+      mockHierarchy.items = [
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
+        { type: 'chat', id: toChatId({ raw: 'c1' }) },
+      ];
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+
+      expect(mockHierarchy.items).toHaveLength(4);
+      expect(mockHierarchy.items[0]?.id).toBe('g1');
+      expect(mockHierarchy.items[1]?.id).toBe('g2');
+      expect(mockHierarchy.items[2]?.type).toBe('chat');
+      expect(mockHierarchy.items[3]?.id).toBe('c1');
+    });
+
+    it('should correctly initialize a new chat with a system prompt override', async () => {
+      const chat = await chatStore.createNewChat({
+        groupId: undefined,
+        modelId: undefined,
+        systemPrompt: { behavior: 'override', content: 'Custom system prompt' },
+      });
+      expect(chat!.systemPrompt).toEqual({ behavior: 'override', content: 'Custom system prompt' });
+
+      // Verify persistence call
+      expect(storageService.updateChatMeta).toHaveBeenCalledWith({
+        id: chat!.id,
+        updater: expect.any(Function),
+      });
+    });
+
+    it('should insert before the first chat even if groups exist later in the list', async () => {
+      // g1, g2, c1, c2, g3
+      mockHierarchy.items = [
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
+        { type: 'chat', id: toChatId({ raw: 'c1' }) },
+        { type: 'chat', id: toChatId({ raw: 'c2' }) },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g3' }), chat_ids: [] },
+      ];
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+
+      expect(mockHierarchy.items[1]?.id).toBe('g2');
+      expect(mockHierarchy.items[2]?.type).toBe('chat');
+      expect(mockHierarchy.items[3]?.id).toBe('c1');
+    });
+
+    it('should insert before the first chat in a complex mixed list (g1, g2, c1, c2, g3)', async () => {
+      mockHierarchy.items = [
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
+        { type: 'chat', id: toChatId({ raw: 'c1' }) },
+        { type: 'chat', id: toChatId({ raw: 'c2' }) },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g3' }), chat_ids: [] },
+      ];
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+
+      // Should be: g1, g2, NEW, c1, c2, g3
+      expect(mockHierarchy.items).toHaveLength(6);
+      expect(mockHierarchy.items[2]?.type).toBe('chat');
+      expect(mockHierarchy.items[2]?.id).not.toBe('c1');
+      expect(mockHierarchy.items[2]?.id).not.toBe('c2');
+      expect(mockHierarchy.items[3]?.id).toBe('c1');
+    });
+
+    it('should insert at the very top if the first item is a chat', async () => {
+      const c1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 };
+      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+
+      const initial: SidebarItem[] = [
+        { id: 'chat:c1', type: 'chat', chat: c1 },
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+      ];
+      mockRootItems.push(...initial);
+      mockHierarchy.items = [
+        { type: 'chat', id: toChatId({ raw: 'c1' }) },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      ];
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+
+      expect(mockHierarchy.items[0]?.type).toBe('chat');
+      expect(mockHierarchy.items[0]?.id).not.toBe('c1');
+      expect(mockHierarchy.items[1]?.id).toBe('c1');
+    });
+
+    it('should insert at the end if there are only groups', async () => {
+      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+
+      const initial: SidebarItem[] = [
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+      ];
+      mockRootItems.push(...initial);
+      mockHierarchy.items = [
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      ];
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+
+      expect(mockHierarchy.items).toHaveLength(2);
+      expect(mockHierarchy.items[0]?.id).toBe('g1');
+      expect(mockHierarchy.items[1]?.type).toBe('chat');
+    });
+  });
+
+  it('should prepend a new chat group to the rootItems list', async () => {
+    const initial: SidebarItem[] = [
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } },
+    ];
+    mockRootItems.push(...initial);
+    mockHierarchy.items = [{ type: 'chat', id: toChatId({ raw: 'c1' }) }];
+
+    const { createChatGroup } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    await chatStore.loadChats();
+
+    await createChatGroup({ name: 'New Group' });
+
+    expect(mockHierarchy.items).toHaveLength(2);
+    expect(mockHierarchy.items[0]?.type).toBe('chat_group');
+    expect(mockHierarchy.items[1]?.id).toBe('c1');
+  });
+
+  it('should maintain the correct position after sending a message when sidebar send reorder is disabled', async () => {
+    const { sendMessage } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    const c2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0 };
+    mockHierarchy.items = [
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
+      { type: 'chat', id: toChatId({ raw: 'c2' }) },
+    ];
+    __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
+    await sendMessage({ content: 'Hello' });
+    // Note: Position is updated synchronously in sendMessage({ content: create/update meta }),
+    // so we don't necessarily need to wait for streaming to verify position,
+    // but waiting ensures clean state.
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    expect(mockHierarchy.items[2]?.id).toBe('c2');
+  });
+
+  it('moves a top-level chat before existing top-level chats after sending when sidebar send reorder is enabled', async () => {
+    const { sendMessage } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    const c2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0 };
+    mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
+    mockHierarchy.items = [
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
+      { type: 'chat', id: toChatId({ raw: 'c2' }) },
+    ];
+
+    __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    expect(mockHierarchy.items.map(i => i.id)).toEqual(['g1', 'c2', 'c1']);
+  });
+
+  it('moves a grouped chat to the top of its current group after sending when sidebar send reorder is enabled', async () => {
+    const { sendMessage } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    const c2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+    mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
+    mockHierarchy.items = [
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' }), toChatId({ raw: 'c3' })] },
+      { type: 'chat', id: toChatId({ raw: 'top' }) },
+    ];
+
+    __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    const group = mockHierarchy.items[0];
+    expect(group?.type).toBe('chat_group');
+    if (group?.type !== 'chat_group') throw new Error('Expected chat group');
+    expect(group.chat_ids).toEqual(['c2', 'c1', 'c3']);
+    expect(mockHierarchy.items[1]?.id).toBe('top');
+  });
+
+  it('should generate a chat title based on the first message', async () => {
+    const { generateChatTitle } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'What is the capital of France?', replies: { items: [] }, timestamp: 0 };
+    const chatObj = reactive({
+      id: 'title-test-chat',
+      title: null,
+      root: { items: [m1] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    });
+    __testOnlySetCurrentChat({ chat: chatObj as any });
+
+    // Mock the LM provider for title generation
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Paris' });
+      params.onChunk({ chunk: ' Title' });
+    });
+
+    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
+    expect(chatStore.generatingTitle.value).toBe(true);
+    await promise;
+    expect(chatStore.generatingTitle.value).toBe(false);
+
+    expect(chatObj.title).toBe('Paris Title');
+    expect(storageService.updateChatMeta).toHaveBeenCalled();
+  });
+
+  it('should only show generatingTitle as true for the current chat', async () => {
+    const { generateChatTitle, TEST_ONLY: { __testOnlySetCurrentChat } } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const chatA = reactive({
+      id: 'chat-A',
+      title: null,
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Msg A', replies: { items: [] }, timestamp: 0 }] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any;
+    const chatB = reactive({
+      id: 'chat-B',
+      title: null,
+      root: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'user', content: 'Msg B', replies: { items: [] }, timestamp: 0 }] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any;
+
+    // Start generating title for Chat A
+    __testOnlySetCurrentChat({ chat: chatA });
+    mockLmChat.mockImplementationOnce(async () => {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+
+    const promiseA = generateChatTitle({ chatId: chatA.id, signal: undefined, titleModelIdOverride: undefined });
+    expect(chatStore.generatingTitle.value).toBe(true);
+
+    // Switch to Chat B (which is not generating)
+    __testOnlySetCurrentChat({ chat: chatB });
+    expect(chatStore.generatingTitle.value).toBe(false);
+
+    // Switch back to Chat A
+    __testOnlySetCurrentChat({ chat: chatA });
+    expect(chatStore.generatingTitle.value).toBe(true);
+
+    await promiseA;
+    expect(chatStore.generatingTitle.value).toBe(false);
+  });
+
+  it('should show fetchingModels as true for global fetch or current chat fetch', async () => {
+    const { fetchAvailableModels, TEST_ONLY: { __testOnlySetCurrentChat, clearActiveTaskCounts } } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    clearActiveTaskCounts();
+
+    const chatA = reactive({ id: 'chat-A', root: { items: [] } }) as any;
+    const chatB = reactive({ id: 'chat-B', root: { items: [] } }) as any;
+
+    // Mock OpenAIProvider.listModels to be slow
+    const listModelsMock = vi.fn().mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      return ['model1'];
+    });
+    vi.mocked(OpenAIProvider as any).prototype.listModels = listModelsMock;
+
+    // 1. Global fetch
+    const promiseGlobal = fetchAvailableModels({ chatId: undefined, customEndpoint: undefined });
+    expect(chatStore.fetchingModels.value).toBe(true);
+    await promiseGlobal;
+    expect(chatStore.fetchingModels.value).toBe(false);
+
+    // 2. Chat-specific fetch
+    __testOnlySetCurrentChat({ chat: chatA });
+    const promiseA = fetchAvailableModels({ chatId: chatA.id });
+    expect(chatStore.fetchingModels.value).toBe(true);
+
+    // Switch to Chat B
+    __testOnlySetCurrentChat({ chat: chatB });
+    expect(chatStore.fetchingModels.value).toBe(false);
+
+    // Switch back to Chat A
+    __testOnlySetCurrentChat({ chat: chatA });
+    expect(chatStore.fetchingModels.value).toBe(true);
+
+    await promiseA;
+    expect(chatStore.fetchingModels.value).toBe(false);
+  });
+
+  it('should update the title even if it is already set when generateChatTitle is called', async () => {
+    const { generateChatTitle } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    const chatObj = reactive<Chat>({
+      id: toChatId({ raw: 'chat-1' }),
+      title: 'Old Title',
+      root: { items: [m1] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    });
+    __testOnlySetCurrentChat({ chat: chatObj as any });
+
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'New Better Title' });
+    });
+
+    chatObj.title = null; // Clear title to allow auto-generation to proceed
+    await generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
+
+    expect(chatObj.title).toBe('New Better Title');
+    expect(storageService.updateChatMeta).toHaveBeenCalled();
+  });
+
+  it('should allow aborting title generation', async () => {
+    const { generateChatTitle, abortTitleGeneration, TEST_ONLY: { __testOnlySetCurrentChat } } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    const chatObj = reactive<Chat>({
+      id: toChatId({ raw: 'chat-abort-test' }),
+      title: null,
+      root: { items: [m1] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    });
+    __testOnlySetCurrentChat({ chat: chatObj as any });
+
+    mockLmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
+      params.signal?.throwIfAborted();
+      await new Promise((_resolve, reject) => {
+        params.signal?.addEventListener('abort', () => {
+          reject(params.signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+      });
+    });
+
+    const promise = generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
+    expect(chatStore.generatingTitle.value).toBe(true);
+
+    abortTitleGeneration({ chatId: idToRaw({ id: chatObj.id }) });
+
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+    expect(chatStore.generatingTitle.value).toBe(false);
+  });
+
+  it('should set currentChat to loaded chat in openChat, or null if not found', async () => {
+    const { openChat, currentChat } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    const mockChat: Chat = { id: toChatId({ raw: 'found' }), title: 'Found', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
+    await openChat({ id: 'found' });
+    expect(currentChat.value?.id).toBe('found');
+
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(null);
+    await openChat({ id: 'missing' });
+    expect(currentChat.value).toBeNull();
+  });
+
+  it('should open a message-id link without persisting the selected current leaf', async () => {
+    const { openChatAtMessage, currentChat, activeMessages } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    const mockChat: Chat = {
+      id: toChatId({ raw: 'message-link-chat' }),
+      title: 'Message Link Chat',
+      root: {
+        items: [
+          {
+            id: toMessageId({ raw: 'user-1' }),
+            role: 'user',
+            content: 'Question',
+            timestamp: 1,
+            replies: {
+              items: [
+                {
+                  id: toMessageId({ raw: 'assistant-1' }),
+                  role: 'assistant',
+                  content: 'Target answer',
+                  timestamp: 2,
+                  replies: {
+                    items: [
+                      {
+                        id: toMessageId({ raw: 'user-followup' }),
+                        role: 'user',
+                        content: 'Follow up',
+                        timestamp: 3,
+                        replies: {
+                          items: [
+                            {
+                              id: toMessageId({ raw: 'target-leaf' }),
+                              role: 'assistant',
+                              content: 'Target leaf',
+                              timestamp: 4,
+                              replies: { items: [] },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  id: toMessageId({ raw: 'assistant-2' }),
+                  role: 'assistant',
+                  content: 'Saved answer',
+                  timestamp: 5,
+                  replies: { items: [] },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      currentLeafId: toMessageId({ raw: 'assistant-2' }),
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+    };
+
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
+    vi.mocked(storageService.updateChatContent).mockClear();
+
+    await openChatAtMessage({ chatId: 'message-link-chat', messageId: 'assistant-1' });
+
+    expect(idToRaw({ id: currentChat.value!.currentLeafId! })).toBe('target-leaf');
+    expect(activeMessages.value.map(message => idToRaw({ id: message.id }))).toContain('assistant-1');
+    expect(storageService.updateChatContent).not.toHaveBeenCalled();
+  });
+
+  it('should clear chat modelId if it is not in the newly fetched models in fetchAvailableModels', async () => {
+    const chat = reactive({ id: toChatId({ raw: 'chat-1' }), modelId: 'old-model', root: { items: [] } }) as any;
+    const { registerLiveInstance, fetchAvailableModels } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+    registerLiveInstance({ chat });
+
+    // Mock provider to return a different model
+    const mockListModels = vi.fn().mockResolvedValue(['new-model']);
+    vi.mocked(OpenAIProvider as any).prototype.listModels = mockListModels;
+
+    await fetchAvailableModels({ chatId: 'chat-1' });
+    await flushPromises();
+
+    expect(chat.modelId).toBe('');
+  });
+
+  describe('findRestorationIndex Logic (Bidirectional Context)', () => {
+    const items: SidebarItem[] = [
+      { id: 'i1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: '1', updatedAt: 0 } },
+      { id: 'i2', type: 'chat', chat: { id: toChatId({ raw: 'c2' }), title: '2', updatedAt: 0 } },
+      { id: 'i3', type: 'chat', chat: { id: toChatId({ raw: 'c3' }), title: '3', updatedAt: 0 } },
+    ];
+
+    it('should return index after prevId if prevId is present', () => {
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'i1', nextId: 'i3' })).toBe(1);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'i2', nextId: 'i3' })).toBe(2);
+    });
+
+    it('should return index before nextId if prevId is missing but nextId is present', () => {
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'deleted-prev', nextId: 'i2' })).toBe(1);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: null, nextId: 'i1' })).toBe(0);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: null, nextId: 'i3' })).toBe(2);
+    });
+
+    it('should return 0 (top) if both prevId and nextId are missing or not in list', () => {
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'ghost-1', nextId: 'ghost-2' })).toBe(0);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: null, nextId: null })).toBe(0);
+    });
+
+    it('should return 0 for empty list', () => {
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items: [], prevId: 'any', nextId: 'any' })).toBe(0);
+    });
+
+    it('should handle last position correctly', () => {
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'i3', nextId: null })).toBe(3);
+    });
+
+    it('should restore the last item of a group correctly in an integrated flow', async () => {
+      // 1. Prepare data
+      const chat2Id = toChatId({ raw: 'c2' });
+      const c1 = { id: toChatId({ raw: 'c1' }), title: '1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+      const c2 = { id: chat2Id, title: '2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [
+        { id: 'chat:c1', type: 'chat', chat: c1 },
+        { id: 'chat:c2', type: 'chat', chat: c2 },
+      ] as ChatSidebarItem[] };
+
+      mockRootItems.length = 0;
+      mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 });
+      mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' })] }];
+
+      // Ensure mock loadChat returns the chat we are about to delete
+      vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
+        if (id === chat2Id) return {
+          ...c2,
+          root: { items: [] },
+          createdAt: 0,
+          debugEnabled: false,
+        } as Chat;
+        return null;
+      });
+
+      await chatStore.loadChats();
+
+      // 2. Mock toast capture with proper typing
+      let capturedOnAction: (() => void | Promise<void>) | undefined;
+      const mockAdd = (toast: AddToastOptions) => {
+        capturedOnAction = toast.onAction;
+        return 'test-toast-id';
+      };
+
+      // 3. Act: Delete C2 (the last item) with injection
+      await chatStore.deleteChat({ id: idToRaw({ id: chat2Id }), injectAddToast: mockAdd });
+
+      // 4. Simulate Tab B removing it from hierarchy
+      await storageService.updateHierarchy({ updater: ({ current: curr }) => {
+        const g = curr.items[0] as HierarchyChatGroupNode;
+        g.chat_ids = [toChatId({ raw: 'c1' })];
+        return curr;
+      } });
+      await chatStore.loadChats();
+
+      // 5. Act: Undo
+      if (capturedOnAction) {
+        await capturedOnAction();
+      } else {
+        throw new Error('onAction was not captured. deleteChat might have returned early.');
+      }
+
+      // 6. Verify: C2 should be back in its group hierarchy
+      const groupInHierarchy = mockHierarchy.items[0] as HierarchyChatGroupNode;
+      expect(groupInHierarchy.chat_ids).toContain(chat2Id);
+    });
+  });
+});

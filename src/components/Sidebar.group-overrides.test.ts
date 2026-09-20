@@ -27,8 +27,8 @@ const mockOpenChat = vi.fn(() => {
 });
 const mockSetChatGroupCollapsed = vi.fn();
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: ref(null),
     currentChatGroup: mockCurrentChatGroup,
     streaming: ref(false),

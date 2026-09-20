@@ -44,8 +44,8 @@ vi.mock('../composables/useLayout', () => ({
   })),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(() => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: vi.fn(() => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
     streaming: ref(false),

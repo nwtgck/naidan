@@ -1,0 +1,278 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { useSettings } from './useSettings';
+import { storageService } from '@/00-storage/service';
+import { ref, reactive } from 'vue';
+import type { Attachment } from '@/01-models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId } from '@/01-models/ids';
+
+// Mock dependencies
+const chats = new Map<string, any>();
+let hierarchy = { items: [] as any[] };
+
+vi.mock('./useSettings', () => ({
+  useSettings: vi.fn().mockReturnValue({
+    settings: {
+      value: {
+        endpoint: {
+          type: 'openai',
+          url: 'http://localhost:11434',
+        },
+        defaultModelId: 'test-model',
+      },
+    },
+    isOnboardingDismissed: { value: true },
+    onboardingDraft: { value: null },
+  }),
+}));
+
+vi.mock('../00-storage/service', () => ({
+  storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    saveChat: vi.fn().mockImplementation((chat) => {
+      chats.set(chat.id, chat);
+      return Promise.resolve();
+    }),
+    updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
+      const existing = chats.get(id) || { id, root: { items: [] } };
+      const updated = updater({ current: existing });
+      const merged = { ...existing, ...updated };
+      chats.set(id, merged);
+      return Promise.resolve();
+    }),
+    loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id))),
+    updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
+      const existing = chats.get(id) || { id, root: { items: [] } };
+      const updated = updater({ current: { root: existing.root, currentLeafId: existing.currentLeafId } });
+      const merged = { ...existing, ...updated };
+      chats.set(id, merged);
+      return Promise.resolve();
+    }),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => {
+      hierarchy = updater({ current: hierarchy });
+      return Promise.resolve();
+    }),
+    loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(hierarchy)),
+    loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => {
+      const chat = chats.get(id);
+      if (!chat) return Promise.resolve(null);
+      return Promise.resolve(chat);
+    }),
+    listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(chats.values()))),
+    listChatGroups: vi.fn().mockImplementation(() => {
+      return Promise.resolve(hierarchy.items.filter(i => i.type === 'chat_group').map(i => i.chatGroup));
+    }),
+    getSidebarStructure: vi.fn().mockImplementation(() => {
+      return Promise.resolve((Array.from(chats.values()) as Array<{ id: string, title: string, updatedAt: number, groupId?: string | null }>).map(c => ({
+        id: `chat:${c.id}`,
+        type: 'chat',
+        chat: { id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId },
+      })));
+    }),
+    saveFile: vi.fn().mockResolvedValue(undefined),
+    getFile: vi.fn().mockResolvedValue(new Blob(['data'])),
+    switchProvider: vi.fn().mockResolvedValue(undefined),
+    notify: vi.fn(),
+    canPersistBinary: false,
+    getCurrentType: vi.fn().mockReturnValue('local'),
+  },
+}));
+
+vi.mock('../features/lm/openai', () => ({
+  OpenAIProvider: class {
+    chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Response' });
+      return Promise.resolve();
+    });
+    listModels = vi.fn().mockResolvedValue(['test-model']);
+  },
+}));
+
+vi.mock('../features/lm/ollama', () => ({
+  OllamaProvider: class {
+    chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Response' });
+      return Promise.resolve();
+    });
+    listModels = vi.fn().mockResolvedValue(['test-model']);
+  },
+}));
+
+vi.mock('./useConfirm', () => ({
+  useConfirm: () => ({
+    showConfirm: vi.fn().mockResolvedValue(true),
+  }),
+}));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+
+describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction - Attachment & Migration Logic', () => {
+  let settings: any;
+  const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chats.clear();
+    hierarchy = { items: [] };
+    settings = ref({
+      storageType: 'local',
+      heavyContentAlertDismissed: false,
+      isOnboardingDismissed: true,
+      defaultModelId: 'test-model',
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost:11434',
+      },
+      providerProfiles: [],
+    });
+    (useSettings as any).mockReturnValue({
+      settings,
+      isOnboardingDismissed: ref(true),
+      onboardingDraft: ref({}),
+      setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => {
+        settings.value.heavyContentAlertDismissed = dismissed;
+      },
+      setOnboardingDraft: vi.fn(),
+      setIsOnboardingDismissed: vi.fn(),
+    });
+    (storageService as any).canPersistBinary = false;
+  });
+
+  it('should keep attachments in memory status when using LocalStorage', async () => {
+    const { sendMessage, createNewChat, openChat } = chatStore;
+    const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+    const chatObj = await openChat({ id: idToRaw({ id: newChat!.id }) });
+
+    const mockAttachment: Attachment = {
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440000' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440000' }),
+      originalName: 'test.png',
+      mimeType: 'image/png',
+      size: 100,
+      uploadedAt: Date.now(),
+      status: 'memory',
+      blob: new Blob(['fake image'], { type: 'image/png' }),
+    };
+
+    await sendMessage({ content: 'Hello', parentId: null, attachments: [mockAttachment], chatTarget: chatObj! });
+
+    const chat = await storageService.loadChat({ id: newChat!.id });
+    const message = chat?.root.items[0];
+    expect(message?.attachments).toHaveLength(1);
+    const attachments = message!.attachments!;
+    expect(attachments[0]!.status).toBe('memory');
+    expect(storageService.saveFile).not.toHaveBeenCalled();
+  });
+
+  it('should persist attachments immediately when using OPFS', async () => {
+    settings.value.storageType = 'opfs';
+    (storageService as any).canPersistBinary = true;
+
+    const { sendMessage, createNewChat, openChat } = chatStore;
+    const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+    const chatObj = await openChat({ id: idToRaw({ id: newChat!.id }) });
+
+    const mockAttachment: Attachment = {
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440001' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440001' }),
+      originalName: 'test.png',
+      mimeType: 'image/png',
+      size: 100,
+      uploadedAt: Date.now(),
+      status: 'memory',
+      blob: new Blob(['fake image'], { type: 'image/png' }),
+    };
+
+    await sendMessage({ content: 'Hello', parentId: null, attachments: [mockAttachment], chatTarget: chatObj! });
+
+    const chat = await storageService.loadChat({ id: newChat!.id });
+    const message = chat?.root.items[0];
+    expect(message?.attachments).toBeDefined();
+    if (message?.attachments) {
+      const attachments = message.attachments;
+      expect(attachments[0]!.status).toBe('persisted');
+    }
+    expect(storageService.saveFile).toHaveBeenCalled();
+  });
+
+  it('should rescue memory blobs during migration from LocalStorage to OPFS', async () => {
+    const { sendMessage, TEST_ONLY, registerLiveInstance } = chatStore;
+    const { __testOnlySetCurrentChat } = TEST_ONLY;
+    const chatObj = reactive({
+      id: 'rescue-chat',
+      title: 'Rescue',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+      modelId: 'm1',
+    }) as any;
+    __testOnlySetCurrentChat({ chat: chatObj });
+    registerLiveInstance({ chat: chatObj });
+
+    const mockBlob = new Blob(['binary data'], { type: 'image/png' });
+    const mockAttachment: Attachment = {
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440002' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440002' }),
+      originalName: 'to-migrate.png',
+      mimeType: 'image/png',
+      size: 100,
+      uploadedAt: Date.now(),
+      status: 'memory',
+      blob: mockBlob,
+    };
+
+    // 1. Send in LocalStorage mode
+    await sendMessage({ content: 'Initial message', parentId: null, attachments: [mockAttachment], chatTarget: chatObj });
+    const initialMsg = chatObj.root.items[0];
+    expect(initialMsg?.attachments).toBeDefined();
+    const initialAtts = initialMsg!.attachments!;
+    expect(initialAtts[0]!.status).toBe('memory');
+
+    // 2. Prepare for OPFS
+    settings.value.storageType = 'opfs';
+    (storageService as any).canPersistBinary = true;
+
+    // Mock switchProvider to simulate rescue and status update
+    (storageService.switchProvider as any).mockImplementation(async () => {
+      const msg = chatObj.root.items[0];
+      if (msg && msg.attachments) {
+        for (let i = 0; i < msg.attachments.length; i++) {
+          const att = msg.attachments[i];
+          if (att && att.status === 'memory') {
+            const blob = (att as any).blob;
+            await storageService.saveFile({ blob, binaryObjectId: att.binaryObjectId, name: att.originalName });
+            msg.attachments[i] = {
+              id: att.id,
+              binaryObjectId: att.binaryObjectId,
+              originalName: att.originalName,
+              mimeType: att.mimeType,
+              size: att.size,
+              uploadedAt: att.uploadedAt,
+              status: 'persisted',
+            };
+          }
+        }
+      }
+    });
+
+    await storageService.switchProvider({ type: 'opfs' });
+
+    // 3. Verify rescue occurred
+    expect(storageService.saveFile).toHaveBeenCalledWith({
+      blob: mockBlob,
+      binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
+      name: 'to-migrate.png',
+    });
+
+    const chat = await storageService.loadChat({ id: toChatId({ raw: 'rescue-chat' }) });
+    const finalMsg = chat!.root.items[0];
+    expect(finalMsg?.attachments).toBeDefined();
+    const finalAtts = finalMsg!.attachments!;
+    expect(finalAtts[0]!.status).toBe('persisted');
+  });
+});
