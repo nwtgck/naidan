@@ -3,6 +3,7 @@ import { OpenAIProvider } from './openai';
 import { consumeChatGeneration } from '@/logic/consume-chat-generation';
 import { toMessageId } from '@/01-models/ids';
 import type { AssistantMessageNode } from '@/01-models/types';
+import type { LmProvider } from '@/01-models/lm';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
 function node(): AssistantMessageNode {
@@ -10,7 +11,7 @@ function node(): AssistantMessageNode {
 }
 async function run({ payload, onChange }: { payload: string, onChange: (node: AssistantMessageNode) => void }) {
   const fetcher = vi.fn(async () => new Response(payload));
-  const provider = new OpenAIProvider({ endpoint: 'https://example.invalid/v1', fetcher });
+  const provider: LmProvider = new OpenAIProvider({ endpoint: 'https://example.invalid/v1', fetcher });
   const controller = new AbortController(); const message = node();
   const result = await consumeChatGeneration({ node: message, items: provider.chat({ debug: undefined, messages: [], model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: controller.signal }), abortController: controller, onChange: () => onChange(message) });
   return { message, result, fetcher };

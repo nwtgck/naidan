@@ -65,7 +65,7 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
 
     const domain = messageNodeToDomain({ dto }) as UserMessageNode;
     expect(domain.role).toBe('user');
-    expect(domain.parts.some(part => part.type === 'reasoning')).toBe(false);
+    expect(domain.parts.map(part => part.type)).not.toContain('reasoning');
     expect(domain.modelId).toBeUndefined();
     expect(domain.lmParameters?.reasoning.effort).toBe('low');
 
@@ -128,7 +128,7 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
     const domain = messageNodeToDomain({ dto }) as SystemMessageNode;
     expect(domain.role).toBe('system');
     expect(domain.parts.map(part => part.type)).toEqual(['text']);
-    expect(domain.parts.some(part => part.type === 'reasoning')).toBe(false);
+    expect(domain.parts.map(part => part.type)).not.toContain('reasoning');
     expect(domain.modelId).toBeUndefined();
     expect(domain.lmParameters).toBeUndefined();
 

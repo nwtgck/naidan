@@ -3,12 +3,13 @@ import { OllamaProvider } from './ollama';
 import { consumeChatGeneration } from '@/logic/consume-chat-generation';
 import { toMessageId, toToolCallId } from '@/01-models/ids';
 import type { AssistantMessageNode, ChatMessage } from '@/01-models/types';
+import type { LmProvider } from '@/01-models/lm';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
 async function run({ records, messages }: { records: readonly unknown[], messages: readonly ChatMessage[] }) {
   const payload = records.map(record => JSON.stringify(record)).join('\n');
   const fetcher = vi.fn(async () => new Response(payload));
-  const provider = new OllamaProvider({ endpoint: 'https://example.invalid', fetcher });
+  const provider: LmProvider = new OllamaProvider({ endpoint: 'https://example.invalid', fetcher });
   const controller = new AbortController();
   const node: AssistantMessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
   const result = await consumeChatGeneration({ node, items: provider.chat({ debug: undefined, messages, model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: controller.signal }), abortController: controller, onChange: () => {} });
@@ -59,7 +60,7 @@ describe('Ollama structured generation contract', () => {
     ];
     const before = structuredClone(messages);
     let request: unknown;
-    const provider = new OllamaProvider({ endpoint: 'https://example.invalid', fetcher: async (_url, init) => {
+    const provider: LmProvider = new OllamaProvider({ endpoint: 'https://example.invalid', fetcher: async (_url, init) => {
       request = JSON.parse(String(init?.body)); return new Response('{"message":{"content":"A"},"done":true}');
     } });
     const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };

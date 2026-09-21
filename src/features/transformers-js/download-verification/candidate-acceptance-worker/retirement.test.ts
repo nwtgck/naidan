@@ -126,6 +126,9 @@ function idleProductionClient(): TransformersJsWorkerClient {
     generateText: async () => {
       throw new Error('Generation is outside this fixture');
     },
+    generateMessage: async () => {
+      throw new Error('Generation is outside this fixture');
+    },
   };
 }
 

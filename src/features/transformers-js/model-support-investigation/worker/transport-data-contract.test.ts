@@ -18,8 +18,9 @@ import type {
   TransformersJsProductionInvestigationScenario,
   WorkerToolDefinition,
   ITransformersJsWorker,
+  InferenceMessage,
 } from "@/features/transformers-js/types";
-import type { ChatMessage, LmParameters, ToolCall } from "@/01-models/types";
+import type { LmParameters, ToolCall } from "@/01-models/types";
 
 type PreviousDepth = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
@@ -57,7 +58,8 @@ type WorkerTransportData =
   | ModelLoadResult
   | ProductionModelLoadAcceptanceResult
   | TransformersJsPrefetchResult
-  | ChatMessage
+  // Application parts can own Blob attachments; the Worker receives projected input.
+  | InferenceMessage
   | LmParameters
   | ToolCall
   | WorkerToolDefinition;

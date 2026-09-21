@@ -91,7 +91,7 @@ describe('verified content-route tool publication', () => {
     });
     try {
       const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({ onGenerationEvent: undefined,
-        model: { generate } as never,
+        model: { generate, config: { model_type: 'synthetic' } } as never,
         tokenizer: { all_special_ids: [7, 10, 11], decode: () => '', apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } } } as never,
         messages: [{ role: 'user', content: 'Use a tool.' }],
         onChunk: ({ chunk }) => {
@@ -346,7 +346,7 @@ describe("generation strategy observation isolation", () => {
 
     await expect(strategy.generate({
       onGenerationEvent: undefined,
-      model: { generate } as never,
+      model: { generate, config: { model_type: 'fixture' } } as never,
       tokenizer: { apply_chat_template: applyChatTemplate } as never,
       messages: [{ role: "user", content: "hello" }],
       onChunk: vi.fn(),

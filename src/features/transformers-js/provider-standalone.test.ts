@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LmProvider } from '@/01-models/lm';
 import { TransformersJsProvider } from './provider-standalone';
 
-const request = { messages: [], model: 'local-model', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined } satisfies Parameters<LmProvider['chat']>[0];
+const request = { messages: [], model: 'local-model', parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: undefined } satisfies Parameters<LmProvider['chat']>[0];
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -30,7 +30,8 @@ describe('standalone Transformers.js provider contract', () => {
     const controller = new AbortController();
     controller.abort();
     const values = [];
-    for await (const item of new TransformersJsProvider().chat({ debug: undefined, ...request, signal: controller.signal })) values.push(item);
+    const provider: LmProvider = new TransformersJsProvider();
+    for await (const item of provider.chat({ ...request, signal: controller.signal })) values.push(item);
     expect(values).toEqual([{ type: 'result', result: { type: 'interrupted', reason: 'aborted' } }]);
   });
 

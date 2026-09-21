@@ -72,7 +72,7 @@ function createPublicationFixture({ outputs, historyEncoding }: {
       const delivery = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
       try {
         await selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content-publication' }).generate({
-          model: { generate, _prepare_generation_config: () => ({ eos_token_id: 0 }) } as never,
+          model: { generate, config: { model_type: 'synthetic' }, _prepare_generation_config: () => ({ eos_token_id: 0 }) } as never,
           tokenizer: {
             unk_token_id: -1, all_special_ids: [0, 1, 2],
             encode: (text: string) => [tokens.indexOf(text)], decode: (ids: number[]) => tokens[ids[0]!],

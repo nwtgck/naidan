@@ -45,7 +45,7 @@ describe("generation RPC lifecycle", () => {
     calls.generate.mockImplementationOnce(async () => {
       await blocked.promise; return completed();
     });
-    const generating = api.generate(request({ generationId: 1 }), () => {}, () => {});
+    const generating = api.generate(request({ generationId: 1 }), async () => {}, () => {});
     await vi.waitFor(() => expect(calls.generate).toHaveBeenCalledOnce());
     await expect(api.release()).rejects.toThrow('busy');
     expect(calls.releaseSession).not.toHaveBeenCalled();

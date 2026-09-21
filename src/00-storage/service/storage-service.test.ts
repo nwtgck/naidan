@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { storageService } from './index';
+import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
 
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only generic mock keeps Boundary Strings loading out of storage service tests without adding a runtime dependency.
 vi.mock('@/strings', () => ({
@@ -226,7 +227,7 @@ describe('StorageService Migration', () => {
     // OPFS supports binary
     (mockOpfsProvider as any).canPersistBinary = true;
 
-    const receivedChunks: any[] = [];
+    const receivedChunks: MigrationChunkDto[] = [];
     mockOpfsProvider.restore.mockImplementation(async ({ snapshot }, _options) => {
       for await (const chunk of snapshot.contentStream) {
         receivedChunks.push(chunk);
@@ -238,12 +239,18 @@ describe('StorageService Migration', () => {
     // Should have rescued the attachment
     const binaryChunk = receivedChunks.find(c => c.type === 'binary_object');
     expect(binaryChunk).toBeDefined();
-    expect(binaryChunk.id).toBe('bin-1');
-    expect(binaryChunk.blob).toBe(mockBlob);
+    expect(binaryChunk?.id).toBe('bin-1');
+    expect(binaryChunk?.blob).toBe(mockBlob);
 
     // Chat chunk should have been updated to 'persisted' status
     const chatChunk = receivedChunks.find(c => c.type === 'chat');
-    expect(chatChunk.data.root.items[0].parts.filter(part => part.type === 'attachment').map(part => part.attachment)[0].status).toBe('persisted');
+    expect(chatChunk?.data.root?.items[0]).toMatchObject({
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'attachment', attachment: { id: 'att-1', binaryObjectId: 'bin-1', status: 'persisted' } },
+      ],
+    });
   });
 
   it('should rescue attachments in nested replies (recursion test)', async () => {

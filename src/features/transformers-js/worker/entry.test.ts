@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ITransformersJsWorker, TransformersJsPrefetchResult, WorkerToolDefinition } from '@/features/transformers-js/types';
+import type { ITransformersJsWorker, InferenceMessage, TransformersJsPrefetchResult, WorkerToolDefinition } from '@/features/transformers-js/types';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { MissingDownloadedModelArtifactError } from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
@@ -14,7 +14,6 @@ import { initializeProductionEntryFixture, installProductionRuntimeStartupPlatfo
 import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { generationCaptureReadResultSchema, type GenerationCaptureRequest } from './generation-capture-protocol';
 import { toToolCallId } from '@/01-models/ids';
-import type { ChatMessage } from '@/01-models/types';
 import type { GenerationStrategy } from '@/features/transformers-js/generation-strategies';
 import { applyTransformersJsFixes } from '../../../../build/transformers-js-fixes/transform';
 import { bundledJinjaTemplate } from '../../../../build/transformers-js-fixes/jinja-template-fixture';
@@ -3731,8 +3730,8 @@ Use shell tools.<|im_end|>
     it('retains the strategy-specific rejection for unsupported structured tool history before native inference', async () => {
       const sink = vi.fn();
       await expect(workerObj.generateText([
-        { role: 'assistant', content: '', tool_calls: [{ id: toToolCallId('call'), type: 'function', function: { name: 'weather', arguments: '{}' } }] },
-        { role: 'tool', content: 'Sunny', tool_call_id: toToolCallId('call') },
+        { role: 'assistant', content: '', tool_calls: [{ id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'weather', arguments: '{}' } }] },
+        { role: 'tool', content: 'Sunny', tool_call_id: toToolCallId({ raw: 'call' }) },
       ], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toThrow('This standard tool history has no reviewed structured input adapter.');
       expect(sink).not.toHaveBeenCalled(); expect(mockGenerate).not.toHaveBeenCalled();
     });
@@ -4022,7 +4021,7 @@ Use shell tools.<|im_end|>
       const secondGrid = { data: BigInt64Array.of(1n, 1n, 1n, 1n, 1n, 1n), dims: [2, 3] };
       mockProcessor.mockResolvedValueOnce({ input_ids: [7, 8, 9], pixel_values: firstPixels, image_grid_thw: firstGrid });
       mockProcessor.mockResolvedValueOnce({ input_ids: [7, 8, 9], pixel_values: secondPixels, image_grid_thw: secondGrid });
-      const messages: ChatMessage[] = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: firstUrl } }] }];
+      const messages: InferenceMessage[] = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: firstUrl } }] }];
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
       await worker.generateText(messages, vi.fn(), vi.fn(), undefined, undefined);
       messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: secondUrl } }] });
