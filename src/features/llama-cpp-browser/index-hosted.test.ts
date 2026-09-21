@@ -17,7 +17,7 @@ beforeEach(async () => {
   worker.canReuse.mockReturnValue(true); vi.mocked(listStoredModels).mockResolvedValue([]); vi.mocked(removeStoredModel).mockResolvedValue('deleted');
   worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   service = (await import('./index-hosted')).llamaCppBrowserService;
-  vi.spyOn(console, 'debug').mockImplementation(() => {});
+  vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => {
   service.release(); vi.restoreAllMocks();
@@ -143,7 +143,7 @@ describe('serialized hosted model service', () => {
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('llama.cpp browser: runtime-error');
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });
     expect(worker.dispose).toHaveBeenCalledOnce();
-    expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private');
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private');
     await service.listModels({ signal: undefined });
     expect(factory).toHaveBeenCalledOnce();
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });
@@ -166,7 +166,7 @@ describe('serialized hosted model service', () => {
     await expect(service.removeModel({ plan: { id: 'user/local-GGUF', files: [] }, signal: undefined })).resolves.toBe('deleted');
     expect(worker.dispose).not.toHaveBeenCalled();
     expect(service.getState()).toEqual({ status: 'idle' });
-    expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private observer');
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private observer');
     unsubscribe();
   });
 });

@@ -156,7 +156,7 @@ describe('directory import RPC', () => {
 
 describe('native diagnostic checkpoints', () => {
   it.each(['success', 'failure', 'cancel'] as const)('scopes detailed output to a request and releases it after %s', async outcome => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // A resident core retains this callback, never a particular request preference.
     const residentPrintErr = () => logNativeDiagnostic({ message: 'encoding image slice...' });
     const blocked = deferred(); const entered = deferred();

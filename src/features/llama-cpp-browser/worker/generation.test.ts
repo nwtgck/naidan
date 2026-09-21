@@ -72,7 +72,7 @@ async function readNativeLogits(): Promise<number[]> {
 describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
   it('loads a chat-template GGUF, prefills, generates and closes the reader without logging content', async () => {
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const chunks: string[] = []; const phases: string[] = [];
     await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'private prompt' }] }),
       onEvent: ({ event }) => {
@@ -136,7 +136,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
   it('diagnoses a sampling failure without logging the exception and releases the sampler for retry', async () => {
     const core = host.core; if (!core) throw new Error('Expected resident native runtime');
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockRejectedValueOnce(new TypeError('private tool schema and prompt'));
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const req = request({ messages: [{ role: 'user', content: 'private prompt' }] });
     try {
       await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('private tool');
@@ -289,7 +289,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const core = host.core!;
     const batch = vi.spyOn(core.api, 'llama_batch_get_one');
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const next = request({ messages: [{ role: 'user', content: 'prefix' }, { role: 'assistant', content: firstResult.content }, { role: 'user', content: 'suffix' }] });
     next.presencePenalty = 0.1;
     const accept = vi.spyOn(core.api, 'llama_sampler_accept');
@@ -322,7 +322,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
     const first = request({ messages: [{ role: 'user', content: 'prefix-old' }] });
     first.stop = ['A'];
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
@@ -464,7 +464,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       batches.push(Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true)));
       return nativeBatch(destination, tokens, count);
     });
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const next = request({ messages: nextMessages }); next.stop = ['A', 'B'];
     const originalRequest = structuredClone(next);
     const expectedTokens = [1, ...Array.from(new TextEncoder().encode(nextPrompt), byte => byte + 3)];
@@ -642,7 +642,7 @@ user:Q ;assistant: R
     });
     const decode = vi.spyOn(core.api, 'llama_decode');
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       const first = await generate({ request: liveRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(batches.flat()).toEqual(expectedTokens);
@@ -692,7 +692,7 @@ user:Q ;assistant: R
     const core = host.core!;
     const decode = vi.spyOn(core.api, 'llama_decode');
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       const repeated = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(repeated).toEqual(first);
@@ -854,7 +854,7 @@ describe('native image boundaries', () => {
   });
   it('rejects image requests on text-only models without reusing stale text KV afterwards', async () => {
     await releaseSession({ releaseRuntime: true }); host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       await expect(generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: [{ type: 'text', text: 'describe' }, { type: 'image', blob: new Blob(['image'], { type: 'image/png' }) }] }] }), onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('unsupported-input');
       await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'describe' }] }), onEvent: () => {}, onProgress: () => {} });
@@ -868,7 +868,7 @@ describe('native image boundaries', () => {
     await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'fixture' }] }), onEvent: () => {}, onProgress: () => {} });
     const core = host.core; const model = sessionTesting.residentModel();
     if (!core || model === undefined) throw new Error('Expected resident runtime and model');
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
     const trace = createProjectorTrace({ core });
     const params = core.allocRecord({ name: 'llama_context_params' });

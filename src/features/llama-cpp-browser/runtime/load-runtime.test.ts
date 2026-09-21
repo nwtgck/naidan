@@ -15,7 +15,7 @@ describe('prebuilt runtime loading', () => {
     const wasm = await readFile(new URL('cpu-wasm32/browser/core.wasm', base));
     const fetcher = vi.fn().mockResolvedValue(new Response(Uint8Array.from(gzipSync(wasm))));
     vi.stubGlobal('fetch', fetcher);
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const core = await loadRuntime({ profile: 'cpu-wasm32', assetBaseURL: base.href });
     try {
       expect(fetcher).toHaveBeenCalledOnce();

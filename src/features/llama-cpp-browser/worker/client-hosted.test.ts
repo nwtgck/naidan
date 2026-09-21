@@ -166,7 +166,7 @@ describe('directory import cancellation', () => {
 
 describe('host snapshots of native operations', () => {
   it('keeps the current native tensor checkpoint while the inference worker is stuck', async () => {
-    vi.useFakeTimers(); const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    vi.useFakeTimers(); const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.generate.mockImplementation((_request, _onChunk, _onProgress, onDiagnostic) => {
       onDiagnostic({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', tokens: 101 } });
       onDiagnostic({ diagnostic: { event: 'native-node-start', stage: 'media-encode', nativeNode: 42, nativeOp: 26, nativeOpName: 'GGML_OP_MUL_MAT', nativeTensorType: 0, nativeTensorShape: [768, 240, 1, 1] } });
@@ -182,7 +182,7 @@ describe('host snapshots of native operations', () => {
     debug.mockRestore();
   });
   it('keeps a failure checkpoint with debug off without emitting periodic wait details', async () => {
-    vi.useFakeTimers(); const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    vi.useFakeTimers(); const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.generate.mockImplementation((_request, _onChunk, _onProgress, onDiagnostic) => {
       onDiagnostic({ diagnostic: { event: 'operation-start', stage: 'media-decode', batchTokens: 64 } });
       onDiagnostic({ diagnostic: { event: 'native-info', stage: 'media-encode', nativeOperation: 'copy-image', imageWidth: 328, imageHeight: 92 } });
@@ -197,7 +197,7 @@ describe('host snapshots of native operations', () => {
     debug.mockRestore();
   });
   it('retains native batch details and monitors the outer helper after an inner operation completes', async () => {
-    vi.useFakeTimers(); const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    vi.useFakeTimers(); const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     let report: ({ diagnostic }: { diagnostic: Diagnostic }) => void = () => {};
     transport.remote.generate.mockImplementation((_request, _onChunk, _onProgress, onDiagnostic) => {
       report = onDiagnostic;
@@ -218,7 +218,7 @@ describe('host snapshots of native operations', () => {
     client.dispose(); await expect(pending).rejects.toThrow('worker-failed'); debug.mockRestore();
   });
   it('reports the last checkpoint and known GPU reason when the worker crashes', async () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.generate.mockImplementation((_request, _onChunk, _onProgress, onDiagnostic) => {
       onDiagnostic({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', imageCount: 1, tokens: 101, positions: 101 } });
       onDiagnostic({ diagnostic: { event: 'native-error', failureKind: 'webgpu-dispatch-limit' } });
@@ -234,7 +234,7 @@ describe('host snapshots of native operations', () => {
     debug.mockRestore();
   });
   it('reports a long native wait without cancelling it and stops reporting after disposal', async () => {
-    vi.useFakeTimers(); const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    vi.useFakeTimers(); const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.generate.mockImplementation((_request, _onChunk, _onProgress, onDiagnostic) => {
       onDiagnostic({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', tokens: 101 } });
       return new Promise(() => {});
@@ -248,7 +248,7 @@ describe('host snapshots of native operations', () => {
     debug.mockClear(); await vi.advanceTimersByTimeAsync(60000); expect(debug).not.toHaveBeenCalled(); debug.mockRestore();
   });
   it('classifies a known worker error message without printing its raw contents', async () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient(); const pending = client.listModels({ signal: undefined });
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'Dispatch workgroup count X (95760) exceeds max compute workgroups per dimension (65535). private path', cancelable: true }));

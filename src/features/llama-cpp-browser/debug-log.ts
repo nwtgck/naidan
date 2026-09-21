@@ -176,7 +176,7 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
       reason ? reasonDescriptions[reason] : undefined,
       safe.data.lastStage ? `Last observed native stage: ${safe.data.lastStage} (${safe.data.lastEvent ?? 'unknown'}).` : undefined,
     ].filter(value => value !== undefined).join(' ');
-    console.debug(`[llama-cpp-browser] ${JSON.stringify({ ...safe.data, message })}`);
+    console.log(`[llama-cpp-browser] ${JSON.stringify({ ...safe.data, message })}`);
     return;
   }
   case 'operation-start': case 'operation-complete': case 'operation-waiting': case 'native-error': case 'native-info': case 'native-node-start': case 'native-node-complete':
@@ -185,7 +185,7 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
   case 'prefill-start': case 'prefill-complete': case 'generation-start': case 'sampler-ready':
   case 'context-retry': case 'cache-reuse':
   case 'first-token-sampled': case 'generation-complete': case 'cancelled': case 'released':
-    console.debug(`[llama-cpp-browser] ${JSON.stringify(safe.data)}`); return;
+    console.log(`[llama-cpp-browser] ${JSON.stringify(safe.data)}`); return;
   default: { const exhaustive: never = safe.data.event; throw new Error(`Unknown diagnostic event: ${exhaustive}`); }
   }
 }

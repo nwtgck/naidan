@@ -7,7 +7,7 @@ import { createProjectorTrace } from './projector-trace';
 afterEach(() => vi.restoreAllMocks());
 describe('synchronous projector tensor tracing', () => {
   it.each([4, 8] as const)('reads only metadata with %i-byte pointers and does not confuse pooling modes with op names', pointerBytes => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const memory = new Uint8Array(64); const view = new DataView(memory.buffer);
     view.setInt32(0, 2, true); view.setInt32(4, 1, true);
     [768n, 240n, 3n, 1n].forEach((value, index) => view.setBigInt64(8 + index * 8, value, true));
