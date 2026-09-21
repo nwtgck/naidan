@@ -17,11 +17,12 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode, Chat } from '@/01-models/types';
+import type { MessageNode, Chat, Endpoint } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
+import { refreshPromptApiAvailability, TEST_ONLY as promptApiRuntimeTestOnly } from '@/features/prompt-api/runtime';
 
 vi.mock('@/utils/idle-task', () => ({
   scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })),
@@ -1760,6 +1761,173 @@ Question`,
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(false);
     });
+  });
+});
+
+// Mount the real ChatInput as well as ChatPane: a correct endpoint selector
+// alone does not guarantee that the composer admits the selected endpoint.
+describe.each([
+  { mode: 'hosted', standalone: false },
+  { mode: 'standalone', standalone: true },
+])('ChatPane endpoint submission in $mode', ({ standalone }) => {
+  beforeEach(async () => {
+    resetMocks();
+    mockSendMessage.mockResolvedValue(true);
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
+    vi.stubGlobal('__BUILD_MODE_IS_HOSTED__', !standalone);
+    promptApiRuntimeTestOnly.reset();
+    document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = null;
+    promptApiRuntimeTestOnly.reset();
+    vi.unstubAllGlobals();
+    document.body.innerHTML = '';
+  });
+
+  it.each([
+    { label: 'OpenAI', endpoint: { type: 'openai', url: 'https://example.invalid' }, enabled: true },
+    { label: 'Ollama', endpoint: { type: 'ollama', url: 'http://localhost:11434' }, enabled: true },
+    { label: 'llama.cpp browser', endpoint: { type: 'llama_cpp_browser' }, enabled: true },
+    { label: 'Transformers.js', endpoint: { type: 'transformers_js' }, enabled: !standalone },
+    { label: 'unconfigured OpenAI', endpoint: { type: 'openai', url: '' }, enabled: false },
+    { label: 'unconfigured Ollama', endpoint: { type: 'ollama', url: '' }, enabled: false },
+    { label: 'unsupported endpoint', endpoint: { type: 'unsupported_experimental_endpoint', persistedType: 'future_engine' }, enabled: false },
+    { label: 'missing resolved settings', endpoint: undefined, enabled: false },
+  ] satisfies { label: string, endpoint: Endpoint | undefined, enabled: boolean }[])(
+    'enforces $label availability in both the send button and handler',
+    async ({ endpoint, enabled }) => {
+      mockResolvedSettings.value = endpoint === undefined ? undefined : { ...mockResolvedSettings.value, endpoint };
+      wrapper = mountChatPane({ global: { plugins: [router] } });
+      await flushPromises();
+      const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+      await textarea.setValue('hello');
+      const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
+      expect(sendButton.element.disabled).toBe(!enabled);
+      await sendButton.trigger('click');
+      await flushPromises();
+      if (enabled) {
+        expect(mockSendMessage).toHaveBeenCalledExactlyOnceWith({
+          chatId: toChatId({ raw: '1' }),
+          content: 'hello',
+          parentId: undefined,
+          attachments: [],
+          lmParameters: expect.anything(),
+        });
+        expect(textarea.element.value).toBe('');
+      } else {
+        await textarea.trigger('keydown', { key: 'Enter', ctrlKey: true });
+        await textarea.trigger('keydown', { key: 'Enter', metaKey: true });
+        expect(mockSendMessage).not.toHaveBeenCalled();
+        expect(textarea.element.value).toBe('hello');
+      }
+    },
+  );
+
+  it.each([
+    { shortcut: 'Ctrl+Enter', ctrlKey: true, metaKey: false },
+    { shortcut: 'Cmd+Enter', ctrlKey: false, metaKey: true },
+  ])('submits llama.cpp browser through $shortcut', async ({ ctrlKey, metaKey }) => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('hello');
+    await textarea.trigger('keydown', { key: 'Enter', ctrlKey, metaKey });
+    await flushPromises();
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: 'hello' }));
+    expect(textarea.element.value).toBe('');
+  });
+
+  it('submits a llama.cpp browser auto-send prompt without waiting for model discovery', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    let finishModelDiscovery: (() => void) | undefined;
+    mockFetchAvailableModels.mockImplementationOnce(() => new Promise<void>(resolve => {
+      finishModelDiscovery = resolve;
+    }));
+    try {
+      wrapper = mountChatPane({
+        props: { autoSendPrompt: 'hello from a link' },
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+      expect(mockSendMessage).toHaveBeenCalledTimes(1);
+      expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: 'hello from a link' }));
+      expect(wrapper.emitted('auto-sent')).toHaveLength(1);
+    } finally {
+      finishModelDiscovery?.();
+    }
+  });
+
+  it('keeps empty and whitespace-only llama.cpp browser messages disabled', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
+    expect(sendButton.element.disabled).toBe(true);
+    await textarea.setValue('   ');
+    expect(sendButton.element.disabled).toBe(true);
+    await textarea.trigger('keydown', { key: 'Enter', ctrlKey: true });
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('reacts to effective endpoint changes without remounting or discarding the draft', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'transformers_js' } };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('keep this draft');
+    const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
+    expect(sendButton.element.disabled).toBe(standalone);
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    await nextTick();
+    expect(sendButton.element.disabled).toBe(false);
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'transformers_js' } };
+    await nextTick();
+    expect(sendButton.element.disabled).toBe(standalone);
+    expect(textarea.element.value).toBe('keep this draft');
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps stopping an existing generation available when new submissions are blocked', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'openai', url: '' } };
+    mockStreaming.value = true;
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const abortButton = wrapper.get<HTMLButtonElement>('[data-testid="abort-button"]');
+    expect(abortButton.element.disabled).toBe(false);
+    await abortButton.trigger('click');
+    expect(mockAbortChat).toHaveBeenCalledTimes(1);
+    await wrapper.get('[data-testid="chat-input"]').trigger('keydown', { key: 'Enter', ctrlKey: true });
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('still requires the browser-provided model to become ready', async () => {
+    const availability = vi.fn().mockResolvedValue('unavailable');
+    const create = vi.fn();
+    vi.stubGlobal('LanguageModel', { availability, create });
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'browser_provided_lm' } };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    await wrapper.get('[data-testid="chat-input"]').setValue('hello');
+    const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
+    expect(sendButton.element.disabled).toBe(true);
+    availability.mockResolvedValue('available');
+    await refreshPromptApiAvailability({ showCheckingState: 'yes' });
+    await nextTick();
+    expect(sendButton.element.disabled).toBe(false);
+    availability.mockResolvedValue('unavailable');
+    await refreshPromptApiAvailability({ showCheckingState: 'yes' });
+    await nextTick();
+    expect(sendButton.element.disabled).toBe(true);
+    expect(create).not.toHaveBeenCalled();
+    expect(mockSendMessage).not.toHaveBeenCalled();
   });
 });
 

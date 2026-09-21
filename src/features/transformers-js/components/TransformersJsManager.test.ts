@@ -331,6 +331,20 @@ describe('TransformersJsManager.vue', () => {
       expect(externalLink.text()).toContain('Get Hosted Version (GitHub)');
     });
 
+    it('disables native controls and avoids storage probes while explaining standalone restrictions', async () => {
+      vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
+      const wrapper = mount(TransformersJsManager);
+      try {
+        await flushPromises();
+        expect(wrapper.get('fieldset[data-testid="transformers-js-actions"]').attributes('disabled')).toBeDefined();
+        expect(opfsDetection.checkOPFSSupport).not.toHaveBeenCalled();
+        expect(transformersJsService.listCachedModels).not.toHaveBeenCalled();
+        expect(transformersJsService.subscribe).not.toHaveBeenCalled();
+      } finally {
+        wrapper.unmount(); vi.unstubAllGlobals();
+      }
+    });
+
     it('displays the correct reason for unavailability in standalone mode', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = true;
       const wrapper = mount(TransformersJsManager);

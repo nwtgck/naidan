@@ -1,9 +1,9 @@
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { privacyFetchStream } from '@/features/privacy-fetch';
-import { getReadableStreamTransferSupport, releaseWorkerRemote, workerProxy, workerCapability, workerTransfer, wrapWorkerRemote } from '@/utils/worker-transport';
+import { getReadableStreamTransferSupport, workerProxy, workerCapability, workerTransfer } from '@/utils/worker-transport';
 import { deleteRepository, withRepositoryLock } from './storage';
 import { beginDownloadResultSchema, sharedProjectorConflictMessage, DownloadConflictError, progressSchema, repositoryUrlPath, selectionSchema, type BeginDownloadResult, type DownloadProgress, type DownloadSelection } from './types';
-import type { DownloadWriterApi } from './writer';
+import { createDownloadWriterClient } from '@/features/llama-cpp-browser/hugging-face/writer-client';
 
 export function responseOffset({ status, headers, offset, size }: { status: number, headers: Headers, offset: number, size: number }): number {
   const length = headers.get('content-length');
@@ -19,11 +19,18 @@ export function responseOffset({ status, headers, offset, size }: { status: numb
 export async function downloadRepository({ selection, signal, onProgress }: { selection: DownloadSelection, signal: AbortSignal, onProgress: ({ progress }: { progress: DownloadProgress }) => void }): Promise<void> {
   selection = selectionSchema.parse(selection);
   await withRepositoryLock({ repository: selection.repository, operation: async () => {
-    const worker = new Worker(new URL('./writer-entry.ts', import.meta.url), { type: 'module', name: 'llama-cpp-browser-download' });
-    const writer = wrapWorkerRemote<DownloadWriterApi>({ endpoint: worker });
+    const session = await createDownloadWriterClient({ signal });
+    const { worker, remote: writer } = session;
     const network = new AbortController();
+    let abortTimer: ReturnType<typeof setTimeout> | undefined;
     const forwardAbort = (): void => {
       network.abort(); void writer.stop().catch(() => {});
+      // Let in-flight writes acknowledge before pausing; forcibly abandon a
+      // stalled writer only after the same grace period as inference cancellation.
+      abortTimer = setTimeout(() => {
+        fatal = new DOMException('Download paused', 'AbortError');
+        pendingReject?.(fatal);
+      }, 5_000);
     };
     signal.addEventListener('abort', forwardAbort, { once: true });
     if (signal.aborted) network.abort();
@@ -121,9 +128,12 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
     } finally {
       await body?.cancel().catch(() => {});
       try {
-        if (!fatal) await call({ promise: writer.pause() });
+        // Keep transport errors observable while pause acknowledges pending writes.
+        await session.dispose({ beforeRelease: fatal ? undefined : () => call({ promise: writer.pause() }) });
       } finally {
-        signal.removeEventListener('abort', forwardAbort); network.abort(); worker.removeEventListener('error', onError); worker.removeEventListener('messageerror', onError); releaseWorkerRemote({ remote: writer }); worker.terminate();
+        if (abortTimer !== undefined) clearTimeout(abortTimer);
+        signal.removeEventListener('abort', forwardAbort); network.abort();
+        worker.removeEventListener('error', onError); worker.removeEventListener('messageerror', onError);
       }
     }
   } });

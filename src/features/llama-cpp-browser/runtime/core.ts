@@ -1,13 +1,19 @@
+import { loadCoreModule, type CoreModuleOptions } from '@/features/llama-cpp-browser/runtime/artifacts';
 import { z } from 'zod';
 import rawSchema from 'llama-cpp-browser-core/api/schema.mjs';
 import type { LowLevelFunctions } from 'llama-cpp-browser-core/api/functions.js';
-import type NativeFactory from 'llama-cpp-browser-core/profiles/cpu-wasm64/core.mjs';
 import type { MainModule } from 'llama-cpp-browser-core/profiles/cpu-wasm64/core.mjs';
+import type { ChatParams, NativeChat } from './chat-bindings';
 import type { LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 
-// The common chat surface used here has the same types in both pointer ABIs.
-// Size-dependent C fields are accessed through the generated schema below.
-export type CoreModule = Omit<MainModule, 'addFunction'> & {
+// Direct access is restricted to width-independent runtime exports. Size-dependent
+// C fields use the generated schema; correlated Embind handles use chat-bindings.
+export type CoreModule = Pick<MainModule,
+  'HEAPU8' | 'FS' | 'ccall' | 'removeFunction' | 'string_vector' | 'llama_tokens'
+  | 'llama_token_sequences' | 'common_reasoning_budget_init' | 'common_reasoning_budget_get_state'
+  | 'common_reasoning_budget_get_end_match_copy' | 'common_reasoning_budget_state'
+  | 'common_grammar_trigger' | 'common_grammar_triggers' | 'common_grammar_trigger_type'> & {
+  common_chat_params: new () => ChatParams;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten callback registration ABI.
   addFunction<TArgs extends (number | bigint)[]>(callback: (...args: TArgs) => number, signature: string): number | bigint,
 };
@@ -180,25 +186,14 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     },
   };
 }
-export type Core = ReturnType<typeof attachCore>;
+export type Core = ReturnType<typeof attachCore> & { chat: NativeChat };
 export async function createCore({ profile, baseURL, moduleOptions }: {
-  profile: LlamaCppProfile, baseURL: URL | string, moduleOptions: { wasmBinary: Uint8Array,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.
-    print: (message: unknown) => void,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.
-    printErr: (message: unknown) => void,
-  },
+  profile: LlamaCppProfile, baseURL: URL | string | undefined, moduleOptions: CoreModuleOptions,
 }): Promise<Core> {
-  const root = new URL(`${profile}/`, baseURL);
-  const imported: unknown = await import(/* @vite-ignore */ new URL('core.mjs', root).href);
-  const factory = z.object({ default: z.custom<typeof NativeFactory>(value => typeof value === 'function') }).parse(imported).default;
-  const module = await factory({ ...moduleOptions,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten module initialization callback ABI.
-    locateFile: (path: string) => new URL(path, root).href,
-  });
+  const { module, chat } = await loadCoreModule({ profile, baseURL, moduleOptions });
   switch (profile) {
-  case 'webgpu-wasm32-asyncify': return attachCore({ module, callMode: 'asyncify' });
-  case 'webgpu-wasm64-jspi': case 'cpu-wasm64': case 'cpu-wasm32': return attachCore({ module, callMode: 'direct' });
+  case 'webgpu-wasm32-asyncify': return { ...attachCore({ module, callMode: 'asyncify' }), chat };
+  case 'webgpu-wasm64-jspi': case 'cpu-wasm64': case 'cpu-wasm32': return { ...attachCore({ module, callMode: 'direct' }), chat };
   default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }

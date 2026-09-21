@@ -20,11 +20,10 @@ export function createLlamaCppRuntimeAssetsPlugin({ rootDir }: { rootDir: string
   function assets(): Map<string, Uint8Array> {
     const result = new Map<string, Uint8Array>();
     for (const file of manifest().files) {
-      if (!file.path.startsWith('profiles/')) continue;
+      if (!file.path.startsWith('profiles/') || !file.path.endsWith('.wasm')) continue;
       const bytes = readFileSync(safePath({ relative: file.path }));
       if (bytes.length !== file.bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw new Error('Core artifact integrity mismatch');
-      result.set(file.path.endsWith('.wasm') ? file.path + '.gz' : file.path,
-        file.path.endsWith('.wasm') ? gzipSync(bytes, { level: 9 }) : bytes);
+      result.set(file.path + '.gz', gzipSync(bytes, { level: 9 }));
     }
     return result;
   }

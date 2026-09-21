@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue';
 import { useModelPresetCoordinator } from '@/features/llama-cpp-browser/model-preset';
@@ -75,7 +76,6 @@ function handleModalKeydown({ event }: {
   }
 }
 
-const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 const DEFAULT_TYPE = Symbol('default');
 const selectedType = ref<EndpointType | typeof DEFAULT_TYPE>(onboardingDraft.value?.type || DEFAULT_TYPE);
 
@@ -135,6 +135,7 @@ const isTransformersJs = computed(() => {
   }
 });
 
+const isEndpointAvailable = computed(() => getEndpointBuildAvailability({ type: effectiveType.value }) === 'available');
 const isLlamaCppBrowser = computed(() => effectiveType.value === 'llama_cpp_browser');
 const isBrowserProvidedLm = computed(() => effectiveType.value === 'browser_provided_lm');
 const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
@@ -185,6 +186,13 @@ watch(
       const _ex: never = newType;
       throw new Error(`Unhandled endpoint type: ${_ex}`);
     }
+    }
+
+    const availability = getEndpointBuildAvailability({ type: newType });
+    switch (availability) {
+    case 'available': break;
+    case 'unavailable-in-standalone': return;
+    default: { const exhaustive: never = availability; throw new Error(`Unhandled availability: ${exhaustive}`); }
     }
 
     let cancelled = false;
@@ -248,7 +256,7 @@ const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
 
 watch(effectiveType, (type, _previous, onCleanup) => {
-  if (type !== 'llama_cpp_browser' || isStandalone) return;
+  if (type !== 'llama_cpp_browser' || getEndpointBuildAvailability({ type }) !== 'available') return;
   const controller = new AbortController();
   const refresh = (): Promise<void> => refreshLocalModels({ signal: controller.signal });
   const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: () => {
@@ -410,7 +418,7 @@ async function handleCancelConnect(): Promise<void> {
 }
 
 async function handleConnect() {
-  if (isLlamaCppBrowser.value && isStandalone) return;
+  if (!isEndpointAvailable.value) return;
   const url = getNormalizedUrl();
 
   if (!url && isHttpEndpointType.value) {
@@ -486,6 +494,7 @@ async function handleClose() {
 }
 
 async function handleFinish() {
+  if (!isEndpointAvailable.value) return;
   const url = getNormalizedUrl();
   const type = effectiveType.value;
 
@@ -641,7 +650,7 @@ defineExpose({
                     >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
                     <!-- Keep the tab label compact without changing internal provider names. -->
-                    <button type="button" :disabled="isStandalone" data-testid="onboarding-llama-cpp-browser-button"
+                    <button type="button" data-testid="onboarding-llama-cpp-browser-button"
                             :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                             @click="selectEndpointType({ type: 'llama_cpp_browser' })"
                     >
@@ -707,7 +716,7 @@ defineExpose({
                     >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
                     <!-- Keep the tab label compact without changing internal provider names. -->
-                    <button type="button" :disabled="isStandalone" data-testid="onboarding-llama-cpp-browser-button"
+                    <button type="button" data-testid="onboarding-llama-cpp-browser-button"
                             :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                             @click="selectEndpointType({ type: 'llama_cpp_browser' })"
                     >
@@ -793,7 +802,7 @@ defineExpose({
                 <div tw-class="flex gap-2">
                   <button
                     @click="handleConnect"
-                    :disabled="!isValidUrl || isTesting || (isLlamaCppBrowser && isStandalone) || (isBrowserProvidedLm && promptApiRuntimeState.status !== 'ready')"
+                    :disabled="!isValidUrl || isTesting || !isEndpointAvailable || (isBrowserProvidedLm && promptApiRuntimeState.status !== 'ready')"
                     tw-class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                     data-testid="onboarding-connect-button"
                   >
@@ -865,6 +874,7 @@ defineExpose({
                     @click="handleFinish"
                     tw-class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                     data-testid="onboarding-finish-button"
+                    :disabled="!isEndpointAvailable"
                   >
                     <PlayIcon tw-class="w-5 h-5 fill-current" />
                     <span>{{ lazyStrings.OnboardingModal__get_started() }}</span>
@@ -903,7 +913,7 @@ defineExpose({
           <button
             @click="handleFinish"
             data-testid="onboarding-local-start"
-            :disabled="!selectedModel || (isLlamaCppBrowser && isStandalone)"
+            :disabled="!selectedModel || !isEndpointAvailable"
             tw-class="ml-auto shrink-0 px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
           >
             <PlayIcon tw-class="w-4 h-4 fill-current" />

@@ -4,13 +4,15 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import LlamaCppBrowserManager from './LlamaCppBrowserManager.vue';
-import { LlamaCppBrowserError, type EngineState, type LocalModel } from '@/features/llama-cpp-browser/types';
+import { LlamaCppBrowserError, type EngineState, type LocalModel, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 
 const notifications = vi.hoisted(() => ({
   state: new Set<(event: { state: EngineState }) => void>(),
   models: new Set<() => void>(),
   confirm: vi.fn<() => Promise<boolean>>(),
+  profiles: [] as RuntimeOptions['profile'][],
 }));
+vi.mock('@/features/llama-cpp-browser/runtime/profile-policy', () => ({ selectableProfiles: notifications.profiles }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
   getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
   getOptions: vi.fn(() => ({ profile: 'auto' })),
@@ -38,6 +40,8 @@ function render(): VueWrapper {
 beforeEach(async () => {
   vi.clearAllMocks(); notifications.state.clear(); notifications.models.clear();
   notifications.confirm.mockResolvedValue(true);
+  notifications.profiles.splice(0, notifications.profiles.length, 'auto', 'cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi');
+  vi.mocked(llamaCppBrowserService.getOptions).mockReturnValue({ profile: 'auto' });
   vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'idle' });
   vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([]);
   vi.mocked(llamaCppBrowserService.importModel).mockResolvedValue(undefined);
@@ -50,6 +54,18 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
+  it('keeps the standalone profile visible and fixed while model operations remain available', async () => {
+    notifications.profiles.splice(0, notifications.profiles.length, 'webgpu-wasm64-jspi');
+    vi.mocked(llamaCppBrowserService.getOptions).mockReturnValue({ profile: 'webgpu-wasm64-jspi' });
+    const wrapper = render(); await flushPromises();
+    const select = wrapper.get<HTMLSelectElement>('[data-testid="llama-cpp-browser-profile"]');
+    expect(select.element.value).toBe('webgpu-wasm64-jspi');
+    expect(select.element.disabled).toBe(true);
+    expect(select.findAll('option').map(option => option.element.value)).toEqual(['webgpu-wasm64-jspi']);
+    expect(wrapper.get('fieldset').attributes('disabled')).toBeUndefined();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    expect(llamaCppBrowserService.setOptions).not.toHaveBeenCalled();
+  });
   it('refreshes model choices and forwards the prepared model instead of choosing the first entry', async () => {
     const wrapper = render(); await flushPromises();
     const target = { ...storedModel, id: 'hf-target', name: 'hf.co/owner/repo:Q8_0' };
@@ -79,10 +95,10 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.importDirectory).toHaveBeenCalledWith({ directory: { name: 'my-Qwen-VL-GGUF', files: [{ path: 'nested/weights.gguf', file }] }, signal: expect.any(AbortSignal) });
     expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
   });
-  it('renders the standalone feature and controls but disables them without reading OPFS', async () => {
+  it('keeps controls visible but disables them when the service is unavailable', async () => {
     vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'unavailable' });
     const wrapper = render(); await flushPromises();
-    expect(wrapper.get('[data-testid="llama-cpp-browser-unavailable"]').text()).toContain('standalone');
+    expect(wrapper.get('[data-testid="llama-cpp-browser-unavailable"]').text()).toContain('failed');
     expect(wrapper.get('fieldset').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-testid="llama-cpp-browser-file"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="llama-cpp-browser-profile"]').exists()).toBe(true);

@@ -122,7 +122,8 @@ describe('OnboardingModal.vue', () => {
     });
   });
 
-  it('prepares local browser onboarding without saving settings and starts only after a stored model is selected', async () => {
+  it.each([false, true])('starts local browser onboarding only after a stored model is selected with standalone=%s', async standalone => {
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q4_K_M', target: 'onboarding', claim: () => true });
     const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { props: ['modelPreset'], template: '<div data-testid="preset-manager">{{ modelPreset?.input }}</div>' } } } });
@@ -140,7 +141,7 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeUndefined();
     await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click'); await flushPromises();
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'hf.co/owner/repo:Q4_K_M' }) }));
-    wrapper.unmount(); list.mockRestore();
+    wrapper.unmount(); list.mockRestore(); vi.unstubAllGlobals();
   });
   it('enables Start for the freshly prepared model before persisting endpoint settings', async () => {
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);

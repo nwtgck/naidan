@@ -5,6 +5,7 @@ import { computed, onMounted, onUnmounted, ref, shallowRef, useId } from 'vue';
 import { AlertCircleIcon, BrainCircuitIcon, ChevronDownIcon, FileUpIcon, FolderOpenIcon, HardDriveIcon, Loader2Icon, PowerOffIcon, RefreshCcwIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
+import { selectableProfiles } from '@/features/llama-cpp-browser/runtime/profile-policy';
 import { errorCode, runtimeOptionsSchema, type EngineState, type LocalModel, type ErrorCode } from '@/features/llama-cpp-browser/types';
 import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
 import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
@@ -28,7 +29,13 @@ const downloading = ref(false);
 const dragDepth = ref(0);
 const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
-const unavailable = computed(() => __BUILD_MODE_IS_STANDALONE__ || state.value.status === 'unavailable');
+const profileLabels = {
+  'webgpu-wasm64-jspi': 'WebGPU / wasm64',
+  'webgpu-wasm32-asyncify': 'WebGPU / wasm32',
+  'cpu-wasm64': 'CPU / wasm64',
+  'cpu-wasm32': 'CPU / wasm32',
+} satisfies Record<Exclude<typeof options.value.profile, 'auto'>, string>;
+const unavailable = computed(() => state.value.status === 'unavailable');
 const busy = computed(() => active.value !== undefined || downloading.value || state.value.status === 'working');
 const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = useModelDeletionConfirm();
 let unsubscribe: (() => void) | undefined;
@@ -171,7 +178,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <section tw-class="space-y-5" data-testid="llama-cpp-browser-manager">
     <div v-if="unavailable" tw-class="flex items-start gap-3 p-5 rounded-2xl border border-amber-100 dark:border-amber-900/30 bg-amber-50 dark:bg-amber-900/10 text-sm text-amber-700 dark:text-amber-400" data-testid="llama-cpp-browser-unavailable">
       <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
-      <p>{{ lazyStrings.llamaCppBrowser__unavailable_in_standalone() }}</p>
+      <p>{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     </div>
     <LlamaCppBrowserHuggingFaceManager :model-preset="props.modelPreset" :disabled="unavailable || active !== undefined || refreshing" @busy="downloading = $event" @changed="refresh" @model-ready="selectReadyModel({ model: $event })" @selection-changed="modelSelectionVersion++" />
     <fieldset :disabled="unavailable || busy || refreshing" tw-class="space-y-3 disabled:opacity-50">
@@ -227,8 +234,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <fieldset :disabled="unavailable || busy" tw-class="grid grid-cols-1 sm:grid-cols-2 gap-4 disabled:opacity-50">
         <div tw-class="space-y-2">
           <label :for="`${id}-profile`" tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowser__profile() }}</label>
-          <div tw-class="relative"><select :id="`${id}-profile`" v-model="options.profile" data-testid="llama-cpp-browser-profile" tw-class="appearance-none block w-full pl-3 pr-9 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all" @change="applyOptions">
-            <option value="auto">{{ lazyStrings.llamaCppBrowser__automatic_recommended() }}</option><option value="webgpu-wasm64-jspi">WebGPU / wasm64</option><option value="webgpu-wasm32-asyncify">WebGPU / wasm32</option><option value="cpu-wasm64">CPU / wasm64</option><option value="cpu-wasm32">CPU / wasm32</option>
+          <div tw-class="relative"><select :id="`${id}-profile`" v-model="options.profile" :disabled="selectableProfiles.length === 1" data-testid="llama-cpp-browser-profile" tw-class="appearance-none block w-full pl-3 pr-9 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all" @change="applyOptions">
+            <option v-for="profile in selectableProfiles" :key="profile" :value="profile">{{ profile === 'auto' ? lazyStrings.llamaCppBrowser__automatic_recommended() : profileLabels[profile] }}</option>
           </select><ChevronDownIcon tw-class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" /></div>
         </div>
       </fieldset>

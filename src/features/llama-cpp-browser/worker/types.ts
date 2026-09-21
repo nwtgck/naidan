@@ -5,13 +5,15 @@ import { generateInputSchema } from '@/features/llama-cpp-browser/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
 import type { ModelDirectoryInput, GenerateInput, GenerationResult, LocalModel, Progress } from '@/features/llama-cpp-browser/types';
 
-export const workerGenerateInputSchema = generateInputSchema.extend({ assetBaseURL: z.url() }).strict();
+export const workerGenerateInputSchema = generateInputSchema.extend({ assetBaseURL: z.url().optional() }).strict();
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 
 export const workerGenerateCallSchema = workerGenerateInputSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
 export type WorkerGenerateCall = z.infer<typeof workerGenerateCallSchema>;
 
 export interface LlamaCppWorkerApi {
+  verifyStorage({ probeId }: { probeId: string }): Promise<boolean>;
+  release(): Promise<void>;
   cancelGeneration({ generationId }: { generationId: number }): Promise<void>;
   listModels(): Promise<LocalModel[]>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.

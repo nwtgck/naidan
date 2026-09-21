@@ -1,8 +1,9 @@
+import { loadWasmBinary } from '@/features/llama-cpp-browser/runtime/artifacts';
 import { createCore, type Core } from './core';
 import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import { logDiagnostic, logNativeDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 
-export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCppProfile, assetBaseURL: string }): Promise<Core> {
+export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCppProfile, assetBaseURL: string | undefined }): Promise<Core> {
   const wasmFeatures: object = WebAssembly;
   if (usesWebGpu({ profile }) && (typeof navigator === 'undefined' || !navigator.gpu)) {
     throw new LlamaCppBrowserError({ code: 'unavailable' });
@@ -10,9 +11,7 @@ export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCpp
   if (profile === 'webgpu-wasm64-jspi' && (!('promising' in wasmFeatures) || typeof wasmFeatures.promising !== 'function' || !('Suspending' in wasmFeatures) || typeof wasmFeatures.Suspending !== 'function')) {
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
-  const response = await fetch(new URL(`${profile}/core.wasm.gz`, assetBaseURL));
-  if (!response.ok || !response.body) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-  const wasmBinary = new Uint8Array(await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+  const wasmBinary = await loadWasmBinary({ profile, assetBaseURL });
   const core = await createCore({
     profile,
     baseURL: assetBaseURL,

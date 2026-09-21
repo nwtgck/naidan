@@ -1,12 +1,13 @@
+import { defaultRuntimeOptions, parseRuntimeOptions } from '@/features/llama-cpp-browser/runtime/profile-policy';
 import { listStoredModels, removeStoredModel, withModelMutationLock } from './runtime/model-store';
 import { createLlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/client';
 import type { LlamaCppWorkerClient } from './worker/types';
-import { errorCode, generateInputSchema, LlamaCppBrowserError, runtimeOptionsSchema, type EngineState, type Progress, type RuntimeOptions } from './types';
+import { errorCode, generateInputSchema, LlamaCppBrowserError, type EngineState, type Progress, type RuntimeOptions } from './types';
 import type { LlamaCppBrowserService } from './service-contract';
 import { logDiagnostic } from './debug-log';
 
 let state: EngineState = { status: 'idle' };
-let options: RuntimeOptions = { profile: 'auto' };
+let options: RuntimeOptions = defaultRuntimeOptions();
 let client: LlamaCppWorkerClient | undefined;
 let activeController: AbortController | undefined;
 let queue: Promise<void> = Promise.resolve();
@@ -77,7 +78,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   getState: () => ({ ...state }),
   getOptions: () => ({ ...options }),
   setOptions({ options: next }) {
-    options = runtimeOptionsSchema.parse(next);
+    options = parseRuntimeOptions({ options: next });
   },
   subscribe({ listener }) {
     listeners.add(listener); listener({ state: { ...state } }); return () => {

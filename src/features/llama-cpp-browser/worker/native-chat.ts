@@ -1,134 +1,14 @@
-import { logFailure } from '@/features/llama-cpp-browser/debug-log';
-import type { common_chat_params, common_chat_parser_params, common_chat_templates } from 'llama-cpp-browser-core/profiles/cpu-wasm64/core.mjs';
+import type { ChatParams } from '@/features/llama-cpp-browser/runtime/chat-bindings';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
-import { LlamaCppBrowserError, type GenerateInput, type GenerationResult } from '@/features/llama-cpp-browser/types';
+import type { GenerateInput } from '@/features/llama-cpp-browser/types';
 
-/** Native objects returned through Embind are owned copies, including properties. */
+/** Native handles and their width-specific consumers stay inside one bound module. */
 export function prepareChat({ core, model, request }: { core: Core, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'> }) {
-  core.assertIdle();
-  const native = core.module;
-  let templates: common_chat_templates | undefined;
-  let params: common_chat_params | undefined;
-  let parser: common_chat_parser_params | undefined;
-  const dispose = (): void => {
-    parser?.delete(); params?.delete(); templates?.delete();
-  };
-  try {
-    templates = new native.common_chat_templates(model, '', '', '');
-    const images: { marker: string, blob: Blob }[] = [];
-    const messages = request.messages.map(message => ({ ...message, content: typeof message.content === 'string' ? message.content : message.content.map(part => {
-      switch (part.type) {
-      case 'text': return part;
-      case 'image': {
-        // An unpredictable marker keeps literal user text distinct from media.
-        const marker = `<__image_${crypto.randomUUID()}__>`;
-        images.push({ marker, blob: part.blob });
-        return { type: 'media_marker', text: marker };
-      }
-      default: { const exhaustive: never = part; throw new Error(`Unknown part: ${exhaustive}`); }
-      }
-    }) }));
-    const inputs = new native.common_chat_templates_inputs();
-    try {
-      const messagesJson = native.common_json.parse(JSON.stringify(messages));
-      try {
-        const messages = native.common_chat_msgs_parse_oaicompat(messagesJson);
-        try {
-          inputs.messages = messages;
-        } finally {
-          messages.delete();
-        }
-      } finally {
-        messagesJson.delete();
-      }
-      const toolsJson = native.common_json.parse(JSON.stringify(request.tools ?? []));
-      try {
-        const tools = native.common_chat_tools_parse_oaicompat(toolsJson);
-        try {
-          inputs.tools = tools;
-        } finally {
-          tools.delete();
-        }
-      } finally {
-        toolsJson.delete();
-      }
-      inputs.use_jinja = true;
-      inputs.parallel_tool_calls = true;
-      const effort = request.reasoningEffort;
-      switch (effort) {
-      case 'none':
-        // This requests upstream's thinking toggle; templates may not support it.
-        inputs.enable_thinking = false;
-        break;
-      case 'low': case 'medium': case 'high': {
-        const kwargs = new native.string_map();
-        try {
-          kwargs.set('reasoning_effort', JSON.stringify(effort)); inputs.chat_template_kwargs = kwargs;
-        } finally {
-          kwargs.delete();
-        }
-        break;
-      }
-      case undefined: break;
-      default: { const exhaustive: never = effort; throw new Error(`Unknown reasoning effort: ${exhaustive}`); }
-      }
-      inputs.reasoning_format = native.common_reasoning_format.COMMON_REASONING_FORMAT_DEEPSEEK;
-      params = templates.apply(inputs);
-    } finally {
-      inputs.delete();
-    }
-    parser = new native.common_chat_parser_params(params);
-    parser.reasoning_format = native.common_reasoning_format.COMMON_REASONING_FORMAT_DEEPSEEK;
-    parser.parse_tool_calls = !!request.tools?.length;
-    const arena = new native.common_peg_arena();
-    try {
-      if (params.parser) arena.load(params.parser);
-      parser.parser = arena;
-    } finally {
-      arena.delete();
-    }
-    const stops = params.additional_stops;
-    let additionalStops: string[];
-    try {
-      additionalStops = Array.from(stops);
-    } finally {
-      stops.delete();
-    }
-    const parserParams = parser;
-    return { params, additionalStops, images, dispose,
-      parse({ text, partial }: { text: string, partial: boolean }): Omit<GenerationResult, 'finishReason'> {
-        core.assertIdle();
-        const message = native.common_chat_parse(text, partial, parserParams);
-        try {
-          const calls = message.tool_calls;
-          try {
-            const toolCalls: GenerationResult['toolCalls'] = [];
-            for (let index = 0; index < calls.size(); index++) {
-              const call = calls.get(index);
-              if (!call) throw new Error('Missing native tool call');
-              try {
-                toolCalls.push({ id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments } });
-              } finally {
-                call.delete();
-              }
-            }
-            return { content: message.content, reasoningContent: message.reasoning_content, toolCalls };
-          } finally {
-            calls.delete();
-          }
-        } finally {
-          message.delete();
-        }
-      },
-    };
-  } catch (error) {
-    logFailure({ stage: 'template', error });
-    dispose(); throw new LlamaCppBrowserError({ code: 'template-unsupported' });
-  }
+  return core.chat.prepare({ assertIdle: core.assertIdle, model, request });
 }
 
 /** Translate native grammar triggers to the low-level sampler ABI. */
-export async function createGrammarSampler({ core, vocab, params, preservedTokens }: { core: Core, vocab: bigint, params: common_chat_params, preservedTokens: ReadonlySet<number> }): Promise<bigint> {
+export async function createGrammarSampler({ core, vocab, params, preservedTokens }: { core: Core, vocab: bigint, params: ChatParams, preservedTokens: ReadonlySet<number> }): Promise<bigint> {
   if (!params.grammar) return 0n;
   const allocations: bigint[] = [];
   const alloc = ({ bytes }: { bytes: number }): bigint => {
@@ -203,7 +83,7 @@ export async function tokenizeChatText({ core, vocab, text }: { core: Core, voca
   }
 }
 
-export async function preservedTokenIds({ core, vocab, params }: { core: Core, vocab: bigint, params: common_chat_params }): Promise<Set<number>> {
+export async function preservedTokenIds({ core, vocab, params }: { core: Core, vocab: bigint, params: ChatParams }): Promise<Set<number>> {
   const nativeTokens = params.preserved_tokens;
   let texts: string[];
   try {

@@ -1,3 +1,4 @@
+import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { isProjector } from './model-variants';
 import { scanDeletionTree, pruneEmptyDirectories } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { openSyncAccess, type DownloadAccess } from './sync-access';
@@ -8,6 +9,7 @@ import { isMissing, readJournal, repositoryFolder, selectedFile, writeJournal } 
 import { journalSchema, sharedProjectorConflictMessage, pendingName, selectionSchema, type BeginDownloadResult, type DownloadJournal, type DownloadSelection } from './types';
 
 export type DownloadWriterApi = {
+  verifyStorage({ probeId }: { probeId: string }): Promise<boolean>,
   begin({ selection }: { selection: DownloadSelection }): Promise<BeginDownloadResult>,
   open({ fileIndex, start }: { fileIndex: number, start: number }): Promise<void>,
   append({ bytes }: WorkerTransfer<{ bytes: Uint8Array<ArrayBuffer> }>): Promise<number>,
@@ -37,6 +39,7 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
     }
   };
   const api: WorkerServerApi<DownloadWriterApi> = {
+    verifyStorage,
     async begin({ selection }: { selection: DownloadSelection }): Promise<BeginDownloadResult> {
       selection = selectionSchema.parse(selection); resolveModelFiles({ files: selection.files });
       if (selection.files.filter(file => isProjector({ path: file.path })).length > 1) throw new Error('Only one projector can be downloaded');
