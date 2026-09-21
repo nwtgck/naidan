@@ -163,6 +163,51 @@ R`);
     expect(() => codec.text({ text: 'late' })).toThrow(/after completion/); codec.finish({ reason: 'unknown' });
     expect(() => codec.finish({ reason: 'unknown' })).toThrow(/twice/);
   });
+  it.each(['user', 'tool_results'] as const)('ignores only one framing LF and native EOS after the completed %s turn', next => {
+    const { codec, events } = setup({ prompt: disabled, declarations: tools });
+    if (next === 'tool_results') completeCall({ codec, content: body });
+    else codec.text({ text: 'answer' });
+    codec.control({ token: '<|im_end|>' });
+    const before = structuredClone(events);
+    codec.text({ text: '\n' });
+    codec.control({ token: '<|endoftext|>' });
+    expect(events).toEqual(before);
+    expect(() => codec.text({ text: '\n' })).toThrow(/after completion/);
+    expect(() => codec.control({ token: '<|endoftext|>' })).toThrow(/after completion/);
+    codec.finish({ reason: 'unknown' });
+    expect(events.at(-1)).toEqual({ type: 'result', result: { type: 'finished', next } });
+    expect(() => codec.text({ text: '\n' })).toThrow(/after completion/);
+    expect(() => codec.control({ token: '<|endoftext|>' })).toThrow(/after completion/);
+  });
+  it('accepts a native EOS directly after the turn boundary without inventing another result', () => {
+    const { codec, events } = setup({ prompt: disabled, declarations: tools });
+    completeCall({ codec, content: body });
+    codec.control({ token: '<|im_end|>' });
+    codec.control({ token: '<|endoftext|>' });
+    codec.finish({ reason: 'unknown' });
+    expect(events.filter(event => event.type === 'result')).toEqual([{ type: 'result', result: { type: 'finished', next: 'tool_results' } }]);
+  });
+  it.each(['late', ' \n', '\n\n', '\nlate', '<|endoftext|>'])('rejects post-terminal content %j rather than trimming arbitrary whitespace', text => {
+    const { codec } = setup({ prompt: disabled, declarations: tools });
+    completeCall({ codec, content: body });
+    codec.control({ token: '<|im_end|>' });
+    expect(() => codec.text({ text })).toThrow(/after completion/);
+  });
+  it('rejects repeated framing, new controls, and trailers on incomplete reasoning', () => {
+    const { codec } = setup({ prompt: disabled, declarations: tools });
+    completeCall({ codec, content: body });
+    codec.control({ token: '<|im_end|>' });
+    codec.text({ text: '\n' });
+    expect(() => codec.text({ text: '\n' })).toThrow(/after completion/);
+    for (const token of ['<|im_start|>', '<|im_end|>', '<think>', '<tool_call>']) {
+      expect(() => codec.control({ token })).toThrow(/after completion/);
+    }
+    const incomplete = setup({ prompt: enabled, declarations: tools });
+    incomplete.codec.text({ text: 'unfinished' });
+    incomplete.codec.control({ token: '<|im_end|>' });
+    expect(() => incomplete.codec.text({ text: '\n' })).toThrow(/after completion/);
+    expect(() => incomplete.codec.control({ token: '<|endoftext|>' })).toThrow(/after completion/);
+  });
 });
 
 describe('Qwen completed native parameter grammar', () => {

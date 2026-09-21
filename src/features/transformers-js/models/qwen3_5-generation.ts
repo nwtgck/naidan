@@ -36,6 +36,7 @@ export function createQwen3_5Generation({ emit, prompt, tools }: {
   let callIndex: number | undefined;
   let completedCalls = 0;
   let terminal: 'user' | 'tool_results' | 'incomplete' | undefined;
+  let terminalTrailer: 'empty' | 'line-break' | 'eos' = 'empty';
   let settled = false;
 
   function assertWritable(): void {
@@ -85,6 +86,12 @@ export function createQwen3_5Generation({ emit, prompt, tools }: {
   return {
     text({ text }: { text: string }): void {
       if (!text) return;
+      // Qwen can serialize a completed im_end with one framing LF before EOS.
+      // Accept that exact suffix only; post-terminal body text stays invalid.
+      if (!settled && (terminal === 'user' || terminal === 'tool_results')
+        && terminalTrailer === 'empty' && text === '\n') {
+        terminalTrailer = 'line-break'; return;
+      }
       assertWritable();
       switch (phase) {
       case 'tool_call': appendCall({ text }); return;
@@ -119,6 +126,10 @@ export function createQwen3_5Generation({ emit, prompt, tools }: {
       }
     },
     control({ token }: { token: string }): void {
+      if (!settled && (terminal === 'user' || terminal === 'tool_results')
+        && terminalTrailer !== 'eos' && token === '<|endoftext|>') {
+        terminalTrailer = 'eos'; return;
+      }
       assertWritable();
       switch (phase) {
       case 'tool_call': {
