@@ -55,7 +55,7 @@ describe('structured parts Full replay contract', () => {
     ] })).toEqual([{ kind: 'assistant', parts: [{ type: 'text', text: 'partial', completeness: 'partial' }], terminal: { type: 'error', errorName: 'Error' } }]);
   });
 
-  it('distinguishes stream-end, logical controls and trailing model end tokens', () => {
+  it('distinguishes stream-end, native protocol markers and trailing model framing', () => {
     const source = evidence.invocations[0]!;
     const prompt = source.sequence.tokens.slice(0, source.settings.budget.promptTokenCount);
     const partial = { ...source, sequence: { ...source.sequence, tokens: [...prompt, '41', '42'] } };
@@ -80,6 +80,24 @@ describe('structured parts Full replay contract', () => {
     expect(() => verifyStructuredInvocationTermination({
       invocation: completed, expected: contract.invocations[0]!, contract,
     })).toThrow(/no accepted native control/);
+
+    const framed = { ...source, sequence: { ...source.sequence, tokens: [...prompt, '7', '41', '9', '7', '2'] } };
+    const framedTerminal = { callOrdinal: source.callOrdinal,
+      terminal: { kind: 'control' as const, tokenId: '9', trailerTokenIds: ['7', '2'] } };
+    verifyStructuredInvocationTermination({ invocation: framed, expected: framedTerminal, contract });
+    for (const trailerTokenIds of [['8', '2'], ['7'], ['7', '2', '2']] as const) {
+      expect(() => verifyStructuredInvocationTermination({
+        invocation: framed,
+        expected: { ...framedTerminal, terminal: { ...framedTerminal.terminal, trailerTokenIds } },
+        contract,
+      })).toThrow(/exact.*trailer/);
+    }
+    const repeatedMarker = { ...source, sequence: { ...source.sequence, tokens: [...prompt, '41', '9', '9', '2'] } };
+    expect(() => verifyStructuredInvocationTermination({
+      invocation: repeatedMarker,
+      expected: { ...framedTerminal, terminal: { ...framedTerminal.terminal, trailerTokenIds: ['9', '2'] } },
+      contract,
+    })).toThrow(/no later non-end control/);
   });
 
   it('projects legacy continuity only after exact preceding parts validation', () => {
@@ -110,6 +128,11 @@ describe('structured parts Full replay contract', () => {
       completionTokenIds: ['2'], endTokenIds: ['2'],
       invocations: [{ callOrdinal: 999, terminal: { kind: 'control', tokenId: '2' } }], requests: [],
     } })).toThrow(/Unknown/);
+    expect(() => validateStructuredPartsContract({ evidence, contract: {
+      completionTokenIds: ['2'], endTokenIds: ['2'],
+      invocations: [{ callOrdinal: evidence.invocations[0]!.callOrdinal,
+        terminal: { kind: 'control', tokenId: '2', trailerTokenIds: ['not-a-token-id'] } }], requests: [],
+    } })).toThrow();
     expect(evidence).toEqual(before);
   });
 

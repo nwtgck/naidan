@@ -29,7 +29,7 @@ export type StructuredPartsReplayContract = {
   endTokenIds: readonly string[];
   invocations: readonly {
     callOrdinal: number;
-    terminal: { kind: 'stream-end' } | { kind: 'control'; tokenId: string };
+    terminal: { kind: 'stream-end' } | { kind: 'control'; tokenId: string; trailerTokenIds?: readonly string[] };
   }[];
   requests: readonly {
     scenario: Scenario;
@@ -61,7 +61,14 @@ export function validateStructuredPartsContract({ contract, evidence }: {
   if (new Set(legacyInputProjections.map(item => item.scenario)).size !== legacyInputProjections.length) throw new Error('Duplicate legacy input projection');
   for (const item of invocations) {
     if (!evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)) throw new Error('Unknown structured-parts invocation');
-    if (item.terminal.kind === 'control' && !completionTokenIds.includes(item.terminal.tokenId)) throw new Error('Undeclared structured-parts terminal control');
+    switch (item.terminal.kind) {
+    case 'stream-end': break;
+    case 'control':
+      if (!completionTokenIds.includes(item.terminal.tokenId)) throw new Error('Undeclared structured-parts terminal control');
+      if (item.terminal.trailerTokenIds !== undefined) tokenId.array().max(16).parse(item.terminal.trailerTokenIds);
+      break;
+    default: { const exhaustive: never = item.terminal; throw new Error(String(exhaustive)); }
+    }
   }
   for (const item of requests) {
     if (!evidence.requests.some(request => request.scenario === item.scenario)
@@ -98,12 +105,18 @@ export function verifyStructuredInvocationTermination({ invocation, expected, co
     expect(controls, 'partial structured output has no accepted native control').toEqual([]);
     break;
   case 'control': {
-    const position = generated.lastIndexOf(expected.terminal.tokenId);
-    expect(position, 'declared native terminal is present').toBeGreaterThanOrEqual(0);
-    expect(generated.slice(0, position).some(id => contract.endTokenIds.includes(id)), 'model end token does not precede the logical terminal').toBe(false);
-    expect(generated.slice(position + 1).every(id => contract.endTokenIds.includes(id)), 'only native end tokens follow the logical terminal').toBe(true);
+    const position = expected.terminal.trailerTokenIds === undefined
+      ? generated.lastIndexOf(expected.terminal.tokenId)
+      : generated.length - expected.terminal.trailerTokenIds.length - 1;
+    expect(generated[position], 'declared native protocol marker precedes its exact trailer').toBe(expected.terminal.tokenId);
+    expect(generated.slice(0, position).some(id => contract.endTokenIds.includes(id)), 'model end token does not precede the declared native protocol marker').toBe(false);
+    if (expected.terminal.trailerTokenIds === undefined) {
+      expect(generated.slice(position + 1).every(id => contract.endTokenIds.includes(id)), 'only native end tokens follow the declared native protocol marker').toBe(true);
+    } else {
+      expect(generated.slice(position + 1), 'exact declared native terminal trailer').toEqual(expected.terminal.trailerTokenIds);
+    }
     const laterControls = controls.filter(control => control.index > position);
-    expect(laterControls.every(control => contract.endTokenIds.includes(control.id)), 'no later non-end control follows the logical terminal').toBe(true);
+    expect(laterControls.every(control => contract.endTokenIds.includes(control.id)), 'no later non-end control follows the declared native protocol marker').toBe(true);
     break;
   }
   default: { const exhaustive: never = expected.terminal; throw new Error(String(exhaustive)); }

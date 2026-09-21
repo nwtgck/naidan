@@ -2182,42 +2182,42 @@ Here’s the current weather in Tokyo:
       ],
       structuredParts: gptOssFullStructuredParts,
     }, evidence: recorded, imagePlatform: undefined, expectedLoadReceipt: undefined,
-      artifactPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', ...Array.from({ length: 6 }, (_, index) => `onnx/model_q4f16.onnx_data_${index + 1}`)],
-      completeResult: ({ callOrdinal, runtime, result }) => {
-        if (callOrdinal !== 10 && callOrdinal !== 12) return result;
-        // Source-derived control only: native KV bytes were not captured. The
-        // actual cache class supplies identity; only observed length is synthetic.
-        const cache = new runtime.DynamicCache();
-        vi.spyOn(cache, 'get_seq_length').mockReturnValue(result.sequences.dims[1]! - 1);
-        caches.set(callOrdinal, cache);
-        return { ...result, past_key_values: cache };
-      },
-      unavailableOutputs: [11, 13, 14].map(callOrdinal => {
-        const invocation = recorded.invocations[callOrdinal - 1]!;
-        const request = recorded.requests.find(item => item.scenario === invocation.scenario)!;
-        const starts = request.events.flatMap((event, index) => typeof event === 'object' && event !== null && !Array.isArray(event) && event.kind === 'assistant-start' ? [index] : []);
-        // Retain every first-call chunk/thinking/tool callback and the second
-        // assistant start, but never the old invalid second-call output.
-        const expectedEventsBeforeGap = request.events.slice(0, (callOrdinal === 14 ? starts[0]! : starts[1]!) + 1);
-        return { callOrdinal, scenario: invocation.scenario, requestInput: request.input, expectedEventsBeforeGap,
-          verifyInput: ({ options, runtime, tokenizer, model }) => {
-            if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) throw new Error('Missing corrected GPT input');
-            // Old calls 11/13 omitted an unconsumed terminal token; call 14
-            // additionally belonged to another public chat. None is an oracle
-            // for the corrected native input, even though the old run fulfilled.
-            expect(() => replayCapturedFullInvocation({ invocation, options, runtime, modelConfig: model.config, parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 128
-            } })).toThrow();
-            // The real native capture verifies zero stream events. Do not
-            // replace its owned streamer descriptors with test spies here.
-            let expected: bigint[];
-            if (callOrdinal === 14) {
-              expect(options.past_key_values).toBeNull();
-              // Independent source-derived canonical input, not an observed
-              // post-fix output or a call to Naidan's formatter under test.
-              const namespace = `\
+    artifactPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', ...Array.from({ length: 6 }, (_, index) => `onnx/model_q4f16.onnx_data_${index + 1}`)],
+    completeResult: ({ callOrdinal, runtime, result }) => {
+      if (callOrdinal !== 10 && callOrdinal !== 12) return result;
+      // Source-derived control only: native KV bytes were not captured. The
+      // actual cache class supplies identity; only observed length is synthetic.
+      const cache = new runtime.DynamicCache();
+      vi.spyOn(cache, 'get_seq_length').mockReturnValue(result.sequences.dims[1]! - 1);
+      caches.set(callOrdinal, cache);
+      return { ...result, past_key_values: cache };
+    },
+    unavailableOutputs: [11, 13, 14].map(callOrdinal => {
+      const invocation = recorded.invocations[callOrdinal - 1]!;
+      const request = recorded.requests.find(item => item.scenario === invocation.scenario)!;
+      const starts = request.events.flatMap((event, index) => typeof event === 'object' && event !== null && !Array.isArray(event) && event.kind === 'assistant-start' ? [index] : []);
+      // Retain every first-call chunk/thinking/tool callback and the second
+      // assistant start, but never the old invalid second-call output.
+      const expectedEventsBeforeGap = request.events.slice(0, (callOrdinal === 14 ? starts[0]! : starts[1]!) + 1);
+      return { callOrdinal, scenario: invocation.scenario, requestInput: request.input, expectedEventsBeforeGap,
+        verifyInput: ({ options, runtime, tokenizer, model }) => {
+          if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) throw new Error('Missing corrected GPT input');
+          // Old calls 11/13 omitted an unconsumed terminal token; call 14
+          // additionally belonged to another public chat. None is an oracle
+          // for the corrected native input, even though the old run fulfilled.
+          expect(() => replayCapturedFullInvocation({ invocation, options, runtime, modelConfig: model.config, parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128
+          } })).toThrow();
+          // The real native capture verifies zero stream events. Do not
+          // replace its owned streamer descriptors with test spies here.
+          let expected: bigint[];
+          if (callOrdinal === 14) {
+            expect(options.past_key_values).toBeNull();
+            // Independent source-derived canonical input, not an observed
+            // post-fix output or a call to Naidan's formatter under test.
+            const namespace = `\
 namespace functions {
 // Return deterministic weather fixture data.
 type lookup_weather = (_: {
@@ -2225,31 +2225,31 @@ type lookup_weather = (_: {
 }) => any;
 
 } // namespace functions`;
-              const canonicalMessages = [
-                { role: 'developer', content: namespace },
-                { role: 'user', content: 'Use the weather tool for Tokyo.' },
-                { role: 'assistant', content: '', tool_calls: [{ id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }] },
-                { role: 'tool', content: '{"temperatureC":20,"condition":"clear"}', tool_call_id: 'call_model_support_probe_1' },
-              ];
-              const inputs = tokenizer.apply_chat_template(canonicalMessages, { add_generation_prompt: true, return_dict: true });
-              const parsed = z.object({ input_ids: z.instanceof(runtime.Tensor) }).parse(inputs);
-              expected = Array.from(parsed.input_ids.data, BigInt);
-            } else {
-              const previous = recorded.invocations[callOrdinal - 2]!;
-              const suffix = tokenizer.encode('<|start|>lookup_weather to=assistant<|channel|>commentary<|message|>{"temperatureC":20,"condition":"clear"}<|end|>', { add_special_tokens: false });
-              expected = [...previous.sequence.tokens.map(BigInt), ...suffix.map(BigInt)];
-              expect(options.past_key_values).toBe(caches.get(callOrdinal - 1));
-              expect(options.past_key_values?.get_seq_length()).toBe(previous.sequence.tokens.length - 1);
-            }
-            expect(options.input_ids.type).toBe('int64');
-            expect(options.input_ids.dims).toEqual([1, expected.length]);
-            expect(Array.from(options.input_ids.data, BigInt)).toEqual(expected);
-            expect(options.attention_mask.dims).toEqual([1, expected.length]);
-            expect(Array.from(options.attention_mask.data, BigInt)).toEqual(expected.map(() => 1n));
-            expect(options.max_new_tokens).toBe(128);
-          },
-        };
-      }),
+            const canonicalMessages = [
+              { role: 'developer', content: namespace },
+              { role: 'user', content: 'Use the weather tool for Tokyo.' },
+              { role: 'assistant', content: '', tool_calls: [{ id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }] },
+              { role: 'tool', content: '{"temperatureC":20,"condition":"clear"}', tool_call_id: 'call_model_support_probe_1' },
+            ];
+            const inputs = tokenizer.apply_chat_template(canonicalMessages, { add_generation_prompt: true, return_dict: true });
+            const parsed = z.object({ input_ids: z.instanceof(runtime.Tensor) }).parse(inputs);
+            expected = Array.from(parsed.input_ids.data, BigInt);
+          } else {
+            const previous = recorded.invocations[callOrdinal - 2]!;
+            const suffix = tokenizer.encode('<|start|>lookup_weather to=assistant<|channel|>commentary<|message|>{"temperatureC":20,"condition":"clear"}<|end|>', { add_special_tokens: false });
+            expected = [...previous.sequence.tokens.map(BigInt), ...suffix.map(BigInt)];
+            expect(options.past_key_values).toBe(caches.get(callOrdinal - 1));
+            expect(options.past_key_values?.get_seq_length()).toBe(previous.sequence.tokens.length - 1);
+          }
+          expect(options.input_ids.type).toBe('int64');
+          expect(options.input_ids.dims).toEqual([1, expected.length]);
+          expect(Array.from(options.input_ids.data, BigInt)).toEqual(expected);
+          expect(options.attention_mask.dims).toEqual([1, expected.length]);
+          expect(Array.from(options.attention_mask.data, BigInt)).toEqual(expected.map(() => 1n));
+          expect(options.max_new_tokens).toBe(128);
+        },
+      };
+    }),
     });
     expect([...caches.keys()]).toEqual([10, 12]);
   }, 30_000);
