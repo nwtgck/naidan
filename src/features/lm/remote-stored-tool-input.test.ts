@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
+import { roundTripChatContentPersistenceSerialization } from '@/00-storage/service/chat-content-serialization';
 import type { LmProvider } from '@/01-models/lm';
 import type { AssistantMessageNode, ChatContent, ToolMessageNode, UserMessageNode } from '@/01-models/types';
 import type { TextOrBinaryObject, ToolExecutionResult } from '@/01-models/tool';
@@ -63,6 +64,67 @@ const contents = [
 
 for (const kind of ['openai', 'ollama'] as const) {
   describe(`${kind} stored tool history`, () => {
+    it('keeps the selected branch API body exact across the production JSON persistence contract', async () => {
+      const { provider, fetcher } = providerWithRecording({ kind });
+      const storage = new MemoryStorageProvider();
+      const binaryObjectId = toBinaryObjectId({ raw: 'branch-tool-result' });
+      const resultText = '\uFEFF  結果🙂e\u0301\r\n<think>[Aborted]</think>  ';
+      const literalText = '<think>[Aborted]</think>  \r\n';
+      const argumentsText = ' { "n": 1.00, "label": "\\u0061" } ';
+      await storage.saveFile({ binaryObjectId, blob: new Blob([resultText], { type: 'text/plain' }), name: 'result.txt', mimeType: 'text/plain' });
+      const { chat } = fixture({ status: 'success', content: { type: 'binary_object', id: binaryObjectId } });
+      const user = chat.root.items[0]!;
+      const assistant = user.replies.items[0]!;
+      if (assistant.role !== 'assistant') throw new Error('Missing assistant fixture.');
+      const literal = assistant.parts[1];
+      const call = assistant.parts[2];
+      if (literal?.type !== 'text' || call?.type !== 'tool_call') throw new Error('Missing assistant parts.');
+      literal.text = literalText;
+      call.toolCall.function.arguments = argumentsText;
+      const inactive: AssistantMessageNode = {
+        id: toMessageId({ raw: 'inactive' }), role: 'assistant', createdAt: 4,
+        modelId: 'test', lmParameters: undefined,
+        interruption: { type: 'error', message: '記録済みの失敗' },
+        parts: [{ id: 'partial', type: 'text', text: 'Other branch [Aborted]  ', completeness: 'partial' }],
+        replies: { items: [] },
+      };
+      user.replies.items.push(inactive);
+      const sourceBefore = structuredClone(chat);
+      const { restored } = roundTripChatContentPersistenceSerialization({ content: chat });
+      expect(restored).toEqual(sourceBefore);
+
+      for (const content of [chat, restored]) {
+        const messages = buildChatGenerationMessages({ chat: content, excludedMessageId: undefined, systemPromptMessages: [] });
+        expect(messages.map(message => message.id)).toEqual(['user', 'assistant', 'tool']);
+        const { result } = await consumeProviderGenerationForTest({ provider, request: {
+          debug: undefined, messages, model: 'test', parameters: undefined, tools: undefined, signal: undefined,
+          readBinaryObject: async ({ binaryObjectId, signal }) => {
+            signal?.throwIfAborted();
+            const blob = await storage.getFile({ binaryObjectId });
+            if (!blob) throw new Error('Missing stored tool result.');
+            return blob;
+          },
+        } });
+        expect(result).toEqual({ type: 'finished', next: 'user' });
+      }
+
+      const expected = { model: 'test', stream: true, messages: [
+        { role: 'user', content: '質問' },
+        { role: 'assistant', content: literalText,
+          ...(kind === 'openai' ? { reasoning_content: '  確認する。\n' } : { thinking: '  確認する。\n' }),
+          tool_calls: [{ id: 'lookup-1', type: 'function', function: {
+            name: 'lookup', arguments: kind === 'openai' ? argumentsText : { n: 1, label: 'a' },
+          } }],
+        },
+        { role: 'tool', content: resultText, tool_call_id: 'lookup-1', ...(kind === 'ollama' ? { tool_name: 'lookup' } : {}) },
+      ] };
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(requestBody({ fetcher, index: 0 })).toEqual(expected);
+      expect(requestBody({ fetcher, index: 1 })).toEqual(expected);
+      expect(chat).toEqual(sourceBefore);
+      expect(restored).toEqual(sourceBefore);
+    });
+
     for (const status of ['success', 'error'] as const) {
       it.each(contents)(`${status}: $name stays exact through binary storage and chat reload`, async ({ text }) => {
         const { provider, fetcher } = providerWithRecording({ kind });
