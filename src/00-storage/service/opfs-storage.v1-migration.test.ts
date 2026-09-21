@@ -477,10 +477,45 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const provider = new OPFSStorageProvider(); await provider.init();
     const id = toChatId({ raw: CHAT_ID_1 });
     const first = await provider.loadChatContent({ id });
-    expect(first?.root.items[0]?.parts[1]).toMatchObject({ type: 'attachment', attachment: { mimeType: 'image/custom', size: 4, uploadedAt: 0 } });
-    await provider.saveChatContent({ id, content: first! });
+    if (!first) throw new Error('Expected the migrated chat content');
+    const node = first.root.items[0];
+    if (node?.role !== 'user') throw new Error('Expected the migrated user message');
+    const attachmentPart = node.parts[1];
+    expect(attachmentPart).toMatchObject({ type: 'attachment', attachment: { mimeType: 'image/custom', size: 4, uploadedAt: 0 } });
+    if (attachmentPart?.type !== 'attachment') throw new Error('Expected the migrated attachment');
+
+    await provider.saveChatContent({ id, content: first });
+    const contents = await dir.getDirectoryHandle('chat-contents');
+    const chatFile = await contents.getFileHandle(`${CHAT_ID_1}.json`);
+    const saved: unknown = JSON.parse(await (await chatFile.getFile()).text());
+    // Compare the written JSON directly so a legacy record accepted on reload cannot mask a failed V2 save.
+    expect(saved).toEqual({
+      root: {
+        items: [{
+          id: MSG_ID_1,
+          role: 'user',
+          createdAt: node.createdAt,
+          parts: [
+            { id: 'legacy_text', type: 'text', text: 'txt' },
+            {
+              id: 'legacy_attachment_0',
+              type: 'attachment',
+              attachment: {
+                id: VALID_UUID_1,
+                binaryObjectId: idToRaw({ id: attachmentPart.attachment.binaryObjectId }),
+                name: 'img.png',
+                status: 'persisted',
+              },
+            },
+          ],
+          replies: { items: [] },
+        }],
+      },
+      currentLeafId: MSG_ID_1,
+    });
     const second = await provider.loadChatContent({ id });
-    expect(second?.root.items[0]?.parts[1]).toEqual(first?.root.items[0]?.parts[1]);
+    expect(second).toEqual(first);
+    expect(await (await provider.getFile({ binaryObjectId: attachmentPart.attachment.binaryObjectId }))?.text()).toBe('DATA');
   });
 
   it('matches the source filename when multiple files share one legacy directory', async () => {
