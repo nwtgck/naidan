@@ -30,6 +30,13 @@ import {
   ExperimentalHttpEndpointSchemaDto,
   ExperimentalLmParametersSchemaDto,
   ExperimentalMessageBranchSchemaDto,
+  ExperimentalMessageTextPartSchemaDto,
+  ExperimentalMessageReasoningPartSchemaDto,
+  ExperimentalMessageAttachmentPartSchemaDto,
+  ExperimentalMessageToolCallPartSchemaDto,
+  ExperimentalMessageToolResultPartSchemaDto,
+  ExperimentalMessageInterruptionCancelledSchemaDto,
+  ExperimentalMessageInterruptionErrorSchemaDto,
   ExperimentalMessageNodeAssistantSchemaDto,
   ExperimentalMessageNodeSystemSchemaDto,
   ExperimentalMessageNodeToolSchemaDto,
@@ -401,8 +408,8 @@ export const ToolExecutionResultSchemaDto = z.discriminatedUnion('status', [
 ]);
 export type ToolExecutionResultDto = z.infer<typeof ToolExecutionResultSchemaDto>;
 
-export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
-  resolveMissingAsUndefined(z.discriminatedUnion('role', [
+export const MessageNodeSchemaDtoV1 = resolveMissingAsUndefined(
+  z.discriminatedUnion('role', [
     z.object({
       id: z.string(),
       role: z.literal('user'),
@@ -414,7 +421,11 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       lmParameters: missingAsUndefined(LmParametersSchemaDto),
       toolCalls: missingAsUndefined(z.undefined()),
       results: missingAsUndefined(z.undefined()),
-      replies: MessageBranchSchemaDto,
+      // This key belongs to V2 and must be absent in a V1 record.
+      parts: z.never().exactOptional(),
+      get replies(): typeof MessageBranchSchemaDtoV1 {
+        return MessageBranchSchemaDtoV1;
+      },
 
       experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeUserSchemaDto }),
     }),
@@ -429,7 +440,11 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       lmParameters: missingAsUndefined(LmParametersSchemaDto),
       toolCalls: missingAsUndefined(z.array(ToolCallSchemaDto)),
       results: missingAsUndefined(z.undefined()),
-      replies: MessageBranchSchemaDto,
+      // This key belongs to V2 and must be absent in a V1 record.
+      parts: z.never().exactOptional(),
+      get replies(): typeof MessageBranchSchemaDtoV1 {
+        return MessageBranchSchemaDtoV1;
+      },
 
       experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeAssistantSchemaDto }),
     }),
@@ -444,7 +459,11 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       lmParameters: missingAsUndefined(z.undefined()),
       toolCalls: missingAsUndefined(z.undefined()),
       results: missingAsUndefined(z.undefined()),
-      replies: MessageBranchSchemaDto,
+      // This key belongs to V2 and must be absent in a V1 record.
+      parts: z.never().exactOptional(),
+      get replies(): typeof MessageBranchSchemaDtoV1 {
+        return MessageBranchSchemaDtoV1;
+      },
 
       experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeSystemSchemaDto }),
     }),
@@ -459,69 +478,171 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       lmParameters: missingAsUndefined(z.undefined()),
       toolCalls: missingAsUndefined(z.undefined()),
       results: z.array(ToolExecutionResultSchemaDto),
-      replies: MessageBranchSchemaDto,
+      // This key belongs to V2 and must be absent in a V1 record.
+      parts: z.never().exactOptional(),
+      get replies(): typeof MessageBranchSchemaDtoV1 {
+        return MessageBranchSchemaDtoV1;
+      },
 
       experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeToolSchemaDto }),
     }),
-  ])),
+  ]),
 );
+export type MessageNodeDtoV1 = z.infer<typeof MessageNodeSchemaDtoV1>;
+
+export const MessageBranchSchemaDtoV1 = z.object({
+  get items(): z.ZodArray<typeof MessageNodeSchemaDtoV1> {
+    return z.array(MessageNodeSchemaDtoV1);
+  },
+
+  experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageBranchSchemaDto }),
+});
+export type MessageBranchDtoV1 = z.infer<typeof MessageBranchSchemaDtoV1>;
+
+export const MessageBranchSchemaDtoV2 = z.object({
+  get items(): z.ZodArray<typeof MessageNodeSchemaDtoV2> {
+    return z.array(MessageNodeSchemaDtoV2);
+  },
+
+  experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageBranchSchemaDto }),
+});
+export type MessageBranchDtoV2 = z.infer<typeof MessageBranchSchemaDtoV2>;
+
+export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedUnion('role', [
+  z.object({
+    id: z.string(),
+    role: z.literal('user'),
+    createdAt: z.number(),
+    modelId: missingAsUndefined(z.undefined()),
+    lmParameters: missingAsUndefined(LmParametersSchemaDto),
+    parts: z.array(
+      z.discriminatedUnion('type', [
+        resolveMissingAsUndefined(z.object({
+          id: z.string(),
+          type: z.literal('text'),
+          text: z.string(),
+          completeness: missingAsUndefined(z.literal('partial')),
+
+          experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageTextPartSchemaDto }),
+        })),
+        z.object({
+          id: z.string(),
+          type: z.literal('attachment'),
+          attachment: AttachmentSchemaDtoV2,
+
+          experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageAttachmentPartSchemaDto }),
+        }),
+      ]),
+    ),
+    replies: MessageBranchSchemaDtoV2,
+
+    experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeUserSchemaDto }),
+  }),
+  z.object({
+    id: z.string(),
+    role: z.literal('assistant'),
+    createdAt: z.number(),
+    modelId: missingAsUndefined(z.string()),
+    lmParameters: missingAsUndefined(LmParametersSchemaDto),
+    parts: z.array(
+      z.discriminatedUnion('type', [
+        resolveMissingAsUndefined(z.object({
+          id: z.string(),
+          type: z.literal('reasoning'),
+          text: z.string(),
+          completeness: missingAsUndefined(z.literal('partial')),
+
+          experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageReasoningPartSchemaDto }),
+        })),
+        resolveMissingAsUndefined(z.object({
+          id: z.string(),
+          type: z.literal('text'),
+          text: z.string(),
+          completeness: missingAsUndefined(z.literal('partial')),
+
+          experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageTextPartSchemaDto }),
+        })),
+        z.object({
+          id: z.string(),
+          type: z.literal('tool_call'),
+          toolCall: ToolCallSchemaDto,
+
+          experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageToolCallPartSchemaDto }),
+        }),
+      ]),
+    ),
+    interruption: missingAsUndefined(z.discriminatedUnion('type', [
+      z.object({
+        type: z.literal('cancelled'),
+
+        experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageInterruptionCancelledSchemaDto }),
+      }),
+      z.object({
+        type: z.literal('error'),
+        // This message may contain text localized when the error was recorded.
+        // Later locale changes do not retranslate this persisted text.
+        message: z.string(),
+
+        experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageInterruptionErrorSchemaDto }),
+      }),
+    ])),
+    replies: MessageBranchSchemaDtoV2,
+
+    experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeAssistantSchemaDto }),
+  }),
+  z.object({
+    id: z.string(),
+    role: z.literal('system'),
+    createdAt: z.number(),
+    modelId: missingAsUndefined(z.undefined()),
+    lmParameters: missingAsUndefined(z.undefined()),
+    parts: z.array(
+      resolveMissingAsUndefined(z.object({
+        id: z.string(),
+        type: z.literal('text'),
+        text: z.string(),
+        completeness: missingAsUndefined(z.literal('partial')),
+
+        experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageTextPartSchemaDto }),
+      })),
+    ),
+    replies: MessageBranchSchemaDtoV2,
+
+    experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeSystemSchemaDto }),
+  }),
+  z.object({
+    id: z.string(),
+    role: z.literal('tool'),
+    createdAt: z.number(),
+    modelId: missingAsUndefined(z.undefined()),
+    lmParameters: missingAsUndefined(z.undefined()),
+    parts: z.array(
+      z.object({
+        id: z.string(),
+        type: z.literal('tool_result'),
+        result: ToolExecutionResultSchemaDto,
+
+        experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageToolResultPartSchemaDto }),
+      }),
+    ),
+    replies: MessageBranchSchemaDtoV2,
+
+    experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeToolSchemaDto }),
+  }),
+]));
+export type MessageNodeDtoV2 = z.infer<typeof MessageNodeSchemaDtoV2>;
+
+export const MessageNodeSchemaDto = z.union([
+  MessageNodeSchemaDtoV2,
+  MessageNodeSchemaDtoV1,
+]);
+export type MessageNodeDto = z.infer<typeof MessageNodeSchemaDto>;
 
 export const MessageBranchSchemaDto = z.object({
   items: z.array(MessageNodeSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageBranchSchemaDto }),
 });
-
-type MessageNodeCommonDto = {
-  id: string,
-  content: string | undefined,
-  timestamp: number,
-  replies: {
-    items: MessageNodeDto[],
-  },
-};
-
-export type MessageNodeDto =
-  | (MessageNodeCommonDto & {
-      role: 'user',
-      content: string,
-      attachments: AttachmentDto[] | undefined,
-      thinking: undefined,
-      modelId: undefined,
-      lmParameters: LmParametersDto | undefined,
-      toolCalls: undefined,
-      results: undefined,
-    })
-  | (MessageNodeCommonDto & {
-      role: 'assistant',
-      content: string,
-      attachments: undefined,
-      thinking: string | undefined,
-      modelId: string | undefined,
-      lmParameters: LmParametersDto | undefined,
-      toolCalls: z.infer<typeof ToolCallSchemaDto>[] | undefined,
-      results: undefined,
-    })
-  | (MessageNodeCommonDto & {
-      role: 'system',
-      content: string,
-      attachments: undefined,
-      thinking: undefined,
-      modelId: undefined,
-      lmParameters: undefined,
-      toolCalls: undefined,
-      results: undefined,
-    })
-  | (MessageNodeCommonDto & {
-      role: 'tool',
-      content: undefined,
-      attachments: undefined,
-      thinking: undefined,
-      modelId: undefined,
-      lmParameters: undefined,
-      toolCalls: undefined,
-      results: z.infer<typeof ToolExecutionResultSchemaDto>[],
-    });
 
 /**
  * Chat Metadata
