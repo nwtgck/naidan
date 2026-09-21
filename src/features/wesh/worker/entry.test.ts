@@ -5,6 +5,11 @@ import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import { chatContentToDto, chatGroupToDto, chatMetaToDto } from '@/00-storage/mapper/mappers';
 import { renderChatMetadataMarkdown } from '@/features/wesh/naidan-sysfs/render/metadata-markdown';
+import {
+  naidanSysfsRemoteChatContentPayloadSchema,
+  naidanSysfsRemoteChatGroupPayloadSchema,
+  naidanSysfsRemoteChatMetaPayloadSchema,
+} from '@/features/wesh/naidan-sysfs/remote-reader-schema';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 vi.mock('comlink', () => ({
@@ -202,6 +207,15 @@ describe('wesh.worker', () => {
     };
     const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) });
     expectedMetadata.groupId = toChatGroupId({ raw: 'chat-group-1' });
+    const remoteMetadata = naidanSysfsRemoteChatMetaPayloadSchema.parse({
+      dto: chatMetaToDto({ domain: chatMeta }),
+      groupId: 'chat-group-1',
+    });
+    const remoteContent = naidanSysfsRemoteChatContentPayloadSchema.parse(chatContentToDto({ domain: chatContent }));
+    const remoteGroup = naidanSysfsRemoteChatGroupPayloadSchema.parse({
+      dto: chatGroupToDto({ domain: chatGroup }),
+      items: chatGroup.items,
+    });
 
     await workerApi.init(
       {
@@ -225,7 +239,7 @@ describe('wesh.worker', () => {
           return [{
             id: 'chat-group:chat-group-1',
             type: 'chat_group',
-            chatGroup,
+            chatGroup: remoteGroup,
           }];
         },
         async listChats() {
@@ -237,30 +251,28 @@ describe('wesh.worker', () => {
           }];
         },
         async listChatGroups() {
-          return [chatGroup];
+          return [remoteGroup];
         },
         async loadChatMeta({ chatId }: { chatId: string }) {
-          return chatId === 'chat-1'
-            ? {
-              dto: chatMetaToDto({ domain: chatMeta }),
-              groupId: 'chat-group-1',
-            }
-            : undefined;
+          return chatId === 'chat-1' ? remoteMetadata : undefined;
         },
         async loadChatContent({ chatId }: { chatId: string }) {
-          return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined;
+          return chatId === 'chat-1' ? remoteContent : undefined;
+        },
+        async loadChat({ chatId }: { chatId: string }) {
+          return chatId === 'chat-1' ? { metadata: remoteMetadata, content: remoteContent } : undefined;
         },
         async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
-          return chatGroupId === 'chat-group-1'
-            ? {
-              dto: chatGroupToDto({ domain: chatGroup }),
-              items: chatGroup.items.map(item => ({
-                id: item.id,
-                type: 'chat',
-                chat: item.chat,
-              })),
-            }
-            : undefined;
+          return chatGroupId === 'chat-group-1' ? remoteGroup : undefined;
+        },
+        async listBinaryObjects() {
+          return [];
+        },
+        async getBinaryObject() {
+          return undefined;
+        },
+        async getBinaryObjectBlob() {
+          return undefined;
         },
       },
     );

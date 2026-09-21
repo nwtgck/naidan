@@ -1,9 +1,12 @@
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { getMessageText } from '@/01-models/message-text';
 import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { storageService } from '@/00-storage/service';
 import { reactive } from 'vue';
-import type { SidebarItem, Hierarchy } from '@/01-models/types';
+import type { SidebarItem, Hierarchy, AssistantMessageNode } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
 // Mock storage service state
@@ -12,7 +15,7 @@ let mockHierarchy: Hierarchy = { items: [] };
 
 // Mock LM Provider
 const mockLm = {
-  chat: vi.fn(),
+  chat: vi.fn<LmProvider['chat']>(),
   generateImage: vi.fn(),
   listModels: vi.fn().mockResolvedValue(['gpt-4', 'x/z-image-turbo:v1']),
 };
@@ -82,6 +85,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLm.chat.mockReset().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     __testOnlySetCurrentChat({ chat: null });
     TEST_ONLY.activeGenerations.clear();
     TEST_ONLY.externalGenerations.clear();
@@ -104,6 +114,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
   });
 
+  afterEach(async () => {
+    await vi.waitUntil(() => TEST_ONLY.activeGenerations.size === 0);
+  });
+
   it('should allow editMessage while generating by waiting for abort to finish', async () => {
     const chat = reactive({
       id: 'interrupt-test', title: 'Interrupt Test', root: { items: [] },
@@ -114,25 +128,21 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // 1. Start a slow regular chat generation
-    let resolveGen: (value: any) => void;
-    const genStarted = new Promise<any>(resolve => resolveGen = resolve);
-
-    mockLm.chat.mockImplementation(async (params: any) => {
-      resolveGen(params.signal);
-      return new Promise((resolve) => {
-        const checkAbort = () => {
-          if (params.signal?.aborted) {
-            resolve(null);
-          } else {
-            setTimeout(checkAbort, 10);
-          }
-        };
-        checkAbort();
-      });
-    });
+    const genStarted = Promise.withResolvers<AbortSignal>();
+    mockLm.chat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ signal }) => {
+        genStarted.resolve(signal);
+        await new Promise<void>(resolve => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return { type: 'interrupted', reason: 'aborted' };
+      },
+    }));
 
     const sendResultPromise = sendMessage({ content: 'First version' });
-    const signal = await genStarted;
+    const signal = await genStarted.promise;
     expect(chatStore.isProcessing({ chatId: chat.id })).toBe(true);
 
     const userMsgId = chat.root.items[0].id;
@@ -141,10 +151,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await editMessage({ messageId: userMsgId, newContent: 'Second version' });
 
     expect(chat.root.items).toHaveLength(2);
-    expect(chat.root.items[1].content).toBe('Second version');
+    expect(getMessageText({ message: chat.root.items[1]! })).toBe('Second version');
     expect(signal.aborted).toBe(true);
 
     await sendResultPromise;
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
   }, 15000);
 
   it('should save intermediate image generation results to storage', async () => {
@@ -155,10 +166,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       root: {
         items: [
           {
-            id: 'user-1', role: 'user', content: 'two cats', timestamp: 0,
+            id: 'user-1', role: 'user', parts: [{ id: 'text', type: 'text', text: 'two cats', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
             replies: {
               items: [
-                { id: assistantId, role: 'assistant', content: '', timestamp: 0, replies: { items: [] } },
+                { id: assistantId, role: 'assistant', parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined, createdAt: 0, replies: { items: [] } },
               ],
             },
           },
@@ -198,7 +209,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(vi.mocked(storageService.updateChatContent).mock.calls.length).toBeGreaterThanOrEqual(4);
   }, 15000);
 
-  it('should save "[Generation Aborted]" suffix to storage when regular chat generation is aborted', async () => {
+  it('should persist cancellation separately from accepted text when regular chat generation is aborted', async () => {
     const chatId = toChatId({ raw: 'abort-test' });
     const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
@@ -206,10 +217,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       root: {
         items: [
           {
-            id: 'user-1', role: 'user', content: 'Will be aborted', timestamp: 0,
+            id: 'user-1', role: 'user', parts: [{ id: 'text', type: 'text', text: 'Will be aborted', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
             replies: {
               items: [
-                { id: assistantId, role: 'assistant', content: '', timestamp: 0, replies: { items: [] } },
+                { id: assistantId, role: 'assistant', parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined, createdAt: 0, replies: { items: [] } },
               ],
             },
           },
@@ -222,18 +233,18 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
-    // 1. Mock LM to simulate an abortion
-    mockLm.chat.mockImplementation(async ({ signal }: any) => {
-      return new Promise((_resolve, reject) => {
-        const abortHandler = () => {
-          const err = new Error('Aborted');
-          err.name = 'AbortError';
-          reject(err);
-        };
-        if (signal.aborted) abortHandler();
-        else signal.addEventListener('abort', abortHandler);
-      });
-    });
+    // 1. Keep the provider running after delivering accepted text.
+    mockLm.chat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
+        await writer.text({ type: 'text', text: 'Partial answer' });
+        await new Promise<void>(resolve => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return { type: 'interrupted', reason: 'aborted' };
+      },
+    }));
 
     const { generateResponse, abortChat, isProcessing } = chatStore;
 
@@ -242,6 +253,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 3. Wait for it to be processing
     await vi.waitUntil(() => isProcessing({ chatId }));
+    await vi.waitUntil(() => getMessageText({ message: chat.root.items[0].replies.items[0] }) === 'Partial answer');
 
     // 4. Abort the chat
     abortChat({ chatId: idToRaw({ id: chatId }) });
@@ -249,13 +261,22 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await genPromise;
     await vi.waitUntil(() => !isProcessing({ chatId }));
 
-    // 5. Verify that the reactive assistant node was updated with the aborted message
+    // 5. Accepted text stays unchanged; cancellation is stored separately.
     const userMsg = chat.root.items[0];
     const assistantMsg = userMsg.replies.items[0];
-    expect(assistantMsg.content).toContain('[Generation Aborted]');
+    expect(getMessageText({ message: assistantMsg })).toBe('Partial answer');
+    expect(assistantMsg.interruption).toEqual({ type: 'cancelled' });
+    expect(assistantMsg.parts).toEqual([
+      expect.objectContaining({ type: 'text', text: 'Partial answer', completeness: 'partial' }),
+    ]);
 
-    // 6. Verify that storageService.updateChatContent was called for the AbortError suffix
+    // 6. The saved content preserves both the accepted text and cancellation metadata.
     expect(vi.mocked(storageService.updateChatContent)).toHaveBeenCalled();
+    const { updater } = vi.mocked(storageService.updateChatContent).mock.calls.at(-1)![0];
+    const savedContent = await updater({ current: null });
+    const savedAssistant = savedContent.root.items[0]!.replies.items[0] as AssistantMessageNode;
+    expect(savedAssistant.interruption).toEqual({ type: 'cancelled' });
+    expect(savedAssistant.parts).toEqual(assistantMsg.parts);
   }, 15000);
 
   it('should request external abort before regenerateMessage and continue', async () => {
@@ -269,15 +290,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           {
             id: 'user-1',
             role: 'user',
-            content: 'Hello',
-            timestamp: 0,
+            parts: [{ id: 'text', type: 'text', text: 'Hello', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+            createdAt: 0,
             replies: {
               items: [
                 {
                   id: assistantId,
                   role: 'assistant',
-                  content: 'First answer',
-                  timestamp: 0,
+                  parts: [{ id: 'text', type: 'text', text: 'First answer', completeness: 'complete' }], interruption: undefined,
+                  createdAt: 0,
                   replies: { items: [] },
                   modelId: 'gpt-4',
                   lmParameters: undefined,
@@ -302,11 +323,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       }
     });
 
-    mockLm.chat.mockImplementationOnce(async (params: any) => {
-      params.onChunk({ chunk: 'Regenerated' });
-    });
+    mockLm.chat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Regenerated' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     await regenerateMessage({ failedMessageId: idToRaw({ id: assistantId }) });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId }));
 
     expect(vi.mocked(storageService.notify)).toHaveBeenCalledWith({
       event: expect.objectContaining({
@@ -316,7 +342,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       }),
     });
     expect(chat.root.items[0].replies.items).toHaveLength(2);
-    expect(chat.root.items[0].replies.items[1].content).toBe('Regenerated');
+    expect(getMessageText({ message: chat.root.items[0].replies.items[1]! })).toBe('Regenerated');
   }, 15000);
 
   it('should abort active compact processing before editMessage and continue', async () => {
@@ -329,15 +355,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           {
             id: 'user-1',
             role: 'user',
-            content: 'Original',
-            timestamp: 0,
+            parts: [{ id: 'text', type: 'text', text: 'Original', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+            createdAt: 0,
             replies: {
               items: [
                 {
                   id: toMessageId({ raw: 'assistant-1' }),
                   role: 'assistant',
-                  content: 'Old response',
-                  timestamp: 0,
+                  parts: [{ id: 'text', type: 'text', text: 'Old response', completeness: 'complete' }], lmParameters: undefined, interruption: undefined,
+                  createdAt: 0,
                   replies: { items: [] },
                   modelId: 'gpt-4',
                 },
@@ -363,15 +389,19 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     TEST_ONLY.activeContextCompactions.set(chatId, compactController);
     TEST_ONLY.activeTaskCounts.set(`process:${idToRaw({ id: chatId })}`, 1);
 
-    mockLm.chat.mockImplementationOnce(async (params: any) => {
-      params.onChunk({ chunk: 'Edited Response' });
-    });
+    mockLm.chat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Edited Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     await editMessage({ messageId: idToRaw({ id: toMessageId({ raw: 'user-1' }) }), newContent: 'Updated content' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId }));
 
     expect(compactAbort).toHaveBeenCalledTimes(1);
     expect(chat.root.items).toHaveLength(2);
-    expect(chat.root.items[1].replies.items[0].content).toBe('Edited Response');
+    expect(getMessageText({ message: chat.root.items[1].replies.items[0]! })).toBe('Edited Response');
   }, 15000);
 });

@@ -1,3 +1,6 @@
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { getMessageText } from '@/01-models/message-text';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { storageService } from '@/00-storage/service';
@@ -48,9 +51,13 @@ vi.mock('./useSettings', () => ({
 }));
 
 // Mock LM Provider
-const mockChat = vi.fn().mockImplementation(async (params: { model: string, onChunk: (params: { chunk: string }) => void }) => {
-  params.onChunk({ chunk: 'Response from ' + params.model });
-});
+const mockChat = vi.fn<LmProvider['chat']>().mockImplementation(({ model, signal }) => createChatGenerationStream({
+  signal,
+  run: async ({ writer }) => {
+    await writer.text({ type: 'text', text: 'Response from ' + model });
+    return { type: 'finished', next: 'user' };
+  },
+}));
 
 vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
@@ -96,20 +103,20 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 2. Send first message with default model
     await sendMessage({ content: 'Hello with 3.5' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chatObj.id }));
     triggerRef(currentChat);
 
     expect(activeMessages.value).toHaveLength(2);
     expect(activeMessages.value[1]?.role).toBe('assistant');
     expect(activeMessages.value[1]?.modelId).toBe('gpt-3.5-turbo');
-    expect(activeMessages.value[1]?.content).toContain('Response from gpt-3.5-turbo');
+    expect(getMessageText({ message: activeMessages.value[1]! })).toContain('Response from gpt-3.5-turbo');
 
     // 3. Change the model for the chat
     await updateChatModel({ id: idToRaw({ id: chatObj.id }), modelId: 'gpt-4' });
 
     // 4. Send second message with new model
     await sendMessage({ content: 'Hello with 4' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chatObj.id }));
     triggerRef(currentChat);
 
     expect(activeMessages.value).toHaveLength(4);
@@ -120,7 +127,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Check second assistant message has new model
     expect(activeMessages.value[3]?.role).toBe('assistant');
     expect(activeMessages.value[3]?.modelId).toBe('gpt-4');
-    expect(activeMessages.value[3]?.content).toContain('Response from gpt-4');
+    expect(getMessageText({ message: activeMessages.value[3]! })).toContain('Response from gpt-4');
 
     // 5. Verify storage was called with correct modelIds in the tree
     expect(storageService.updateChatContent).toHaveBeenCalled();
