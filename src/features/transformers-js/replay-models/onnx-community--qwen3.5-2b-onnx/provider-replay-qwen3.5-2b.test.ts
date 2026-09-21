@@ -26,7 +26,7 @@ import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/
 import { createProviderReplayTestImagePlatform } from '@/features/transformers-js/replay-models/support/provider-replay-test-image-platform';
 import { readModelFixture } from '@/features/transformers-js/replay-models/support/model-runtime-fixture';
 import { captureProviderChat as captureStructuredProviderChat, type CapturedChatRequest, type ProviderChatCapture as StructuredProviderChatCapture } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
-import { createReplayImageAttachment, runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
+import { closeProviderReplayCaptures, createReplayImageAttachment, runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
 import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
 import { exactObject } from '@/utils/exact-object';
 
@@ -34,17 +34,24 @@ type RecordedMessage =
   | { role: 'user' | 'system' | 'assistant'; content: string; tool_calls?: readonly [{ id: string | ToolCallId; type: 'function'; function: { name: string; arguments: string } }] }
   | { role: 'tool'; content: string; tool_call_id: string | ToolCallId };
 
-type ProviderChatCapture = Omit<StructuredProviderChatCapture, 'snapshot'> & {
-  snapshot(): ReturnType<StructuredProviderChatCapture['snapshot']> & {
-    chunks: string[];
-    responses: string[][];
-    preStartChunks: string[];
-    lateEvents: never[];
-    toolCalls: { id: ToolCallId; toolName: string; modelVisibleArguments: string }[];
-    toolResults: never[];
-    toolEvents: never[];
-  };
-};
+type ProviderChatCapture = StructuredProviderChatCapture;
+type ProviderChatSnapshot = ReturnType<ProviderChatCapture['snapshot']>;
+
+function capturedTextParts({ snapshot }: { snapshot: ProviderChatSnapshot }) {
+  return snapshot.parts.filter(part => part.type === 'text' || part.type === 'reasoning');
+}
+
+function capturedTexts({ snapshot }: { snapshot: ProviderChatSnapshot }): string[] {
+  return capturedTextParts({ snapshot }).map(part => part.chunks.join(''));
+}
+
+function capturedChunks({ snapshot }: { snapshot: ProviderChatSnapshot }): string[] {
+  return capturedTextParts({ snapshot }).flatMap(part => part.chunks);
+}
+
+function capturedToolCalls({ snapshot }: { snapshot: ProviderChatSnapshot }) {
+  return snapshot.parts.filter(part => part.type === 'tool_call');
+}
 
 function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }): ChatMessage[] {
   return messages.map((message, index) => {
@@ -130,29 +137,12 @@ function captureProviderChat({ provider, request }: {
     name: tool.name, description: tool.description,
     parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
   }));
-  const capture = captureStructuredProviderChat({ provider, request: {
+  return captureStructuredProviderChat({ provider, request: {
     ...request, messages, tools,
     readBinaryObject: request.readBinaryObject,
     debug: request.debug,
     signal: request.signal,
   } });
-  return {
-    ...capture,
-    snapshot() {
-      const snapshot = capture.snapshot();
-      const textual = snapshot.parts.filter(part => part.type === 'text' || part.type === 'reasoning');
-      return {
-        ...snapshot,
-        chunks: textual.flatMap(part => part.chunks),
-        responses: textual.map(part => part.chunks),
-        preStartChunks: [], lateEvents: [], toolResults: [], toolEvents: [],
-        toolCalls: snapshot.parts.flatMap(part => part.type === 'tool_call' ? [{
-          id: part.toolCall.id, toolName: part.toolCall.function.name,
-          modelVisibleArguments: part.toolCall.function.arguments,
-        }] : []),
-      };
-    },
-  };
 }
 
 const messagesSchema = z.array(z.object({ role: z.literal('user'), content: z.string() }).strict()).length(1);
@@ -827,20 +817,15 @@ describe('Qwen3.5 2B Provider / basic', () => {
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
       expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
-      expect(observed.chunks).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
       expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
       expect(control.generate).not.toHaveBeenCalled();
       expect(control.harness.observations.inferenceCalls).toHaveLength(0);
     } finally {
-      await control.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('rejects changed generation parameters at the historical adapter before releasing any native tokens', async () => {
     const control = await createHistoricalMutationControl();
@@ -869,20 +854,15 @@ describe('Qwen3.5 2B Provider / basic', () => {
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
       expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
-      expect(observed.chunks).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
       expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
       expect(control.generate).toHaveBeenCalledOnce();
       expect(control.harness.observations.inferenceCalls).toHaveLength(1);
     } finally {
-      await control.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('rejects a changed selected template at the historical adapter before releasing any native tokens', async () => {
     const control = await createHistoricalMutationControl();
@@ -914,12 +894,8 @@ describe('Qwen3.5 2B Provider / basic', () => {
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
       expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
-      expect(observed.chunks).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
       expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
       expect(template).toHaveBeenCalledOnce();
@@ -927,9 +903,8 @@ describe('Qwen3.5 2B Provider / basic', () => {
       expect(control.harness.observations.inferenceCalls).toHaveLength(0);
     } finally {
       template.mockRestore();
-      await control.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('preserves the historical 13-ID first input through an explicit legacy serializer adapter', async () => {
     const source = firstQwenCapture.replay;
@@ -1016,12 +991,8 @@ describe('Qwen3.5 2B Provider / basic', () => {
       expect(native.stoppingCriteriaType).toBe('function');
       expect(historicalAdapter.builderSpy).toHaveBeenCalledOnce();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.chunks).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.workers).toHaveLength(1);
       expect(harness.observations.ortCalls).toHaveLength(2);
@@ -1032,9 +1003,8 @@ describe('Qwen3.5 2B Provider / basic', () => {
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       historicalAdapter.restore();
-      await harness.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('rejects historical first-turn output at the repaired native input without a legacy adapter', async () => {
     {
@@ -1067,18 +1037,13 @@ describe('Qwen3.5 2B Provider / basic', () => {
         expectDeliveredErrorCapture({ capture, message: control.stop });
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.chunks.join('')).toBe('');
-        expect(observed.chunks).toEqual([]);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         control.verifyNativeInput();
       } finally {
-        await control.harness.close();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
       }
-      expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('preserves the native default template and its independently recorded 17 tokens', async () => {
@@ -1149,12 +1114,8 @@ describe('Qwen3.5 2B Provider / basic', () => {
       expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: true, add_generation_prompt: true, return_tensor: false, return_dict: false })).toEqual(evidence.nativeTemplate.inputIds);
       expect(harness.observations.processors).toHaveLength(1);
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.chunks).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
@@ -1164,9 +1125,8 @@ describe('Qwen3.5 2B Provider / basic', () => {
       // Any later explicit policy mapping needs a separately reviewed contract.
       expect(actualInput, JSON.stringify({ historicalProductionInput: evidence.productionInput.inputTokenIds })).toEqual(evidence.nativeTemplate.inputIds.map(BigInt));
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('delivers the historical 13-input prefix through the legacy serializer adapter before Provider settlement', async () => {
     expect(firstQwenCapture.replay.scenario.messages).toEqual(evidence.productionInput.messages);
@@ -1203,20 +1163,16 @@ describe('Qwen3.5 2B Provider / basic', () => {
         await capture.completion;
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.responses.map(chunks => chunks.join(''))).toEqual(['Okay, the user is asking for a template for a user message.']);
-        expect(observed.chunks).toEqual(['', ...firstQwenCapture.streamChunks.slice(1)]);
-        expect(observed.responses).toHaveLength(1);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
+        expect(capturedTexts({ snapshot: observed })).toEqual(['Okay, the user is asking for a template for a user message.']);
+        expect(capturedChunks({ snapshot: observed })).toEqual(['', ...firstQwenCapture.streamChunks.slice(1)]);
+        expect(capturedTextParts({ snapshot: observed })).toHaveLength(1);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
         expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         control.verifyNativeInput();
       } finally {
-        await control.close();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
       }
-      expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
@@ -1240,18 +1196,14 @@ describe('Qwen3.5 2B Provider / basic', () => {
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: observed })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
 });
 
@@ -1278,18 +1230,14 @@ describe('Qwen3.5 2B Provider / system', () => {
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(["Hello"]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: observed })).toEqual(["Hello"]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
 });
 
@@ -1335,17 +1283,12 @@ Okay, the user is asking for a template for a user message.` }, { role: "user", 
         expectDeliveredErrorCapture({ capture, message: control.stop });
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.chunks).toEqual([]);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         control.verifyNativeInput();
       } finally {
-        await control.harness.close();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
       }
-      expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it.each(inputEvidence.cases)('$caseId retains the recorded native default input through public Provider', async scenario => {
@@ -1410,12 +1353,8 @@ Okay, the user is asking for a template for a user message.` }, { role: "user", 
       expect(options.attention_mask.data).toEqual(new BigInt64Array(actualInput.length).fill(1n));
       expect(options.past_key_values).toBeNull();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.chunks).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.localImageFetchCalls).toEqual([]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
@@ -1424,9 +1363,8 @@ Okay, the user is asking for a template for a user message.` }, { role: "user", 
       // use this suffix. Later policy changes need a separately reviewed mapping.
       expect(actualInput).toEqual(scenario.inputTokenIds.map(BigInt));
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('replays historical raw assistant-history through the legacy serializer adapter without inventing output KV', async () => {
     expect(continuitySelection.assistantMessage).toStrictEqual({ role: 'assistant', content: firstQwenCapture.replay.modelReplay.generatedText });
@@ -1480,26 +1418,22 @@ Okay, the user is asking for a template for a user message.` }, { role: "user", 
         await capture.completion;
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.responses.map(chunks => chunks.join(''))).toEqual([`\
+        expect(capturedTexts({ snapshot: observed })).toEqual([`\
 Thinking Process:
 
 1.  **Analyze the Request:**
 `]);
-        expect(observed.chunks).toEqual([
+        expect(capturedChunks({ snapshot: observed })).toEqual([
           '', 'Thinking ', 'Process:\n', '\n', '1. ', ' ', '**Analyze ', 'the ', 'Request:**', '\n',
         ]);
-        expect(observed.responses).toHaveLength(1);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
+        expect(capturedTextParts({ snapshot: observed })).toHaveLength(1);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
         expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         control.verifyNativeInput();
       } finally {
-        await control.close();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
       }
-      expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
@@ -1524,18 +1458,14 @@ Thinking Process:
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(["Hello"]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: observed })).toEqual(["Hello"]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
 });
 
@@ -1611,14 +1541,11 @@ A separate synthetic Qwen conversation.<|im_end|>
       expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
       expect(historicalAdapter.builderSpy).toHaveBeenCalledOnce();
       historicalAdapter.restore();
-      expect(firstObserved.chunks).toEqual(['', ...firstQwenCapture.streamChunks.slice(1)]);
-      expect(firstObserved.responses).toHaveLength(1);
-      expect(firstObserved.preStartChunks).toEqual([]);
-      expect(firstObserved.lateEvents).toEqual([]);
+      expect(capturedChunks({ snapshot: firstObserved })).toEqual(['', ...firstQwenCapture.streamChunks.slice(1)]);
+      expect(capturedTextParts({ snapshot: firstObserved })).toHaveLength(1);
+      expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(firstObserved.toolCalls).toEqual([]);
-      expect(firstObserved.toolResults).toEqual([]);
-      expect(firstObserved.toolEvents).toEqual([]);
+      expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
       const ortCountAfterFirst = harness.observations.ortCalls.length;
       expect(harness.observations.processors).toHaveLength(1);
       const processorAfterFirst = harness.observations.processors[0];
@@ -1678,12 +1605,8 @@ A separate synthetic Qwen conversation.<|im_end|>
       expect(native.stoppingCriteriaType).toBe('function');
       expect(options.past_key_values).toBeNull();
       expect(firstReleased).toBe(16);
-      expect(secondObserved.chunks).toEqual([]);
-      expect(secondObserved.preStartChunks).toEqual([]);
-      expect(secondObserved.lateEvents).toEqual([]);
-      expect(secondObserved.toolCalls).toEqual([]);
-      expect(secondObserved.toolResults).toEqual([]);
-      expect(secondObserved.toolEvents).toEqual([]);
+      expect(capturedChunks({ snapshot: secondObserved })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: secondObserved })).toEqual([]);
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
       expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
@@ -1702,9 +1625,8 @@ A separate synthetic Qwen conversation.<|im_end|>
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       historicalAdapter.restore();
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    for (const capture of captures) expect(capture.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn","continuity","independent-next-input"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
@@ -1728,14 +1650,11 @@ A separate synthetic Qwen conversation.<|im_end|>
       replay.endNativeRequest();
       const firstObserved = firstCapture.snapshot();
       expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(firstObserved.responses.map(chunks => chunks.join(''))).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
-      expect(firstObserved.preStartChunks).toEqual([]);
-      expect(firstObserved.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: firstObserved })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
+      expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(firstObserved.toolEvents).toEqual([]);
-      expect(firstObserved.toolCalls).toEqual([]);
-      expect(firstObserved.toolResults).toEqual([]);
-      const nextMessages: RecordedMessage[] = [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: firstObserved.responses[0]!.join('') }, { role: "user", content: "Continue the synthetic conversation with a short response." }];
+      expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
+      const nextMessages: RecordedMessage[] = [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: capturedTexts({ snapshot: firstObserved })[0]! }, { role: "user", content: "Continue the synthetic conversation with a short response." }];
       const nextSignal = new AbortController().signal;
       const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
       replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
@@ -1754,13 +1673,10 @@ A separate synthetic Qwen conversation.<|im_end|>
       replay.endNativeRequest();
       const nextObserved = nextCapture.snapshot();
       expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(nextObserved.responses.map(chunks => chunks.join(''))).toEqual(["Got it! I'm ready to continue the conversation. What would you like to"]);
-      expect(nextObserved.preStartChunks).toEqual([]);
-      expect(nextObserved.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: nextObserved })).toEqual(["Got it! I'm ready to continue the conversation. What would you like to"]);
+      expect(nextObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(nextObserved.toolEvents).toEqual([]);
-      expect(nextObserved.toolCalls).toEqual([]);
-      expect(nextObserved.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: nextObserved })).toEqual([]);
       const independentSignal = new AbortController().signal;
       const independentParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
       replay.beginNativeRequest({ caseId: "independent-next-input", parameters: independentParameters });
@@ -1779,18 +1695,14 @@ A separate synthetic Qwen conversation.<|im_end|>
       replay.endNativeRequest();
       const independentObserved = independentCapture.snapshot();
       expect(independentObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(independentObserved.responses.map(chunks => chunks.join(''))).toEqual(["I"]);
-      expect(independentObserved.preStartChunks).toEqual([]);
-      expect(independentObserved.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: independentObserved })).toEqual(["I"]);
+      expect(independentObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(independentObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(independentObserved.toolEvents).toEqual([]);
-      expect(independentObserved.toolCalls).toEqual([]);
-      expect(independentObserved.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: independentObserved })).toEqual([]);
       replay.assertComplete({ requests: 3, nativeCalls: 3 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    for (const capture of captures) expect(capture.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
 });
 
@@ -1826,18 +1738,13 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
         expectDeliveredErrorCapture({ capture, message: control.stop });
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.chunks.join('')).toBe('');
-        expect(observed.chunks).toEqual([]);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         control.verifyNativeInput();
       } finally {
-        await control.harness.close();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
       }
-      expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('rejects historical high output at the repaired native input without a legacy adapter', async () => {
@@ -1866,18 +1773,13 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
         expectDeliveredErrorCapture({ capture, message: control.stop });
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.chunks.join('')).toBe('');
-        expect(observed.chunks).toEqual([]);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         control.verifyNativeInput();
       } finally {
-        await control.harness.close();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
       }
-      expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('checks the historical none evidence and rejects its obsolete injected prefix without manufacturing output', async () => {
@@ -1948,12 +1850,11 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
         const observed = capture.snapshot();
         expectDeliveredErrorCapture({ capture, message: 'Unsupported Qwen generation prefix.' });
         expect(observed.parts).toEqual([]);
-        expect(observed.chunks).toEqual([]);
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
         control.verifyObsoletePrefixRejected();
       } finally {
-        await control.close();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
       }
-      expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('checks the historical high evidence and rejects its obsolete double-newline prefix without manufacturing output', async () => {
@@ -1994,12 +1895,11 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
         const observed = capture.snapshot();
         expectDeliveredErrorCapture({ capture, message: 'Unsupported Qwen generation prefix.' });
         expect(observed.parts).toEqual([]);
-        expect(observed.chunks).toEqual([]);
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
         control.verifyObsoletePrefixRejected();
       } finally {
-        await control.close();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
       }
-      expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
@@ -2023,18 +1923,14 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(["It"]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: observed })).toEqual(["It"]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-low"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
@@ -2057,18 +1953,14 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(['Okay']);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-medium"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
@@ -2091,18 +1983,14 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(['Okay']);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-high"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
@@ -2125,18 +2013,14 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(['Okay']);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
 });
 
@@ -2196,13 +2080,9 @@ Use the weather tool for Tokyo.<|im_end|>
         expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.chunks.join('')).toBe('');
-        expect(observed.chunks).toEqual([]);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
         verifyQwenToolInput({ ...{
           replay, messages: scenario.messages, publicTool: replay.publicTool,
@@ -2240,13 +2120,9 @@ Use the weather tool for Tokyo.<|im_end|>
         expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.chunks.join('')).toBe('');
-        expect(observed.chunks).toEqual([]);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
         verifyQwenToolInput({ ...{
           replay, messages: [{ role: 'user', content: changedContent }],
@@ -2257,9 +2133,8 @@ Use the weather tool for Tokyo.<|im_end|>
       }
       expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    for (const capture of captures) expect(capture.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('tool-result-continuation preserves argument types and result body through native mapping while retaining the raw string-argument failure', async () => {
     const scenario = toolInputEvidence.cases[1];
@@ -2374,13 +2249,9 @@ Use the weather tool for Tokyo.<|im_end|>
         expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.chunks.join('')).toBe('');
-        expect(observed.chunks).toEqual([]);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
         verifyQwenToolInput({ ...{
           replay, messages, publicTool: replay.publicTool,
@@ -2426,13 +2297,9 @@ Use the weather tool for Tokyo.<|im_end|>
         expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.chunks.join('')).toBe('');
-        expect(observed.chunks).toEqual([]);
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
+        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+        expect(capturedChunks({ snapshot: observed })).toEqual([]);
+        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
         verifyQwenToolInput({ ...{
           replay,
@@ -2443,9 +2310,8 @@ Use the weather tool for Tokyo.<|im_end|>
       }
       expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    for (const capture of captures) expect(capture.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   async function runNaturalToolCase({ caseId, prompt, expectedText }: {
     caseId: 'natural-tool-minimal' | 'natural-tool-representative'; prompt: string; expectedText: string;
@@ -2482,9 +2348,9 @@ Use the weather tool for Tokyo.<|im_end|>
         toolCallId: call.toolCall.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
       } }] });
       expect(finalAssistant).toMatchObject({ role: 'assistant', interruption: undefined, parts: [{ type: 'text', text: expectedText, completeness: 'complete' }] });
+      expect(turn.toolEvents).toEqual([]);
       expect(executions).toEqual([{ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal) }]);
       expect(executions[0]?.signal?.aborted).toBe(false);
-      expect(turn.toolEvents).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
     } finally {
       const beforeClose = structuredClone(turn);
@@ -2532,23 +2398,19 @@ Here is the weather for Tokyo:
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual([`\
+      expect(capturedTexts({ snapshot: observed })).toEqual([`\
 Here is the weather for Tokyo:
 
 *   **Temperature:** 20°C
 *   **Condition:** Clear`]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
+      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
       expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
 });
 
@@ -2621,8 +2483,8 @@ describe('Qwen3.5 2B Provider / images', () => {
       await capture.completion;
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(['A']);
-      expect(observed.chunks).toEqual(['', 'A']);
+      expect(capturedTexts({ snapshot: observed })).toEqual(['A']);
+      expect(capturedChunks({ snapshot: observed })).toEqual(['', 'A']);
       expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, chunks: ['', 'A'], completeness: 'partial' })]);
       expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(observed.events.map(event => event.kind)).toEqual(['part', 'chunk', 'chunk', 'part-complete', 'result', 'settled']);
@@ -2630,11 +2492,7 @@ describe('Qwen3.5 2B Provider / images', () => {
         { sequence: 0, phase: 'before-settlement', kind: 'assistant-start' },
         { sequence: 1, phase: 'before-settlement', kind: 'chunk', chunk: 'A' },
       ]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(generations).toBe(1); expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(platform.observations.decodes).toHaveLength(1);
       expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
@@ -2644,10 +2502,9 @@ describe('Qwen3.5 2B Provider / images', () => {
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       expect(harness.observations.workers.every(worker => worker.terminated)).toBe(true);
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it.each(qwen2ImageCases)('$name has independently derived pixels, grid and complete native text input', async ({ imageUrl, rgba, rescaled }) => {
     const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
@@ -2824,11 +2681,8 @@ describe('Qwen3.5 2B Provider / images', () => {
       expect(actual.options.return_dict_in_generate).toBe(true);
       expect(actual.streamerIsTextStreamer).toBe(true);
       expect(actual.stoppingCriteriaType).toBe('function');
-      expect(observed.chunks).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.workers).toHaveLength(1);
       expect(harness.observations.ortCalls).toHaveLength(3);
@@ -2873,9 +2727,8 @@ describe('Qwen3.5 2B Provider / images', () => {
         bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')), rgba,
       }]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
-    expect(capture?.snapshot().lateEvents, 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
 });
 
@@ -2968,14 +2821,11 @@ describe('Qwen3.5 2B Provider / sequences', () => {
       replay.endNativeRequest();
       const firstObserved = firstCapture.snapshot();
       expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(firstObserved.responses.map(chunks => chunks.join(''))).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
-      expect(firstObserved.preStartChunks).toEqual([]);
-      expect(firstObserved.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: firstObserved })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
+      expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(firstObserved.toolEvents).toEqual([]);
-      expect(firstObserved.toolCalls).toEqual([]);
-      expect(firstObserved.toolResults).toEqual([]);
-      const nextMessages: RecordedMessage[] = [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: firstObserved.responses[0]!.join('') }, { role: "user", content: "Continue the synthetic conversation with a short response." }];
+      expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
+      const nextMessages: RecordedMessage[] = [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: capturedTexts({ snapshot: firstObserved })[0]! }, { role: "user", content: "Continue the synthetic conversation with a short response." }];
       const nextSignal = new AbortController().signal;
       const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
       replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
@@ -2994,18 +2844,14 @@ describe('Qwen3.5 2B Provider / sequences', () => {
       replay.endNativeRequest();
       const nextObserved = nextCapture.snapshot();
       expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(nextObserved.responses.map(chunks => chunks.join(''))).toEqual(["Got it! I'm ready to continue the conversation. What would you like to"]);
-      expect(nextObserved.preStartChunks).toEqual([]);
-      expect(nextObserved.lateEvents).toEqual([]);
+      expect(capturedTexts({ snapshot: nextObserved })).toEqual(["Got it! I'm ready to continue the conversation. What would you like to"]);
+      expect(nextObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(nextObserved.toolEvents).toEqual([]);
-      expect(nextObserved.toolCalls).toEqual([]);
-      expect(nextObserved.toolResults).toEqual([]);
+      expect(capturedToolCalls({ snapshot: nextObserved })).toEqual([]);
       replay.assertComplete({ requests: 2, nativeCalls: 2 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
   }, 30_000);
   it('preserves twelve recorded text/tool requests and verifies the recorded image input without inventing image output', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
