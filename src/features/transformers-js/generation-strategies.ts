@@ -23,6 +23,7 @@ import {
 import { Gemma4ToolCallParser } from './models/gemma4-tool-call-parser';
 import { createGemma4Generation } from './models/gemma4-generation';
 import { createQwen3_5Generation, qwen3_5ProtocolTokens } from './models/qwen3_5-generation';
+import { createLfm2Generation, formatMessagesForLfm2ReasoningProtocol, lfm2ReasoningProtocolTokens } from './models/lfm2-generation';
 import { Qwen3_5ToolCallParser } from './models/qwen3_5-tool-call-parser';
 import { generateGptOss } from './models/gpt-oss';
 import {
@@ -340,11 +341,6 @@ const standardGenerationStrategy: GenerationStrategy = {
       default: { const exhaustive: never = toolHandling.outputProtocol; throw new Error(`Unhandled standard history framing: ${String(exhaustive)}`); }
       }
     }
-    const formattedMessages = formatStandardMessagesForToolHandling({
-      messages,
-      handling: toolHandling,
-    });
-
     const templateOptions: Record<string, unknown> = {
       add_generation_prompt: true,
       return_dict: true,
@@ -353,11 +349,34 @@ const standardGenerationStrategy: GenerationStrategy = {
       templateOptions['tools'] = tools;
     }
 
+    // Detect the generation suffix without allowing an unrelated LFM2
+    // template to silently discard structured reasoning history. The
+    // model-specific formatter is enabled only after its prompt-open framing
+    // has been observed; every other standard template keeps the generic
+    // formatter's existing reasoning rejection.
+    const protocolProbeMessages = messages.map(message => {
+      const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
+      unhandled satisfies Record<PropertyKey, never>;
+      return { role, content, reasoning: undefined,
+        ...(tool_calls === undefined ? {} : { tool_calls }),
+        ...(tool_call_id === undefined ? {} : { tool_call_id }),
+      };
+    });
+    const protocolProbeFormattedMessages = formatStandardMessagesForToolHandling({
+      messages: protocolProbeMessages,
+      handling: toolHandling,
+    });
     const reasoningProtocol = detectStandardReasoningProtocol({
       tokenizer,
-      formattedMessages,
+      formattedMessages: protocolProbeFormattedMessages,
       templateOptions,
       debugLog,
+    });
+    const formattedMessages = formatMessagesForLfm2ReasoningProtocol({
+      messages,
+      handling: toolHandling,
+      modelType: model.config.model_type,
+      reasoningProtocol,
     });
 
     const inputs = tokenizer.apply_chat_template(formattedMessages, templateOptions) as Record<string, unknown>;
@@ -374,12 +393,27 @@ const standardGenerationStrategy: GenerationStrategy = {
     if (onGenerationEvent !== undefined) {
       switch (reasoningProtocol) {
       case 'generated-output': break;
-      case 'prompt-open-think': throw new Error('Prefilled standard reasoning requires a model-specific structured adapter.');
+      case 'prompt-open-think':
+        if (model.config.model_type !== 'lfm2') throw new Error('Prefilled standard reasoning requires a model-specific structured adapter.');
+        break;
       default: { const exhaustive: never = reasoningProtocol; throw new Error(`Unhandled standard reasoning framing: ${String(exhaustive)}`); }
       }
       const { endTokens, protocolTokens } = resolveStandardGenerationFraming({ model, tokenizer, inputs, handling: toolHandling, tools });
-      const structured = createStandardGeneration({ emit: onGenerationEvent, endTokens, handling: toolHandling, tools });
-      const streamer = new NativeProtocolStreamer({ tokenizer, protocolTokens,
+      const structured = (() => {
+        switch (reasoningProtocol) {
+        case 'prompt-open-think': return createLfm2Generation({ emit: onGenerationEvent, endTokens, handling: toolHandling, tools });
+        case 'generated-output': return createStandardGeneration({ emit: onGenerationEvent, endTokens, handling: toolHandling, tools });
+        default: { const exhaustive: never = reasoningProtocol; throw new Error(String(exhaustive)); }
+        }
+      })();
+      const streamer = new NativeProtocolStreamer({ tokenizer,
+        protocolTokens: (() => {
+          switch (reasoningProtocol) {
+          case 'prompt-open-think': return [...new Set([...protocolTokens, ...lfm2ReasoningProtocolTokens])];
+          case 'generated-output': return protocolTokens;
+          default: { const exhaustive: never = reasoningProtocol; throw new Error(String(exhaustive)); }
+          }
+        })(),
         onText: ({ text }) => structured.text({ text }), onControl: ({ token }) => structured.control({ token }),
       });
       try {
