@@ -7,7 +7,7 @@ import { promiseAllKeyed } from '@/utils/promise';
 export type CapturedChatRequest = Parameters<LmProvider['chat']>[0];
 type TextItem = Extract<ChatGenerationItem, { type: 'text' | 'reasoning' }>;
 export type CapturedProviderPart =
-  | { type: 'text' | 'reasoning'; partId: string; index: number; chunks: string[]; completeness: 'pending' | 'complete' | 'partial' }
+  | (({ type: 'text' } | { type: 'reasoning' }) & { partId: string; index: number; chunks: string[]; completeness: 'pending' | 'complete' | 'partial' })
   | Extract<ChatGenerationItem, { type: 'tool_call' }>;
 export type CapturedProviderEvent =
   | { kind: 'part'; type: 'text' | 'reasoning'; partId: string; index: number }

@@ -1,10 +1,21 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { reactive } from 'vue';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { useSettings } from './useSettings';
 import { idToRaw } from '@/01-models/ids';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
+
+afterEach(() => {
+  for (const providerChat of [mockOpenAIChat, mockOllamaChat]) {
+    for (const result of providerChat.mock.results) {
+      expect(result.type).toBe('return');
+      expect(result.value).toEqual(expect.objectContaining({ [Symbol.asyncIterator]: expect.any(Function) }));
+    }
+  }
+});
 
 // Mock storage
 vi.mock('../00-storage/service', () => ({
@@ -30,8 +41,8 @@ vi.mock('../00-storage/service', () => ({
 }));
 
 
-const mockOpenAIChat = vi.fn();
-const mockOllamaChat = vi.fn();
+const mockOpenAIChat = vi.fn<LmProvider['chat']>();
+const mockOllamaChat = vi.fn<LmProvider['chat']>();
 const mockOpenAIModels = vi.fn();
 const mockOllamaModels = vi.fn();
 
@@ -55,7 +66,7 @@ vi.mock('../features/lm/ollama', () => ({
 
 describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Advanced Settings Resolution', () => {
   const { settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
-  const { sendMessage, currentChat, createNewChat, openChat, updateChatSettings } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+  const { sendMessage, currentChat, createNewChat, openChat, updateChatSettings, isProcessing } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -80,8 +91,20 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'profile-gpt', 'chat-gpt']);
     mockOllamaModels.mockResolvedValue(['llama3']);
 
-    mockOpenAIChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'OpenAI Resp' }));
-    mockOllamaChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'Ollama Resp' }));
+    mockOpenAIChat.mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'OpenAI Resp' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
+    mockOllamaChat.mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Ollama Resp' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await openChat({ id: idToRaw({ id: chat!.id }) });
@@ -90,9 +113,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   describe('System Prompt Resolution', () => {
     it('uses Global System Prompt when nothing else is set', async () => {
       await sendMessage({ content: 'Hi' });
+      await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
-      expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
+      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
     });
 
     it('ignores Profile System Prompt at runtime (Resolution is Chat > Global)', async () => {
@@ -107,20 +131,22 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       } });
 
       await sendMessage({ content: 'Hi' });
+      await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       // Should find Global Default Prompt, NOT Profile Prompt
-      expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
+      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
     });
 
     it('overrides with Chat System Prompt when behavior is override', async () => {
       await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { systemPrompt: { content: 'Chat Custom Prompt', behavior: 'override' } } });
 
       await sendMessage({ content: 'Hi' });
+      await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       expect(messages).toHaveLength(2); // System + User
-      expect(messages[0]).toEqual({ role: 'system', content: 'Chat Custom Prompt' });
+      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Chat Custom Prompt', completeness: 'complete' }] });
     });
 
     it('appends Chat System Prompt to Global Prompt, ignoring Profile at runtime', async () => {
@@ -136,11 +162,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } } });
 
       await sendMessage({ content: 'Hi' });
+      await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       // Should find Global Default Prompt + Chat Extra Prompt as separate messages
-      expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
-      expect(messages[1]).toEqual({ role: 'system', content: 'Chat Extra Prompt' });
+      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
+      expect(messages[1]).toEqual({ id: 'system_prompt_1', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Chat Extra Prompt', completeness: 'complete' }] });
     });
   });
 
@@ -179,6 +206,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       } });
 
       await sendMessage({ content: 'Hi' });
+      await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
 
@@ -190,7 +218,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         reasoning: { effort: undefined },
         // presencePenalty: 1.0 from Profile should be missing
       });
-      expect(params.presencePenalty).toBeUndefined();
+      expect(params?.presencePenalty).toBeUndefined();
     });
   });
 
@@ -198,9 +226,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     it('passes stop sequences as array', async () => {
       await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['\n', 'User:'], reasoning: { effort: undefined } } } });
       await sendMessage({ content: 'Hi' });
+      await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
-      expect(params.stop).toEqual(['\n', 'User:']);
+      expect(params?.stop).toEqual(['\n', 'User:']);
     });
   });
 

@@ -1975,10 +1975,6 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         modelType: (model as ModelInternals | null)?.config?.model_type,
         activeModelId,
       });
-      if (onGenerationEvent !== undefined && strategy.kind !== 'gpt-oss') {
-        // Do not reconstruct structured reasoning from the legacy tagged-text path.
-        throw new Error('Structured generation is not supported by this model strategy.');
-      }
       debugLog({
         event: 'tool routing',
         details: {

@@ -1,11 +1,14 @@
 import { toChatId } from '@/01-models/ids';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import type { LmProvider } from '@/01-models/lm';
+import { createAsyncChannel } from '@/utils/async-channel';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
@@ -35,19 +38,28 @@ const router = createRouter({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'gpt-4', titleGeneration: 'disabled' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
 }));
 
-let triggerChunk: (params: { chunk: string }) => void;
+let chunks: ReturnType<typeof createAsyncChannel<string>> | undefined;
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
-    async chat({ onChunk }: { onChunk: (params: { chunk: string }) => void }) {
-      triggerChunk = onChunk;
-      return new Promise<void>(() => {});
+    chat({ signal }: Parameters<LmProvider['chat']>[0]): ReturnType<LmProvider['chat']> {
+      return createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          const input = createAsyncChannel<string>({ capacity: 1, onCancel: () => undefined });
+          chunks = input;
+          for await (const text of input.values) {
+            await writer.text({ type: 'text', text });
+          }
+          return { type: 'finished', next: 'user' };
+        },
+      });
     }
     async listModels() {
       return ['gpt-4'];
@@ -77,7 +89,7 @@ vi.mock('../00-storage/service', () => ({
       Object.assign(existing, updated);
       return Promise.resolve();
     }),
-    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id))),
+    loadChatMeta: vi.fn().mockImplementation(({ id }) => Promise.resolve(chats.get(id))),
     updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
       if (!chats.has(id)) chats.set(id, existing);
@@ -87,7 +99,7 @@ vi.mock('../00-storage/service', () => ({
     }),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
-    loadChat: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id) || null)),
+    loadChat: vi.fn().mockImplementation(({ id }) => Promise.resolve(chats.get(id) || null)),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
@@ -136,7 +148,13 @@ describe('ChatPane Streaming DOM Test', () => {
     setupScrollToMock();
     vi.clearAllMocks();
     chats.clear();
+    chunks = undefined;
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
+  });
+
+  afterEach(() => {
+    chunks?.close();
+    chatStore.abortChat({ chatId: undefined });
   });
 
   it('should render assistant chunks in the DOM in real-time', async () => {
@@ -164,16 +182,15 @@ describe('ChatPane Streaming DOM Test', () => {
     await textarea.setValue('Hello');
     await textarea.trigger('keydown.enter', { ctrlKey: true });
 
-    // Wait for sendMessage to reach generateResponse where triggerChunk is assigned
-    await vi.waitUntil(() => triggerChunk !== undefined, { timeout: 2000, interval: 50 });
+    // Keep the structured text part open while observing each accepted child chunk.
+    await vi.waitUntil(() => chunks !== undefined, { timeout: 2000, interval: 50 });
 
-    if (!triggerChunk) {
+    if (!chunks) {
       throw new Error('LM chat was not triggered');
     }
 
-    triggerChunk({ chunk: 'Live' });
-    await nextTick();
-    await nextTick();
+    await chunks.send({ value: 'Live' });
+    await vi.waitFor(() => expect(wrapper.html()).toContain('Live'));
 
     const html = wrapper.html();
     if (!html.includes('Live')) {
@@ -183,9 +200,14 @@ describe('ChatPane Streaming DOM Test', () => {
     }
     expect(wrapper.html()).toContain('Live');
 
-    triggerChunk({ chunk: ' Update' });
-    await nextTick();
-    await nextTick();
-    expect(wrapper.html()).toContain('Live Update');
+    await chunks.send({ value: ' Update' });
+    await vi.waitFor(() => expect(wrapper.html()).toContain('Live Update'));
+
+    chunks.close();
+    await vi.waitFor(() => expect(chatStore.isProcessing({ chatId: chatStore.currentChat.value!.id })).toBe(false));
+    const answer = chatStore.activeMessages.value.at(-1);
+    expect(answer?.role).toBe('assistant');
+    expect(answer?.parts).toEqual([expect.objectContaining({ type: 'text', text: 'Live Update', completeness: 'complete' })]);
+    wrapper.unmount();
   });
 });

@@ -1,9 +1,20 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
 import { idToRaw, toChatGroupId } from '@/01-models/ids';
 import { storageService } from '@/00-storage/service';
+
+afterEach(() => {
+  for (const providerChat of [mockOpenAIChat]) {
+    for (const result of providerChat.mock.results) {
+      expect(result.type).toBe('return');
+      expect(result.value).toEqual(expect.objectContaining({ [Symbol.asyncIterator]: expect.any(Function) }));
+    }
+  }
+});
 
 // Mock storage
 vi.mock('../00-storage/service', () => ({
@@ -27,7 +38,7 @@ vi.mock('../00-storage/service', () => ({
   },
 }));
 
-const mockOpenAIChat = vi.fn();
+const mockOpenAIChat = vi.fn<LmProvider['chat']>();
 
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(function() {
@@ -45,6 +56,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockOpenAIChat.mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
     __testOnlySetSettings({ newSettings: {
@@ -65,8 +83,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 1. Initial State: Global Default
     await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({
-      messages: expect.arrayContaining([{ role: 'system', content: 'Global System Prompt' }]),
+      messages: expect.arrayContaining([{ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global System Prompt', completeness: 'complete' }] }]),
     }));
 
     // 2. Chat-level Clear (behavior: override, content: null)
@@ -74,10 +93,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       systemPrompt: { behavior: 'override', content: null },
     } });
     await sendMessage({ content: 'Hello again' });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+
+    expect(mockOpenAIChat).toHaveBeenCalledTimes(2);
 
     // Check that system prompt is NOT present
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
-    const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
+    const systemMessages = lastCall.messages.filter(m => m.role === 'system');
     expect(systemMessages.length).toBe(0);
   });
 
@@ -91,9 +113,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       systemPrompt: { behavior: 'override', content: '' },
     } });
     await sendMessage({ content: 'Empty string override' });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
 
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
-    const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
+    const systemMessages = lastCall.messages.filter(m => m.role === 'system');
     expect(systemMessages.length).toBe(0);
   });
 
@@ -113,9 +136,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await nextTick();
 
     await sendMessage({ content: 'In group' });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
 
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
-    const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
+    const systemMessages = lastCall.messages.filter(m => m.role === 'system');
     expect(systemMessages.length).toBe(0);
   });
 
@@ -137,9 +161,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     } });
 
     await sendMessage({ content: 'Override' });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
 
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
-    const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
-    expect(systemMessages[0].content).toBe('Chat Specific Prompt');
+    const systemMessages = lastCall.messages.filter(m => m.role === 'system');
+    expect(systemMessages[0]?.parts).toEqual([{ id: 'text', type: 'text', text: 'Chat Specific Prompt', completeness: 'complete' }]);
   });
 });

@@ -1,10 +1,11 @@
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import ChatPage from './[id].vue';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useRouter } from 'vue-router';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 vi.mock('../../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: vi.fn(),
@@ -33,7 +34,8 @@ describe('ChatPage', () => {
     replace: vi.fn(),
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     (useChatNavigation as unknown as Mock).mockReturnValue({
       openChat: mockOpenChat,
@@ -104,13 +106,14 @@ describe('ChatPage', () => {
     expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-123' }), messageId: toMessageId({ raw: 'message-2' }) });
   });
 
-  it('passes message-id query parameter to CurrentChatPane as the target message', () => {
+  it('passes message-id query parameter to CurrentChatPane as the target message', async () => {
     mockRouter.currentRoute.value = {
       params: { id: 'chat-123' },
       query: { 'message-id': 'message-1' },
     };
 
     const wrapper = mount(ChatPage);
+    await flushPromises();
 
     expect(wrapper.findComponent({ name: 'CurrentChatPane' }).props('targetMessageId')).toBe('message-1');
   });

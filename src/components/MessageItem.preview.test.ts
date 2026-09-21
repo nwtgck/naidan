@@ -61,7 +61,7 @@ const mockMessage: MessageNode = {
       mimeType: 'image/png',
       size: 100,
       uploadedAt: 1000,
-      status: 'persisted',
+      status: 'persisted' as const,
     },
   ]).map((attachment, index) => ({ id: `attachment-${index}`, type: 'attachment' as const, attachment }))],
   createdAt: 1000,

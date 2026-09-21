@@ -865,7 +865,7 @@ describe('MessageItem Touch Support', () => {
       parts: [{ id: 'text', type: 'text' as const, text: 'Message with images', completeness: 'complete' as const }, ...([{
         id: toAttachmentId({ raw: 'att-1' }),
         binaryObjectId: toBinaryObjectId({ raw: 'binary-id-1' }),
-        status: 'memory',
+        status: 'memory' as const,
         blob: new Blob([''], { type: 'image/png' }),
         originalName: 'mem.png',
         mimeType: 'image/png',

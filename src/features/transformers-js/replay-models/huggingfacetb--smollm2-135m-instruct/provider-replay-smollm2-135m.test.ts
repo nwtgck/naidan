@@ -1,11 +1,12 @@
 // @vitest-environment node
-import { captureProviderChat, type ProviderChatCapture } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
+import { captureProviderChat, type ProviderChatCapture, type CapturedChatRequest } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
+import { runProviderReplayTurn, createReplayImageAttachment, closeProviderReplayCaptures } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { ChatMessage } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
-import { toToolCallId } from '@/01-models/ids';
+import { toMessageId, toToolCallId } from '@/01-models/ids';
 import evidenceJson from './provider-prefix-output.evidence.json';
 import continuityJson from './provider-supplied-history-prefix.evidence.json';
 import inputJson from './provider-template-inputs.evidence.json';
@@ -116,10 +117,7 @@ describe('SmolLM2 135M Provider / basic', () => {
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -133,19 +131,20 @@ describe('SmolLM2 135M Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(stop);
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
       const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.parts).toHaveLength(0);
+      expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect(observed.result).toBeDefined();
+      const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(nativeInputs).toHaveLength(1);
       const native = nativeInputs[0];
       if (!native) throw new Error('Input-only inference was not observed');
@@ -186,9 +185,7 @@ describe('SmolLM2 135M Provider / basic', () => {
       // Never call replayRecordedText, streamer.put/end or return sequences.
       // This positive input test remains independent of callback delivery.
       expect(chunks).toEqual([]);
-      expect(capture?.snapshot().toolCalls).toEqual([]);
-      expect(capture?.snapshot().toolEvents).toEqual([]);
-      expect(capture?.snapshot().toolResults).toEqual([]);
+      expect(capture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.workers).toHaveLength(1);
       expect(harness.observations.ortCalls).toHaveLength(1);
@@ -198,8 +195,7 @@ describe('SmolLM2 135M Provider / basic', () => {
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
   }, 30_000);
   it('delivers the recorded no-tools prefix before the public Provider settles', async () => {
@@ -234,10 +230,7 @@ describe('SmolLM2 135M Provider / basic', () => {
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -251,40 +244,39 @@ describe('SmolLM2 135M Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(capture);
       await capture.completion;
       const observed = capture.snapshot();
       expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      expect(observed.parts.filter(part => part.type === 'text').map(part => part.chunks)).toHaveLength(1);
+      expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect(observed.result).toBeDefined();
+      const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       // Snapshot at settlement. No timer or callback drain repairs the trace.
-      const settled = { assistantStarts: observed.responses.length, text: chunks.join(''), toolCalls: observed.toolCalls, toolEvents: observed.toolEvents, toolResults: observed.toolResults };
+      const settled = { textParts: observed.parts.filter(part => part.type === 'text').map(part => part.chunks).length, text: chunks.join(''), toolCalls: observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall) };
       expect(releasedTokenCount).toBe(16);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
       expect(settled).toEqual({
-        assistantStarts: 1,
+        textParts: 1,
         text: `\
 "Dear Hugging Face,
 
 I hope this message finds you well.`,
-        toolCalls: [], toolEvents: [], toolResults: [],
+        toolCalls: [],
       });
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
   }, 30_000);
-  it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
+  it('basic: delivers the recorded first-turn text through structured parts before settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
@@ -313,44 +305,41 @@ I hope this message finds you well.`,
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual([`\
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual([`\
 "Dear Hugging Face,
 
 I hope this message finds you well.`]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
 describe('SmolLM2 135M Provider / system', () => {
-  it('system: preserves instructions and delivers the recorded callbacks', async () => {
+  it('system: preserves instructions and delivers the recorded text through structured parts', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
@@ -379,40 +368,34 @@ describe('SmolLM2 135M Provider / system', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "system",
-                content: "Template probe system instruction.",
-              },
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ id: 'text_0', type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ id: 'text_1', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["\""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["\""]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -440,14 +423,8 @@ describe('SmolLM2 135M Provider / history', () => {
         request: {
           model: inputEvidence.modelId,
           messages: [
-            {
-              role: "system",
-              content: "Template probe system instruction.",
-            },
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
+            { id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ id: 'text_0', type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ id: 'text_1', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -461,19 +438,20 @@ describe('SmolLM2 135M Provider / history', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
       const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.parts).toHaveLength(0);
+      expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect(observed.result).toBeDefined();
+      const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(nativeInputs).toHaveLength(1);
       const native = nativeInputs[0];
       if (!native) throw new Error('Input-only inference was not observed');
@@ -505,8 +483,7 @@ describe('SmolLM2 135M Provider / history', () => {
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
 
   }, 30_000);
@@ -533,18 +510,9 @@ describe('SmolLM2 135M Provider / history', () => {
         request: {
           model: inputEvidence.modelId,
           messages: [
-            {
-              role: "user",
-              content: "Template probe first user message.",
-            },
-            {
-              role: "assistant",
-              content: "Template probe assistant response.",
-            },
-            {
-              role: "user",
-              content: "Template probe second user message.",
-            },
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe first user message.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -558,19 +526,20 @@ describe('SmolLM2 135M Provider / history', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
       const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.parts).toHaveLength(0);
+      expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect(observed.result).toBeDefined();
+      const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(nativeInputs).toHaveLength(1);
       const native = nativeInputs[0];
       if (!native) throw new Error('Input-only inference was not observed');
@@ -602,8 +571,7 @@ describe('SmolLM2 135M Provider / history', () => {
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
 
   }, 30_000);
@@ -638,21 +606,12 @@ describe('SmolLM2 135M Provider / history', () => {
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-            {
-              role: "assistant",
-              content: `\
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: `\
 "Dear Hugging Face,
 
-I hope this message finds you well.`,
-            },
-            {
-              role: "user",
-              content: "Continue with one short sentence.",
-            },
+I hope this message finds you well.`, completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue with one short sentence.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -666,36 +625,39 @@ I hope this message finds you well.`,
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(capture);
       await capture.completion;
       const observed = capture.snapshot();
       expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      expect(observed.parts.filter(part => part.type === 'text').map(part => part.chunks)).toHaveLength(1);
+      expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect(observed.result).toBeDefined();
+      const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       const settledChunks = [...chunks];
       expect(releasedTokenCount).toBe(16);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
-      // Exact original stream segmentation as well as visible content; no
-      // fabricated callback ACK or after-settlement drain is permitted.
+      // The declared part starts with an empty chunk. NativeProtocolStreamer
+      // owns prompt skipping, so TextStreamer flushes the first output token
+      // immediately. The original native tokens and full text stay unchanged.
       expect(settledChunks).toEqual([
-        '"I\'m ', 'sorry ', 'for ', 'the ', 'misunderstanding, ', 'but ',
+        '', '"', 'I\'m ', 'sorry ', 'for ', 'the ', 'misunderstanding, ', 'but ',
         'as ', 'a ', 'Hugging ', 'Face ', 'user,',
       ]);
+      expect(settledChunks.join('')).toBe(continuity.expectedProviderSemantic.visibleContent);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
   }, 30_000);
-  it('history: preserves supplied history and delivers the recorded callbacks', async () => {
+  it('history: preserves supplied history and delivers the recorded text through structured parts', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
@@ -724,44 +686,35 @@ I hope this message finds you well.`,
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe first user message.",
-              },
-              {
-                role: "assistant",
-                content: "Template probe assistant response.",
-              },
-              {
-                role: "user",
-                content: "Template probe second user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe first user message.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["Template"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["Template"]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -771,10 +724,7 @@ describe('SmolLM2 135M Provider / independent', () => {
     let firstCapture: ProviderChatCapture | undefined;
     let secondCapture: ProviderChatCapture | undefined;
     const nextMessages: ChatMessage[] = [
-      {
-        role: 'user',
-        content: 'A separate synthetic conversation.',
-      },
+      { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'A separate synthetic conversation.', completeness: 'complete' }] }
     ];
     const nextPrompt = `\
 <|im_start|>system
@@ -819,10 +769,7 @@ A separate synthetic conversation.<|im_end|>
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -836,19 +783,18 @@ A separate synthetic conversation.<|im_end|>
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(firstCapture);
       await firstCapture.completion;
       const firstObserved = firstCapture.snapshot();
       expect(firstObserved.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(firstObserved.preStartChunks).toEqual([]);
-      expect(firstObserved.responses).toHaveLength(1);
-      expect(firstObserved.toolCalls).toEqual([]);
-      expect(firstObserved.toolResults).toEqual([]);
-      expect(firstObserved.toolEvents).toEqual([]);
-      expect(firstObserved.lateEvents).toEqual([]);
-      expect(firstObserved.chunks.join('')).toBe(evidence.expectedProviderSemantic.visibleContent);
+      expect(firstObserved.parts.filter(part => part.type === 'text').map(part => part.chunks)).toHaveLength(1);
+      expect(firstObserved.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect(firstObserved.parts.filter(part => part.type === 'text').flatMap(part => part.chunks).join('')).toBe(evidence.expectedProviderSemantic.visibleContent);
       const ortCountAfterFirst = harness.observations.ortCalls.length;
       secondCapture = captureProviderChat({
         provider: harness.provider,
@@ -867,16 +813,20 @@ A separate synthetic conversation.<|im_end|>
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(secondCapture);
-      await expect(secondCapture.completion).rejects.toThrow(stop);
+      await secondCapture.completion;
+      expect(secondCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
       expect(stoppedInputs).toHaveLength(1);
       const native = stoppedInputs[0];
       if (!native) throw new Error('Independent input-only inference was not observed');
       const tokenizer = native.tokenizer;
       expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(inputEvidence.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(nextMessages, { tokenize: false, add_generation_prompt: true })).toBe(nextPrompt);
+      expect(tokenizer.apply_chat_template([{ role: 'user', content: 'A separate synthetic conversation.' }], { tokenize: false, add_generation_prompt: true })).toBe(nextPrompt);
       const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
       if (!native.input.isTensor || !native.mask.isTensor) throw new Error('Expected actual next-input tensors');
       expect(native.input.type).toBe('int64');
@@ -889,14 +839,10 @@ A separate synthetic conversation.<|im_end|>
       expect(Array.from(native.mask.data, BigInt)).toEqual(ids.map(() => 1n));
       expect(native.pastIsNull).toBe(true);
       const secondObserved = secondCapture.snapshot();
-      expect(secondObserved.settlement).toMatchObject({ status: 'rejected' });
-      expect(secondObserved.preStartChunks).toEqual([]);
-      expect(secondObserved.responses).toHaveLength(1);
-      expect(secondObserved.toolCalls).toEqual([]);
-      expect(secondObserved.toolResults).toEqual([]);
-      expect(secondObserved.toolEvents).toEqual([]);
-      expect(secondObserved.lateEvents).toEqual([]);
-      const secondChunks = secondObserved.chunks;
+      expect(secondObserved.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(secondObserved!.parts).toHaveLength(0);
+      expect(secondObserved!.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      const secondChunks = secondObserved!.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(firstReleased).toBe(16);
       expect(secondChunks).toEqual([]);
       expect(contexts).toHaveLength(2);
@@ -913,8 +859,7 @@ A separate synthetic conversation.<|im_end|>
       expect(harness.observations.localImageFetchCalls).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
   }, 30_000);
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
@@ -947,34 +892,32 @@ A separate synthetic conversation.<|im_end|>
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual([`\
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual([`\
 "Dear Hugging Face,
 
 I hope this message finds you well.`]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        firstResponse = responses[0]!.join('');
+        firstResponse = textParts.flatMap(part => part.chunks).join('');
       }
       // continuity: public inputs and settled expectations are owned by this model.
       {
@@ -996,38 +939,30 @@ I hope this message finds you well.`]);
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
-              {
-                role: "assistant",
-                content: firstResponse,
-              },
-              {
-                role: "user",
-                content: "Continue the synthetic conversation with a short response.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: firstResponse, completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["\"I'm glad to hear that you're doing well. I've been meaning"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["\"I'm glad to hear that you're doing well. I've been meaning"]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       // independent-next-input: public inputs and settled expectations are owned by this model.
       {
@@ -1049,41 +984,38 @@ I hope this message finds you well.`]);
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "A separate synthetic capture conversation.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "A separate synthetic capture conversation.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 3, nativeCalls: 3 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
 describe('SmolLM2 135M Provider / reasoning', () => {
-  it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
+  it('reasoning: preserves the recorded none-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
@@ -1112,38 +1044,35 @@ describe('SmolLM2 135M Provider / reasoning', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["\""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["\""]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
-  it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
+  it('reasoning: preserves the recorded low-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
@@ -1172,38 +1101,35 @@ describe('SmolLM2 135M Provider / reasoning', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["\""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["\""]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
-  it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
+  it('reasoning: preserves the recorded medium-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
@@ -1232,38 +1158,35 @@ describe('SmolLM2 135M Provider / reasoning', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["\""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["\""]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
-  it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
+  it('reasoning: preserves the recorded high-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
@@ -1292,36 +1215,33 @@ describe('SmolLM2 135M Provider / reasoning', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["\""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["\""]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -1334,10 +1254,9 @@ describe('SmolLM2 135M Provider / tools', () => {
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'SmolLM2 135M tool input inspected; no inference output supplied';
     let actualTokenizer: Parameters<ProviderReplayGenerate>[0]['tokenizer'] | undefined;
-    const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
-    const publicTool: Tool = {
+    const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     // The native matrix recorded an open schema. This is the independently
     // expected public Tool serialization, not an expected value read from a spy.
@@ -1366,10 +1285,7 @@ describe('SmolLM2 135M Provider / tools', () => {
         request: {
           model: toolInputEvidence.modelId,
           messages: [
-            {
-              role: "user",
-              content: "Use the weather tool for Tokyo.",
-            },
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
           ],
           tools: [publicTool],
           parameters: {
@@ -1383,19 +1299,20 @@ describe('SmolLM2 135M Provider / tools', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
       const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.parts).toHaveLength(0);
+      expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect(observed.result).toBeDefined();
+      const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(nativeInputs).toHaveLength(1);
       const native = nativeInputs[0];
       if (!native) throw new Error('Input-only inference was not observed');
@@ -1414,9 +1331,7 @@ describe('SmolLM2 135M Provider / tools', () => {
       // nor fabricated return sequences/KV are released at this boundary.
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(chunks).toEqual([]);
-      expect(execute).not.toHaveBeenCalled();
-      expect(capture?.snapshot().toolCalls).toEqual([]);
-      expect(capture?.snapshot().toolResults).toEqual([]);
+      expect(capture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
 
       // Snapshot Production calls BEFORE the native oracle below makes any
       // extra calls. Protocol/reasoning probes explicitly use tokenize:false;
@@ -1489,8 +1404,7 @@ describe('SmolLM2 135M Provider / tools', () => {
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       templateSpy.mockRestore();
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
 
   }, 30_000);
@@ -1502,10 +1416,9 @@ describe('SmolLM2 135M Provider / tools', () => {
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'SmolLM2 135M tool input inspected; no inference output supplied';
     let actualTokenizer: Parameters<ProviderReplayGenerate>[0]['tokenizer'] | undefined;
-    const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
-    const publicTool: Tool = {
+    const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     // The native matrix recorded an open schema. This is the independently
     // expected public Tool serialization, not an expected value read from a spy.
@@ -1534,29 +1447,17 @@ describe('SmolLM2 135M Provider / tools', () => {
         request: {
           model: toolInputEvidence.modelId,
           messages: [
-            {
-              role: "user",
-              content: "Use the weather tool for Tokyo.",
-            },
-            {
-              role: "assistant",
-              content: "",
-              tool_calls: [
-                {
-                  id: toToolCallId({ raw: "call_template_probe_1" }),
-                  type: "function",
-                  function: {
-                    name: "lookup_weather",
-                    arguments: "{\"city\":\"Tokyo\"}",
-                  },
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "", completeness: 'complete' },
+              { id: 'call_1_0', type: 'tool_call', toolCall: {
+                id: toToolCallId({ raw: "call_template_probe_1" }),
+                type: "function",
+                function: {
+                  name: "lookup_weather",
+                  arguments: "{\"city\":\"Tokyo\"}",
                 },
-              ],
-            },
-            {
-              role: "tool",
-              tool_call_id: toToolCallId({ raw: "call_template_probe_1" }),
-              content: "{\"temperatureC\":20,\"condition\":\"clear\"}",
-            },
+              } }] },
+            { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
           ],
           tools: [publicTool],
           parameters: {
@@ -1570,19 +1471,20 @@ describe('SmolLM2 135M Provider / tools', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
       const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
+      expect(observed.parts).toHaveLength(0);
+      expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect(observed.result).toBeDefined();
+      const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(nativeInputs).toHaveLength(1);
       const native = nativeInputs[0];
       if (!native) throw new Error('Input-only inference was not observed');
@@ -1601,9 +1503,7 @@ describe('SmolLM2 135M Provider / tools', () => {
       // nor fabricated return sequences/KV are released at this boundary.
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(chunks).toEqual([]);
-      expect(execute).not.toHaveBeenCalled();
-      expect(capture?.snapshot().toolCalls).toEqual([]);
-      expect(capture?.snapshot().toolResults).toEqual([]);
+      expect(capture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
 
       // Snapshot Production calls BEFORE the native oracle below makes any
       // extra calls. Protocol/reasoning probes explicitly use tokenize:false;
@@ -1676,251 +1576,184 @@ describe('SmolLM2 135M Provider / tools', () => {
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       templateSpy.mockRestore();
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
 
   }, 30_000);
   it('tools: preserves the recorded minimal no-call response without claiming model-wide non-support', async () => {
-    const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog,
-      caseIds: ["natural-tool-minimal"],
-      artifactPaths: ["onnx/model_q4f16.onnx"],
-      imagePlatform: undefined,
-    });
-    const captures: ProviderChatCapture[] = [];
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["natural-tool-minimal"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
+    const parameters: NonNullable<CapturedChatRequest['parameters']> = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
     const lateExecutions: string[] = [];
+    let settled = false;
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    const tools: Tool[] = [{ name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute: async ({ args, signal }) => {
+        executions.push({ args: structuredClone(args), signal });
+        if (settled) lateExecutions.push('execute');
+        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+      },
+    }];
     try {
-      // natural-tool-minimal: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureHolder: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            executions.push({ args: structuredClone(args), signal: receivedSignal });
-            if (captureHolder.current?.snapshot().settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "HuggingFaceTB/SmolLM2-135M-Instruct",
-            messages: [
-              {
-                role: "user",
-                content: "Use the weather tool for Tokyo.",
-              },
-            ],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureHolder.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["I'm sorry for the misunderstanding, but as a weather-related AI, I don't have the capability to access real-time weather data. I recommend using a weather-related service like Weather.com, the Japan Meteorological Agency, or the National Weather Service."]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        expect(executions).toEqual([]);
-      }
+      replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
+      // The caller runner owns tool execution and one runtime operation. This
+      // recording produces no call, including from supplied historical calls.
+      turn = await runProviderReplayTurn({
+        provider: replay.provider, tools, abortController: new AbortController(),
+        request: { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
+        ], parameters, debug: undefined, readBinaryObject: undefined },
+      });
+      settled = true;
+      replay.endNativeRequest();
+      expect(turn.result).toEqual({ type: 'finished', next: 'user' });
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
+      const assistant = turn.generated[0];
+      if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
+      expect(assistant.parts.map(part => part.type)).toEqual(['text']);
+      expect(assistant.parts.filter(part => part.type === 'text').map(part => part.text)).toEqual(["I'm sorry for the misunderstanding, but as a weather-related AI, I don't have the capability to access real-time weather data. I recommend using a weather-related service like Weather.com, the Japan Meteorological Agency, or the National Weather Service."]);
+      expect(assistant.parts.filter(part => part.type === 'tool_call')).toEqual([]);
+      expect(turn.toolEvents).toEqual([]);
+      expect(executions).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
+      const beforeDisposal = structuredClone(turn);
       await replay.close();
+      expect(turn, 'through awaited Worker disposal').toEqual(beforeDisposal);
+      expect(executions).toEqual([]);
+      expect(lateExecutions).toEqual([]);
     }
-    expect(lateExecutions).toEqual([]);
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('tools: preserves the recorded representative no-call response without claiming model-wide non-support', async () => {
-    const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog,
-      caseIds: ["natural-tool-representative"],
-      artifactPaths: ["onnx/model_q4f16.onnx"],
-      imagePlatform: undefined,
-    });
-    const captures: ProviderChatCapture[] = [];
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["natural-tool-representative"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
+    const parameters: NonNullable<CapturedChatRequest['parameters']> = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
     const lateExecutions: string[] = [];
+    let settled = false;
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    const tools: Tool[] = [{ name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute: async ({ args, signal }) => {
+        executions.push({ args: structuredClone(args), signal });
+        if (settled) lateExecutions.push('execute');
+        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+      },
+    }];
     try {
-      // natural-tool-representative: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureHolder: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            executions.push({ args: structuredClone(args), signal: receivedSignal });
-            if (captureHolder.current?.snapshot().settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "HuggingFaceTB/SmolLM2-135M-Instruct",
-            messages: [
-              {
-                role: "user",
-                content: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.",
-              },
-            ],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureHolder.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["I'm sorry for the misunderstanding, but as a weather-related AI, I don't have the capability to provide a lookup-weather response. I'd recommend using the weather-related tool, such as the one provided by Hugging Face, to get the weather information."]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        expect(executions).toEqual([]);
-      }
+      replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
+      // The caller runner owns tool execution and one runtime operation. This
+      // recording produces no call, including from supplied historical calls.
+      turn = await runProviderReplayTurn({
+        provider: replay.provider, tools, abortController: new AbortController(),
+        request: { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
+        ], parameters, debug: undefined, readBinaryObject: undefined },
+      });
+      settled = true;
+      replay.endNativeRequest();
+      expect(turn.result).toEqual({ type: 'finished', next: 'user' });
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
+      const assistant = turn.generated[0];
+      if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
+      expect(assistant.parts.map(part => part.type)).toEqual(['text']);
+      expect(assistant.parts.filter(part => part.type === 'text').map(part => part.text)).toEqual(["I'm sorry for the misunderstanding, but as a weather-related AI, I don't have the capability to provide a lookup-weather response. I'd recommend using the weather-related tool, such as the one provided by Hugging Face, to get the weather information."]);
+      expect(assistant.parts.filter(part => part.type === 'tool_call')).toEqual([]);
+      expect(turn.toolEvents).toEqual([]);
+      expect(executions).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
+      const beforeDisposal = structuredClone(turn);
       await replay.close();
+      expect(turn, 'through awaited Worker disposal').toEqual(beforeDisposal);
+      expect(executions).toEqual([]);
+      expect(lateExecutions).toEqual([]);
     }
-    expect(lateExecutions).toEqual([]);
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('tools: preserves structured caller history and the recorded response', async () => {
-    const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog,
-      caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/model_q4f16.onnx"],
-      imagePlatform: undefined,
-    });
-    const captures: ProviderChatCapture[] = [];
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["structured-tool-history"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
+    const parameters: NonNullable<CapturedChatRequest['parameters']> = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
     const lateExecutions: string[] = [];
+    let settled = false;
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    const tools: Tool[] = [{ name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute: async ({ args, signal }) => {
+        executions.push({ args: structuredClone(args), signal });
+        if (settled) lateExecutions.push('execute');
+        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+      },
+    }];
     try {
-      // structured-tool-history: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureHolder: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            executions.push({ args: structuredClone(args), signal: receivedSignal });
-            if (captureHolder.current?.snapshot().settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "HuggingFaceTB/SmolLM2-135M-Instruct",
-            messages: [
-              {
-                role: "user",
-                content: "Use the weather tool for Tokyo.",
+      replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
+      // The caller runner owns tool execution and one runtime operation. This
+      // recording produces no call, including from supplied historical calls.
+      turn = await runProviderReplayTurn({
+        provider: replay.provider, tools, abortController: new AbortController(),
+        request: { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
+          { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "", completeness: 'complete' },
+            { id: 'call_1_0', type: 'tool_call', toolCall: {
+              id: toToolCallId({ raw: "call_model_support_probe_1" }),
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Tokyo\"}",
               },
-              {
-                role: "assistant",
-                content: "",
-                tool_calls: [
-                  {
-                    id: toToolCallId({ raw: "call_model_support_probe_1" }),
-                    type: "function",
-                    function: {
-                      name: "lookup_weather",
-                      arguments: "{\"city\":\"Tokyo\"}",
-                    },
-                  },
-                ],
-              },
-              {
-                role: "tool",
-                content: "{\"temperatureC\":20,\"condition\":\"clear\"}",
-                tool_call_id: toToolCallId({ raw: "call_model_support_probe_1" }),
-              },
-            ],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureHolder.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["You are a helpful AI named Huggs, trained by Hugging Face."]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        expect(executions).toEqual([]);
-      }
+            } }] },
+          { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
+        ], parameters, debug: undefined, readBinaryObject: undefined },
+      });
+      settled = true;
+      replay.endNativeRequest();
+      expect(turn.result).toEqual({ type: 'finished', next: 'user' });
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
+      const assistant = turn.generated[0];
+      if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
+      expect(assistant.parts.map(part => part.type)).toEqual(['text']);
+      expect(assistant.parts.filter(part => part.type === 'text').map(part => part.text)).toEqual(["You are a helpful AI named Huggs, trained by Hugging Face."]);
+      expect(assistant.parts.filter(part => part.type === 'tool_call')).toEqual([]);
+      expect(turn.toolEvents).toEqual([]);
+      expect(executions).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
+      const beforeDisposal = structuredClone(turn);
       await replay.close();
+      expect(turn, 'through awaited Worker disposal').toEqual(beforeDisposal);
+      expect(executions).toEqual([]);
+      expect(lateExecutions).toEqual([]);
     }
-    expect(lateExecutions).toEqual([]);
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -1954,52 +1787,39 @@ describe('SmolLM2 135M Provider / images', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: "Describe the single synthetic image in one short phrase.",
-                  },
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-                    },
-                  },
-                ],
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'part_0_0', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+                { id: 'part_0_1', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
 describe('SmolLM2 135M Provider / sequences', () => {
-  it('uses only the settled first callback text for a second request in the same loaded runtime', async () => {
+  it('uses only the settled first part text for a second request in the same loaded runtime', async () => {
     const captures: ProviderChatCapture[] = [];
     let firstCapture: ProviderChatCapture | undefined;
     let secondCapture: ProviderChatCapture | undefined;
@@ -2047,10 +1867,7 @@ describe('SmolLM2 135M Provider / sequences', () => {
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -2064,19 +1881,18 @@ describe('SmolLM2 135M Provider / sequences', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined
         },
       });
       captures.push(firstCapture);
       await firstCapture.completion;
       const firstObserved = firstCapture.snapshot();
       expect(firstObserved.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(firstObserved.preStartChunks).toEqual([]);
-      expect(firstObserved.responses).toHaveLength(1);
-      expect(firstObserved.toolCalls).toEqual([]);
-      expect(firstObserved.toolResults).toEqual([]);
-      expect(firstObserved.toolEvents).toEqual([]);
-      expect(firstObserved.lateEvents).toEqual([]);
-      const firstChunks = firstObserved.chunks;
+      expect(firstObserved.parts.filter(part => part.type === 'text').map(part => part.chunks)).toHaveLength(1);
+      expect(firstObserved.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      const firstChunks = firstObserved.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       // Immutable at settlement: late first callbacks cannot rewrite the next
       // request. There is no timer, callback drain, or artificial callback ACK.
       const firstTextAtSettlement = firstChunks.join('');
@@ -2088,15 +1904,9 @@ describe('SmolLM2 135M Provider / sequences', () => {
           request: {
             model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              ...evidence.scenario.messages,
-              {
-                role: 'assistant',
-                content: firstTextAtSettlement,
-              },
-              {
-                role: 'user',
-                content: 'Continue with one short sentence.',
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'Template probe user message.', completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: firstTextAtSettlement, completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: 'Continue with one short sentence.', completeness: 'complete' }] }
             ],
             tools: [],
             parameters: {
@@ -2110,6 +1920,9 @@ describe('SmolLM2 135M Provider / sequences', () => {
                 effort: undefined,
               },
             },
+            readBinaryObject: undefined,
+            debug: undefined,
+            signal: undefined
           },
         });
         captures.push(secondCapture);
@@ -2122,13 +1935,9 @@ describe('SmolLM2 135M Provider / sequences', () => {
       // checks for later delivered callbacks without a timer or drain.
       const secondObserved = secondCapture?.snapshot();
       expect(secondObserved?.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(secondObserved?.preStartChunks).toEqual([]);
-      expect(secondObserved?.responses).toHaveLength(1);
-      expect(secondObserved?.toolCalls).toEqual([]);
-      expect(secondObserved?.toolResults).toEqual([]);
-      expect(secondObserved?.toolEvents).toEqual([]);
-      expect(secondObserved?.lateEvents).toEqual([]);
-      const secondTextAtSettlement = secondObserved?.chunks.join('');
+      expect(secondObserved!.parts.filter(part => part.type === 'text').map(part => part.chunks)).toHaveLength(1);
+      expect(secondObserved!.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      const secondTextAtSettlement = secondObserved!.parts.filter(part => part.type === 'text').flatMap(part => part.chunks).join('');
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
       expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
@@ -2152,8 +1961,7 @@ describe('SmolLM2 135M Provider / sequences', () => {
         released: [16, 16],
       });
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
   }, 30_000);
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
@@ -2186,34 +1994,32 @@ describe('SmolLM2 135M Provider / sequences', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual([`\
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual([`\
 "Dear Hugging Face,
 
 I hope this message finds you well.`]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        firstResponse = responses[0]!.join('');
+        firstResponse = textParts.flatMap(part => part.chunks).join('');
       }
       // continuity: public inputs and settled expectations are owned by this model.
       {
@@ -2235,50 +2041,44 @@ I hope this message finds you well.`]);
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              {
-                role: "user",
-                content: "Template probe user message.",
-              },
-              {
-                role: "assistant",
-                content: firstResponse,
-              },
-              {
-                role: "user",
-                content: "Continue the synthetic conversation with a short response.",
-              },
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: firstResponse, completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
+        replay.endNativeRequest();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["\"I'm glad to hear that you're doing well. I've been meaning"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        const calls = observed.parts.filter(part => part.type === 'tool_call');
+        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["\"I'm glad to hear that you're doing well. I've been meaning"]);
+        expect(order).toEqual(["part", "part-complete", "settled"]);
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 2, nativeCalls: 2 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('preserves all thirteen causal inputs, native streams and Provider settlements in one Load', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
     expect(fullEvidenceJson.modelId).toBe('HuggingFaceTB/SmolLM2-135M-Instruct');
     expect(fullEvidenceJson.metadataRevision).toBe('12fd25f77366fa6b3b4b768ec3050bf629380bac');
     expect(fullEvidenceJson.observedCacheRevision).toBe('12fd25f77366fa6b3b4b768ec3050bf629380bac');
-    await verifyCapturedFullReplay({ reviewedPublicContract: undefined, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ['onnx/model_q4f16.onnx'] });
+    // This exact tokenizer/generation config uses token 2 as its end marker.
+    // A fulfilled old callback request without it remains a partial generation.
+    await verifyCapturedFullReplay({ reviewedPublicContract: { singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [] },
+      unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ['onnx/model_q4f16.onnx'] });
   }, 30_000);
 });

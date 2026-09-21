@@ -9,6 +9,7 @@ import { captureScenarioSchema } from '@/features/transformers-js/model-support-
 import type { ProductionProviderTraceEvent } from '@/features/transformers-js/model-support-investigation/logic/production-provider-trace';
 import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/production-load-receipt';
 import type { generationCaptureTakeResultSchema } from '@/features/transformers-js/worker/generation-capture';
+import { projectSingleTextReplayInput, validateSingleTextPartsContract, verifySingleTextPartsObservation, type SingleTextPartsReplayContract } from './provider-replay-single-text-parts';
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const token = z.string().regex(/^(?:0|[1-9][0-9]*)$/u).max(20);
@@ -226,6 +227,7 @@ function providerEvents({ events }: { events: readonly ProductionProviderTraceEv
     if (!('toolCallId' in event)) return event;
     switch (event.kind) {
     case 'tool-call':
+    case 'part_call':
       if (ids.has(event.toolCallId)) throw new Error('Duplicate actual tool ID');
       ids.set(event.toolCallId, `tool-${ids.size + 1}`);
       break;
@@ -295,14 +297,17 @@ type ReplayOutputGap = {
 
 /** Reviewed current public contracts are not mutations of historical capture. */
 export type ReviewedProviderReplayContract = {
+  // Opt-in only for model-owned single-text captures. Other archived protocols
+  // retain their exact callback contract until explicitly migrated.
+  singleTextParts?: SingleTextPartsReplayContract;
   correctedEvents: readonly {
     scenario: z.infer<typeof captureScenarioSchema>;
     reason: string;
     expectedEvents: readonly unknown[];
   }[];
   invalidatedOutputs: readonly (ReplayOutputGap & { reason: string })[];
-  // Absent preserves the exact historical decoder callbacks. These are not
-  // replacement native tokens or permission to change any inference input.
+  // Outside singleTextParts mode, absence preserves exact historical decoder
+  // callbacks. These never replace native tokens or authorize changed inputs.
   correctedFinalizedStreams?: readonly {
     callOrdinal: number;
     scenario: z.infer<typeof captureScenarioSchema>;
@@ -321,6 +326,12 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
   const invalidated = reviewedPublicContract?.invalidatedOutputs ?? [];
   const gapOrdinals = new Set(originalGaps.map(gap => gap.callOrdinal));
   const gapScenarios = new Set(originalGaps.map(gap => gap.scenario));
+  if (reviewedPublicContract?.singleTextParts !== undefined) {
+    validateSingleTextPartsContract({ contract: reviewedPublicContract.singleTextParts });
+    if (reviewedPublicContract.correctedEvents.length || reviewedPublicContract.correctedFinalizedStreams?.length) {
+      throw new Error('Plain-text parts and explicit callback corrections must not overlap');
+    }
+  }
   for (const gap of invalidated) {
     if (gap.reason.trim().length === 0) throw new Error('Missing reviewed output-invalidation reason');
     if (gapOrdinals.has(gap.callOrdinal) || gapScenarios.has(gap.scenario)) throw new Error('Duplicate reviewed output gap');
@@ -354,6 +365,18 @@ function verifyFinalizedCorrectionsUsed({ expected, used }: { expected: readonly
   exact({ label: 'every reviewed finalized stream must be used exactly once', actual: [...used].sort((a, b) => a - b), expected: [...expected].sort((a, b) => a - b) });
 }
 
+function readCapturedFinalized({ events, label }: { events: Parameters<typeof verifyCapturedGapInputs>[0]['events']; label: string }) {
+  return events.filter(event => event.kind === 'native-stream').filter(event => event.phase === 'entering' && event.operation === 'on_finalized_text')
+    .map(event => {
+      const { detail } = event;
+      switch (detail.kind) {
+      case 'finalized-text': return { text: detail.text, streamEnd: detail.streamEnd };
+      case 'tokens': case 'none': case 'not-recorded': throw new Error(`Missing finalized callback: ${label}`);
+      default: { const exhaustive: never = detail; throw new Error(String(exhaustive)); }
+      }
+    });
+}
+
 /** One real Full owner and Load preserve cross-request causality. */
 export async function verifyCapturedFullReplay({ evidence: source, artifactPaths, imagePlatform, unavailableOutputs: originalGaps, completeResult, expectedLoadReceipt, reviewedPublicContract }: {
   evidence: unknown; artifactPaths: readonly string[];
@@ -364,6 +387,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
   reviewedPublicContract: ReviewedProviderReplayContract | undefined;
 }) {
   const evidence = parseCapturedFullReplay({ value: source });
+  const singleTextParts = reviewedPublicContract?.singleTextParts;
   expect(originalGaps.filter(item => evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)).map(item => item.callOrdinal)).toEqual(evidence.unavailableRecordedCalls ?? []);
   const { correctedEvents, correctedFinalizedStreams, gaps: unavailableOutputs } = validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps });
   const usedCorrections: string[] = [];
@@ -420,7 +444,15 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       if (invocation === undefined) throw new Error('Unrecorded extra native invocation');
       expect(request?.scenario, 'active request before stream release').toBe(invocation.scenario);
       const recorded = evidence.requests.find(item => item.scenario === invocation.scenario)!;
-      expect(jsonProjection({ value: request?.input }), `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
+      const comparableInput = jsonProjection({ value: request.input });
+      expect(singleTextParts === undefined ? comparableInput : projectSingleTextReplayInput({ input: comparableInput,
+        precedingEvents: owner.snapshotProvider().requests.filter(item => item.trace.settled !== undefined).at(-1)?.trace.settled?.events,
+      }), `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
+      if (singleTextParts !== undefined) {
+        const eos = model._prepare_generation_config(null, options).eos_token_id;
+        const eosIds = z.array(z.number().int().nonnegative().safe()).parse(eos === null || eos === undefined ? [] : Array.isArray(eos) ? eos : [eos]);
+        expect(eosIds.map(String).sort(), 'model-owned native termination IDs').toEqual([...singleTextParts.endTokenIds].sort());
+      }
       const result = replayCapturedFullInvocation({ invocation, options, runtime, modelConfig: model.config, parameters: request?.input?.parameters });
       if (completeResult === undefined) return result;
       const completed = completeResult({ ...args, callOrdinal: sourceCallOrdinal, result });
@@ -453,6 +485,19 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     expect(provider.run).toEqual({ status: 'completed' });
     expect(new Set(provider.requests.map(request => request.scenario))).toEqual(new Set([...evidence.requests.map(request => request.scenario), ...unavailableOutputs.map(gap => gap.scenario)]));
     expect(provider.requests.map(request => request.scenario), 'original whole-sequence request order').toEqual([...new Set([...evidence.requests.map(request => request.scenario), ...unavailableOutputs.map(gap => gap.scenario)])]);
+    expect(takes).toHaveLength(1); expect(takes[0]).not.toHaveBeenCalled();
+    await owner.collectNative(); expect(takes[0]).toHaveBeenCalledOnce();
+    const snapshot = owner.snapshot();
+    switch (snapshot.native.status) {
+    case 'retained': break;
+    case 'released': throw new Error('Missing real native collection');
+    default: { const exhaustive: never = snapshot.native; throw new Error(String(exhaustive)); }
+    }
+    expect(snapshot.native.capture.epochs).toHaveLength(1);
+    const epoch = snapshot.native.capture.epochs[0]!;
+    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Missing real native capture');
+    const capture = epoch.collection.result.capture;
+    let precedingEvents: readonly ProductionProviderTraceEvent[] | undefined;
     for (const request of provider.requests) {
       const gap = unavailableOutputs.find(item => item.scenario === request.scenario);
       if (gap !== undefined) {
@@ -469,10 +514,22 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       }
       const recorded = evidence.requests.find(item => item.scenario === request.scenario)!;
       expect(request.trace.settled?.outcome, `${request.scenario}/${JSON.stringify(request.trace.settled?.outcome)}`).toEqual({ status: 'fulfilled' });
-      expect(jsonProjection({ value: request.input }), `${request.scenario}/Provider input`).toEqual(recorded.input);
+      const comparableInput = jsonProjection({ value: request.input });
+      expect(singleTextParts === undefined ? comparableInput : projectSingleTextReplayInput({ input: comparableInput, precedingEvents }), `${request.scenario}/Provider input`).toEqual(recorded.input);
       const corrected = correctedEvents.get(request.scenario);
       if (corrected !== undefined) usedCorrections.push(request.scenario);
-      expect(providerEvents({ events: request.trace.settled!.events }), `${request.scenario}/settled callbacks`).toEqual(corrected ?? recorded.events);
+      if (singleTextParts === undefined) {
+        expect(providerEvents({ events: request.trace.settled!.events }), `${request.scenario}/settled callbacks`).toEqual(corrected ?? recorded.events);
+      } else {
+        const invocations = evidence.invocations.filter(invocation => invocation.scenario === request.scenario);
+        expect(invocations, 'single-text request has exactly one native invocation').toHaveLength(1);
+        const invocation = invocations[0]!;
+        const events = capture.events.filter(event => event.identity.generationCallId === runtimeOrdinals.get(invocation.callOrdinal));
+        verifySingleTextPartsObservation({ recordedEvents: recorded.events, invocation, contract: singleTextParts,
+          observedEvents: request.trace.settled!.events, finalized: readCapturedFinalized({ events, label: request.scenario }),
+        });
+        precedingEvents = request.trace.settled!.events;
+      }
       expect(request.trace.completeness, request.scenario).toBe('complete');
       expect(request.trace.lateEvents, request.scenario).toEqual([]);
     }
@@ -481,18 +538,6 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     const expectedCallCount = new Set([...evidence.invocations.map(item => item.callOrdinal), ...unavailableOutputs.map(item => item.callOrdinal)]).size;
     expect(callOrdinal).toBe(expectedCallCount);
     expect(verifiedGaps, gapFailures.join('\n')).toEqual(unavailableOutputs.map(item => item.callOrdinal));
-    expect(takes).toHaveLength(1); expect(takes[0]).not.toHaveBeenCalled();
-    await owner.collectNative(); expect(takes[0]).toHaveBeenCalledOnce();
-    const snapshot = owner.snapshot();
-    switch (snapshot.native.status) {
-    case 'retained': break;
-    case 'released': throw new Error('Missing real native collection');
-    default: { const exhaustive: never = snapshot.native; throw new Error(String(exhaustive)); }
-    }
-    expect(snapshot.native.capture.epochs).toHaveLength(1);
-    const epoch = snapshot.native.capture.epochs[0]!;
-    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Missing real native capture');
-    const capture = epoch.collection.result.capture;
     const load = epoch.collection.result.loadObservation;
     if (load === undefined) throw new Error('Missing actual ordinary Load receipt');
     switch (load.outcome.status) {
@@ -544,18 +589,13 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       const sequence = z.object({ status: z.literal('captured'), dtype: z.literal('int64'), dims: z.array(z.number()), byteLength: z.number(), bytes: z.instanceof(Uint8Array) }).parse(sequences[0]!.snapshot);
       const { tokens: _tokens, ...sequenceFact } = invocation.sequence;
       expect({ dtype: sequence.dtype, dims: sequence.dims, byteLength: sequence.byteLength, sha256: hash({ bytes: sequence.bytes }) }, `${label}/captured sequence bytes`).toEqual(sequenceFact);
-      const finalized = events.filter(event => event.kind === 'native-stream').filter(event => event.phase === 'entering' && event.operation === 'on_finalized_text')
-        .map(event => {
-          const { detail } = event;
-          switch (detail.kind) {
-          case 'finalized-text': return { text: detail.text, streamEnd: detail.streamEnd };
-          case 'tokens': case 'none': case 'not-recorded': throw new Error(`Missing finalized callback: ${label}`);
-          default: { const exhaustive: never = detail; throw new Error(String(exhaustive)); }
-          }
-        });
+      const finalized = readCapturedFinalized({ events, label });
       const correctedFinalized = correctedFinalizedStreams.get(invocation.callOrdinal);
       if (correctedFinalized !== undefined) usedFinalizedCorrections.push(invocation.callOrdinal);
-      expect(finalized, `${label}/actual finalized stream`).toEqual(correctedFinalized ?? invocation.finalized);
+      // Parts-mode callbacks were checked against the unchanged old text and
+      // every actual applied revision above. Legacy mode still checks exact
+      // callback segmentation, including explicitly reviewed corrections.
+      if (singleTextParts === undefined) expect(finalized, `${label}/actual finalized stream`).toEqual(correctedFinalized ?? invocation.finalized);
       const pre = events.filter(event => event.kind === 'inputs').find(event => event.phase === 'pre-budget');
       if (pre === undefined) throw new Error(`Missing pre-budget inputs: ${label}`);
       for (const input of invocation.preInputs) {

@@ -15,6 +15,7 @@ import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transforme
 import { generationCaptureReadResultSchema, type GenerationCaptureRequest } from './generation-capture-protocol';
 import { toToolCallId } from '@/01-models/ids';
 import type { ChatMessage } from '@/01-models/types';
+import type { GenerationStrategy } from '@/features/transformers-js/generation-strategies';
 import { applyTransformersJsFixes } from '../../../../build/transformers-js-fixes/transform';
 import { bundledJinjaTemplate } from '../../../../build/transformers-js-fixes/jinja-template-fixture';
 
@@ -3680,11 +3681,11 @@ Use shell tools.<|im_end|>
       ]);
     });
 
-    it('delivers structured generation in order and awaits the host before settling', async () => {
+    it.each<GenerationStrategy['kind']>(['standard', 'gpt-oss', 'qwen3_5', 'gemma4'])('delivers %s structured generation in order and awaits the host before settling', async kind => {
       const module = await import('@/features/transformers-js/generation-strategies');
       const started = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
       const received: import('@/features/transformers-js/generation-events').InferenceGenerationEvent[] = [];
-      const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({ kind: 'gpt-oss', generate: async ({ onGenerationEvent }) => {
+      const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({ kind, generate: async ({ onGenerationEvent }) => {
         if (onGenerationEvent === undefined) throw new Error('Expected structured event sink');
         onGenerationEvent({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
         onGenerationEvent({ event: { type: 'text_delta', index: 0, text: '  R\n' } });
@@ -3710,9 +3711,9 @@ Use shell tools.<|im_end|>
       }
     });
 
-    it('propagates a failed structured acknowledgement instead of reporting generation success', async () => {
+    it.each<GenerationStrategy['kind']>(['standard', 'gpt-oss', 'qwen3_5', 'gemma4'])('propagates a failed %s structured acknowledgement instead of reporting generation success', async kind => {
       const module = await import('@/features/transformers-js/generation-strategies'); const fault = new Error('host failed');
-      const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({ kind: 'gpt-oss', generate: async ({ onGenerationEvent }) => {
+      const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({ kind, generate: async ({ onGenerationEvent }) => {
         onGenerationEvent?.({ event: { type: 'part_start', index: 0, kind: 'text' } });
         onGenerationEvent?.({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       } });
@@ -3727,9 +3728,12 @@ Use shell tools.<|im_end|>
       }
     });
 
-    it('rejects structured generation for an unsupported model before native inference', async () => {
+    it('retains the strategy-specific rejection for unsupported structured tool history before native inference', async () => {
       const sink = vi.fn();
-      await expect(workerObj.generateText([], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toThrow('Structured generation is not supported');
+      await expect(workerObj.generateText([
+        { role: 'assistant', content: '', tool_calls: [{ id: toToolCallId('call'), type: 'function', function: { name: 'weather', arguments: '{}' } }] },
+        { role: 'tool', content: 'Sunny', tool_call_id: toToolCallId('call') },
+      ], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toThrow('This standard tool history has no reviewed structured input adapter.');
       expect(sink).not.toHaveBeenCalled(); expect(mockGenerate).not.toHaveBeenCalled();
     });
 

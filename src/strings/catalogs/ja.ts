@@ -21,6 +21,10 @@ import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } fro
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/ja';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/ja';
 
+import { ChatPage__failed_to_load_chat } from '@/strings/messages/ChatPage__failed_to_load_chat/ja';
+import { ChatPage__retry } from '@/strings/messages/ChatPage__retry/ja';
+import { ChatPage__loading_chat } from '@/strings/messages/ChatPage__loading_chat/ja';
+
 import { AboutTab__about_naidan } from '@/strings/messages/AboutTab__about_naidan/ja';
 import { AboutTab__built_with_open_source_software } from '@/strings/messages/AboutTab__built_with_open_source_software/ja';
 import { AboutTab__github_repository } from '@/strings/messages/AboutTab__github_repository/ja';
@@ -1814,6 +1818,9 @@ export const catalog = {
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
 
+  ChatPage__failed_to_load_chat,
+  ChatPage__retry,
+  ChatPage__loading_chat,
   AboutTab__about_naidan,
   AboutTab__built_with_open_source_software,
   AboutTab__github_repository,
