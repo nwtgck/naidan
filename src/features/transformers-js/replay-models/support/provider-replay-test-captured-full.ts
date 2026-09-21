@@ -10,6 +10,7 @@ import type { ProductionProviderTraceEvent } from '@/features/transformers-js/mo
 import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/production-load-receipt';
 import type { generationCaptureTakeResultSchema } from '@/features/transformers-js/worker/generation-capture';
 import { projectSingleTextReplayInput, validateSingleTextPartsContract, verifySingleTextPartsObservation, type SingleTextPartsReplayContract } from './provider-replay-single-text-parts';
+import { assertStructuredReplayInputCompatibility, validateStructuredPartsContract, verifyStructuredInvocationTermination, verifyStructuredPartsInventory, verifyStructuredPartsObservation, type StructuredPartsReplayContract } from './provider-replay-structured-parts';
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const token = z.string().regex(/^(?:0|[1-9][0-9]*)$/u).max(20);
@@ -300,6 +301,7 @@ export type ReviewedProviderReplayContract = {
   // Opt-in only for model-owned single-text captures. Other archived protocols
   // retain their exact callback contract until explicitly migrated.
   singleTextParts?: SingleTextPartsReplayContract;
+  structuredParts?: StructuredPartsReplayContract;
   // Explicit model-owned input restrictions. Historical output remains in the
   // evidence, but must never be released for a currently rejected request.
   preNativeRejections?: readonly { scenario: z.infer<typeof captureScenarioSchema>; reason: string }[];
@@ -330,10 +332,19 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
   const invalidated = reviewedPublicContract?.invalidatedOutputs ?? [];
   const gapOrdinals = new Set(originalGaps.map(gap => gap.callOrdinal));
   const gapScenarios = new Set(originalGaps.map(gap => gap.scenario));
+  if (reviewedPublicContract?.singleTextParts !== undefined && reviewedPublicContract.structuredParts !== undefined) {
+    throw new Error('Select one reviewed parts observation contract');
+  }
   if (reviewedPublicContract?.singleTextParts !== undefined) {
     validateSingleTextPartsContract({ contract: reviewedPublicContract.singleTextParts });
     if (reviewedPublicContract.correctedEvents.length || reviewedPublicContract.correctedFinalizedStreams?.length) {
       throw new Error('Plain-text parts and explicit callback corrections must not overlap');
+    }
+  }
+  if (reviewedPublicContract?.structuredParts !== undefined) {
+    validateStructuredPartsContract({ contract: reviewedPublicContract.structuredParts, evidence });
+    if (reviewedPublicContract.correctedEvents.length || reviewedPublicContract.correctedFinalizedStreams?.length) {
+      throw new Error('Structured parts and explicit callback corrections must not overlap');
     }
   }
   for (const gap of invalidated) {
@@ -364,7 +375,7 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
   }
   for (const rejection of reviewedPublicContract?.preNativeRejections ?? []) {
     if (rejection.reason.trim().length === 0) throw new Error('Missing reviewed pre-native rejection reason');
-    if (reviewedPublicContract?.singleTextParts === undefined) throw new Error('Pre-native rejection requires the structured parts contract');
+    if (reviewedPublicContract?.singleTextParts === undefined && reviewedPublicContract?.structuredParts === undefined) throw new Error('Pre-native rejection requires the structured parts contract');
     if (preNativeRejections.has(rejection.scenario) || gapScenarios.has(rejection.scenario)
       || correctedEvents.has(rejection.scenario)
       || evidence.invocations.some(call => call.scenario === rejection.scenario && correctedFinalizedStreams.has(call.callOrdinal))) {
@@ -407,8 +418,17 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
 }) {
   const evidence = parseCapturedFullReplay({ value: source });
   const singleTextParts = reviewedPublicContract?.singleTextParts;
+  const structuredParts = reviewedPublicContract?.structuredParts;
   expect(originalGaps.filter(item => evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)).map(item => item.callOrdinal)).toEqual(evidence.unavailableRecordedCalls ?? []);
   const { correctedEvents, correctedFinalizedStreams, preNativeRejections, gaps: unavailableOutputs } = validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps });
+  if (structuredParts !== undefined) {
+    const gapOrdinals = new Set(unavailableOutputs.map(item => item.callOrdinal));
+    verifyStructuredPartsInventory({
+      contract: structuredParts,
+      invocationOrdinals: evidence.invocations.filter(item => !preNativeRejections.has(item.scenario) && !gapOrdinals.has(item.callOrdinal)).map(item => item.callOrdinal),
+      requestScenarios: evidence.requests.map(item => item.scenario),
+    });
+  }
   const usedCorrections: string[] = [];
   const usedFinalizedCorrections: number[] = [];
   const metadata = readModelFixture({ modelId: evidence.modelId });
@@ -465,15 +485,27 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       expect(request?.scenario, 'active request before stream release').toBe(invocation.scenario);
       const recorded = evidence.requests.find(item => item.scenario === invocation.scenario)!;
       const comparableInput = jsonProjection({ value: request.input });
-      expect(singleTextParts === undefined ? comparableInput : projectSingleTextReplayInput({ input: comparableInput,
-        precedingEvents: owner.snapshotProvider().requests.filter(item => item.trace.settled !== undefined).at(-1)?.trace.settled?.events,
-      }), `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
+      const precedingSettledEvents = owner.snapshotProvider().requests.filter(item => item.trace.settled !== undefined).at(-1)?.trace.settled?.events;
       if (singleTextParts !== undefined) {
+        expect(projectSingleTextReplayInput({ input: comparableInput, precedingEvents: precedingSettledEvents }), `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
+      } else if (structuredParts !== undefined) {
+        assertStructuredReplayInputCompatibility({ input: comparableInput, recordedInput: recorded.input, precedingEvents: precedingSettledEvents,
+          allowLegacyProjection: structuredParts.legacyInputProjectionScenarios?.includes(invocation.scenario) ? 'allowed' : 'forbidden' });
+      } else {
+        expect(comparableInput, `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
+      }
+      if (singleTextParts !== undefined || structuredParts !== undefined) {
         const eos = model._prepare_generation_config(null, options).eos_token_id;
         const eosIds = z.array(z.number().int().nonnegative().safe()).parse(eos === null || eos === undefined ? [] : Array.isArray(eos) ? eos : [eos]);
-        expect(eosIds.map(String).sort(), 'model-owned native termination IDs').toEqual([...singleTextParts.endTokenIds].sort());
+        const endTokenIds = singleTextParts?.endTokenIds ?? structuredParts!.endTokenIds;
+        expect(eosIds.map(String).sort(), 'model-owned native termination IDs').toEqual([...endTokenIds].sort());
       }
       const result = replayCapturedFullInvocation({ invocation, options, runtime, modelConfig: model.config, parameters: request?.input?.parameters });
+      if (structuredParts !== undefined) {
+        const expected = structuredParts.invocations.find(item => item.callOrdinal === sourceCallOrdinal);
+        if (expected === undefined) throw new Error('Missing structured-parts invocation declaration');
+        verifyStructuredInvocationTermination({ invocation, expected, contract: structuredParts });
+      }
       if (completeResult === undefined) return result;
       const completed = completeResult({ ...args, callOrdinal: sourceCallOrdinal, result });
       const dictionary = z.object({ sequences: z.instanceof(runtime.Tensor) }).parse(completed);
@@ -517,11 +549,31 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     const epoch = snapshot.native.capture.epochs[0]!;
     if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Missing real native capture');
     const capture = epoch.collection.result.capture;
+    const captureOrdinals = new Map<number, number>();
+    for (const request of provider.requests) {
+      if (preNativeRejections.has(request.scenario)) continue;
+      const sourceCalls = [...evidence.invocations, ...(evidence.nativeInputGaps ?? [])]
+        .filter(item => item.scenario === request.scenario).sort((left, right) => left.callOrdinal - right.callOrdinal);
+      expect(new Set(sourceCalls.map(item => item.callOrdinal)).size, `${request.scenario}/distinct captured source calls`).toBe(sourceCalls.length);
+      const actualCalls = capture.calls.filter(call => call.context.requestId === request.requestId);
+      expect(actualCalls, `${request.scenario}/captured generation calls`).toHaveLength(sourceCalls.length);
+      for (const [index, sourceCall] of sourceCalls.entries()) {
+        captureOrdinals.set(sourceCall.callOrdinal, actualCalls[index]!.context.generationCallId);
+      }
+    }
     let precedingEvents: readonly ProductionProviderTraceEvent[] | undefined;
     for (const request of provider.requests) {
       if (preNativeRejections.has(request.scenario)) {
         const recorded = evidence.requests.find(item => item.scenario === request.scenario)!;
-        expect(jsonProjection({ value: request.input }), `${request.scenario}/unchanged rejected input`).toEqual(recorded.input);
+        const comparableInput = jsonProjection({ value: request.input });
+        if (structuredParts === undefined) {
+          expect(comparableInput, `${request.scenario}/unchanged rejected input`).toEqual(recorded.input);
+        } else {
+          assertStructuredReplayInputCompatibility({
+            input: comparableInput, recordedInput: recorded.input, precedingEvents,
+            allowLegacyProjection: structuredParts.legacyInputProjectionScenarios?.includes(request.scenario) ? 'allowed' : 'forbidden',
+          });
+        }
         expect(request.trace.settled?.outcome, `${request.scenario}/explicit rejection`).toEqual({ status: 'rejected', errorName: 'Error' });
         const first = z.object({ kind: z.literal('assistant_message'), messageId: z.string().min(1) }).parse(request.trace.settled?.events[0]);
         expect(request.trace.settled?.events, `${request.scenario}/no parts or tool execution`).toEqual([
@@ -535,6 +587,12 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         expect(calls[0]).toMatchObject({ outcome: 'rejected', invocations: [] });
         expect(capture.events.filter(event => event.identity.requestId === request.requestId
           && (event.kind === 'native-stream' || event.kind === 'sequence')), `${request.scenario}/no native output`).toEqual([]);
+        if (structuredParts !== undefined) {
+          const expected = structuredParts.requests.find(item => item.scenario === request.scenario);
+          if (expected === undefined) throw new Error('Missing rejected structured-parts request declaration');
+          verifyStructuredPartsObservation({ events: request.trace.settled?.events ?? [], expected, settlement: 'rejected' });
+          precedingEvents = request.trace.settled?.events;
+        }
         continue;
       }
       const gap = unavailableOutputs.find(item => item.scenario === request.scenario);
@@ -542,30 +600,51 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         // The bounded public trace intentionally maps nonstandard error names to
         // unknown. The local verified-gap ledger below excludes assertion errors.
         expect(request.trace.settled?.outcome, request.scenario).toEqual({ status: 'rejected', errorName: 'unknown' });
-        verifyCapturedProviderPrefix({ events: request.trace.settled!.events, expected: gap.expectedEventsBeforeGap });
-        const sourceRequest = evidence.requests.find(item => item.scenario === request.scenario);
-        const actualTools = providerEvents({ events: request.trace.settled!.events }).filter(event => event.kind.startsWith('tool-'));
-        const sourceTools = (sourceRequest?.events ?? []).filter(event => typeof event === 'object' && event !== null && !Array.isArray(event) && typeof event.kind === 'string' && event.kind.startsWith('tool-'));
-        expect(actualTools, `${request.scenario}/executed tools before output gap`).toEqual(sourceTools);
+        if (structuredParts === undefined) {
+          verifyCapturedProviderPrefix({ events: request.trace.settled!.events, expected: gap.expectedEventsBeforeGap });
+        } else {
+          const expected = structuredParts.requests.find(item => item.scenario === request.scenario);
+          if (expected === undefined) throw new Error('Missing output-gap structured-parts request declaration');
+          verifyStructuredPartsObservation({ events: request.trace.settled!.events, expected, settlement: 'rejected' });
+          precedingEvents = request.trace.settled!.events;
+        }
+        if (structuredParts === undefined) {
+          const sourceRequest = evidence.requests.find(item => item.scenario === request.scenario);
+          const actualTools = providerEvents({ events: request.trace.settled!.events }).filter(event => event.kind.startsWith('tool-'));
+          const sourceTools = (sourceRequest?.events ?? []).filter(event => typeof event === 'object' && event !== null && !Array.isArray(event) && typeof event.kind === 'string' && event.kind.startsWith('tool-'));
+          expect(actualTools, `${request.scenario}/executed tools before output gap`).toEqual(sourceTools);
+        }
         expect(request.trace.lateEvents).toEqual([]);
         continue;
       }
       const recorded = evidence.requests.find(item => item.scenario === request.scenario)!;
       expect(request.trace.settled?.outcome, `${request.scenario}/${JSON.stringify(request.trace.settled?.outcome)}`).toEqual({ status: 'fulfilled' });
       const comparableInput = jsonProjection({ value: request.input });
-      expect(singleTextParts === undefined ? comparableInput : projectSingleTextReplayInput({ input: comparableInput, precedingEvents }), `${request.scenario}/Provider input`).toEqual(recorded.input);
+      if (singleTextParts !== undefined) {
+        expect(projectSingleTextReplayInput({ input: comparableInput, precedingEvents }), `${request.scenario}/Provider input`).toEqual(recorded.input);
+      } else if (structuredParts !== undefined) {
+        assertStructuredReplayInputCompatibility({ input: comparableInput, recordedInput: recorded.input, precedingEvents,
+          allowLegacyProjection: structuredParts.legacyInputProjectionScenarios?.includes(request.scenario) ? 'allowed' : 'forbidden' });
+      } else {
+        expect(comparableInput, `${request.scenario}/Provider input`).toEqual(recorded.input);
+      }
       const corrected = correctedEvents.get(request.scenario);
       if (corrected !== undefined) usedCorrections.push(request.scenario);
-      if (singleTextParts === undefined) {
+      if (singleTextParts === undefined && structuredParts === undefined) {
         expect(providerEvents({ events: request.trace.settled!.events }), `${request.scenario}/settled callbacks`).toEqual(corrected ?? recorded.events);
-      } else {
+      } else if (singleTextParts !== undefined) {
         const invocations = evidence.invocations.filter(invocation => invocation.scenario === request.scenario);
         expect(invocations, 'single-text request has exactly one native invocation').toHaveLength(1);
         const invocation = invocations[0]!;
-        const events = capture.events.filter(event => event.identity.generationCallId === runtimeOrdinals.get(invocation.callOrdinal));
+        const events = capture.events.filter(event => event.identity.generationCallId === captureOrdinals.get(invocation.callOrdinal));
         verifySingleTextPartsObservation({ recordedEvents: recorded.events, invocation, contract: singleTextParts,
           observedEvents: request.trace.settled!.events, finalized: readCapturedFinalized({ events, label: request.scenario }),
         });
+        precedingEvents = request.trace.settled!.events;
+      } else {
+        const expected = structuredParts!.requests.find(item => item.scenario === request.scenario);
+        if (expected === undefined) throw new Error('Missing structured-parts request declaration');
+        verifyStructuredPartsObservation({ events: request.trace.settled!.events, expected, settlement: 'fulfilled' });
         precedingEvents = request.trace.settled!.events;
       }
       expect(request.trace.completeness, request.scenario).toBe('complete');
@@ -598,7 +677,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     expect(capture.incompleteReasons).toEqual([]);
     expect(capture.calls).toHaveLength(expectedCallCount + preNativeRejections.size);
     for (const gap of unavailableOutputs) {
-      const runtimeOrdinal = runtimeOrdinals.get(gap.callOrdinal);
+      const runtimeOrdinal = captureOrdinals.get(gap.callOrdinal);
       expect(runtimeOrdinal, `${gap.scenario}/actual capture identity`).toBeDefined();
       expect(capture.calls.find(call => call.context.generationCallId === runtimeOrdinal)?.outcome, `${gap.scenario}/native gap settlement`).toBe('rejected');
       expect(capture.events.filter(event => event.identity.generationCallId === runtimeOrdinal && event.kind === 'native-stream'), `${gap.scenario}/no invented output`).toEqual([]);
@@ -609,7 +688,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       if (preNativeRejections.has(invocation.scenario)) continue;
       if (unavailableOutputs.some(gap => gap.callOrdinal === invocation.callOrdinal)) continue;
       const label = `${invocation.scenario}/call-${invocation.callOrdinal}`;
-      const runtimeOrdinal = runtimeOrdinals.get(invocation.callOrdinal);
+      const runtimeOrdinal = captureOrdinals.get(invocation.callOrdinal);
       expect(runtimeOrdinal, `${label}/actual capture identity`).toBeDefined();
       const events = capture.events.filter(event => event.identity.generationCallId === runtimeOrdinal);
       expect(events.find(event => event.kind === 'settings')?.value, `${label}/settings`).toEqual(invocation.settings);
@@ -634,7 +713,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       // Parts-mode callbacks were checked against the unchanged old text and
       // every actual applied revision above. Legacy mode still checks exact
       // callback segmentation, including explicitly reviewed corrections.
-      if (singleTextParts === undefined) expect(finalized, `${label}/actual finalized stream`).toEqual(correctedFinalized ?? invocation.finalized);
+      if (singleTextParts === undefined && structuredParts === undefined) expect(finalized, `${label}/actual finalized stream`).toEqual(correctedFinalized ?? invocation.finalized);
       const pre = events.filter(event => event.kind === 'inputs').find(event => event.phase === 'pre-budget');
       if (pre === undefined) throw new Error(`Missing pre-budget inputs: ${label}`);
       for (const input of invocation.preInputs) {

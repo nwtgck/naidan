@@ -5,6 +5,7 @@ import { closeProviderReplayCaptures, createReplayImageAttachment, runProviderRe
 import { assembleProviderSequenceEvidence, type ProviderReplayCatalog } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
 import { createProviderRequestReplay, createProviderRequestReplayWithOwnedCacheControl, type ProviderRequestNativeController } from '@/features/transformers-js/replay-models/support/provider-replay-request';
 import { parseCapturedFullReplay, replayCapturedFullInvocation, replayCapturedFullInvocationWithOwnedCache, verifyCapturedFullReplay, type OwnedReplayCacheControl } from '@/features/transformers-js/replay-models/support/provider-replay-test-captured-full';
+import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
 import ownedMinimal from './provider-natural-tool-minimal-owned-cache.evidence.json';
 import ownedRepresentative from './provider-natural-tool-representative-owned-cache.evidence.json';
 import independentToolHistory from './provider-structured-tool-history-independent.evidence.json';
@@ -1868,6 +1869,77 @@ describe('GPT-OSS 20B Provider / images', () => {
   }, 30_000);
 });
 
+const gptOssFullStructuredParts = {
+  completionTokenIds: ['199999', '200002', '200012'],
+  endTokenIds: ['199999', '200002'],
+  invocations: [
+    { callOrdinal: 1, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 3, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 4, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 5, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 6, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 7, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 8, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 9, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 10, terminal: { kind: 'control', tokenId: '200012' } },
+    { callOrdinal: 12, terminal: { kind: 'control', tokenId: '200012' } },
+  ],
+  requests: [
+    { scenario: 'first-turn', settlement: 'fulfilled', events: [{
+      kind: 'assistant',
+      parts: [{ type: 'reasoning', text: 'The user says "Template probe user message." This seems like a', completeness: 'partial' }],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'continuity', settlement: 'rejected', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' },
+    }] },
+    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'system-user', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'reasoning-low', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'reasoning-medium', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'reasoning-high', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'natural-tool-minimal', settlement: 'rejected', events: [
+      { kind: 'assistant', parts: [
+        { type: 'reasoning', text: 'We need to call the function.', completeness: 'complete' },
+        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+      ], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+      { kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' } },
+    ] },
+    { scenario: 'natural-tool-representative', settlement: 'rejected', events: [
+      { kind: 'assistant', parts: [
+        { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
+        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+      ], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+      { kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' } },
+    ] },
+    { scenario: 'structured-tool-history', settlement: 'rejected', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' },
+    }] },
+    { scenario: 'image', settlement: 'rejected', events: [{
+      kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' },
+    }] },
+  ],
+  legacyInputProjectionScenarios: ['continuity'],
+} satisfies StructuredPartsReplayContract;
+
 describe('GPT-OSS 20B Provider / sequences', () => {
   it('sequences: keeps structured caller history independent after a completed cache-producing tool request', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
@@ -2098,7 +2170,16 @@ Here’s the current weather in Tokyo:
     expect(recorded.metadataRevision).toBe('6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7');
     expect(recorded.observedCacheRevision).toBe('main');
     const caches = new Map<number, NonNullable<Parameters<ProviderReplayGenerate>[0]['options']['past_key_values']>>();
-    await verifyCapturedFullReplay({ reviewedPublicContract: undefined, evidence: recorded, imagePlatform: undefined, expectedLoadReceipt: undefined,
+    await verifyCapturedFullReplay({ reviewedPublicContract: {
+      correctedEvents: [],
+      correctedFinalizedStreams: undefined,
+      invalidatedOutputs: [],
+      preNativeRejections: [
+        { scenario: 'continuity', reason: 'Partial structured reasoning cannot be closed by the GPT-OSS template.' },
+        { scenario: 'image', reason: 'GPT-OSS is text-only and cannot omit image content.' },
+      ],
+      structuredParts: gptOssFullStructuredParts,
+    }, evidence: recorded, imagePlatform: undefined, expectedLoadReceipt: undefined,
       artifactPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', ...Array.from({ length: 6 }, (_, index) => `onnx/model_q4f16.onnx_data_${index + 1}`)],
       completeResult: ({ callOrdinal, runtime, result }) => {
         if (callOrdinal !== 10 && callOrdinal !== 12) return result;
