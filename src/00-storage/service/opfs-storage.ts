@@ -330,7 +330,8 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       fileHandle = await dir.getFileHandle('index.json');
     } catch (error) {
-      const isNotFound = error instanceof Error && (error.name === 'NotFoundError' || ('code' in error && error.code === 8));
+      const isNotFound = (error instanceof DOMException || error instanceof Error)
+        && (error.name === 'NotFoundError' || ('code' in error && error.code === 8));
       if (isNotFound) return { objects: {} };
       throw error;
     }
@@ -811,41 +812,39 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
 
       // 2. Stream all binary objects directly from storage (independent of chat references)
-      try {
-        const baseDir = await this.getBinaryObjectsDir();
-        for await (const shardEntry of baseDir.values()) {
-          const kind = shardEntry.kind;
-          switch (kind) {
-          case 'directory': {
-            const shard = shardEntry.name;
-            const index = await this.loadShardIndex({ shard: shard });
-            for (const bId of Object.keys(index.objects)) {
-              const meta = index.objects[bId]!;
-              const blob = await this.getFile({ binaryObjectId: toBinaryObjectId({ raw: bId }) });
-              if (blob) {
-                yield {
-                  type: 'binary_object' as const,
-                  id: bId,
-                  name: meta.name ?? 'file',
-                  mimeType: meta.mimeType,
-                  size: meta.size,
-                  createdAt: meta.createdAt,
-                  blob,
-                };
-              }
+      // Existing index read failures must abort export instead of finalizing a
+      // partial backup. Only a missing index is handled by loadShardIndex.
+      const baseDir = await this.getBinaryObjectsDir();
+      for await (const shardEntry of baseDir.values()) {
+        const kind = shardEntry.kind;
+        switch (kind) {
+        case 'directory': {
+          const shard = shardEntry.name;
+          const index = await this.loadShardIndex({ shard: shard });
+          for (const bId of Object.keys(index.objects)) {
+            const meta = index.objects[bId]!;
+            const blob = await this.getFile({ binaryObjectId: toBinaryObjectId({ raw: bId }) });
+            if (blob) {
+              yield {
+                type: 'binary_object' as const,
+                id: bId,
+                name: meta.name ?? 'file',
+                mimeType: meta.mimeType,
+                size: meta.size,
+                createdAt: meta.createdAt,
+                blob,
+              };
             }
-            break;
           }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = kind;
-            throw new Error(`Unhandled entry kind: ${_ex}`);
-          }
-          }
+          break;
         }
-      } catch (e) {
-        console.warn('[OPFSStorageProvider] Failed to dump some binary objects', e);
+        case 'file':
+          break;
+        default: {
+          const _ex: never = kind;
+          throw new Error(`Unhandled entry kind: ${_ex}`);
+        }
+        }
       }
     };
 
