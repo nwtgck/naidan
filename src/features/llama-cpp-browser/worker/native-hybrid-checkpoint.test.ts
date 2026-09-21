@@ -92,7 +92,7 @@ beforeAll(async () => {
     },
   });
   await core.api.llama_backend_init();
-  core.module.FS.writeFile('/tiny-lfm2.gguf', createTinyLfm2Gguf());
+  core.module.FS.writeFile('/tiny-lfm2.gguf', createTinyLfm2Gguf({ chatTemplate: undefined }));
   const filename = core.utf8({ text: '/tiny-lfm2.gguf' });
   const modelParams = core.allocRecord({ name: 'llama_model_params' });
   const contextParams = core.allocRecord({ name: 'llama_context_params' });

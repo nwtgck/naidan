@@ -3,7 +3,7 @@
  * All weights and the byte vocabulary are synthetic; no published model,
  * tokenizer, or chat-template artifacts are copied or redistributed here.
  */
-export function createTinyLfm2Gguf(): Uint8Array {
+export function createTinyLfm2Gguf({ chatTemplate }: { chatTemplate: string | undefined }): Uint8Array {
   function join({ parts }: { parts: Uint8Array[] }): Uint8Array {
     const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
     let offset = 0;
@@ -49,6 +49,9 @@ export function createTinyLfm2Gguf(): Uint8Array {
     ['tokenizer.ggml.model', 'llama'],
   ] satisfies [string, string][]) {
     metadata.push(entry({ name, type: 8, data: text({ value }) }));
+  }
+  if (chatTemplate !== undefined) {
+    metadata.push(entry({ name: 'tokenizer.chat_template', type: 8, data: text({ value: chatTemplate }) }));
   }
   for (const [name, value] of [
     ['lfm2.context_length', 256],
