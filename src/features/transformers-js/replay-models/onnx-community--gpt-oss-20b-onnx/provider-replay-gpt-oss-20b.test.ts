@@ -1918,7 +1918,7 @@ const gptOssFullStructuredParts = {
       { kind: 'assistant', parts: [
         { type: 'reasoning', text: 'We need to call the function.', completeness: 'complete' },
         { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'finished', next: 'tool_results' } },
+      ], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' } },
     ] },
@@ -1926,7 +1926,7 @@ const gptOssFullStructuredParts = {
       { kind: 'assistant', parts: [
         { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
         { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'finished', next: 'tool_results' } },
+      ], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' } },
     ] },
@@ -1937,7 +1937,9 @@ const gptOssFullStructuredParts = {
       kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' },
     }] },
   ],
-  legacyInputProjectionScenarios: ['continuity'],
+  legacyInputProjections: [{ scenario: 'continuity', assistant: {
+    role: 'assistant', content: '<think>The user says "Template probe user message." This seems like a',
+  } }],
 } satisfies StructuredPartsReplayContract;
 
 describe('GPT-OSS 20B Provider / sequences', () => {

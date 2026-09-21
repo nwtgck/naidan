@@ -1886,12 +1886,12 @@ const lfm230FullStructuredParts = {
       { kind: 'assistant', parts: [
         { type: 'text', text: "I'll retrieve the weather data for Tokyo using the available tool.", completeness: 'complete' },
         { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'finished', next: 'tool_results' } },
+      ], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
     ] },
     { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo today is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
     ] },
@@ -1900,7 +1900,7 @@ const lfm230FullStructuredParts = {
     ], terminal: { type: 'finished', next: 'user' } }] },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
-  legacyInputProjectionScenarios: ['continuity'],
+  legacyInputProjections: [{ scenario: 'continuity', assistant: { role: 'assistant', content: "I'm sorry, but I can't help with that." } }],
 } satisfies StructuredPartsReplayContract;
 
 describe('LFM2.5 230M Provider / sequences', () => {

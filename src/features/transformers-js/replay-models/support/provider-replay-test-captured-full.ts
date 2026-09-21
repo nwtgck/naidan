@@ -426,7 +426,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     verifyStructuredPartsInventory({
       contract: structuredParts,
       invocationOrdinals: evidence.invocations.filter(item => !preNativeRejections.has(item.scenario) && !gapOrdinals.has(item.callOrdinal)).map(item => item.callOrdinal),
-      requestScenarios: evidence.requests.map(item => item.scenario),
+      requestScenarios: [...new Set([...evidence.requests.map(item => item.scenario), ...unavailableOutputs.map(item => item.scenario)])],
     });
   }
   const usedCorrections: string[] = [];
@@ -490,7 +490,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         expect(projectSingleTextReplayInput({ input: comparableInput, precedingEvents: precedingSettledEvents }), `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
       } else if (structuredParts !== undefined) {
         assertStructuredReplayInputCompatibility({ input: comparableInput, recordedInput: recorded.input, precedingEvents: precedingSettledEvents,
-          allowLegacyProjection: structuredParts.legacyInputProjectionScenarios?.includes(invocation.scenario) ? 'allowed' : 'forbidden' });
+          expectedLegacyAssistant: structuredParts.legacyInputProjections?.find(item => item.scenario === invocation.scenario)?.assistant });
       } else {
         expect(comparableInput, `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
       }
@@ -571,7 +571,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         } else {
           assertStructuredReplayInputCompatibility({
             input: comparableInput, recordedInput: recorded.input, precedingEvents,
-            allowLegacyProjection: structuredParts.legacyInputProjectionScenarios?.includes(request.scenario) ? 'allowed' : 'forbidden',
+            expectedLegacyAssistant: structuredParts.legacyInputProjections?.find(item => item.scenario === request.scenario)?.assistant,
           });
         }
         expect(request.trace.settled?.outcome, `${request.scenario}/explicit rejection`).toEqual({ status: 'rejected', errorName: 'Error' });
@@ -624,7 +624,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         expect(projectSingleTextReplayInput({ input: comparableInput, precedingEvents }), `${request.scenario}/Provider input`).toEqual(recorded.input);
       } else if (structuredParts !== undefined) {
         assertStructuredReplayInputCompatibility({ input: comparableInput, recordedInput: recorded.input, precedingEvents,
-          allowLegacyProjection: structuredParts.legacyInputProjectionScenarios?.includes(request.scenario) ? 'allowed' : 'forbidden' });
+          expectedLegacyAssistant: structuredParts.legacyInputProjections?.find(item => item.scenario === request.scenario)?.assistant });
       } else {
         expect(comparableInput, `${request.scenario}/Provider input`).toEqual(recorded.input);
       }

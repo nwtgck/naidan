@@ -14,22 +14,28 @@ describe('structured parts Full replay contract', () => {
       { kind: 'part_text', messageId: 'assistant-1', partId: 'reasoning', index: 0, partType: 'reasoning', text: '', completeness: 'partial', sequence: 1, phase: 'before-settlement' },
       { kind: 'part_text', messageId: 'assistant-1', partId: 'reasoning', index: 0, partType: 'reasoning', text: 'private', completeness: 'complete', sequence: 2, phase: 'before-settlement' },
       { kind: 'part_call', messageId: 'assistant-1', partId: 'call', index: 1, toolCallId: 'runtime-id', toolName: 'lookup', modelVisibleArguments: '{"city":"Tokyo"}', sequence: 3, phase: 'before-settlement' },
-      { kind: 'generation_finished', next: 'tool_results', sequence: 4, phase: 'before-settlement' },
-      { kind: 'tool-success', toolCallId: 'runtime-id', content: 'clear', sequence: 5, phase: 'before-settlement' },
-      { kind: 'assistant_message', messageId: 'assistant-2', sequence: 6, phase: 'before-settlement' },
-      { kind: 'part_text', messageId: 'assistant-2', partId: 'text', index: 0, partType: 'text', text: 'done', completeness: 'complete', sequence: 7, phase: 'before-settlement' },
-      { kind: 'generation_finished', next: 'user', sequence: 8, phase: 'before-settlement' },
+      { kind: 'tool-success', toolCallId: 'runtime-id', content: 'clear', sequence: 4, phase: 'before-settlement' },
+      { kind: 'assistant_message', messageId: 'assistant-2', sequence: 5, phase: 'before-settlement' },
+      { kind: 'part_text', messageId: 'assistant-2', partId: 'text', index: 0, partType: 'text', text: 'done', completeness: 'complete', sequence: 6, phase: 'before-settlement' },
+      { kind: 'generation_finished', next: 'user', sequence: 7, phase: 'before-settlement' },
     ];
     expect(TEST_ONLY.projectStructuredEvents({ events })).toEqual([
       { kind: 'assistant', parts: [
         { type: 'reasoning', text: 'private', completeness: 'complete' },
         { type: 'tool_call', name: 'lookup', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'finished', next: 'tool_results' } },
+      ], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: 'clear' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'done', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
     ]);
     const replaced = events.map(event => event.kind === 'part_text' && event.sequence === 1 ? { ...event, text: 'changed' } : event);
     expect(() => TEST_ONLY.projectStructuredEvents({ events: replaced })).toThrow(/accepted text/);
+    const terminalBeforeTool = events.toSpliced(4, 0,
+      { kind: 'generation_error', errorName: 'Error', sequence: 4, phase: 'before-settlement' });
+    const resequenced = terminalBeforeTool.map((event, sequence) => ({ ...event, sequence }));
+    expect(() => TEST_ONLY.projectStructuredEvents({ events: resequenced })).toThrow(/open structured call boundary/);
+    expect(TEST_ONLY.projectStructuredEvents({ events: events.slice(0, -1) }).at(-1)).toEqual({
+      kind: 'assistant', parts: [{ type: 'text', text: 'done', completeness: 'complete' }], terminal: { type: 'none' },
+    });
   });
 
   it('keeps fulfilled no-result, iterator rejection and delivered errors distinct', () => {
@@ -84,10 +90,15 @@ describe('structured parts Full replay contract', () => {
     ];
     const recordedInput = { messages: [{ role: 'user', content: 'u' }, { role: 'assistant', content: '<think>private' }], tools: [], parameters: {} };
     const input = { messages: [{ role: 'user', content: 'u' }, { role: 'assistant', parts: [{ id: 'reasoning', type: 'reasoning', text: 'private', completeness: 'partial' }] }], tools: [], parameters: {} };
-    expect(assertStructuredReplayInputCompatibility({ input, recordedInput, precedingEvents: preceding, allowLegacyProjection: 'allowed' })).toBeUndefined();
+    const expectedLegacyAssistant = { role: 'assistant' as const, content: '<think>private' };
+    expect(assertStructuredReplayInputCompatibility({ input, recordedInput, precedingEvents: preceding, expectedLegacyAssistant })).toBeUndefined();
     const changed = structuredClone(input);
     changed.messages[1]!.parts![0]!.text = 'changed';
-    expect(() => assertStructuredReplayInputCompatibility({ input: changed, recordedInput, precedingEvents: preceding, allowLegacyProjection: 'allowed' })).toThrow(/preceding applied parts/);
+    expect(() => assertStructuredReplayInputCompatibility({ input: changed, recordedInput, precedingEvents: preceding, expectedLegacyAssistant })).toThrow(/preceding applied parts/);
+    const changedRecorded = structuredClone(recordedInput);
+    changedRecorded.messages[1]!.content = '<think>changed';
+    expect(() => assertStructuredReplayInputCompatibility({ input, recordedInput: changedRecorded, precedingEvents: preceding, expectedLegacyAssistant }))
+      .toThrow(/model-owned expected projection/);
   });
 
   it('rejects unknown declarations and duplicate controls without changing evidence', () => {
@@ -114,7 +125,7 @@ describe('structured parts Full replay contract', () => {
       contract, invocationOrdinals: [source.callOrdinal, source.callOrdinal + 1], requestScenarios: ['first-turn'],
     })).toThrow(/every replayed structured invocation/);
     expect(() => verifyStructuredPartsInventory({
-      contract, invocationOrdinals: [source.callOrdinal], requestScenarios: ['first-turn', 'history'],
+      contract, invocationOrdinals: [source.callOrdinal], requestScenarios: ['first-turn', 'continuity'],
     })).toThrow(/every settled structured request/);
   });
 });

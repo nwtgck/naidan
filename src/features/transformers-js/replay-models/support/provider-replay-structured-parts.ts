@@ -36,7 +36,10 @@ export type StructuredPartsReplayContract = {
     settlement: 'fulfilled' | 'rejected';
     events: readonly StructuredPartsExpectedEvent[];
   }[];
-  legacyInputProjectionScenarios?: readonly Scenario[];
+  legacyInputProjections?: readonly {
+    scenario: Scenario;
+    assistant: { role: 'assistant'; content: string };
+  }[];
 };
 
 const tokenId = z.string().regex(/^(?:0|[1-9][0-9]*)$/u).max(20);
@@ -45,7 +48,7 @@ export function validateStructuredPartsContract({ contract, evidence }: {
   contract: StructuredPartsReplayContract;
   evidence: CapturedFullReplayEvidence;
 }): void {
-  const { completionTokenIds, endTokenIds, invocations, requests, legacyInputProjectionScenarios = [], ...unhandled } = contract;
+  const { completionTokenIds, endTokenIds, invocations, requests, legacyInputProjections = [], ...unhandled } = contract;
   unhandled satisfies Record<PropertyKey, never>;
   tokenId.array().min(1).parse(completionTokenIds);
   tokenId.array().min(1).parse(endTokenIds);
@@ -55,16 +58,19 @@ export function validateStructuredPartsContract({ contract, evidence }: {
   if (endTokenIds.some(id => !completionTokenIds.includes(id))) throw new Error('Every structured-parts end token must be a completion token');
   if (new Set(invocations.map(item => item.callOrdinal)).size !== invocations.length) throw new Error('Duplicate structured-parts invocation');
   if (new Set(requests.map(item => item.scenario)).size !== requests.length) throw new Error('Duplicate structured-parts request');
-  if (new Set(legacyInputProjectionScenarios).size !== legacyInputProjectionScenarios.length) throw new Error('Duplicate legacy input projection');
+  if (new Set(legacyInputProjections.map(item => item.scenario)).size !== legacyInputProjections.length) throw new Error('Duplicate legacy input projection');
   for (const item of invocations) {
     if (!evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)) throw new Error('Unknown structured-parts invocation');
     if (item.terminal.kind === 'control' && !completionTokenIds.includes(item.terminal.tokenId)) throw new Error('Undeclared structured-parts terminal control');
   }
   for (const item of requests) {
-    if (!evidence.requests.some(request => request.scenario === item.scenario)) throw new Error('Unknown structured-parts request');
+    if (!evidence.requests.some(request => request.scenario === item.scenario)
+      && !(evidence.nativeInputGaps ?? []).some(gap => gap.scenario === item.scenario)) {
+      throw new Error('Unknown structured-parts request');
+    }
   }
-  for (const scenario of legacyInputProjectionScenarios) {
-    if (!requests.some(request => request.scenario === scenario)) throw new Error('Legacy input projection requires a structured-parts request');
+  for (const projection of legacyInputProjections) {
+    if (!requests.some(request => request.scenario === projection.scenario)) throw new Error('Legacy input projection requires a structured-parts request');
   }
 }
 
@@ -107,6 +113,7 @@ export function verifyStructuredInvocationTermination({ invocation, expected, co
 function projectStructuredEvents({ events }: { events: readonly ProductionProviderTraceEvent[] }): StructuredPartsExpectedEvent[] {
   const projected: StructuredPartsExpectedEvent[] = [];
   const callIds = new Map<string, number>();
+  const toolPhaseCallIds = new Set<string>();
   let assistant: { messageId: string; parts: Map<string, { index: number; value: StructuredPartsExpectedPart }>; callIds: Set<string> } | undefined;
 
   function finishAssistant({ terminal }: { terminal: StructuredPartsExpectedTerminal }): void {
@@ -126,12 +133,15 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
     return ordinal;
   }
   function beginToolPhase({ rawId }: { rawId: string }): void {
-    if (assistant === undefined) return;
+    if (assistant === undefined) {
+      if (!toolPhaseCallIds.has(rawId)) throw new Error('Tool execution started without an open structured call boundary');
+      return;
+    }
     if (!assistant.callIds.has(rawId)) throw new Error('Tool execution started without a structured call');
-    finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'finished' }>>()({
-      type: 'finished',
-      next: 'tool_results',
-    }) });
+    for (const callId of assistant.callIds) toolPhaseCallIds.add(callId);
+    // generateChatTurn exposes one overall result after its caller-owned tool loop.
+    // A tool event is the observed boundary here; no per-assistant terminal was delivered.
+    finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'none' }>>()({ type: 'none' }) });
   }
 
   for (const [sequence, event] of events.entries()) {
@@ -142,6 +152,7 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
       const { kind: _kind, messageId, sequence: _sequence, phase: _phase, ...unhandled } = event;
       unhandled satisfies Record<PropertyKey, never>;
       if (assistant !== undefined) throw new Error('New structured assistant before prior terminal');
+      toolPhaseCallIds.clear();
       assistant = { messageId, parts: new Map(), callIds: new Set() };
       break;
     }
@@ -242,19 +253,16 @@ export function verifyStructuredPartsObservation({ events, expected, settlement 
 
 /** Post-materialization comparison only. This never supplies messages to the
  * runtime. Native template/token/tensor equality remains owned by Full replay. */
-export function assertStructuredReplayInputCompatibility({ input, recordedInput, precedingEvents, allowLegacyProjection }: {
+export function assertStructuredReplayInputCompatibility({ input, recordedInput, precedingEvents, expectedLegacyAssistant }: {
   input: unknown;
   recordedInput: unknown;
   precedingEvents: readonly ProductionProviderTraceEvent[] | undefined;
-  allowLegacyProjection: 'allowed' | 'forbidden';
+  expectedLegacyAssistant: { role: 'assistant'; content: string } | undefined;
 }): void {
   if (isDeepStrictEqual(input, recordedInput)) return;
-  switch (allowLegacyProjection) {
-  case 'forbidden':
+  if (expectedLegacyAssistant === undefined) {
     expect(input, 'structured Provider input without a reviewed legacy projection').toEqual(recordedInput);
     return;
-  case 'allowed': break;
-  default: { const exhaustive: never = allowLegacyProjection; throw new Error(String(exhaustive)); }
   }
   const current = z.object({ messages: z.array(z.unknown()) }).passthrough().parse(input);
   const recorded = z.object({ messages: z.array(z.unknown()) }).passthrough().parse(recordedInput);
@@ -265,6 +273,8 @@ export function assertStructuredReplayInputCompatibility({ input, recordedInput,
   });
   if (assistantIndices.length !== 1) throw new Error('Legacy structured input projection requires one parts assistant');
   const index = assistantIndices[0]!;
+  expect(recorded.messages[index], 'recorded legacy assistant matches the model-owned expected projection')
+    .toEqual(expectedLegacyAssistant);
   const revisions = new Map<string, { index: number; part: unknown }>();
   let messageId: string | undefined;
   for (const event of precedingEvents) {

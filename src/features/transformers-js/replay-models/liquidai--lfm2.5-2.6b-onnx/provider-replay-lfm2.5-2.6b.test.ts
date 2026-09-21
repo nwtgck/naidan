@@ -1819,7 +1819,7 @@ const lfm26FullStructuredParts = {
       { kind: 'assistant', parts: [
         { type: 'reasoning', text: 'The user wants me to use the weather tool for Tokyo. I need to call the lookup_weather function with the city parameter set to "Tokyo".', completeness: 'complete' },
         { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'finished', next: 'tool_results' } },
+      ], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [
         { type: 'reasoning', text: 'The weather tool has returned the weather data for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user.', completeness: 'complete' },
@@ -1835,7 +1835,7 @@ The user wants me to:
 
 Let me first call the lookup_weather function with city "Tokyo".`, completeness: 'complete' },
         { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'finished', next: 'tool_results' } },
+      ], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [
         { type: 'reasoning', text: 'The tool returned weather data for Tokyo: temperature is 20°C and the condition is "clear". I need to provide a short answer based on this result.', completeness: 'complete' },
@@ -1850,7 +1850,9 @@ Let me first call the lookup_weather function with city "Tokyo".`, completeness:
     }] },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
-  legacyInputProjectionScenarios: ['continuity'],
+  legacyInputProjections: [{ scenario: 'continuity', assistant: {
+    role: 'assistant', content: '<think>The user wants me to "Template probe user message." This is a bit ambiguous',
+  } }],
 } satisfies StructuredPartsReplayContract;
 
 describe('LFM2.5 2.6B Provider / sequences', () => {

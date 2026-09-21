@@ -2006,12 +2006,12 @@ User`, completeness: 'partial' },
       { type: 'text', text: 'S', completeness: 'partial' },
     ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
     { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
     ] },
     { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
     ] },
@@ -2020,7 +2020,7 @@ User`, completeness: 'partial' },
     ], terminal: { type: 'finished', next: 'user' } }] },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
-  legacyInputProjectionScenarios: ['continuity'],
+  legacyInputProjections: [{ scenario: 'continuity', assistant: { role: 'assistant', content: 'Sure! Here’s an example of a **template** for a **user' } }],
 } satisfies StructuredPartsReplayContract;
 
 describe('LFM2.5 350M Provider / sequences', () => {

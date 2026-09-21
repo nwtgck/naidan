@@ -2411,7 +2411,7 @@ const gemma4FullStructuredParts = {
     })),
     ...(['natural-tool-minimal', 'natural-tool-representative'] as const).map(scenario => ({
       scenario, settlement: 'fulfilled' as const, events: [
-        { kind: 'assistant' as const, parts: [{ type: 'tool_call' as const, name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'finished' as const, next: 'tool_results' as const } },
+        { kind: 'assistant' as const, parts: [{ type: 'tool_call' as const, name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' as const } },
         { kind: 'tool-success' as const, call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
         { kind: 'assistant' as const, parts: [{ type: 'text' as const, text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' as const }], terminal: { type: 'finished' as const, next: 'user' as const } },
       ],
@@ -2423,7 +2423,9 @@ const gemma4FullStructuredParts = {
       { type: 'text', text: 'The', completeness: 'partial' },
     ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
   ],
-  legacyInputProjectionScenarios: ['continuity'],
+  legacyInputProjections: [{ scenario: 'continuity', assistant: {
+    role: 'assistant', content: 'Please provide the **context** or **purpose** of the "template probe user',
+  } }],
 } satisfies StructuredPartsReplayContract;
 
 describe('Gemma4 E2B Provider / sequences', () => {
