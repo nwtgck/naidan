@@ -2,17 +2,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import type { TransformersJsWorkerClient } from '@/features/transformers-js/types';
-import * as providerBoundary from '@/features/transformers-js/provider-hosted';
+import * as traceBoundary from './production-provider-trace';
+import { toMessageId, toToolCallId } from '@/01-models/ids';
+import type { InferenceGenerationCallback } from '@/features/transformers-js/generation-events';
 import { createProductionProviderCaptureOwner, type ProductionProviderCapturePlan, type ProductionProviderCaptureSnapshot } from './production-provider-capture-owner';
 import { createProductionProviderCaptureEvidence, readProductionProviderCaptureEvidence, PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS } from './production-provider-capture-evidence';
 
 const owners: Array<ReturnType<typeof createProductionProviderCaptureOwner>> = [];
 let fs: ReturnType<typeof createMemoryFiles>;
 
+async function finishMessage({ onEvent }: { onEvent: InferenceGenerationCallback }): Promise<void> {
+  await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+}
+
+async function emitMessage({ onEvent, text }: { onEvent: InferenceGenerationCallback; text: string }): Promise<void> {
+  await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+  await onEvent({ event: { type: 'text_delta', index: 0, text } });
+  await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+  await finishMessage({ onEvent });
+}
+
 function ownerFixture({ plan }: { plan: ProductionProviderCapturePlan }) {
   const client = {
     loadDownloadedModel: vi.fn<TransformersJsWorkerClient['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
     generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockResolvedValue(undefined),
+    generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>().mockImplementation(async ({ onEvent }) => finishMessage({ onEvent })),
     interrupt: vi.fn<TransformersJsWorkerClient['interrupt']>().mockResolvedValue(undefined),
     unloadModel: vi.fn<TransformersJsWorkerClient['unloadModel']>().mockResolvedValue(undefined),
     resetCache: vi.fn<TransformersJsWorkerClient['resetCache']>().mockResolvedValue(undefined),
@@ -30,20 +44,19 @@ function exportCapture({ capture }: { capture: ProductionProviderCaptureSnapshot
   return createProductionProviderCaptureEvidence({ capture, runId: 'capture-run', modelId: 'fixture/model' });
 }
 
-function recordSyntheticProviderCallbackBoundary() {
-  const callbacks: Array<Parameters<ReturnType<typeof providerBoundary.createTransformersJsProvider>['chat']>[0]['onChunk']> = [];
-  const createProvider = providerBoundary.createTransformersJsProvider;
-  vi.spyOn(providerBoundary, 'createTransformersJsProvider').mockImplementation(({ service }) => {
-    const provider = createProvider({ service });
-    const chat = provider.chat.bind(provider);
-    vi.spyOn(provider, 'chat').mockImplementation(input => {
-      callbacks.push(input.onChunk);
-      // Preserve the real Provider invocation and its exact returned Promise.
-      // Tests explicitly inject late events at this public callback boundary,
-      // not through a revoked client callback or by editing a settled snapshot.
-      return chat(input);
-    });
-    return provider;
+function recordSyntheticAppliedPartBoundary() {
+  const callbacks: Array<({ chunk }: { chunk: string }) => void> = [];
+  const createTrace = traceBoundary.createProductionProviderPartsTrace;
+  vi.spyOn(traceBoundary, 'createProductionProviderPartsTrace').mockImplementation(args => {
+    const trace = createTrace(args);
+    // Deliberately inject at the observation boundary, not through a revoked
+    // Worker callback. This is a late-event integrity fixture, not inference.
+    callbacks.push(({ chunk }) => trace.observeAssistant({ message: {
+      id: toMessageId({ raw: 'capture_assistant_0' }), role: 'assistant', createdAt: 0,
+      parts: [{ id: 'late_part', type: 'text', text: chunk, completeness: 'partial' }],
+      replies: { items: [] }, modelId: undefined, lmParameters: undefined, interruption: undefined,
+    } }));
+    return trace;
   });
   return callbacks;
 }
@@ -93,7 +106,7 @@ describe('Production Provider capture evidence', () => {
 
   it('roundtrips all fixed v2 capabilities without promoting rejected requests into successful generation', async () => {
     const { owner, client } = ownerFixture({ plan: 'full-v2' });
-    client.generateText.mockRejectedValueOnce(new Error('ordinary first rejection'));
+    client.generateMessage.mockRejectedValueOnce(new Error('ordinary first rejection'));
     const capture = await owner.run();
     const exported = exportCapture({ capture });
     const restored = readProductionProviderCaptureEvidence({ json: exported.json, runId: 'capture-run', modelId: 'fixture/model' });
@@ -139,17 +152,17 @@ describe('Production Provider capture evidence', () => {
 
   it('validates actual per-request limits rather than substituting the global ceiling', async () => {
     const { owner, client } = ownerFixture({ plan: 'first-only' });
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
-      onChunk({ chunk: 'four' });
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await emitMessage({ onEvent, text: 'four' });
     });
     const exported = exportCapture({ capture: await owner.run() });
     const bounded = JSON.parse(exported.json);
-    bounded.snapshot.requests[0].trace.limits = { maximumEvents: 2, maximumCharacters: 4, maximumFieldCharacters: 16384 };
+    bounded.snapshot.requests[0].trace.limits = { maximumEvents: 5, maximumCharacters: 102, maximumFieldCharacters: 16384 };
     expect(readProductionProviderCaptureEvidence({ json: JSON.stringify(bounded), runId: 'capture-run', modelId: 'fixture/model' }).requests[0]?.trace.limits)
-      .toEqual({ maximumEvents: 2, maximumCharacters: 4, maximumFieldCharacters: 16384 });
+      .toEqual({ maximumEvents: 5, maximumCharacters: 102, maximumFieldCharacters: 16384 });
     bounded.snapshot.requests[0].trace.limits.maximumEvents = 1;
     expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(bounded), runId: 'capture-run', modelId: 'fixture/model' })).toThrow(/^Invalid Production Provider capture evidence$/u);
-    bounded.snapshot.requests[0].trace.limits.maximumEvents = 2;
+    bounded.snapshot.requests[0].trace.limits.maximumEvents = 5;
     bounded.snapshot.requests[0].trace.limits.maximumCharacters = 3;
     expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(bounded), runId: 'capture-run', modelId: 'fixture/model' })).toThrow(/^Invalid Production Provider capture evidence$/u);
     bounded.snapshot.requests[0].trace.limits.maximumCharacters = 262145;
@@ -186,11 +199,11 @@ describe('Production Provider capture evidence', () => {
     expect(exportCapture({ capture: restored }).json).toBe(exported.json);
   });
 
-  it('reads fixed inputs and synthetic Provider-boundary late events without requiring JSON object key order', async () => {
-    const callbacks = recordSyntheticProviderCallbackBoundary();
+  it('reads fixed inputs and synthetic applied-part late events without requiring JSON object key order', async () => {
+    const callbacks = recordSyntheticAppliedPartBoundary();
     const { owner, client } = ownerFixture({ plan: 'first-continuity-independent' });
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
-      onChunk({ chunk: '{"captureValue":"undefined"}' });
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await emitMessage({ onEvent, text: '{"captureValue":"undefined"}' });
     });
     await owner.run();
     expect(callbacks).toHaveLength(3);
@@ -278,11 +291,11 @@ describe('Production Provider capture evidence', () => {
     expect(capture.requests[0]?.input).toBeUndefined();
   });
 
-  it('exports synthetic Provider-boundary late callbacks without rewriting completed fixed inputs or settled history', async () => {
-    const callbacks = recordSyntheticProviderCallbackBoundary();
+  it('exports synthetic applied-part late observations without rewriting completed fixed inputs or settled history', async () => {
+    const callbacks = recordSyntheticAppliedPartBoundary();
     const { owner, client } = ownerFixture({ plan: 'first-continuity-independent' });
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
-      onChunk({ chunk: 'first' });
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await emitMessage({ onEvent, text: 'first' });
     });
     const capture = await owner.run();
     expect(callbacks).toHaveLength(3);
@@ -290,8 +303,8 @@ describe('Production Provider capture evidence', () => {
     const before = exportCapture({ capture });
     const document = JSON.parse(exportCapture({ capture: owner.snapshot() }).json);
     expect(JSON.parse(before.json).snapshot.requests[0].trace.lateEvents).toEqual([]);
-    expect(document.snapshot.requests[0].trace.lateEvents[0]).toMatchObject({ kind: 'chunk', chunk: '-late', phase: 'after-settlement' });
-    expect(document.snapshot.requests[1].input.messages[1]).toEqual({ role: 'assistant', content: 'first' });
+    expect(document.snapshot.requests[0].trace.lateEvents[0]).toMatchObject({ kind: 'part_text', text: '-late', phase: 'after-settlement' });
+    expect(document.snapshot.requests[1].input.messages[1]).toEqual({ role: 'assistant', parts: [{ id: 'part_0', type: 'text', text: 'first', completeness: 'complete' }] });
     expect(document.snapshot.requests[0].input.parameters).toMatchObject({
       maxCompletionTokens: 16, presencePenalty: { captureValue: 'undefined' }, frequencyPenalty: { captureValue: 'undefined' },
       stop: { captureValue: 'undefined' }, reasoning: { effort: { captureValue: 'undefined' } },
@@ -307,9 +320,15 @@ describe('Production Provider capture evidence', () => {
     const started = new Promise<void>(resolve => {
       entered = resolve;
     });
-    client.generateText.mockImplementationOnce(({ onChunk }) => new Promise<void>(resolve => {
-      release = resolve; onChunk({ chunk: 'partial' }); entered();
-    }));
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'partial' } });
+      await vi.waitFor(() => expect(owner.snapshot().requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_text', text: 'partial' })));
+      await new Promise<void>(resolve => {
+        release = resolve; entered();
+      });
+      await finishMessage({ onEvent });
+    });
     const run = owner.run();
     await started;
     owner.abort({ reason: 'deadline' });
@@ -321,8 +340,8 @@ describe('Production Provider capture evidence', () => {
     release(); await run;
   });
 
-  it('keeps a completed settled projection exportable after synthetic Provider-boundary late callback overflow', async () => {
-    const callbacks = recordSyntheticProviderCallbackBoundary();
+  it('keeps a completed settled projection exportable after synthetic applied-part late observation overflow', async () => {
+    const callbacks = recordSyntheticAppliedPartBoundary();
     const { owner } = ownerFixture({ plan: 'first-only' });
     const completed = await owner.run();
     expect(callbacks).toHaveLength(1);
@@ -337,7 +356,7 @@ describe('Production Provider capture evidence', () => {
 
   it('exports a real Provider rejection but rejects relabeling it as completed', async () => {
     const { owner, client } = ownerFixture({ plan: 'first-only' });
-    client.generateText.mockRejectedValue(new Error('Private runtime message'));
+    client.generateMessage.mockRejectedValue(new Error('Private runtime message'));
     const rejected = await owner.run();
     const document = JSON.parse(exportCapture({ capture: rejected }).json);
     expect(document.snapshot.run).toEqual({ status: 'stopped', reason: 'provider-rejected' });
@@ -347,8 +366,8 @@ describe('Production Provider capture evidence', () => {
 
   it('exports an incomplete settled projection but does not certify its run as completed', async () => {
     const { owner, client } = ownerFixture({ plan: 'first-only' });
-    client.generateText.mockImplementation(async ({ onChunk }) => {
-      onChunk({ chunk: 'x'.repeat(16385) });
+    client.generateMessage.mockImplementation(async ({ onEvent }) => {
+      await emitMessage({ onEvent, text: 'x'.repeat(16385) });
     });
     const incomplete = await owner.run();
     const document = JSON.parse(exportCapture({ capture: incomplete }).json);
@@ -427,12 +446,17 @@ describe('Production Provider capture evidence', () => {
 
   it('applies event limits per request rather than silently imposing a smaller combined-run limit', async () => {
     const { owner, client } = ownerFixture({ plan: 'first-continuity-independent' });
-    client.generateText.mockImplementation(async ({ onChunk }) => {
-      for (let index = 0; index < 1400; index += 1) onChunk({ chunk: 'x' });
+    client.generateMessage.mockImplementation(async ({ onEvent }) => {
+      for (let index = 0; index < 470; index += 1) {
+        await onEvent({ event: { type: 'part_start', index, kind: 'text' } });
+        await onEvent({ event: { type: 'text_delta', index, text: 'x' } });
+        await onEvent({ event: { type: 'part_end', index, completeness: 'complete' } });
+      }
+      await finishMessage({ onEvent });
     });
     const document = JSON.parse(exportCapture({ capture: await owner.run() }).json);
     expect(document.limits.scope).toBe('per-request');
-    expect(document.snapshot.requests.map((request: { trace: { events: unknown[] } }) => request.trace.events.length)).toEqual([1401, 1401, 1401]);
+    expect(document.snapshot.requests.map((request: { trace: { events: unknown[] } }) => request.trace.events.length)).toEqual([1412, 1412, 1412]);
   });
 
   it('rejects completed runs containing unstarted requests and incompatible lifetime states', () => {
@@ -446,8 +470,8 @@ describe('Production Provider capture evidence', () => {
   it('rejects execution after an unstarted request and modified synthetic history', async () => {
     const { owner, client } = ownerFixture({ plan: 'first-continuity-independent' });
     const initial = owner.snapshot();
-    client.generateText.mockImplementation(async ({ onChunk }) => {
-      onChunk({ chunk: 'settled' });
+    client.generateMessage.mockImplementation(async ({ onEvent }) => {
+      await emitMessage({ onEvent, text: 'settled' });
     });
     const completed = await owner.run();
     expect(() => exportCapture({ capture: { ...completed, run: { status: 'running' }, requests: [initial.requests[0]!, ...completed.requests.slice(1)] } })).toThrow();
@@ -456,4 +480,107 @@ describe('Production Provider capture evidence', () => {
     const altered = { ...request, input: { ...request.input, messages: [{ role: 'user' as const, content: 'arbitrary user content' }] } };
     expect(() => exportCapture({ capture: { ...completed, requests: [completed.requests[0]!, altered, completed.requests[2]!] } })).toThrow();
   });
+});
+
+describe('versioned parts observation evidence', () => {
+  it('roundtrips applied reasoning, empty text, and partial content without creating think tags', async () => {
+    const { owner, client } = ownerFixture({ plan: 'first-continuity-independent' });
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: '  R\r\n' } });
+      await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+      await onEvent({ event: { type: 'part_start', index: 1, kind: 'text' } });
+      await onEvent({ event: { type: 'part_end', index: 1, completeness: 'complete' } });
+      await onEvent({ event: { type: 'part_start', index: 2, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 2, text: '<think>literal</think>🙂' } });
+      await onEvent({ event: { type: 'part_end', index: 2, completeness: 'partial' } });
+      await onEvent({ event: { type: 'result', result: { type: 'interrupted', reason: 'limit' } } });
+    });
+    const captured = await owner.run();
+    expect(captured.format).toBe('production-provider-capture-v3');
+    expect(captured.capabilities.providerCallbacks).toBe('parts_and_tools_projection');
+    expect(captured.requests[1]?.input?.messages[1]).toEqual({ role: 'assistant', parts: [
+      { id: 'part_0', type: 'reasoning', text: '  R\r\n', completeness: 'complete' },
+      { id: 'part_1', type: 'text', text: '', completeness: 'complete' },
+      { id: 'part_2', type: 'text', text: '<think>literal</think>🙂', completeness: 'partial' },
+    ] });
+    const artifact = exportCapture({ capture: captured });
+    const parsed = readProductionProviderCaptureEvidence({ json: artifact.json, runId: 'capture-run', modelId: 'fixture/model' });
+    expect(parsed).toEqual(captured); expect(exportCapture({ capture: parsed }).json).toBe(artifact.json);
+    expect(parsed.requests[0]?.trace.settled?.outcome).toEqual({ status: 'fulfilled' });
+    expect(parsed.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'generation_interrupted', reason: 'limit' }));
+    expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
+    // The next ordinary Provider request can reject an unsupported parts shape.
+    // It must not repair that shape to make this investigation succeed.
+  });
+
+  it('rejects claiming the new observer is a callback-era trace or altering the boundary marker', async () => {
+    const { owner } = ownerFixture({ plan: 'first-only' });
+    const artifact = exportCapture({ capture: await owner.run() });
+    for (const field of ['capture', 'trace', 'capabilities', 'limitations']) {
+      const invalid = JSON.parse(artifact.json);
+      switch (field) {
+      case 'capture': invalid.snapshot.format = 'production-provider-capture-v2'; break;
+      case 'trace': invalid.snapshot.requests[0].trace.format = 'production-provider-trace-v2'; break;
+      case 'capabilities': invalid.snapshot.capabilities.providerCallbacks = 'bounded-projection'; break;
+      case 'limitations': invalid.limitations.providerCallbacks = 'bounded-projection'; break;
+      }
+      expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(invalid), runId: 'capture-run', modelId: 'fixture/model' })).toThrow('Invalid Production Provider capture evidence');
+    }
+  });
+
+  it('rejects renaming a completed text revision to reasoning while retaining valid counters and settlement', async () => {
+    const { owner, client } = ownerFixture({ plan: 'first-only' });
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => emitMessage({ onEvent, text: 'A' }));
+    const document = JSON.parse(exportCapture({ capture: await owner.run() }).json);
+    const trace = document.snapshot.requests[0].trace;
+    const position = trace.events.length - 2;
+    expect(trace.events[position]).toMatchObject({ kind: 'part_text', partType: 'text', completeness: 'complete' });
+    trace.events[position].partType = 'reasoning'; trace.settled.events[position].partType = 'reasoning';
+    expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(document), runId: 'capture-run', modelId: 'fixture/model' })).toThrow('Invalid Production Provider capture evidence');
+  });
+
+  it('rejects declaring an actual partial response finished even when both copied event lists agree', async () => {
+    const { owner, client } = ownerFixture({ plan: 'first-only' });
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'prefix' } });
+      await onEvent({ event: { type: 'part_end', index: 0, completeness: 'partial' } });
+      await onEvent({ event: { type: 'result', result: { type: 'interrupted', reason: 'limit' } } });
+    });
+    const captured = await owner.run();
+    const artifact = exportCapture({ capture: captured });
+    expect(readProductionProviderCaptureEvidence({ json: artifact.json, runId: 'capture-run', modelId: 'fixture/model' })).toEqual(captured);
+    const document = JSON.parse(artifact.json); const trace = document.snapshot.requests[0].trace;
+    const event = trace.events.at(-1);
+    const replacement = { sequence: event.sequence, phase: event.phase, kind: 'generation_finished', next: 'user' };
+    trace.events[trace.events.length - 1] = replacement; trace.settled.events[trace.settled.events.length - 1] = replacement;
+    expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(document), runId: 'capture-run', modelId: 'fixture/model' })).toThrow('Invalid Production Provider capture evidence');
+  });
+});
+
+
+describe('fixed continuity does not omit unexpected tool history', () => {
+  const plans: ProductionProviderCapturePlan[] = ['first-continuity-independent', 'generation-continuity-v2'];
+  for (const plan of plans) {
+    it(`keeps the observed first operation but declines lossy continuity for ${plan}`, async () => {
+      const { owner, client } = ownerFixture({ plan });
+      client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+        await onEvent({ event: { type: 'tool_start', index: 0 } });
+        await onEvent({ event: { type: 'tool_call', index: 0, toolCall: { id: toToolCallId({ raw: 'unexpected-call' }), type: 'function', function: { name: 'unadvertised_tool', arguments: '{}' } } } });
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'tool_results' } } });
+      });
+      const captured = await owner.run();
+      expect(captured.requests[0]?.trace.settled?.outcome.status).toBe('fulfilled');
+      expect(captured.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_call', toolName: 'unadvertised_tool' }));
+      expect(captured.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'tool-error', messageCapture: 'omitted-for-privacy' }));
+      expect(captured.requests[1]?.input).toBeUndefined();
+      expect(client.generateMessage.mock.calls.some(([request]) => request.messages.some(message => message.content === 'Continue the synthetic conversation with a short response.'))).toBe(false);
+      expect(readProductionProviderCaptureEvidence({ json: exportCapture({ capture: captured }).json, runId: 'capture-run', modelId: 'fixture/model' })).toEqual(captured);
+      if (plan === 'generation-continuity-v2') {
+        expect(captured.requests[1]?.notStartedReason).toBe('first-settlement-unavailable');
+        expect(captured.requests[2]?.status).toBe('settled');
+      } else expect(captured.run).toEqual({ status: 'stopped', reason: 'capture-incomplete' });
+    });
+  }
 });

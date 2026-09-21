@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { toToolCallId } from "@/01-models/ids";
 import type { Tool } from "@/01-models/tool";
-import type { ChatMessage } from "@/01-models/types";
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import type { ModelSupportInvestigationNormalizedToolCall } from "@/features/transformers-js/model-support-investigation/types";
 import type { WorkerToolDefinition } from "@/features/transformers-js/types";
 
@@ -47,7 +47,7 @@ export function createModelSupportToolResultContinuationMessages({
 }: {
   toolCall: ModelSupportInvestigationNormalizedToolCall,
   toolResultContent: string,
-}): ChatMessage[] {
+}): InferenceMessage[] {
   const toolCallId = toToolCallId({ raw: "call_model_support_probe_1" });
   return [{
     role: "user",

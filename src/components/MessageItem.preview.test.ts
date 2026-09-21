@@ -52,9 +52,8 @@ vi.mock('../composables/useImagePreview', () => ({
 const mockMessage: MessageNode = {
   id: toMessageId({ raw: 'msg-1' }),
   role: 'user',
-  content: 'Hello with image',
-  timestamp: 1000,
-  attachments: [
+  replies: { items: [] },
+  parts: [{ id: 'text', type: 'text' as const, text: 'Hello with image', completeness: 'complete' as const }, ...([
     {
       id: toAttachmentId({ raw: 'att-1' }),
       binaryObjectId: toBinaryObjectId({ raw: 'bin-1' }),
@@ -64,8 +63,10 @@ const mockMessage: MessageNode = {
       uploadedAt: 1000,
       status: 'persisted',
     },
-  ],
-  replies: { items: [] },
+  ]).map((attachment, index) => ({ id: `attachment-${index}`, type: 'attachment' as const, attachment }))],
+  createdAt: 1000,
+  modelId: undefined,
+  lmParameters: undefined,
 };
 
 describe('MessageItem.vue Preview Integration', () => {
@@ -116,11 +117,14 @@ describe('MessageItem.vue Preview Integration', () => {
     const genImageMsg: MessageNode = {
       id: toMessageId({ raw: 'msg-2' }),
       role: 'assistant',
-      content: `Here is your image:\n\n\`\`\`naidan_experimental_image
-{"binaryObjectId":"${genId}","displayWidth":512,"displayHeight":512,"prompt":"a sunset"}
-\`\`\``,
-      timestamp: 2000,
       replies: { items: [] },
+      parts: [...([{ id: 'text', type: 'text' as const, text: `Here is your image:\n\n\`\`\`naidan_experimental_image
+{"binaryObjectId":"${genId}","displayWidth":512,"displayHeight":512,"prompt":"a sunset"}
+\`\`\``, completeness: 'complete' as const }])],
+      createdAt: 2000,
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: undefined,
     };
 
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));

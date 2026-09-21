@@ -66,23 +66,16 @@ describe('LocalStorageProvider', () => {
     const chatId = toChatId({ raw: '123e4567-e89b-12d3-a456-426614174000' });
     const content: ChatContent = {
       root: {
-        items: [{
-          id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }),
-          role: 'user',
-          content: 'hello',
-          timestamp: 1,
-          attachments: [{
-            id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
-            binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
-            originalName: 'attachment.txt',
-            mimeType: blob.type,
-            size: blob.size,
-            uploadedAt: 1,
-            status: 'memory',
-            blob,
-          }],
-          replies: { items: [] },
-        }],
+        items: [{ id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'hello', completeness: 'complete' }, { id: 'test_attachment_0', type: 'attachment', attachment: {
+          id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
+          binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
+          originalName: 'attachment.txt',
+          mimeType: blob.type,
+          size: blob.size,
+          uploadedAt: 1,
+          status: 'memory',
+          blob,
+        } }], replies: { items: [] } }],
       },
     };
 
@@ -91,8 +84,8 @@ describe('LocalStorageProvider', () => {
     const unhydrated = await provider.loadChatContentWithoutAttachments({ id: chatId });
     const hydrated = await provider.loadChatContent({ id: chatId });
 
-    expect(unhydrated?.root.items[0]?.attachments?.[0]).not.toHaveProperty('blob');
-    expect(hydrated?.root.items[0]?.attachments?.[0]).toHaveProperty('blob', blob);
+    expect(unhydrated?.root.items[0]?.parts.filter(part => part.type === 'attachment').map(part => part.attachment)?.[0]).not.toHaveProperty('blob');
+    expect(hydrated?.root.items[0]?.parts.filter(part => part.type === 'attachment').map(part => part.attachment)?.[0]).toHaveProperty('blob', blob);
   });
 
   it('should list saved chats', async () => {

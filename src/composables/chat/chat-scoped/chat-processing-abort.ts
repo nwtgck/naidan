@@ -17,11 +17,9 @@ export function abortProcessingForChat({
   const activeGeneration = chatRuntimeStore.getActiveGeneration({ chatId });
   if (activeGeneration !== undefined) {
     activeGeneration.controller.abort();
-    globalThis.setTimeout(() => {
-      if (chatRuntimeStore.getActiveGeneration({ chatId }) === activeGeneration) {
-        chatRuntimeStore.deleteActiveGeneration({ chatId });
-      }
-    }, 0);
+    // The generation owner keeps its slot until accepted content and tool results
+    // have drained. Clearing it on the next tick allowed a second run to race it.
+
   }
 
   const hasExternalGeneration = chatRuntimeStore.hasExternalGeneration({ chatId });

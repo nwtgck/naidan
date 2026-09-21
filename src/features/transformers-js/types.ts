@@ -1,4 +1,5 @@
-import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import type { InferenceGenerationCallback, InferenceGenerationEvent } from './generation-events';
+import type { MultimodalContent, LmParameters, ToolCall } from '@/01-models/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
 import type { ProductionCandidateResourcePlan } from '@/features/transformers-js/runtime/production-resource-plan';
 import type { GenerationCaptureRequest, GenerationCaptureReadRequest, GenerationCaptureReadResult } from './worker/generation-capture-protocol';
@@ -6,6 +7,24 @@ import type { ProductionLoadReceiptOwner } from './worker/load-receipt';
 import type { ProductionLoadReceipt } from './runtime/production-load-receipt';
 import type { DownloadedModelRevisionSelection } from './runtime/downloaded-model-revision-selection';
 import type { DownloadFileTiming, DownloadSourceTiming } from './download-timing';
+
+/**
+ * Model-template messages, already projected from the application's parts.
+ * This is a runtime representation, never a second persisted conversation.
+ * Optional native fields distinguish absence from an explicitly empty list.
+ */
+export interface InferenceMessage {
+  role: string,
+  content: string | MultimodalContent[],
+  tool_calls?: ToolCall[],
+  tool_call_id?: ToolCall['id'],
+  // A model-specific template adapter owns framing, never a literal think tag parser.
+  // Keep empty and unfinished reasoning distinct until that adapter validates it.
+  reasoning?: {
+    text: string,
+    completeness: 'complete' | 'partial',
+  },
+}
 
 /**
  * Shared types for Transformers.js service and worker
@@ -266,8 +285,8 @@ export interface TransformersJsProductionInvestigationScenario {
   candidates: [TransformersJsProductionInvestigationCandidate, ...TransformersJsProductionInvestigationCandidate[]],
   runContinuity?: boolean,
   runCapabilityProbes?: boolean,
-  messages: ChatMessage[],
-  followUpMessage: ChatMessage,
+  messages: InferenceMessage[],
+  followUpMessage: InferenceMessage,
   toolResultContinuation: {
     toolCall: {
       name: string,
@@ -330,7 +349,7 @@ export type TransformersJsProductionInvestigationCacheDecision =
     };
 
 export interface TransformersJsProductionInvestigationTurnObservation {
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   inputKeys: string[],
   inputTensors: TransformersJsProductionInvestigationInputTensorMetadata[],
   inputTokenIds: number[],
@@ -365,8 +384,8 @@ export type TransformersJsProductionInvestigationFirstTurnObservation =
 export type TransformersJsProductionInvestigationContinuityObservation =
   | {
       status: 'passed',
-      assistantMessage: ChatMessage,
-      followUpMessage: ChatMessage,
+      assistantMessage: InferenceMessage,
+      followUpMessage: InferenceMessage,
       secondTurn: TransformersJsProductionInvestigationTurnObservation,
       prefixComparison: {
         mode: 'full-input-prefix' | 'cache-suffix' | 'not-applicable-encoder-decoder',
@@ -387,8 +406,8 @@ export type TransformersJsProductionInvestigationContinuityObservation =
     }
   | {
       status: 'failed',
-      assistantMessage: ChatMessage,
-      followUpMessage: ChatMessage,
+      assistantMessage: InferenceMessage,
+      followUpMessage: InferenceMessage,
       error: TransformersJsProductionInvestigationError,
     }
   | {
@@ -401,7 +420,7 @@ export type TransformersJsProductionInvestigationToolResultContinuationObservati
       status: 'passed',
       source: 'reference-parser-roundtrip',
       strategy: TransformersJsProductionInvestigationStrategy,
-      messages: ChatMessage[],
+      messages: InferenceMessage[],
       expectedInputTokenIds: number[],
       comparisonInputSource: 'reconstructed-full-conversation' | 'actual-model-input',
       inputTokenExactMatch: boolean,
@@ -412,7 +431,7 @@ export type TransformersJsProductionInvestigationToolResultContinuationObservati
       status: 'failed',
       source: 'reference-parser-roundtrip',
       strategy: TransformersJsProductionInvestigationStrategy | undefined,
-      messages: ChatMessage[],
+      messages: InferenceMessage[],
       expectedInputTokenIds: number[],
       error: TransformersJsProductionInvestigationError,
     }
@@ -586,7 +605,7 @@ export interface ITransformersJsWorker {
   resetCache(): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   generateText(
-    messages: ChatMessage[],
+    messages: InferenceMessage[],
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onChunk: WorkerProxy<(chunk: string) => void>,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
@@ -596,6 +615,8 @@ export interface ITransformersJsWorker {
     capture?: GenerationCaptureRequest,
     // Append after capture to preserve the existing diagnostic RPC position.
     continuationOwner?: string,
+    // A separate top-level proxy; nested callbacks are not cloneable.
+    onGenerationEvent?: WorkerProxy<({ event }: { event: InferenceGenerationEvent }) => void | Promise<void>>,
   ): Promise<void>,
   takeGenerationCapture({ runId, workerEpoch }: GenerationCaptureReadRequest): Promise<GenerationCaptureReadResult>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
@@ -620,12 +641,19 @@ export interface TransformersJsWorkerClient {
   interrupt(): Promise<void>,
   resetCache(): Promise<void>,
   generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner }: {
-    messages: ChatMessage[],
+    messages: InferenceMessage[],
     onChunk: TransformersJsChunkCallback,
     onToolCalls: TransformersJsToolCallsCallback,
     params?: LmParameters,
     tools?: WorkerToolDefinition[],
     continuationOwner?: string,
+  }): Promise<void>,
+  generateMessage({ messages, onEvent, params, tools, continuationOwner }: {
+    messages: InferenceMessage[],
+    onEvent: InferenceGenerationCallback,
+    params: LmParameters | undefined,
+    tools: WorkerToolDefinition[] | undefined,
+    continuationOwner: string | undefined,
   }): Promise<void>,
   dispose(): Promise<void>,
 }

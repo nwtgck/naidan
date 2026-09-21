@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import publicInput from '@/features/transformers-js/replay-models/onnx-community--gemma-4-e2b-it-onnx/provider-template-inputs.evidence.json';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
-import { createModelSupportToolResultContinuationMessages, MODEL_SUPPORT_TOOL_RESULT_CONTENT } from './tool-protocol-fixture';
+import { MODEL_SUPPORT_TOOL_RESULT_CONTENT } from './tool-protocol-fixture';
 import { captureScenarioInput, captureProviderMessages, captureScenarios, isCaptureScenarioSelected } from './production-provider-capture-plan';
 
 describe('versioned fixed Provider capture inputs', () => {
@@ -20,22 +20,37 @@ describe('versioned fixed Provider capture inputs', () => {
   it('projects the recorded structured control itself and matches the fixed public Tool continuation', () => {
     const input = captureScenarioInput({ scenario: 'structured-tool-history', firstSettled: undefined });
     const provider = captureProviderMessages({ input });
-    expect(provider).toEqual(input.messages);
-    expect(provider).toEqual(createModelSupportToolResultContinuationMessages({ toolCall: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }, toolResultContent: MODEL_SUPPORT_TOOL_RESULT_CONTENT }));
-    provider[0]!.content = 'mutated owned Provider copy';
-    expect(input.messages[0]?.content).toBe('Use the weather tool for Tokyo.');
+    expect(provider).toEqual([
+      { id: 'capture_input_0', role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
+      { id: 'capture_input_1', role: 'assistant', parts: [
+        { id: 'text_0', type: 'text', text: '', completeness: 'complete' },
+        { id: 'tool_call_0', type: 'tool_call', toolCall: { id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+      ] },
+      { id: 'capture_input_2', role: 'tool', parts: [{ id: 'tool_result_0', type: 'tool_result', result: { toolCallId: 'call_model_support_probe_1', status: 'success', content: { type: 'text', text: MODEL_SUPPORT_TOOL_RESULT_CONTENT } } }] },
+    ]);
+    const first = provider[0]?.parts[0];
+    if (first?.type !== 'text') throw new Error('Missing text fixture');
+    first.text = 'mutated owned Provider copy';
+    expect(input.messages[0]).toMatchObject({ content: 'Use the weather tool for Tokyo.' });
     expect(input.parameters.maxCompletionTokens).toBe(128);
     expect(Object.isFrozen(input.tools[0]?.parameters.properties.city)).toBe(true);
   });
 
-  it('uses only the existing fixed PNG in public content parts with an independent one-token request', () => {
+  it('uses only the existing fixed PNG in public content parts with an independent one-token request', async () => {
     const input = captureScenarioInput({ scenario: 'image', firstSettled: undefined });
     expect(input.messages).toEqual([{ role: 'user', content: [
       { type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt },
       { type: 'image_url', image_url: { url: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.dataUrl } },
     ] }]);
     expect(input.parameters.maxCompletionTokens).toBe(1);
-    expect(captureProviderMessages({ input })).toEqual(input.messages);
+    const messages = captureProviderMessages({ input });
+    expect(messages[0]?.parts[0]).toEqual({ id: 'text_0', type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt, completeness: 'complete' });
+    const part = messages[0]?.parts[1];
+    if (part?.type !== 'attachment' || part.attachment.status !== 'memory') throw new Error('Missing fixture Blob');
+    expect(part.attachment.blob.size).toBe(68);
+    expect(part.attachment.blob.type).toBe('image/png');
+    const digest = await crypto.subtle.digest('SHA-256', await part.attachment.blob.arrayBuffer());
+    expect([...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')).toBe(MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.sha256);
     expect(MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.sha256).toBe('431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460');
   });
 

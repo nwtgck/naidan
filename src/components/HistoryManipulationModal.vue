@@ -9,14 +9,16 @@ import {
   PaperclipIcon, ImageIcon, HistoryIcon,
   CopyIcon, GripVerticalIcon, MessageSquareQuoteIcon, InfoIcon,
 } from 'lucide-vue-next';
-import type { HistoryItem } from '@/logic/chat-tree';
+import { copyMessageWithoutReplies } from '@/logic/copy-message-node';
+import { cloneLmParameters } from '@/utils/lm-parameters';
 import { useLayout } from '@/composables/useLayout';
-import type { Attachment, SystemPrompt } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import type { Attachment, MessageNode, SystemPrompt } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
 import { idToRaw } from '@/01-models/ids';
-import type { AttachmentId, BinaryObjectId, EditableHistoryItemId } from '@/01-models/ids';
+import type { AttachmentId, BinaryObjectId, ChatId, EditableHistoryItemId, MessageId } from '@/01-models/ids';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -29,117 +31,129 @@ const emit = defineEmits<{
 const { currentChat, activeMessages, inheritedSettings } = useCurrentChatState();
 const { setActiveFocusArea } = useLayout();
 
-interface EditableHistoryItem extends HistoryItem {
+type EditableHistoryItem = {
   localId: EditableHistoryItemId,
-}
+  message: MessageNode,
+};
 
 const editableMessages = ref<EditableHistoryItem[]>([]);
-const attachmentUrls = ref(new Map<AttachmentId, string>());
+const attachmentUrls = ref(new Map<string, string>());
 const fileInputs = ref<(HTMLInputElement | null)[]>([]);
 const isDragging = ref(false);
-
+const isSaving = ref(false);
+const editingChatId = ref<ChatId | undefined>(undefined);
 const localSystemPrompt = ref<SystemPrompt | undefined>(undefined);
+const inheritedSystemPromptMessages = ref<string[]>([]);
+let editSession = 0;
+let previewVersion = 0;
+let disposed = false;
 
 function setFileInputRef({ el, index }: { el: unknown, index: number }) {
-  fileInputs.value[index] = el as HTMLInputElement | null;
+  fileInputs.value[index] = el instanceof HTMLInputElement ? el : null;
 }
 
-watch(() => props.isOpen, async (open) => {
+function clearAttachmentUrls() {
+  previewVersion++;
+  for (const url of attachmentUrls.value.values()) URL.revokeObjectURL(url);
+  attachmentUrls.value = new Map();
+}
+
+watch(() => props.isOpen, open => {
+  editSession++;
+  isSaving.value = false;
+  clearAttachmentUrls();
+  fileInputs.value = [];
   if (open && currentChat.value) {
     setActiveFocusArea({ area: 'dialog' });
-
-    // Clear old URLs
-    attachmentUrls.value.forEach(URL.revokeObjectURL);
-    attachmentUrls.value = new Map<AttachmentId, string>();
-
-    // Clone system prompt setting
-    localSystemPrompt.value = currentChat.value.systemPrompt ? JSON.parse(JSON.stringify(currentChat.value.systemPrompt)) : undefined;
-
-    // Deep copy current branch to editable state with localIds
-    editableMessages.value = activeMessages.value
-      .filter(m => m.role !== 'tool') // Filter out tool nodes from Super Edit
-      .map(m => ({
-        localId: generateId<EditableHistoryItemId>(),
-        role: m.role as 'user' | 'assistant' | 'system',
-        content: m.content || '',
-        modelId: m.modelId,
-        thinking: m.thinking,
-        attachments: m.attachments ? [...m.attachments] : undefined,
-      }));
-
-    // Generate preview URLs for existing attachments
-    for (const msg of editableMessages.value) {
-      if (msg.attachments) {
-        for (const att of msg.attachments) {
-          const status = att.status;
-          switch (status) {
-          case 'persisted': {
-            const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
-            if (blob) {
-              attachmentUrls.value.set(att.id, URL.createObjectURL(blob));
-            }
-            break;
-          }
-          case 'memory':
-            attachmentUrls.value.set(att.id, URL.createObjectURL(att.blob));
-            break;
-          case 'missing':
-            break;
-          default: {
-            const _ex: never = status;
-            throw new Error(`Unhandled attachment status: ${_ex}`);
-          }
-          }
-        }
-      }
-    }
+    editingChatId.value = currentChat.value.id;
+    inheritedSystemPromptMessages.value = [...(inheritedSettings.value?.systemPromptMessages ?? [])];
+    localSystemPrompt.value = currentChat.value.systemPrompt === undefined ? undefined : { ...currentChat.value.systemPrompt };
+    // Tool results and reasoning are part of the selected history, not disposable
+    // presentation fields. Unchanged parts retain their order, state and metadata.
+    editableMessages.value = activeMessages.value.map(message => ({
+      localId: generateId<EditableHistoryItemId>(),
+      message: copyMessageWithoutReplies({ message }),
+    }));
   } else {
+    editingChatId.value = undefined;
+    inheritedSystemPromptMessages.value = [];
+    editableMessages.value = [];
     setActiveFocusArea({ area: 'chat' });
+  }
+}, { immediate: true });
+
+function attachmentKey({ item, partId }: { item: EditableHistoryItem; partId: string }): string {
+  return JSON.stringify([idToRaw({ id: item.localId }), partId]);
+}
+
+const attachmentPreviews = computed(() => editableMessages.value.flatMap(item =>
+  item.message.parts.flatMap(part => {
+    switch (part.type) {
+    case 'attachment': return [{ key: attachmentKey({ item, partId: part.id }), attachment: part.attachment }];
+    case 'text':
+    case 'reasoning':
+    case 'tool_call':
+    case 'tool_result': return [];
+    default: { const _ex: never = part; throw new Error(`Unhandled part: ${_ex}`); }
+    }
+  }),
+));
+
+watch(attachmentPreviews, async entries => {
+  clearAttachmentUrls();
+  const version = previewVersion;
+  for (const { key, attachment } of entries) {
+    try {
+      let blob: Blob | undefined;
+      switch (attachment.status) {
+      case 'memory': blob = attachment.blob; break;
+      case 'persisted': blob = await storageService.getFile({ binaryObjectId: attachment.binaryObjectId }) ?? undefined; break;
+      case 'missing': continue;
+      default: { const _ex: never = attachment; throw new Error(`Unhandled attachment: ${_ex}`); }
+      }
+      if (disposed || !props.isOpen || version !== previewVersion) return;
+      if (blob !== undefined) attachmentUrls.value.set(key, URL.createObjectURL(blob));
+    } catch (error) {
+      if (disposed || version !== previewVersion) return;
+      console.error('Failed to load history attachment preview:', error);
+    }
   }
 });
 
 onUnmounted(() => {
-  attachmentUrls.value.forEach(URL.revokeObjectURL);
+  disposed = true;
+  editSession++;
+  clearAttachmentUrls();
 });
 
 function predictNextRole({ index }: { index: number }): 'user' | 'assistant' {
-  if (editableMessages.value.length === 0) return 'user';
-
-  if (index >= 0 && index < editableMessages.value.length) {
-    const prevRole = editableMessages.value[index]!.role as 'user' | 'assistant' | 'system';
-    switch (prevRole) {
-    case 'user': return 'assistant';
-    case 'assistant': return 'user';
-    case 'system': return 'user';
-    default: {
-      const _ex: never = prevRole;
-      return _ex;
-    }
-    }
+  const role = editableMessages.value[index]?.message.role ?? editableMessages.value[0]?.message.role;
+  switch (role) {
+  case 'user': return 'assistant';
+  case 'assistant':
+  case 'system':
+  case 'tool':
+  case undefined: return 'user';
+  default: { const _ex: never = role; throw new Error(`Unhandled role: ${_ex}`); }
   }
-
-  if (index === -1 && editableMessages.value.length > 0) {
-    const nextRole = editableMessages.value[0]!.role as 'user' | 'assistant' | 'system';
-    switch (nextRole) {
-    case 'user': return 'assistant';
-    case 'assistant': return 'user';
-    case 'system': return 'user';
-    default: {
-      const _ex: never = nextRole;
-      return _ex;
-    }
-    }
-  }
-
-  return 'user';
 }
 
 function addMessage({ index }: { index: number }) {
   const role = predictNextRole({ index });
+  const common = {
+    id: generateId<MessageId>(), createdAt: Date.now(), replies: { items: [] },
+    modelId: undefined, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }),
+    parts: [{ id: 'text', type: 'text' as const, text: '', completeness: 'complete' as const }],
+  };
   editableMessages.value.splice(index + 1, 0, {
     localId: generateId<EditableHistoryItemId>(),
-    role,
-    content: '',
+    message: (() => {
+      switch (role) {
+      case 'user': return { ...common, role };
+      case 'assistant': return { ...common, role, interruption: undefined };
+      default: { const _ex: never = role; throw new Error(`Unhandled role: ${_ex}`); }
+      }
+    })(),
   });
 }
 
@@ -147,93 +161,125 @@ function removeMessage({ index }: { index: number }) {
   editableMessages.value.splice(index, 1);
 }
 
-function duplicateMessage({ index }: { index: number }) {
-  const msg = editableMessages.value[index];
-  if (!msg) return;
+function canDuplicateMessage({ message }: { message: MessageNode }): boolean {
+  // Duplicating a single call or result would duplicate its call identity without
+  // a corresponding pair. Keep this action visible but unavailable for such rows.
+  return !message.parts.some(part => part.type === 'tool_call' || part.type === 'tool_result');
+}
 
+function duplicateMessage({ index }: { index: number }) {
+  const item = editableMessages.value[index];
+  if (item === undefined || !canDuplicateMessage({ message: item.message })) return;
   editableMessages.value.splice(index + 1, 0, {
-    ...msg,
     localId: generateId<EditableHistoryItemId>(),
-    attachments: msg.attachments ? [...msg.attachments] : undefined,
+    message: { ...copyMessageWithoutReplies({ message: item.message }), id: generateId<MessageId>() },
   });
 }
 
+function canSwitchRole({ message }: { message: MessageNode }): boolean {
+  // Switching a structured row must not silently discard reasoning, attachments,
+  // completed calls, results, or the recorded interruption.
+  return message.role !== 'tool'
+    && message.parts.every(part => part.type === 'text')
+    && (message.role !== 'assistant' || message.interruption === undefined);
+}
+
+function switchRole({ item }: { item: EditableHistoryItem }) {
+  const message = item.message;
+  if (!canSwitchRole({ message })) return;
+  const parts = message.parts.map(part => {
+    switch (part.type) {
+    case 'text': return { ...part };
+    case 'reasoning':
+    case 'attachment':
+    case 'tool_call':
+    case 'tool_result': throw new Error('Only text-only messages can switch roles.');
+    default: { const _ex: never = part; throw new Error(`Unhandled part: ${_ex}`); }
+    }
+  });
+  const common = {
+    id: message.id, createdAt: message.createdAt, replies: { items: [] }, parts,
+    lmParameters: cloneLmParameters({ lmParameters: message.lmParameters }),
+  };
+  switch (message.role) {
+  case 'user': item.message = { ...common, role: 'assistant', modelId: undefined, interruption: undefined }; break;
+  case 'assistant':
+  case 'system': item.message = { ...common, role: 'user', modelId: undefined }; break;
+  case 'tool': throw new Error('Tool results cannot switch roles.');
+  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  }
+}
+
 function triggerFileInput({ index }: { index: number }) {
-  fileInputs.value[index]?.click();
+  const message = editableMessages.value[index]?.message;
+  if (message === undefined) return;
+  switch (message.role) {
+  case 'user': fileInputs.value[index]?.click(); break;
+  case 'assistant':
+  case 'system':
+  case 'tool': break;
+  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  }
 }
 
-async function handleFileSelect({ event, index }: { event: Event, index: number }) {
-  const target = event.target as HTMLInputElement;
-  if (!target.files || !editableMessages.value[index]) return;
-
-  const msg = editableMessages.value[index]!;
-  if (!msg.attachments) msg.attachments = [];
-
-  for (const file of Array.from(target.files)) {
+function appendImages({ index, files }: { index: number; files: readonly File[] }) {
+  const message = editableMessages.value[index]?.message;
+  if (message === undefined) return;
+  switch (message.role) {
+  case 'user': break;
+  case 'assistant':
+  case 'system':
+  case 'tool': return;
+  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  }
+  for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
-
-    const attachmentId = generateId<AttachmentId>();
     const attachment: Attachment = {
-      id: attachmentId,
-      binaryObjectId: generateId<BinaryObjectId>(),
-      originalName: file.name,
-      mimeType: file.type,
-      size: file.size,
-      uploadedAt: Date.now(),
-      status: 'memory',
-      blob: file,
+      id: generateId<AttachmentId>(), binaryObjectId: generateId<BinaryObjectId>(),
+      originalName: file.name, mimeType: file.type, size: file.size, uploadedAt: Date.now(),
+      status: 'memory', blob: file,
     };
-    msg.attachments.push(attachment);
-    attachmentUrls.value.set(attachment.id, URL.createObjectURL(file));
+    let partId: string;
+    do {
+      partId = idToRaw({ id: generateId<EditableHistoryItemId>() });
+    }
+    while (message.parts.some(part => part.id === partId));
+    message.parts.push({ id: partId, type: 'attachment', attachment });
   }
-  target.value = '';
 }
 
-async function handlePaste({ event, index }: { event: ClipboardEvent, index: number }) {
-  const items = event.clipboardData?.items;
-  if (!items || !editableMessages.value[index]) return;
+function handleFileSelect({ event, index }: { event: Event, index: number }) {
+  const input = event.currentTarget;
+  if (!(input instanceof HTMLInputElement) || input.files === null) return;
+  appendImages({ index, files: Array.from(input.files) });
+  input.value = '';
+}
 
+function handlePaste({ event, index }: { event: ClipboardEvent, index: number }) {
   const files: File[] = [];
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (item?.type.startsWith('image/')) {
-      const file = item.getAsFile();
-      if (file) files.push(file);
-    }
+  for (const item of Array.from(event.clipboardData?.items ?? [])) {
+    if (!item.type.startsWith('image/')) continue;
+    const file = item.getAsFile();
+    if (file !== null) files.push(file);
   }
-
-  if (files.length > 0) {
-    const msg = editableMessages.value[index]!;
-    if (!msg.attachments) msg.attachments = [];
-
-    for (const file of files) {
-      const attachmentId = generateId<AttachmentId>();
-      const attachment: Attachment = {
-        id: attachmentId,
-        binaryObjectId: generateId<BinaryObjectId>(),
-        originalName: file.name,
-        mimeType: file.type,
-        size: file.size,
-        uploadedAt: Date.now(),
-        status: 'memory',
-        blob: file,
-      };
-      msg.attachments.push(attachment);
-      attachmentUrls.value.set(attachment.id, URL.createObjectURL(file));
-    }
-  }
+  appendImages({ index, files });
 }
 
-function removeAttachment({ msgIndex, attId }: { msgIndex: number, attId: AttachmentId }) {
-  const msg = editableMessages.value[msgIndex];
-  if (msg && msg.attachments) {
-    msg.attachments = msg.attachments.filter(attachment => attachment.id !== attId);
-    const url = attachmentUrls.value.get(attId);
-    if (url) {
-      URL.revokeObjectURL(url);
-      attachmentUrls.value.delete(attId);
-    }
+function removeAttachment({ index, partId }: { index: number; partId: string }) {
+  const message = editableMessages.value[index]?.message;
+  if (message === undefined) return;
+  switch (message.role) {
+  case 'user': break;
+  case 'assistant':
+  case 'system':
+  case 'tool': return;
+  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
   }
+  message.parts = message.parts.filter(part => part.id !== partId || part.type !== 'attachment');
+}
+
+function hasReasoning({ message }: { message: MessageNode }): boolean {
+  return message.parts.some(part => part.type === 'reasoning');
 }
 
 const systemPromptBehavior = computed({
@@ -269,14 +315,18 @@ const systemPromptBehavior = computed({
 });
 
 async function handleSave() {
-  if (!currentChat.value) return;
-  const cleanMessages: HistoryItem[] = editableMessages.value.map(({ localId: _, ...msg }) => msg);
-  await commitFullHistoryManipulationForChat({
-    chatId: currentChat.value.id,
-    messages: cleanMessages,
-    systemPrompt: localSystemPrompt.value,
-  });
-  emit('close');
+  const chatId = editingChatId.value;
+  if (chatId === undefined || isSaving.value) return;
+  const session = editSession;
+  const messages = editableMessages.value.map(item => copyMessageWithoutReplies({ message: item.message }));
+  const systemPrompt = localSystemPrompt.value === undefined ? undefined : { ...localSystemPrompt.value };
+  isSaving.value = true;
+  try {
+    await commitFullHistoryManipulationForChat({ chatId, messages, systemPrompt });
+    if (!disposed && session === editSession && props.isOpen) emit('close');
+  } finally {
+    if (!disposed && session === editSession) isSaving.value = false;
+  }
 }
 
 function handleCancel() {
@@ -318,7 +368,7 @@ defineExpose({
           </button>
         </div>
 
-        <div tw-class="flex-1 overflow-y-auto flex flex-col overscroll-contain bg-gray-50/30 dark:bg-black/10">
+        <div :inert="isSaving" tw-class="flex-1 overflow-y-auto flex flex-col overscroll-contain bg-gray-50/30 dark:bg-black/10">
 
           <!-- Banner -->
           <div tw-class="px-6 pt-6">
@@ -371,7 +421,7 @@ defineExpose({
                 </div>
                 <div tw-class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
                   <div tw-class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed italic font-medium">
-                    {{ inheritedSettings?.systemPromptMessages.join('\n---\n') || lazyStrings.HistoryManipulationModal__no_system_prompt_inherited() }}
+                    {{ inheritedSystemPromptMessages.join('\n---\n') || lazyStrings.HistoryManipulationModal__no_system_prompt_inherited() }}
                   </div>
                 </div>
               </div>
@@ -422,63 +472,75 @@ defineExpose({
                       </div>
 
                       <button
-                        @click="msg.role = msg.role === 'user' ? 'assistant' : 'user'"
+                        @click="switchRole({ item: msg })"
+                        :disabled="!canSwitchRole({ message: msg.message })"
                         :tw-class="['w-10 h-10 flex items-center justify-center rounded-xl transition-all shadow-sm border', {
-                          'bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-100 dark:border-blue-800/50': msg.role === 'user',
-                          'bg-purple-50 dark:bg-purple-900/20 text-purple-600 border-purple-100 dark:border-purple-800/50': msg.role === 'assistant'
+                          'bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-100 dark:border-blue-800/50': msg.message.role === 'user',
+                          'bg-purple-50 dark:bg-purple-900/20 text-purple-600 border-purple-100 dark:border-purple-800/50': msg.message.role === 'assistant'
                         }]"
                         :title="lazyStrings.HistoryManipulationModal__switch_role()"
                       >
-                        <UserIcon v-if="msg.role === 'user'" tw-class="w-5 h-5" />
-                        <BotIcon v-else tw-class="w-5 h-5" />
+                        <UserIcon v-if="msg.message.role === 'user'" tw-class="w-5 h-5" />
+                        <BotIcon v-else-if="msg.message.role === 'assistant'" tw-class="w-5 h-5" />
+                        <CpuIcon v-else-if="msg.message.role === 'system'" tw-class="w-5 h-5" />
+                        <HammerIcon v-else tw-class="w-5 h-5" />
                       </button>
-                      <div tw-class="text-[9px] font-bold text-gray-400 tracking-tight" data-testid="role-label">{{ capitalize({ s: msg.role }) }}</div>
+                      <div tw-class="text-[9px] font-bold text-gray-400 tracking-tight" data-testid="role-label">{{ capitalize({ s: msg.message.role }) }}</div>
                     </div>
 
                     <!-- Message Card -->
                     <div tw-class="flex-1 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden focus-within:ring-4 focus-within:ring-blue-500/10 focus-within:border-blue-500 transition-all flex flex-col shadow-sm group-hover:shadow-md">
-                      <!-- Attachments -->
-                      <div v-if="msg.attachments && msg.attachments.length > 0" tw-class="flex flex-wrap gap-2.5 px-5 pt-5 bg-gray-50/30 dark:bg-gray-800/20">
-                        <div v-for="att in msg.attachments" :key="idToRaw({ id: att.id })" tw-class="relative group/att pb-5">
-                          <img
-                            v-if="att.mimeType.startsWith('image/')"
-                            :src="attachmentUrls.get(att.id)"
-                            tw-class="w-20 h-20 object-cover rounded-xl border-2 border-white dark:border-gray-800 shadow-sm"
-                          />
-                          <div v-else tw-class="w-20 h-20 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <ImageIcon tw-class="w-8 h-8 text-gray-400" />
+                      <div data-testid="history-parts">
+                        <div v-for="part in msg.message.parts" :key="part.id" :data-testid="`history-part-${part.id}`">
+                          <textarea
+                            v-if="part.type === 'text'"
+                            v-model="part.text"
+                            @paste="handlePaste({ event: $event, index })"
+                            tw-class="w-full bg-transparent p-4 text-[14px] text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px] font-medium leading-relaxed"
+                            :placeholder="lazyStrings.HistoryManipulationModal__type_message_content()"
+                          ></textarea>
+                          <div v-else-if="part.type === 'attachment'" tw-class="px-5 pt-5">
+                            <div tw-class="relative group/att pb-5">
+                              <img
+                                v-if="part.attachment.mimeType.startsWith('image/')"
+                                :src="attachmentUrls.get(attachmentKey({ item: msg, partId: part.id }))"
+                                :alt="part.attachment.originalName"
+                                tw-class="w-20 h-20 object-cover rounded-xl border-2 border-white dark:border-gray-800 shadow-sm"
+                              />
+                              <div v-else tw-class="w-20 h-20 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                                <ImageIcon tw-class="w-8 h-8 text-gray-400" />
+                              </div>
+                              <button
+                                @click="removeAttachment({ index, partId: part.id })"
+                                data-testid="remove-history-attachment"
+                                tw-class="absolute -top-2 -right-2 p-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-lg opacity-0 group-hover/att:opacity-100 transition-opacity"
+                              ><XIcon tw-class="w-3.5 h-3.5" /></button>
+                            </div>
                           </div>
-                          <button
-                            @click="removeAttachment({ msgIndex: index, attId: att.id })"
-                            tw-class="absolute -top-2 -right-2 p-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-lg opacity-0 group-hover/att:opacity-100 transition-opacity"
-                          >
-                            <XIcon tw-class="w-3.5 h-3.5" />
-                          </button>
+                          <div v-else tw-class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                            <div tw-class="font-bold">{{ part.type === 'reasoning' ? lazyStrings.HistoryManipulationModal__thoughts() : part.type }}</div>
+                            <pre tw-class="whitespace-pre-wrap break-words">{{ part.type === 'reasoning' ? part.text : part.type === 'tool_call' ? JSON.stringify(part.toolCall, null, 2) : JSON.stringify(part.result, null, 2) }}</pre>
+                          </div>
                         </div>
                       </div>
-
-                      <textarea
-                        v-model="msg.content"
-                        @paste="handlePaste({ event: $event, index })"
-                        tw-class="w-full bg-transparent p-4 text-[14px] text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px] font-medium leading-relaxed"
-                        :placeholder="lazyStrings.HistoryManipulationModal__type_message_content()"
-                      ></textarea>
 
                       <!-- Card Toolbar -->
                       <div tw-class="px-4 py-1.5 bg-gray-50/50 dark:bg-gray-800/30 flex items-center justify-between border-t border-gray-50 dark:border-gray-800">
                         <div tw-class="flex gap-4 text-[9px] font-bold font-mono text-gray-400/80 tracking-tight">
-                          <span v-if="msg.modelId" tw-class="flex items-center gap-1"><CpuIcon tw-class="w-3 h-3" /> {{ msg.modelId }}</span>
-                          <span v-if="msg.thinking" tw-class="flex items-center gap-1"><HistoryIcon tw-class="w-3 h-3" /> {{ lazyStrings.HistoryManipulationModal__thoughts() }}</span>
+                          <span v-if="msg.message.modelId" tw-class="flex items-center gap-1"><CpuIcon tw-class="w-3 h-3" /> {{ msg.message.modelId }}</span>
+                          <span v-if="hasReasoning({ message: msg.message })" tw-class="flex items-center gap-1"><HistoryIcon tw-class="w-3 h-3" /> {{ lazyStrings.HistoryManipulationModal__thoughts() }}</span>
                         </div>
 
                         <div tw-class="flex items-center gap-2">
                           <input
-                            :ref="el => setFileInputRef({ el, index })"
+                            :ref="(el: unknown) => setFileInputRef({ el, index })"
                             type="file" accept="image/*" multiple tw-class="hidden"
                             @change="handleFileSelect({ event: $event, index })"
                           />
                           <button
+                            data-testid="history-attach-media"
                             @click="triggerFileInput({ index })"
+                            :disabled="msg.message.role !== 'user'"
                             tw-class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-gray-800 transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-700 shadow-sm"
                             :title="lazyStrings.HistoryManipulationModal__attach_media()"
                           >
@@ -493,7 +555,7 @@ defineExpose({
                       <button @click="removeMessage({ index })" tw-class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" :title="lazyStrings.HistoryManipulationModal__remove_message()">
                         <Trash2Icon tw-class="w-4.5 h-4.5" />
                       </button>
-                      <button @click="duplicateMessage({ index })" tw-class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" :title="lazyStrings.HistoryManipulationModal__copy_message()">
+                      <button @click="duplicateMessage({ index })" :disabled="!canDuplicateMessage({ message: msg.message })" tw-class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" :title="lazyStrings.HistoryManipulationModal__copy_message()">
                         <CopyIcon tw-class="w-4.5 h-4.5" />
                       </button>
                       <button @click="addMessage({ index })" tw-class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" :title="lazyStrings.HistoryManipulationModal__add_message_after()">
@@ -527,7 +589,7 @@ defineExpose({
           </button>
           <button
             @click="handleSave"
-            :disabled="editableMessages.length === 0"
+            :disabled="editableMessages.length === 0 || isSaving"
             tw-class="flex items-center gap-2.5 px-10 py-3.5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/25 font-bold text-[11px] uppercase tracking-[0.15em] active:scale-95"
           >
             <SaveIcon tw-class="w-4 h-4" />

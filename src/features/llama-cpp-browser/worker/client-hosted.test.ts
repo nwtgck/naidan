@@ -38,7 +38,7 @@ describe('hosted Worker lifetime', () => {
   });
   it('rejects unresolved automatic selection before a generation RPC', async () => {
     const client = createLlamaCppWorkerClient();
-    await expect(client.generate({ request: { ...generationInput(), options: { profile: 'auto' } }, onChunk: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow();
+    await expect(client.generate({ request: { ...generationInput(), options: { profile: 'auto' } }, onEvent: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow();
     expect(transport.remote.generate).not.toHaveBeenCalled(); client.dispose();
   });
   it('does not construct a Worker when the platform has no Worker support', async () => {
@@ -103,19 +103,19 @@ describe('cooperative generation cancellation', () => {
     }));
     const controller = new AbortController(); const chunk = vi.fn(); const progress = vi.fn();
     const client = createLlamaCppWorkerClient();
-    const pending = client.generate({ request: generationInput(), onChunk: chunk, onProgress: progress, signal: controller.signal });
+    const pending = client.generate({ request: generationInput(), onEvent: chunk, onProgress: progress, signal: controller.signal });
     const rejectCheck = expect(pending).rejects.toThrow('aborted');
     const call = transport.remote.generate.mock.calls[0]!;
-    const onChunk = call[1] as ({ text }: { text: string }) => void;
+    const onEvent = call[1] as ({ event }: { event: { type: 'text'; text: string } }) => Promise<void>;
     const onProgress = call[2] as ({ phase, completed, total }: { phase: string, completed: number, total: number }) => void;
     controller.abort();
     expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: 1 });
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
-    onChunk({ text: 'private trailing content' }); onProgress({ phase: 'loading', completed: 1, total: 1 });
+    await onEvent({ event: { type: 'text', text: 'private trailing content' } }); onProgress({ phase: 'loading', completed: 1, total: 1 });
     finish(); await rejectCheck;
-    expect(client.canReuse()).toBe(true); expect(chunk).not.toHaveBeenCalled(); expect(progress).not.toHaveBeenCalled();
+    expect(client.canReuse()).toBe(true); expect(chunk).toHaveBeenCalledWith({ event: { type: 'text', text: 'private trailing content' } }); expect(progress).not.toHaveBeenCalled();
     transport.remote.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
-    await client.generate({ request: generationInput(), onChunk: chunk, onProgress: progress, signal: undefined });
+    await client.generate({ request: generationInput(), onEvent: chunk, onProgress: progress, signal: undefined });
     expect(transport.remote.generate.mock.calls[1]?.[0].generationId).toBe(2);
     onProgress({ phase: 'loading', completed: 1, total: 1 }); expect(progress).not.toHaveBeenCalled();
     expect(TestWorker.instances).toHaveLength(1); client.dispose();
@@ -124,7 +124,7 @@ describe('cooperative generation cancellation', () => {
     vi.useFakeTimers();
     transport.remote.generate.mockImplementationOnce(() => new Promise<void>(() => {}));
     const controller = new AbortController(); const client = createLlamaCppWorkerClient();
-    const pending = client.generate({ request: generationInput(), onChunk: () => {}, onProgress: () => {}, signal: controller.signal });
+    const pending = client.generate({ request: generationInput(), onEvent: () => {}, onProgress: () => {}, signal: controller.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
     controller.abort(); await vi.advanceTimersByTimeAsync(4999);
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
@@ -135,14 +135,14 @@ describe('cooperative generation cancellation', () => {
     transport.remote.generate.mockImplementationOnce(() => new Promise<void>(() => {}));
     transport.remote.cancelGeneration.mockRejectedValueOnce(new Error('private transport detail'));
     const controller = new AbortController(); const client = createLlamaCppWorkerClient();
-    const pending = client.generate({ request: generationInput(), onChunk: () => {}, onProgress: () => {}, signal: controller.signal });
+    const pending = client.generate({ request: generationInput(), onEvent: () => {}, onProgress: () => {}, signal: controller.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
     controller.abort(); await rejected; expect(client.canReuse()).toBe(false);
   });
   it('preserves the Worker after a cooperatively aborted native request', async () => {
     transport.remote.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'aborted' }));
     const client = createLlamaCppWorkerClient();
-    await expect(client.generate({ request: generationInput(), onChunk: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow('aborted');
+    await expect(client.generate({ request: generationInput(), onEvent: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow('aborted');
     expect(client.canReuse()).toBe(true); client.dispose();
   });
 });
@@ -173,7 +173,7 @@ describe('host snapshots of native operations', () => {
       return new Promise(() => {});
     });
     const client = createLlamaCppWorkerClient();
-    const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onChunk: () => {}, onProgress: () => {} });
+    const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     await vi.advanceTimersByTimeAsync(15000);
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'operation-waiting', lastStage: 'media-encode', lastEvent: 'native-node-start', nativeNode: 42, nativeOpName: 'GGML_OP_MUL_MAT', nativeTensorShape: [768, 240, 1, 1] }));
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private failure', cancelable: true }));
@@ -189,7 +189,7 @@ describe('host snapshots of native operations', () => {
       return new Promise(() => {});
     });
     const client = createLlamaCppWorkerClient();
-    const pending = client.generate({ request: { ...generationInput(), debug: 'off' }, signal: undefined, onChunk: () => {}, onProgress: () => {} });
+    const pending = client.generate({ request: { ...generationInput(), debug: 'off' }, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     await vi.advanceTimersByTimeAsync(60000); expect(debug).not.toHaveBeenCalled();
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private failure', cancelable: true }));
     await expect(pending).rejects.toThrow('worker-failed');
@@ -204,7 +204,7 @@ describe('host snapshots of native operations', () => {
       report({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', positions: 101 } });
       return new Promise(() => {});
     });
-    const client = createLlamaCppWorkerClient(); const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onChunk: () => {}, onProgress: () => {} });
+    const client = createLlamaCppWorkerClient(); const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     report({ diagnostic: { event: 'operation-start', stage: 'media-encode', mediaType: 'image' } });
     report({ diagnostic: { event: 'operation-complete', stage: 'media-encode', mediaType: 'image', elapsedMs: 20 } });
     report({ diagnostic: { event: 'operation-start', stage: 'media-decode', mediaType: 'image', batchIndex: 1, batchCount: 1, batchTokens: 64 } });
@@ -226,7 +226,7 @@ describe('host snapshots of native operations', () => {
       return new Promise(() => {});
     });
     const client = createLlamaCppWorkerClient();
-    const pending = client.generate({ request: generationInput(), signal: undefined, onChunk: () => {}, onProgress: () => {} });
+    const pending = client.generate({ request: generationInput(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private error with path and image content', cancelable: true }));
     await expect(pending).rejects.toThrow('worker-failed');
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'worker-error', lastStage: 'image-evaluate', lastEvent: 'operation-start', tokens: 101, failureKind: 'webgpu-dispatch-limit' }));
@@ -239,7 +239,7 @@ describe('host snapshots of native operations', () => {
       onDiagnostic({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', tokens: 101 } });
       return new Promise(() => {});
     });
-    const client = createLlamaCppWorkerClient(); const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onChunk: () => {}, onProgress: () => {} });
+    const client = createLlamaCppWorkerClient(); const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     await vi.advanceTimersByTimeAsync(14999); expect(debug).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'operation-waiting', lastStage: 'image-evaluate', elapsedMs: 15000, tokens: 101 }));

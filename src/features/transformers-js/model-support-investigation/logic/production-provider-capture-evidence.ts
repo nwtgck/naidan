@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ProductionProviderCaptureSnapshot } from './production-provider-capture-owner';
 import { PRODUCTION_PROVIDER_TRACE_LIMITS, type ProductionProviderTraceSnapshot, type ProductionProviderTraceEvent } from './production-provider-trace';
-import { capturePlanSchema, captureScenarioSchema, captureScenarios, isCapturePlanV2, isCaptureScenarioSelected, captureScenarioInput } from './production-provider-capture-plan';
+import { isCapturedContinuityAvailable, capturePlanSchema, captureScenarioSchema, captureScenarios, isCapturePlanV2, isCaptureScenarioSelected, captureScenarioInput } from './production-provider-capture-plan';
 
 export const PRODUCTION_PROVIDER_CAPTURE_EVIDENCE_PATH = 'production-provider/capture.json';
 export const productionProviderCaptureReferenceSchema = z.object({
@@ -47,6 +47,12 @@ const phase = z.enum(['before-settlement', 'after-settlement']);
 const sequence = z.number().int().min(0).max(PRODUCTION_PROVIDER_TRACE_LIMITS.maximumEvents + 1);
 const eventBase = { sequence, phase };
 const eventSchema = z.union([
+  strictRecord({ shape: { ...eventBase, kind: z.literal('assistant_message'), messageId: text } }),
+  strictRecord({ shape: { ...eventBase, kind: z.literal('part_text'), messageId: text, partId: text, index: sequence, partType: z.enum(['text', 'reasoning']), text, completeness: z.enum(['complete', 'partial']) } }),
+  strictRecord({ shape: { ...eventBase, kind: z.literal('part_call'), messageId: text, partId: text, index: sequence, toolCallId: text, toolName: text, modelVisibleArguments: text } }),
+  strictRecord({ shape: { ...eventBase, kind: z.literal('generation_finished'), next: z.enum(['user', 'tool_results']) } }),
+  strictRecord({ shape: { ...eventBase, kind: z.literal('generation_interrupted'), reason: z.enum(['aborted', 'limit', 'stop_sequence', 'unknown']) } }),
+  strictRecord({ shape: { ...eventBase, kind: z.literal('generation_error'), errorName: z.enum(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AbortError', 'ProductionWorkerLifecycleError', 'unknown']) } }),
   strictRecord({ shape: { ...eventBase, kind: z.literal('chunk'), chunk: text } }),
   strictRecord({ shape: { ...eventBase, kind: z.literal('assistant-start') } }),
   strictRecord({ shape: { ...eventBase, kind: z.literal('tool-call'), toolCallId: text, toolName: text, modelVisibleArguments: text } }),
@@ -69,7 +75,7 @@ const settledSchema = strictRecord({ shape: {
   sequence, outcome: outcomeSchema, events: eventArray, completeness: z.enum(['complete', 'incomplete']), failure: maybeFailure,
 } });
 const traceSchema = strictRecord({ shape: {
-  format: z.literal('production-provider-trace-v2'), requestId: id,
+  format: z.enum(['production-provider-trace-v2', 'production-provider-trace-v3']), requestId: id,
   limits: strictRecord({ shape: {
     maximumEvents: z.number().int().min(0).max(PRODUCTION_PROVIDER_TRACE_LIMITS.maximumEvents),
     maximumCharacters: z.number().int().min(0).max(PRODUCTION_PROVIDER_TRACE_LIMITS.maximumCharacters),
@@ -85,7 +91,14 @@ const toolCallSchema = strictRecord({ shape: {
   id: z.literal('call_model_support_probe_1'), type: z.literal('function'),
   function: strictRecord({ shape: { name: z.literal('lookup_weather'), arguments: z.literal('{"city":"Tokyo"}') } }),
 } });
+const capturedAssistantPartSchema = z.union([
+  strictRecord({ shape: { id: text, type: z.enum(['text', 'reasoning']), text, completeness: z.enum(['complete', 'partial']) } }),
+  strictRecord({ shape: { id: text, type: z.literal('tool_call'), toolCall: strictRecord({ shape: {
+    id: text, type: z.literal('function'), function: strictRecord({ shape: { name: text, arguments: text } }),
+  } }) } }),
+]);
 const messageSchema = z.union([
+  strictRecord({ shape: { role: z.literal('assistant'), parts: boundedArray({ maximum: PRODUCTION_PROVIDER_TRACE_LIMITS.maximumEvents, element: capturedAssistantPartSchema }) } }),
   strictRecord({ shape: { role: z.enum(['user', 'assistant', 'system']), content: z.string().max(PRODUCTION_PROVIDER_TRACE_LIMITS.maximumCharacters) } }),
   strictRecord({ shape: { role: z.literal('user'), content: boundedArray({ maximum: 2, element: z.unknown() }).pipe(z.tuple([imageTextPartSchema, imageUrlPartSchema])) } }),
   strictRecord({ shape: { role: z.literal('assistant'), content: z.literal(''), tool_calls: boundedArray({ maximum: 1, element: z.unknown() }).pipe(z.tuple([toolCallSchema])) } }),
@@ -108,7 +121,7 @@ const inputSchema = strictRecord({ shape: {
   tools: z.union([boundedArray({ element: z.never(), maximum: 0 }).pipe(z.tuple([])), boundedArray({ element: z.unknown(), maximum: 1 }).pipe(z.tuple([toolSchema]))]),
 } });
 const captureSchema = strictRecord({ shape: {
-  format: z.literal('production-provider-capture-v2'), runId: id.max(64),
+  format: z.enum(['production-provider-capture-v2', 'production-provider-capture-v3']), runId: id.max(64),
   modelId: z.string().max(256).regex(/^(?:hf\.co\/)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u)
     .refine(value => value.split('/').every(part => part !== '.' && part !== '..')),
   plan: capturePlanSchema,
@@ -128,7 +141,7 @@ const captureSchema = strictRecord({ shape: {
     notStartedReason: z.union([z.enum(['not-yet-started', 'scope-not-selected', 'first-settlement-unavailable', 'legacy-script-stopped', 'runtime-unavailable', 'aborted', 'deadline', 'disposed']), z.undefined()]),
   } }) }),
   capabilities: strictRecord({ shape: {
-    providerCallbacks: z.literal('bounded-projection'), nativeInvocations: z.literal('not-collected-by-this-owner'), tools: z.enum(['not-selected', 'fixed-public-weather-tool']), images: z.enum(['not-selected', 'fixed-public-image']),
+    providerCallbacks: z.enum(['bounded-projection', 'parts_and_tools_projection']), nativeInvocations: z.literal('not-collected-by-this-owner'), tools: z.enum(['not-selected', 'fixed-public-weather-tool']), images: z.enum(['not-selected', 'fixed-public-image']),
   } }),
 } });
 
@@ -147,6 +160,10 @@ function invalidCapture(): never {
 
 function payloadCharacters({ event }: { event: z.output<typeof eventSchema> }): number {
   switch (event.kind) {
+  case 'assistant_message': return event.messageId.length;
+  case 'part_text': return event.messageId.length + event.partId.length + event.text.length;
+  case 'part_call': return event.messageId.length + event.partId.length + event.toolCallId.length + event.toolName.length + event.modelVisibleArguments.length;
+  case 'generation_finished': case 'generation_interrupted': case 'generation_error': return 0;
   case 'assistant-start': return 0;
   case 'chunk': return event.chunk.length;
   case 'tool-call': return event.toolCallId.length + event.toolName.length + event.modelVisibleArguments.length;
@@ -157,7 +174,72 @@ function payloadCharacters({ event }: { event: z.output<typeof eventSchema> }): 
   }
 }
 
+function validateObservationContract({ trace }: { trace: ProductionProviderTraceSnapshot }): void {
+  let messageId: string | undefined;
+  const messageIds = new Set<string>();
+  let ended = false;
+  let terminal: 'generation_finished' | 'generation_interrupted' | 'generation_error' | undefined;
+  const parts = new Map<string, Extract<ProductionProviderTraceEvent, { kind: 'part_text' | 'part_call' }>>();
+  for (const event of trace.events) {
+    switch (event.kind) {
+    case 'assistant_message':
+      if (trace.format !== 'production-provider-trace-v3' || ended || messageIds.has(event.messageId)) invalidCapture();
+      messageId = event.messageId; messageIds.add(messageId); parts.clear(); break;
+    case 'part_text': case 'part_call': {
+      if (trace.format !== 'production-provider-trace-v3' || ended || event.messageId !== messageId) invalidCapture();
+      const previous = parts.get(event.partId);
+      if (previous !== undefined) {
+        if (previous.kind !== event.kind) invalidCapture();
+        if (event.kind === 'part_text' && previous.kind === 'part_text' && (event.partType !== previous.partType
+          || !event.text.startsWith(previous.text) || (previous.completeness === 'complete' && (event.completeness !== 'complete' || previous.text !== event.text)))) invalidCapture();
+        if (event.kind === 'part_call' && previous.kind === 'part_call' && (previous.toolCallId !== event.toolCallId
+          || previous.toolName !== event.toolName || previous.modelVisibleArguments !== event.modelVisibleArguments)) invalidCapture();
+      }
+      parts.set(event.partId, event); break;
+    }
+    case 'generation_finished': case 'generation_interrupted': case 'generation_error': {
+      if (trace.format !== 'production-provider-trace-v3' || ended) invalidCapture();
+      const ordered = [...parts.values()].sort((a, b) => a.index - b.index);
+      if (ordered.some((part, index) => part.index !== index)) invalidCapture();
+      switch (event.kind) {
+      case 'generation_finished': {
+        if (ordered.some(part => part.kind === 'part_text' && part.completeness === 'partial')) invalidCapture();
+        const hasCalls = ordered.some(part => part.kind === 'part_call');
+        if ((event.next === 'tool_results') !== hasCalls) invalidCapture();
+        break;
+      }
+      case 'generation_interrupted': case 'generation_error': break;
+      default: { const exhaustive: never = event; throw new Error('Unhandled generation observation: ' + exhaustive); }
+      }
+      terminal = event.kind; ended = true; break;
+    }
+    case 'chunk': case 'assistant-start': case 'tool-call':
+      switch (trace.format) {
+      case 'production-provider-trace-v2': break;
+      case 'production-provider-trace-v3': return invalidCapture();
+      default: { const exhaustive: never = trace.format; throw new Error('Unhandled trace format: ' + exhaustive); }
+      }
+      break;
+    case 'tool-started': case 'tool-output': case 'tool-exit': case 'tool-success': case 'tool-error': break;
+    default: { const exhaustive: never = event; throw new Error('Unhandled observation event: ' + exhaustive); }
+    }
+  }
+  // A complete projection of a settled parts operation includes its actual
+  // result. This does not imply model-native generation was complete.
+  if (trace.format === 'production-provider-trace-v3' && trace.settled?.completeness === 'complete') {
+    if (!ended || (terminal === 'generation_error') !== (trace.settled.outcome.status === 'rejected')) invalidCapture();
+  }
+  // A late event is not continuation input, but it must still identify the same
+  // observation vocabulary rather than pretending it came from an older API.
+  for (const event of trace.lateEvents) {
+    const legacy = ['chunk', 'assistant-start', 'tool-call'].includes(event.kind);
+    const partsEvent = ['assistant_message', 'part_text', 'part_call', 'generation_finished', 'generation_interrupted', 'generation_error'].includes(event.kind);
+    if ((trace.format === 'production-provider-trace-v3' && legacy) || (trace.format === 'production-provider-trace-v2' && partsEvent)) invalidCapture();
+  }
+}
+
 function validateTrace({ trace }: { trace: ProductionProviderTraceSnapshot }): void {
+  validateObservationContract({ trace });
   if (trace.events.length + trace.lateEvents.length > trace.limits.maximumEvents || trace.retainedCharacters > trace.limits.maximumCharacters
     || trace.events.some((event, index) => event.phase !== 'before-settlement' || event.sequence !== index)
     || (trace.completeness === 'complete') !== (trace.failure === undefined)
@@ -195,6 +277,10 @@ function validateTrace({ trace }: { trace: ProductionProviderTraceSnapshot }): v
 
 function validateIdentityAndScript({ capture, runId, modelId }: { capture: ProductionProviderCaptureSnapshot; runId: string; modelId: string }): void {
   if (capture.runId !== runId || capture.modelId !== modelId) invalidCapture();
+  const partsContract = capture.format === 'production-provider-capture-v3';
+  if (capture.capabilities.providerCallbacks !== (partsContract ? 'parts_and_tools_projection' : 'bounded-projection')) invalidCapture();
+  if (capture.requests.some(request => request.trace.format !== (partsContract ? 'production-provider-trace-v3' : 'production-provider-trace-v2')
+    || (!partsContract && request.input?.messages.some(message => 'parts' in message)))) invalidCapture();
   const scenarios = captureScenarios({ plan: capture.plan });
   const version2 = isCapturePlanV2({ plan: capture.plan });
   if (capture.capabilities.tools !== (isCaptureScenarioSelected({ plan: capture.plan, scenario: 'natural-tool-minimal' }) ? 'fixed-public-weather-tool' : 'not-selected')
@@ -228,7 +314,7 @@ function validateIdentityAndScript({ capture, runId, modelId }: { capture: Produ
     case 'first-settlement-unavailable': {
       const first = capture.requests[0]?.trace.settled;
       if (!version2 || !selected || request.scenario !== 'continuity' || first === undefined
-        || (first.outcome.status === 'fulfilled' && first.completeness === 'complete')) invalidCapture();
+        || isCapturedContinuityAvailable({ settled: first })) invalidCapture();
       break;
     }
     case 'not-yet-started': executionTail = true; break;
@@ -315,7 +401,7 @@ const evidenceEnvelopeSchema = z.object({
   }).strict(),
   snapshot: z.unknown(),
   limitations: z.object({
-    input: z.literal('fixed-synthetic-script'), providerCallbacks: z.literal('bounded-projection'),
+    input: z.literal('fixed-synthetic-script'), providerCallbacks: z.enum(['bounded-projection', 'parts_and_tools_projection']),
     nativeInvocations: z.literal('not-collected-by-this-owner'), replayEligibility: z.literal('not-established'),
     realModelSuccess: z.literal('not-certified'), completeness: z.literal('projection-only-not-native-generation-correctness'),
   }).strict(),
@@ -374,7 +460,7 @@ export function createProductionProviderCaptureEvidence({ capture, runId, modelI
       format: 'production-provider-capture-evidence-v1', undefinedEncoding: 'capture-value-undefined-v1',
       limits: { scope: 'per-request', ...PRODUCTION_PROVIDER_TRACE_LIMITS }, snapshot: encoded,
       limitations: {
-        input: 'fixed-synthetic-script', providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner',
+        input: 'fixed-synthetic-script', providerCallbacks: capture.capabilities.providerCallbacks, nativeInvocations: 'not-collected-by-this-owner',
         replayEligibility: 'not-established', realModelSuccess: 'not-certified',
         completeness: 'projection-only-not-native-generation-correctness',
       },
@@ -444,6 +530,7 @@ export function readProductionProviderCaptureEvidence({ json, runId, modelId }: 
       requests: ({ value }) => z.array(z.unknown()).max(13).parse(value).map(value => decodeFields({ value, fields: { input: decodeInput, trace: decodeTrace, notStartedReason: decodeMaybeUndefined } })),
     } });
     const parsed = captureSchema.parse(decoded);
+    if (envelope.limitations.providerCallbacks !== parsed.capabilities.providerCallbacks) invalidCapture();
     validateIdentityAndScript({ capture: parsed as ProductionProviderCaptureSnapshot, runId, modelId });
     // Same validated bridge as export: strictRecord requires own keys even for
     // undefined values, while Zod's output type marks those keys optional.

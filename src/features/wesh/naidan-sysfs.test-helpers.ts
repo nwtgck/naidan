@@ -129,112 +129,130 @@ export const mainChatContent: ChatContent = {
       {
         id: toMessageId({ raw: 'Ku1rA1B2c3D4e5F6g7H8' }),
         role: 'user',
-        content: 'Root user',
-        timestamp: 2000,
-        attachments: [],
-        thinking: undefined,
-        error: undefined,
+        createdAt: 2000,
         modelId: undefined,
         lmParameters: undefined,
-        toolCalls: undefined,
-        results: undefined,
+        parts: [
+          {
+            id: 'text',
+            type: 'text',
+            text: 'Root user',
+            completeness: 'complete'
+          }
+        ],
         replies: {
           items: [
             {
               id: toMessageId({ raw: 'La2rF6G7h8J9k0L1m2N3' }),
               role: 'assistant',
-              content: 'Root assistant',
-              timestamp: 2001,
-              attachments: undefined,
-              thinking: undefined,
-              error: undefined,
+              createdAt: 2001,
               modelId: 'gpt-5',
               lmParameters: undefined,
-              toolCalls: undefined,
-              results: undefined,
+              parts: [
+                {
+                  id: 'text',
+                  type: 'text',
+                  text: 'Root assistant',
+                  completeness: 'complete'
+                }
+              ],
+              interruption: undefined,
               replies: {
                 items: [
                   {
                     id: toMessageId({ raw: 'Mu3aL1M2n3P4q5R6s7T8' }),
                     role: 'user',
-                    content: 'Branch A user',
-                    timestamp: 2002,
-                    attachments: [],
-                    thinking: undefined,
-                    error: undefined,
+                    createdAt: 2002,
                     modelId: undefined,
                     lmParameters: undefined,
-                    toolCalls: undefined,
-                    results: undefined,
+                    parts: [
+                      {
+                        id: 'text',
+                        type: 'text',
+                        text: 'Branch A user',
+                        completeness: 'complete'
+                      }
+                    ],
                     replies: {
                       items: [
                         {
                           id: toMessageId({ raw: 'Na4bR6S7t8V9w0X1y2Z3' }),
                           role: 'assistant',
-                          content: 'Branch A first leaf',
-                          timestamp: 2003,
-                          attachments: undefined,
-                          thinking: undefined,
-                          error: undefined,
+                          createdAt: 2003,
                           modelId: 'gpt-5',
                           lmParameters: undefined,
-                          toolCalls: undefined,
-                          results: undefined,
-                          replies: { items: [] },
+                          parts: [
+                            {
+                              id: 'text',
+                              type: 'text',
+                              text: 'Branch A first leaf',
+                              completeness: 'complete'
+                            }
+                          ],
+                          interruption: undefined,
+                          replies: { items: [] }
                         },
                         {
                           id: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
                           role: 'assistant',
-                          content: 'Branch A current leaf',
-                          timestamp: 2004,
-                          attachments: undefined,
-                          thinking: undefined,
-                          error: undefined,
+                          createdAt: 2004,
                           modelId: 'gpt-5',
                           lmParameters: undefined,
-                          toolCalls: undefined,
-                          results: undefined,
-                          replies: { items: [] },
+                          parts: [
+                            {
+                              id: 'text',
+                              type: 'text',
+                              text: 'Branch A current leaf',
+                              completeness: 'complete'
+                            }
+                          ],
+                          interruption: undefined,
+                          replies: { items: [] }
                         },
                       ],
-                    },
+                    }
                   },
                   {
                     id: toMessageId({ raw: 'Pu3bC6D7e8F9g0H1i2J3' }),
                     role: 'user',
-                    content: 'Branch B user',
-                    timestamp: 2005,
-                    attachments: [],
-                    thinking: undefined,
-                    error: undefined,
+                    createdAt: 2005,
                     modelId: undefined,
                     lmParameters: undefined,
-                    toolCalls: undefined,
-                    results: undefined,
+                    parts: [
+                      {
+                        id: 'text',
+                        type: 'text',
+                        text: 'Branch B user',
+                        completeness: 'complete'
+                      }
+                    ],
                     replies: {
                       items: [
                         {
                           id: toMessageId({ raw: 'Sa4cH1J2k3L4m5N6p7Q8' }),
                           role: 'assistant',
-                          content: 'Branch B leaf',
-                          timestamp: 2006,
-                          attachments: undefined,
-                          thinking: undefined,
-                          error: undefined,
+                          createdAt: 2006,
                           modelId: 'gpt-5',
                           lmParameters: undefined,
-                          toolCalls: undefined,
-                          results: undefined,
-                          replies: { items: [] },
+                          parts: [
+                            {
+                              id: 'text',
+                              type: 'text',
+                              text: 'Branch B leaf',
+                              completeness: 'complete'
+                            }
+                          ],
+                          interruption: undefined,
+                          replies: { items: [] }
                         },
                       ],
-                    },
+                    }
                   },
                 ],
-              },
+              }
             },
           ],
-        },
+        }
       },
     ],
   },
@@ -260,33 +278,38 @@ function createLinearContent({
         {
           id: toMessageId({ raw: userId }),
           role: 'user',
-          content: userText,
-          timestamp: 3000,
-          attachments: [],
-          thinking: undefined,
-          error: undefined,
+          createdAt: 3000,
           modelId: undefined,
           lmParameters: undefined,
-          toolCalls: undefined,
-          results: undefined,
+          parts: [
+            {
+              id: 'text',
+              type: 'text',
+              text: userText,
+              completeness: 'complete'
+            }
+          ],
           replies: {
             items: [
               {
                 id: toMessageId({ raw: assistantId }),
                 role: 'assistant',
-                content: assistantText,
-                timestamp: 3001,
-                attachments: undefined,
-                thinking: undefined,
-                error: undefined,
+                createdAt: 3001,
                 modelId: 'gpt-5',
                 lmParameters: undefined,
-                toolCalls: undefined,
-                results: undefined,
-                replies: { items: [] },
+                parts: [
+                  {
+                    id: 'text',
+                    type: 'text',
+                    text: assistantText,
+                    completeness: 'complete'
+                  }
+                ],
+                interruption: undefined,
+                replies: { items: [] }
               },
             ],
-          },
+          }
         },
       ],
     },

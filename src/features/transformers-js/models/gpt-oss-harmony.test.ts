@@ -149,7 +149,7 @@ describe('HarmonyStreamParser', () => {
     ]);
   });
 
-  it('trims trailing whitespace only when a message closes', () => {
+  it('preserves trailing whitespace when a message closes', () => {
     const parser = new HarmonyStreamParser();
     const tokens = [
       '<|start|>',
@@ -168,7 +168,7 @@ describe('HarmonyStreamParser', () => {
 
     parser.push({ token: '<|return|>' });
     expect(parser.messages[0]).toEqual(expect.objectContaining({
-      content: 'Hello',
+      content: 'Hello   ',
       endReason: 'return',
     }));
   });

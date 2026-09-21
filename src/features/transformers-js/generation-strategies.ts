@@ -1,3 +1,6 @@
+import type { InferenceGenerationEvent } from './generation-events';
+import { NativeProtocolStreamer } from './models/native-protocol-streamer';
+import { createStandardGeneration, resolveStandardGenerationFraming } from './models/standard-generation';
 /* eslint-disable no-restricted-imports -- Worker-only strategy module intentionally depends on transformers.js runtime types. */
 import {
   TextStreamer,
@@ -7,7 +10,8 @@ import {
   type PreTrainedTokenizer,
   Tensor,
 } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import type { LmParameters, ToolCall } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import {
   buildGemma4TemplateInput,
   getGemma4ThinkingTemplateOptions,
@@ -17,6 +21,8 @@ import {
   type Gemma4ProcessorLike,
 } from './models/gemma4';
 import { Gemma4ToolCallParser } from './models/gemma4-tool-call-parser';
+import { createGemma4Generation } from './models/gemma4-generation';
+import { createQwen3_5Generation, qwen3_5ProtocolTokens } from './models/qwen3_5-generation';
 import { Qwen3_5ToolCallParser } from './models/qwen3_5-tool-call-parser';
 import { generateGptOss } from './models/gpt-oss';
 import {
@@ -205,7 +211,7 @@ interface GenerationStrategyContext {
   continuationOwner?: string,
   model: PreTrainedModel,
   tokenizer: PreTrainedTokenizer,
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   onChunk: ({ chunk }: { chunk: string }) => void,
   onRawChunk: ({ chunk }: { chunk: string }) => void,
   onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void,
@@ -219,6 +225,7 @@ interface GenerationStrategyContext {
   debugLog: ({ event, details }: { event: string, details: Record<string, unknown> }) => void,
   observationSink: GenerationStrategyObservationSink | undefined,
   generationCapture: GenerationCaptureCall | undefined,
+  onGenerationEvent: (({ event }: { event: InferenceGenerationEvent }) => void) | undefined,
 }
 
 export interface GenerationStrategy {
@@ -318,10 +325,21 @@ const standardGenerationStrategy: GenerationStrategy = {
     debugLog,
     observationSink,
     generationCapture,
+    onGenerationEvent,
   }: GenerationStrategyContext) {
-    const toolHandling: StandardToolHandling = tools && tools.length > 0
+    const hasToolHistory = messages.some(message => message.role === 'tool' || message.tool_calls?.length);
+    const toolHandling: StandardToolHandling = tools?.length || hasToolHistory
       ? resolveStandardToolHandling({ tokenizer, debugLog })
       : { outputProtocol: 'json-tagged', historyEncoding: 'native-template', preservedDelimiterIds: [] };
+    if (onGenerationEvent !== undefined && hasToolHistory) {
+      // The fallback protocol name alone does not prove that a template keeps
+      // historical calls. Avoid silently losing them when no new tools are sent.
+      switch (toolHandling.outputProtocol) {
+      case 'delimited-pythonic': break;
+      case 'json-tagged': throw new Error('This standard tool history has no reviewed structured input adapter.');
+      default: { const exhaustive: never = toolHandling.outputProtocol; throw new Error(`Unhandled standard history framing: ${String(exhaustive)}`); }
+      }
+    }
     const formattedMessages = formatStandardMessagesForToolHandling({
       messages,
       handling: toolHandling,
@@ -342,8 +360,7 @@ const standardGenerationStrategy: GenerationStrategy = {
       debugLog,
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const inputs = tokenizer.apply_chat_template(formattedMessages as any, templateOptions) as Record<string, unknown>;
+    const inputs = tokenizer.apply_chat_template(formattedMessages, templateOptions) as Record<string, unknown>;
     emitGenerationObservation({
       observationSink,
       emit: ({ sink }) => sink.onFullConversationInputPrepared({
@@ -354,6 +371,33 @@ const standardGenerationStrategy: GenerationStrategy = {
         },
       }),
     });
+    if (onGenerationEvent !== undefined) {
+      switch (reasoningProtocol) {
+      case 'generated-output': break;
+      case 'prompt-open-think': throw new Error('Prefilled standard reasoning requires a model-specific structured adapter.');
+      default: { const exhaustive: never = reasoningProtocol; throw new Error(`Unhandled standard reasoning framing: ${String(exhaustive)}`); }
+      }
+      const { endTokens, protocolTokens } = resolveStandardGenerationFraming({ model, tokenizer, inputs, handling: toolHandling, tools });
+      const structured = createStandardGeneration({ emit: onGenerationEvent, endTokens, handling: toolHandling, tools });
+      const streamer = new NativeProtocolStreamer({ tokenizer, protocolTokens,
+        onText: ({ text }) => structured.text({ text }), onControl: ({ token }) => structured.control({ token }),
+      });
+      try {
+        await generateWithModel({ model, inputs, pastKeyValues: null, params, streamer, stoppingCriteria, observationSink, generationCapture });
+      } catch (error) {
+        // Native failures may bypass end(), leaving an unfinished word in the
+        // TextStreamer. Publish that accepted text before closing it partial.
+        try {
+          streamer.end();
+        } catch { /* Preserve the first failure. */ }
+        try {
+          structured.finish({ reason: 'unknown' });
+        } catch { /* Preserve the first failure. */ }
+        throw error;
+      }
+      structured.finish({ reason: 'unknown' });
+      return;
+    }
     let assistantContent = '';
     const toolCallParser = tools && tools.length > 0
       ? createStandardToolCallStreamParser({
@@ -425,11 +469,13 @@ const gptOssGenerationStrategy: GenerationStrategy = {
     stoppingCriteria,
     observationSink,
     generationCapture,
+    onGenerationEvent,
   }: GenerationStrategyContext) {
     const stateOwner = runtimeState.generationStateOwner;
     const previousCache = runtimeState.gptOssPastKeyValues;
     runtimeState.gptOssPastKeyValues = null;
     const generatedCache = await generateGptOss({
+      onGenerationEvent,
       model,
       tokenizer,
       messages,
@@ -488,6 +534,7 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     debugLog,
     observationSink,
     generationCapture,
+    onGenerationEvent,
   }: GenerationStrategyContext) {
     if (!runtimeState.gemma4Processor) {
       throw new Error('Gemma 4 processor not loaded');
@@ -528,6 +575,32 @@ const gemma4GenerationStrategy: GenerationStrategy = {
         inputKeys: Object.keys(inputs).sort(),
       },
     });
+
+    if (onGenerationEvent !== undefined) {
+      // The native tokenizer determines framing. Literal protocol-looking text
+      // is never routed through the legacy string/tag parser in this mode.
+      const structured = createGemma4Generation({
+        emit: onGenerationEvent, toolCalls: tools?.length ? 'enabled' : 'disabled',
+      });
+      const streamer = new NativeProtocolStreamer({ protocolTokens: undefined, tokenizer,
+        onText: ({ text }) => structured.text({ text }),
+        onControl: ({ token }) => structured.control({ token }),
+      });
+      try {
+        await generateWithModel({ model, inputs, pastKeyValues: null, params,
+          streamer, stoppingCriteria, observationSink, generationCapture,
+        });
+      } catch (error) {
+        // Flush a boundary newline held by the codec before reporting failure.
+        // Failure of the event sink must not replace the native/transport error.
+        try {
+          structured.finish({ reason: 'unknown' });
+        } catch { /* Preserve the first failure. */ }
+        throw error;
+      }
+      structured.finish({ reason: 'unknown' });
+      return;
+    }
 
     const toolParser = new Gemma4ToolCallParser({
       onText: ({ text }) => onChunk({ chunk: text }), toolCalls: tools?.length ? 'enabled' : 'disabled',
@@ -599,6 +672,7 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     debugLog,
     observationSink,
     generationCapture,
+    onGenerationEvent,
   }: GenerationStrategyContext) {
     if (!runtimeState.qwen3_5Processor) {
       throw new Error('Qwen3.5 processor not loaded');
@@ -692,6 +766,48 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
         hasImageGridThwInput: 'image_grid_thw' in inputs,
       },
     });
+
+    if (onGenerationEvent !== undefined) {
+      let cacheableCompletion = false;
+      const structured = createQwen3_5Generation({ prompt, tools, emit: ({ event }) => {
+        switch (event.type) {
+        case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'tool_call': break;
+        case 'result':
+          switch (event.result.type) {
+          case 'finished': cacheableCompletion = event.result.next === 'user'; break;
+          case 'interrupted': cacheableCompletion = false; break;
+          default: { const exhaustive: never = event.result; throw new Error(`Unhandled Qwen result: ${exhaustive}`); }
+          }
+          break;
+        default: { const exhaustive: never = event; throw new Error(`Unhandled Qwen event: ${exhaustive}`); }
+        }
+        onGenerationEvent({ event });
+      } });
+      const streamer = new NativeProtocolStreamer({ tokenizer, protocolTokens: qwen3_5ProtocolTokens,
+        onText: ({ text }) => structured.text({ text }), onControl: ({ token }) => structured.control({ token }),
+      });
+      let result: Awaited<ReturnType<typeof generateWithModel>>;
+      try {
+        result = await generateWithModel({ model, inputs,
+          pastKeyValues: useNoToolContinuation ? sequenceCache!.pastKeyValues : null,
+          params, streamer, stoppingCriteria, observationSink, generationCapture,
+        });
+      } catch (error) {
+        // Publish held content before propagating the native failure. This does
+        // not turn a completed delimiter into successful RPC settlement.
+        try {
+          structured.finish({ reason: 'unknown' });
+        } catch { /* Preserve the first native/transport failure. */ }
+        throw error;
+      }
+      structured.finish({ reason: 'unknown' });
+      if (runtimeState.generationStateOwner !== cacheGeneration || !cacheableCompletion) return;
+      runtimeState.qwen3_5SequenceCache = !hasImages && !tools?.length
+        ? retainQwenSequenceCache({ model, sequences: result.sequences, pastKeyValues: result.past_key_values, inputs, tensorClass: Tensor })
+        : undefined;
+      runtimeState.qwen3_5ConversationState = { modelId: runtimeState.activeModelId ?? '', messageCount: messages.length };
+      return;
+    }
 
     // Recognize the known native assistant generation header, not effort or a
     // bare thinking suffix. Unknown custom prompt formats remain unchanged.
@@ -829,7 +945,7 @@ async function generateWithModel({
   let nativeStreamHook: ReturnType<typeof observeNativeStreamer> | undefined;
   if (invocation !== undefined) {
     recordGenerationCapture({ record: () => {
-      nativeStreamHook = observeNativeStreamer({ streamer, streamerPrototype: TextStreamer.prototype, capture: invocation });
+      nativeStreamHook = observeNativeStreamer({ streamer, streamerPrototype: streamer instanceof NativeProtocolStreamer ? NativeProtocolStreamer.prototype : TextStreamer.prototype, capture: invocation });
     } });
   }
   let result: Awaited<ReturnType<TextGenerationModel['generate']>>;

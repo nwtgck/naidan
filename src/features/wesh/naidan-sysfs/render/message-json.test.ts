@@ -9,40 +9,31 @@ describe('renderMessageJson', () => {
     const node: ToolMessageNode = {
       id: toMessageId({ raw: 'tool-1' }),
       role: 'tool',
-      content: undefined,
-      timestamp: 2,
-      replies: { items: [] },
-      attachments: undefined,
-      thinking: undefined,
-      error: undefined,
+      createdAt: 2,
       modelId: undefined,
       lmParameters: undefined,
-      toolCalls: undefined,
-      results: [{
-        toolCallId: toToolCallId({ raw: 'call-1' }),
-        status: 'success',
-        content: {
-          type: 'text',
-          text: longText,
-        },
-      }],
+      parts: [
+        {
+          id: 'tool_result-0',
+          type: 'tool_result',
+          result: {
+            toolCallId: toToolCallId({ raw: 'call-1' }),
+            status: 'success',
+            content: {
+              type: 'text',
+              text: longText,
+            },
+          }
+        }
+      ],
+      replies: { items: [] }
     };
 
-    expect(renderMessageJson({ node })).toBe(`\
-{
-  "id": "tool-1",
-  "role": "tool",
-  "timestamp": 2,
-  "results": [
-    {
-      "toolCallId": "call-1",
-      "status": "success",
-      "content": {
-        "type": "text",
-        "text": "${'y'.repeat(4000)}\\n[truncated]"
-      }
-    }
-  ]
-}`);
+    expect(renderMessageJson({ node })).toBe(JSON.stringify({
+      id: 'tool-1', role: 'tool', createdAt: 2,
+      parts: [{ id: 'tool_result-0', type: 'tool_result', result: {
+        toolCallId: 'call-1', status: 'success', content: { type: 'text', text: `${'y'.repeat(4000)}\n[truncated]` },
+      } }],
+    }, null, 2));
   });
 });

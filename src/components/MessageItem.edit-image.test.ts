@@ -54,9 +54,12 @@ describe('MessageItem Edit Image Generation', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'user') => ({
     id: 'msg-123',
     role,
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   const stubs = {

@@ -1,7 +1,8 @@
 import { ensureStrings } from '@/strings';
 import { reactive, toRaw } from 'vue';
-import type { AssistantMessageNode, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt, ToolMessageNode, UserMessageNode } from '@/01-models/types';
-import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import type { AssistantMessageNode, Attachment, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt } from '@/01-models/types';
+import { copyMessageWithoutReplies } from '@/logic/copy-message-node';
+import { cloneLmParameters } from '@/utils/lm-parameters';
 import { storageService } from '@/00-storage/service';
 import {
   createBranchFromMessages,
@@ -9,7 +10,6 @@ import {
   findNodeInBranch,
   findParentInBranch,
   getChatBranchIterator,
-  type HistoryItem,
 } from '@/logic/chat-tree';
 import { generateId } from '@/01-models/id';
 import {
@@ -93,30 +93,51 @@ export async function commitFullHistoryManipulationForChat({
   systemPrompt,
 }: {
   chatId: ChatId,
-  messages: HistoryItem[],
+  messages: readonly MessageNode[],
   systemPrompt: SystemPrompt | undefined,
 }): Promise<void> {
-  const target = getLiveChatById({ chatId });
-  if (target === null) {
-    return;
-  }
+  const chat = getLiveChatById({ chatId });
+  if (chat === null) return;
 
-  const mutableChat = getLiveChat({ chat: target });
-  mutableChat.systemPrompt = systemPrompt;
-
-  for (const message of messages) {
-    if (!message.attachments) {
-      continue;
+  // Snapshot the complete proposed branch before any storage awaits. Only these
+  // copies become the new branch; the editor and existing replies remain intact.
+  const newNodes = createBranchFromMessages({ messages });
+  const prompt = systemPrompt === undefined ? undefined : (() => {
+    const { behavior, content, ...unhandled } = systemPrompt;
+    unhandled satisfies Record<PropertyKey, never>;
+    switch (behavior) {
+    case 'override': return { behavior, content };
+    case 'append':
+      if (content === null) throw new Error('An append prompt must contain text.');
+      return { behavior, content };
+    default: { const _ex: never = behavior; throw new Error(`Unhandled prompt: ${_ex}`); }
     }
-    for (let index = 0; index < message.attachments.length; index += 1) {
-      const attachment = message.attachments[index]!;
+  })();
+
+  for (const message of newNodes) {
+    switch (message.role) {
+    case 'user': break;
+    case 'assistant':
+    case 'system':
+    case 'tool': continue;
+    default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+    }
+    for (const part of message.parts) {
+      switch (part.type) {
+      case 'attachment': break;
+      case 'text': continue;
+      default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+      }
+      const attachment = part.attachment;
       switch (attachment.status) {
       case 'memory':
         if (storageService.canPersistBinary) {
           try {
             await storageService.saveFile({ blob: attachment.blob, binaryObjectId: attachment.binaryObjectId, name: attachment.originalName });
-            message.attachments[index] = { ...attachment, status: 'persisted' };
+            const { blob: _blob, status: _status, ...metadata } = attachment;
+            part.attachment = { ...metadata, status: 'persisted' };
           } catch (error) {
+            // Keep the in-memory body if persistence fails; no old file is removed.
             console.error('Failed to persist attachment during manipulation:', error);
           }
         }
@@ -132,32 +153,27 @@ export async function commitFullHistoryManipulationForChat({
     }
   }
 
-  const newNodes = createBranchFromMessages({ messages });
+  const mutableChat = getLiveChat({ chat });
+  mutableChat.systemPrompt = prompt;
   if (newNodes.length > 0) {
-    if (!mutableChat.root) {
-      mutableChat.root = { items: [] };
-    }
     mutableChat.root.items.push(newNodes[0]!);
     mutableChat.currentLeafId = newNodes[newNodes.length - 1]!.id;
   }
-
   mutableChat.updatedAt = Date.now();
   notifyChatChanged({ chatId: mutableChat.id });
 
   await updateChatContent({
     id: mutableChat.id,
-
     updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
   });
   await updateChatMeta({
     id: mutableChat.id,
-
-    updater: ({ current }) => {
-      if (current === null) {
-        return mutableChat;
-      }
-      return { ...current, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
-    },
+    updater: ({ current }) => ({
+      ...(current ?? mutableChat),
+      systemPrompt: prompt,
+      updatedAt: mutableChat.updatedAt,
+      currentLeafId: mutableChat.currentLeafId,
+    }),
   });
 }
 
@@ -180,69 +196,7 @@ async function forkChatFromTarget({
   }
 
   const forkPath = path.slice(0, pathIndex + 1);
-  const clonedNodes: MessageNode[] = forkPath.map((node) => {
-    const common = {
-      id: node.id,
-      content: node.content ?? '',
-      timestamp: node.timestamp,
-      replies: { items: [] },
-    };
-    switch (node.role) {
-    case 'user':
-      return {
-        ...common,
-        role: 'user',
-        attachments: node.attachments,
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: node.lmParameters || EMPTY_LM_PARAMETERS,
-        toolCalls: undefined,
-        results: undefined,
-      } as UserMessageNode;
-    case 'assistant':
-      return {
-        ...common,
-        role: 'assistant',
-        attachments: undefined,
-        thinking: node.thinking,
-        error: node.error,
-        modelId: node.modelId,
-        lmParameters: node.lmParameters || EMPTY_LM_PARAMETERS,
-        toolCalls: node.toolCalls,
-        results: undefined,
-      } as AssistantMessageNode;
-    case 'system':
-      return {
-        ...common,
-        role: 'system',
-        attachments: undefined,
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: undefined,
-        toolCalls: undefined,
-        results: undefined,
-      } as MessageNode;
-    case 'tool':
-      return {
-        ...common,
-        role: 'tool',
-        content: undefined,
-        attachments: undefined,
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: undefined,
-        toolCalls: undefined,
-        results: node.results,
-      } as ToolMessageNode;
-    default: {
-      const _ex: never = node;
-      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
-    }
-    }
-  });
+  const clonedNodes = forkPath.map(message => copyMessageWithoutReplies({ message }));
 
   for (let index = 0; index < clonedNodes.length - 1; index += 1) {
     clonedNodes[index]!.replies.items.push(clonedNodes[index + 1]!);
@@ -264,6 +218,7 @@ async function forkChatFromTarget({
     createdAt: Date.now(),
     updatedAt: Date.now(),
     modelId: mutableChat.modelId,
+    lmParameters: cloneLmParameters({ lmParameters: mutableChat.lmParameters }),
     toolConfigs: cloneToolConfigs({ toolConfigs: mutableChat.toolConfigs }),
   });
 
@@ -316,19 +271,17 @@ async function editMessageInTarget({
 
   switch (node.role) {
   case 'assistant': {
+    // A manual replacement creates a sibling, not an edited version of generated reasoning or calls.
+    // Keep the original node and every descendant intact for version switching.
     const correctedNode: AssistantMessageNode = {
       id: generateId<MessageId>(),
       role: 'assistant',
-      content: newContent,
-      attachments: undefined,
-      timestamp: Date.now(),
+      parts: [{ id: 'text', type: 'text', text: newContent, completeness: 'complete' }],
+      createdAt: Date.now(),
       modelId: node.modelId,
       replies: { items: [] },
-      thinking: undefined,
-      error: undefined,
-      lmParameters: node.lmParameters || EMPTY_LM_PARAMETERS,
-      toolCalls: undefined,
-      results: undefined,
+      interruption: undefined,
+      lmParameters: cloneLmParameters({ lmParameters: node.lmParameters }),
     };
     const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
     if (parent) {
@@ -350,7 +303,13 @@ async function editMessageInTarget({
       mutableChat,
       messageId,
       newContent,
-      attachments: node.attachments,
+      attachments: node.parts.flatMap(part => {
+        switch (part.type) {
+        case 'text': return [];
+        case 'attachment': return [part.attachment];
+        default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+        }
+      }),
       lmParameters,
     });
     break;
@@ -430,7 +389,7 @@ async function sendEditedMessage({
   mutableChat: Chat,
   messageId: MessageId,
   newContent: string,
-  attachments: UserMessageNode['attachments'] | undefined,
+  attachments: Attachment[] | undefined,
   lmParameters: LmParameters | undefined,
 }): Promise<void> {
   const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });

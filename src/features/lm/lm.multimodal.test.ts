@@ -1,90 +1,47 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { OpenAIProvider } from '@/features/lm/openai';
 import { OllamaProvider } from '@/features/lm/ollama';
+import { toMessageId, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
+import type { ChatMessage } from '@/01-models/types';
+import type { LmProvider } from '@/01-models/lm';
+import type { LmFetch } from './fetch';
+import { consumeProviderGenerationForTest } from './provider-test-support';
+
+function request({ text, model }: { text: string, model: string }): Parameters<LmProvider['chat']>[0] {
+  const messages: ChatMessage[] = [{
+    id: toMessageId({ raw: 'u' }), role: 'user', parts: [
+      { id: 'text', type: 'text', text, completeness: 'complete' },
+      { id: 'image', type: 'attachment', attachment: {
+        id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }),
+        originalName: 'image.png', mimeType: 'image/png', size: 3, uploadedAt: 1,
+        status: 'memory', blob: new Blob([Uint8Array.of(1, 2, 3)], { type: 'image/png' }),
+      } },
+    ],
+  }];
+  return { debug: undefined, messages, model, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined };
+}
+function body({ fetcher }: { fetcher: ReturnType<typeof vi.fn<LmFetch>> }) {
+  const raw = fetcher.mock.calls[0]?.[1]?.body;
+  if (typeof raw !== 'string') throw new Error('Expected a serialized request.');
+  return JSON.parse(raw);
+}
 
 describe('LM Providers - Multimodal Requests', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    global.fetch = vi.fn();
-  });
-
   it('OpenAIProvider should format multimodal messages correctly', async () => {
-    const provider = new OpenAIProvider({ endpoint: 'http://test.api' });
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      body: {
-        getReader: () => ({
-          read: vi.fn()
-            .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n') })
-            .mockResolvedValueOnce({ done: true }),
-        }),
-      },
-    });
-
-    const messages = [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Analyze this:' },
-          { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
-        ],
-      },
-    ];
-
-    await provider.chat({
-      messages: messages as any,
-      model: 'gpt-4-vision',
-      onChunk: () => {},
-    });
-
-    const fetchCall = (global.fetch as any).mock.calls[0];
-    const body = JSON.parse(fetchCall[1].body);
-
-    expect(body.messages[0].content).toBeInstanceOf(Array);
-    expect(body.messages[0].content).toHaveLength(2);
-    expect(body.messages[0].content[1]).toEqual({
-      type: 'image_url',
-      image_url: { url: 'data:image/png;base64,abc' },
-    });
+    const fetcher = vi.fn<LmFetch>().mockResolvedValueOnce(new Response('data: [DONE]\n\n'));
+    const provider = new OpenAIProvider({ endpoint: 'http://test.api', fetcher });
+    const { result } = await consumeProviderGenerationForTest({ provider, request: request({ text: 'Analyze this:', model: 'gpt-4-vision' }) });
+    expect(body({ fetcher }).messages).toEqual([{ role: 'user', content: [
+      { type: 'text', text: 'Analyze this:' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } },
+    ] }]);
+    expect(result).toEqual({ type: 'finished', next: 'user' });
   });
 
-  it('OllamaProvider should handle multimodal messages correctly (string content + images array)', async () => {
-    const provider = new OllamaProvider({ endpoint: 'http://test.api' });
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      body: {
-        getReader: () => ({
-          read: vi.fn()
-            .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"message":{"content":"Hi"},"done":true}\n') })
-            .mockResolvedValueOnce({ done: true }),
-        }),
-      },
-    });
-
-    const messages = [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'See this' },
-          { type: 'image_url', image_url: { url: 'data:image/png;base64,xyz' } },
-        ],
-      },
-    ];
-
-    await provider.chat({
-      messages: messages as any,
-      model: 'llava',
-      onChunk: () => {},
-    });
-
-    const fetchCall = (global.fetch as any).mock.calls[0];
-    const body = JSON.parse(fetchCall[1].body);
-
-    // Ollama specific format
-    expect(typeof body.messages[0].content).toBe('string');
-    expect(body.messages[0].content).toBe('See this');
-    expect(body.messages[0].images).toBeInstanceOf(Array);
-    expect(body.messages[0].images).toHaveLength(1);
-    expect(body.messages[0].images[0]).toBe('xyz'); // Prefix stripped
+  it('OllamaProvider should handle multimodal messages as text plus images', async () => {
+    const fetcher = vi.fn<LmFetch>().mockResolvedValueOnce(new Response('{"done":true}\n'));
+    const provider = new OllamaProvider({ endpoint: 'http://test.api', fetcher });
+    const { result } = await consumeProviderGenerationForTest({ provider, request: request({ text: 'See this', model: 'llava' }) });
+    expect(body({ fetcher }).messages).toEqual([{ role: 'user', content: 'See this', images: ['AQID'] }]);
+    expect(result).toEqual({ type: 'finished', next: 'user' });
   });
 });

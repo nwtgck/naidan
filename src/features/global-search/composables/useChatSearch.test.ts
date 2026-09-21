@@ -91,8 +91,9 @@ describe('useChatSearch Composable', () => {
       root: {
         items: [{
           id: 'm1',
-          content: 'hello content',
-          timestamp: 100,
+          modelId: undefined, lmParameters: undefined,
+          parts: [{ id: 'text', type: 'text', text: 'hello content', completeness: 'complete' }],
+          createdAt: 100,
           role: 'user',
           replies: { items: [] },
         }],
@@ -285,8 +286,9 @@ describe('useChatSearch Composable', () => {
       root: {
         items: [{
           id: 'm1',
-          content: 'hello content',
-          timestamp: 100,
+          modelId: undefined, lmParameters: undefined,
+          parts: [{ id: 'text', type: 'text', text: 'hello content', completeness: 'complete' }],
+          createdAt: 100,
           role: 'user',
           replies: { items: [] },
         }],
@@ -315,15 +317,17 @@ describe('useChatSearch Composable', () => {
         items: [
           {
             id: 'm1',
-            content: 'hello from user',
-            timestamp: 100,
+            modelId: undefined, lmParameters: undefined,
+            parts: [{ id: 'text', type: 'text', text: 'hello from user', completeness: 'complete' }],
+            createdAt: 100,
             role: 'user',
             replies: { items: [] },
           },
           {
             id: 'm2',
-            content: 'hello from assistant',
-            timestamp: 200,
+            modelId: undefined, lmParameters: undefined, interruption: undefined,
+            parts: [{ id: 'text', type: 'text', text: 'hello from assistant', completeness: 'complete' }],
+            createdAt: 200,
             role: 'assistant',
             replies: { items: [] },
           },
@@ -352,15 +356,17 @@ describe('useChatSearch Composable', () => {
         items: [
           {
             id: 'm1',
-            content: 'hello from user',
-            timestamp: 100,
+            modelId: undefined, lmParameters: undefined,
+            parts: [{ id: 'text', type: 'text', text: 'hello from user', completeness: 'complete' }],
+            createdAt: 100,
             role: 'user',
             replies: { items: [] },
           },
           {
             id: 'm2',
-            content: 'hello from assistant',
-            timestamp: 200,
+            modelId: undefined, lmParameters: undefined, interruption: undefined,
+            parts: [{ id: 'text', type: 'text', text: 'hello from assistant', completeness: 'complete' }],
+            createdAt: 200,
             role: 'assistant',
             replies: { items: [] },
           },

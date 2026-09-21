@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { useSettings } from './useSettings';
 import { idToRaw } from '@/01-models/ids';
+import type { LmProvider } from '@/01-models/lm';
+import { getMessageText } from '@/01-models/message-text';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock dependencies
 vi.mock('../00-storage/service', () => ({
@@ -28,7 +32,7 @@ vi.mock('../00-storage/service', () => ({
 }));
 
 // Mock LM with classes
-const mockChat = vi.fn();
+const mockChat = vi.fn<LmProvider['chat']>();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
 vi.mock('../features/lm/openai', () => ({
@@ -48,8 +52,10 @@ vi.mock('../features/lm/ollama', () => ({
 describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Error Handling', () => {
   const { TEST_ONLY: { __testOnlySetSettings } } = useSettings();
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
+    useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction().TEST_ONLY.clearLiveChatRegistry();
     mockChat.mockReset();
     mockListModels.mockResolvedValue(['gpt-4']);
 
@@ -70,7 +76,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     // Setup failure
-    mockChat.mockRejectedValue(new Error('API Error'));
+    mockChat.mockImplementation(({ signal }) => createChatGenerationStream({ signal, run: async () => {
+      throw new Error('API Error');
+    } }));
 
     await sendMessage({ content: 'Hello' });
     // Wait for the background generation task to fail
@@ -78,8 +86,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const assistantMsg = activeMessages.value.find(m => m.role === 'assistant');
     expect(assistantMsg).toBeDefined();
-    expect(assistantMsg?.error).toBe('API Error');
-    expect(assistantMsg?.content).toBe('');
+    expect(assistantMsg?.interruption).toEqual({ type: 'error', message: 'API Error' });
+    expect(assistantMsg?.parts).toEqual([]);
   });
 
   it('should retry message by creating a sibling node', async () => {
@@ -88,18 +96,21 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     // 1. Fail first
-    mockChat.mockRejectedValueOnce(new Error('First Fail'));
+    mockChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async () => {
+      throw new Error('First Fail');
+    } }));
 
     await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first fail
     const failedMsg = activeMessages.value.find(m => m.role === 'assistant');
-    expect(failedMsg?.error).toBe('First Fail');
+    expect(failedMsg?.interruption).toEqual({ type: 'error', message: 'First Fail' });
 
     // 2. Retry (Success)
     // The next call to mockChat (for retry) should succeed
-    mockChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'Success' });
-    });
+    mockChat.mockImplementation(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
+      await writer.text({ type: 'text', text: 'Success' });
+      return { type: 'finished', next: 'user' };
+    } }));
 
     await regenerateMessage({ failedMessageId: idToRaw({ id: failedMsg!.id }) });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for success retry
@@ -108,14 +119,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const newMsg = activeMessages.value[activeMessages.value.length - 1];
     expect(newMsg?.id).not.toBe(failedMsg?.id);
     expect(newMsg?.role).toBe('assistant');
-    expect(newMsg?.content).toBe('Success');
-    expect(newMsg?.error).toBeUndefined();
+    expect(getMessageText({ message: newMsg! })).toBe('Success');
+    expect(newMsg?.role === 'assistant' && newMsg.interruption).toBeUndefined();
 
     // Verify sibling structure
     const userMsg = activeMessages.value[0]!;
     const userNode = currentChat.value?.root.items.find(n => n.id === userMsg.id);
     expect(userNode).toBeDefined();
-    expect(userNode?.replies.items[0]!.error).toBe('First Fail');
-    expect(userNode?.replies.items[1]!.content).toBe('Success');
+    const retained = userNode!.replies.items[0]!;
+    expect(retained.role === 'assistant' && retained.interruption).toEqual({ type: 'error', message: 'First Fail' });
+    expect(getMessageText({ message: userNode!.replies.items[1]! })).toBe('Success');
   });
 });

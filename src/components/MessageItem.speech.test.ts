@@ -31,9 +31,11 @@ describe('MessageItem Speech Controls', () => {
   const createMessage = (content: string, id: string = 'msg-1') => ({
     id: toMessageId({ raw: id }),
     role: 'assistant' as const,
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
   });
 
   beforeEach(() => {

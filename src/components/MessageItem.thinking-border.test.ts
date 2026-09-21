@@ -30,16 +30,18 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({
     id: toMessageId({ raw: 'test-id' }),
     role: 'assistant',
-    content,
-    thinking,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(thinking !== undefined ? [{ id: 'reasoning', type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   it('renders the dedicated gradient border element when thinking', () => {
     // Simulate active thinking state (unclosed <think> tag)
     const message = createMessage('<think>Still thinking...');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
 
     // Parent container (toggle button)
     const container = wrapper.find('[data-testid="toggle-thinking"]');
@@ -55,7 +57,7 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
 
   it('does not apply conflicting border classes to the parent container when thinking', () => {
     const message = createMessage('<think>Still thinking...');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
     const container = wrapper.find('[data-testid="toggle-thinking"]');
 
     // To prevent artifacts, the parent container should NOT have the standard 'border' class
@@ -70,7 +72,7 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
   it('removes the gradient border element when not thinking', () => {
     // Simulate completed thinking state
     const message = createMessage('Final response', 'Completed thought process');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
 
     // The dedicated border element should NOT exist
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(false);

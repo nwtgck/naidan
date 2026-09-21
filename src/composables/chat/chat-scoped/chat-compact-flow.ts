@@ -13,6 +13,10 @@ import {
 } from '@/logic/context-compact';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { getChatBranchIterator } from '@/logic/chat-tree';
+import { copyMessageWithoutReplies } from '@/logic/copy-message-node';
+import { consumeChatGeneration } from '@/logic/consume-chat-generation';
+import { getMessageText } from '@/01-models/message-text';
+import { storageService } from '@/00-storage/service';
 import { generateId } from '@/01-models/id';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
@@ -105,7 +109,7 @@ export async function runCompactCurrentBranchForChat({
     return { status: 'skipped', reason: 'already_processing' };
   }
 
-  const path = Array.from(getChatBranchIterator({ chat: mutableChat }));
+  const path = Array.from(getChatBranchIterator({ chat: mutableChat }), message => copyMessageWithoutReplies({ message }));
   const boundaryMessageId = getHeaderCompactBoundary({
     path,
     keepRecentMessages,
@@ -212,32 +216,62 @@ export async function runCompactCurrentBranchForChat({
       },
     });
 
-    await provider.chat({
-      messages: requestMessages,
-      model: resolvedModel,
-      onChunk: ({ chunk }) => {
-        compactContent += chunk;
-        contextCompactRuntime.setProgress({
-          chatId: mutableChat.id,
-          progress: {
-            phase: 'receiving_compact',
-            compactedMessageCount: split.prefix.length,
-            suffixMessageCount: split.suffix.length,
-            outputChars: compactContent.length,
-            requestPreview,
-            outputPreview: compactContent,
-          },
-        });
-      },
-      parameters: resolveCompactLmParameters({
-        endpoint: resolved.endpoint,
-        parameters: resolved.lmParameters,
+    const draft = createCompactBranchFromResponse({
+      compactContent: '', suffix: [], compactModelId: resolvedModel,
+      createMessageId: () => generateId<MessageId>(), now: () => Date.now(),
+    }).compactNode;
+    // Consume every child, including reasoning, without installing a partial
+    // compaction as a new branch. The original tree remains the source of truth.
+    draft.parts = [];
+    const result = await consumeChatGeneration({
+      node: draft,
+      items: provider.chat({ debug: undefined,
+        messages: requestMessages,
+        model: resolvedModel,
+        parameters: resolveCompactLmParameters({ endpoint: resolved.endpoint, parameters: resolved.lmParameters }),
+        tools: undefined,
+        readBinaryObject: async ({ binaryObjectId, signal }) => {
+          signal?.throwIfAborted();
+          const blob = await storageService.getFile({ binaryObjectId });
+          signal?.throwIfAborted();
+          if (!blob) throw new Error('Cannot compact a missing binary object.');
+          return blob;
+        },
+        signal: controller.signal,
       }),
-      signal: controller.signal,
+      abortController: controller,
+      onChange: () => {
+        compactContent = getMessageText({ message: draft });
+        contextCompactRuntime.setProgress({ chatId: mutableChat.id, progress: {
+          phase: 'receiving_compact', compactedMessageCount: split.prefix.length,
+          suffixMessageCount: split.suffix.length, outputChars: compactContent.length,
+          requestPreview, outputPreview: compactContent,
+        } });
+      },
     });
+    controller.signal.throwIfAborted();
+    switch (result.type) {
+    case 'finished':
+      switch (result.next) {
+      case 'user': break;
+      case 'tool_results': throw new Error('Context compaction requested a tool instead of a summary.');
+      default: { const _ex: never = result.next; throw new Error(`Unhandled compaction step: ${_ex}`); }
+      }
+      break;
+    case 'error': throw result.error;
+    case 'interrupted':
+      switch (result.reason) {
+      case 'aborted': throw new DOMException('Context compaction aborted.', 'AbortError');
+      case 'limit':
+      case 'stop_sequence':
+      case 'unknown': throw new Error(`Context compaction stopped before completion: ${result.reason}`);
+      default: { const _ex: never = result.reason; throw new Error(`Unhandled compaction interruption: ${_ex}`); }
+      }
+    default: { const _ex: never = result; throw new Error(`Unhandled compaction result: ${_ex}`); }
+    }
 
-    const finalCompactContent = compactContent.trim();
-    if (finalCompactContent.length === 0) {
+    const finalCompactContent = compactContent;
+    if (finalCompactContent.trim().length === 0) {
       contextCompactRuntime.setProgress({
         chatId: mutableChat.id,
         progress: {
@@ -312,7 +346,7 @@ export async function runCompactCurrentBranchForChat({
       currentLeafId: branchResult.currentLeafId,
     };
   } catch (error) {
-    if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Generation aborted')) {
+    if ((error instanceof Error || error instanceof DOMException) && (error.name === 'AbortError' || error.message === 'Generation aborted')) {
       contextCompactRuntime.setProgress({
         chatId: mutableChat.id,
         progress: { phase: 'aborted' },

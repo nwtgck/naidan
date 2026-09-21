@@ -72,3 +72,19 @@ describe('Qwen native template delegation', () => {
     expect(result.image_grid_thw).toBe(grid);
   });
 });
+
+describe('Qwen structured reasoning history', () => {
+  it('sends a separate exact reasoning_content value and does not reparse literal body tags', () => {
+    const apply_chat_template = vi.fn<Qwen3_5TemplateRenderer['apply_chat_template']>(() => 'prompt');
+    for (const text of ['', '  R\r\n']) {
+      buildQwen3_5Prompt({ messages: [{ role: 'assistant', content: '<think>literal</think>', reasoning: { text, completeness: 'complete' } }], tools: undefined, reasoningMode: 'default', tokenizer: { apply_chat_template } });
+      expect(apply_chat_template.mock.lastCall?.[0]).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning_content: text }]);
+    }
+  });
+
+  it('rejects unfinished reasoning before the tokenizer can close it', () => {
+    const apply_chat_template = vi.fn<Qwen3_5TemplateRenderer['apply_chat_template']>(() => 'unexpected');
+    expect(() => buildQwen3_5Prompt({ messages: [{ role: 'assistant', content: '', reasoning: { text: 'R', completeness: 'partial' } }], tools: undefined, reasoningMode: 'default', tokenizer: { apply_chat_template } })).toThrow('unfinished');
+    expect(apply_chat_template).not.toHaveBeenCalled();
+  });
+});

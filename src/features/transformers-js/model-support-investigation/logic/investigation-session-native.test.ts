@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { webcrypto } from 'node:crypto';
+import { toMessageId } from '@/01-models/ids';
 import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exposeWorkerRemote, releaseWorkerRemote, wrapWorkerRemote } from '@/utils/worker-transport';
@@ -9,7 +10,7 @@ import { createModelSupportInvestigationBatchEvidenceWorkerRequest } from '@/fea
 import type { IModelSupportInvestigationEvidenceWorker } from '@/features/transformers-js/model-support-investigation/evidence-worker/types';
 import { createInitialInvestigationCheckpoint } from './investigation-recovery';
 import { captureScenarioInput } from './production-provider-capture-plan';
-import { createProductionProviderTrace } from './production-provider-trace';
+import { createProductionProviderTrace, createProductionProviderPartsTrace } from './production-provider-trace';
 import type { ProductionProviderCaptureSnapshot } from './production-provider-capture-owner';
 import type { ProductionProviderNativeCollectionSnapshot } from './production-provider-generation-capture-owner';
 import { createProductionProviderNativeEvidence, PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES } from './production-provider-native-evidence';
@@ -20,18 +21,27 @@ import { measureInvestigationProviderRetention } from './investigation-provider-
 
 // Only the model output is synthetic. Session retention, immutable sidecars,
 // request codecs, Comlink, Evidence Worker and ZIP implementations are real.
-async function capturedSession({ batchId, modelId }: { batchId: string; modelId: string }): Promise<Extract<InvestigationSessionSnapshot, { view: 'results' }>> {
+async function capturedSession({ batchId, modelId, observation }: { batchId: string; modelId: string; observation: 'legacy' | 'parts' }): Promise<Extract<InvestigationSessionSnapshot, { view: 'results' }>> {
   const runId = `${batchId}-run`;
   const checkpoint = createInitialInvestigationCheckpoint({ runId, modelId, now: () => '2026-09-10T00:00:00.000Z' });
   const context = { runId, workerEpoch: 1, requestId: `${runId}-first-turn`, generationCallId: 1 };
-  const trace = createProductionProviderTrace({ requestId: context.requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } });
+  const trace = observation === 'legacy'
+    ? createProductionProviderTrace({ requestId: context.requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } })
+    : createProductionProviderPartsTrace({ requestId: context.requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } });
+  if (observation === 'parts') {
+    trace.observeAssistant({ message: { id: toMessageId({ raw: 'synthetic-assistant' }), role: 'assistant', createdAt: 0, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, parts: [
+      { id: 'r', type: 'reasoning', text: '  reason\n', completeness: 'complete' },
+      { id: 't', type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+    ] } });
+    trace.observeResult({ result: { type: 'interrupted', reason: 'limit' } });
+  }
   trace.settle({ outcome: 'fulfilled', error: undefined });
   const provider: ProductionProviderCaptureSnapshot = {
-    format: 'production-provider-capture-v2', runId, modelId, plan: 'first-only', run: { status: 'completed' },
+    format: observation === 'legacy' ? 'production-provider-capture-v2' : 'production-provider-capture-v3', runId, modelId, plan: 'first-only', run: { status: 'completed' },
     lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [],
     requests: [{ runId, requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined,
       input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), trace: trace.snapshot() }],
-    capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
+    capabilities: { providerCallbacks: observation === 'legacy' ? 'bounded-projection' : 'parts_and_tools_projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
   };
   checkpoint.run.productionProviderCapture = provider;
   const bytes = Uint8Array.of(5, 6);
@@ -75,8 +85,8 @@ afterEach(() => {
 });
 
 describe('Session native evidence retention and actual Evidence Worker export', () => {
-  it('reopens and re-exports the adopted prefix while retirement still owns a pending release', async () => {
-    const source = await capturedSession({ batchId: 'retained', modelId: 'fixture/first' });
+  it.each(['legacy', 'parts'] as const)('reopens and re-exports the adopted %s projection while retirement owns a pending release', async observation => {
+    const source = await capturedSession({ batchId: 'retained', modelId: 'fixture/first', observation });
     const first = createInvestigationSessionView({ initialSnapshot: undefined });
     first.remember({ snapshot: source });
     const pendingRelease = Promise.withResolvers<void>();
@@ -119,8 +129,8 @@ describe('Session native evidence retention and actual Evidence Worker export', 
   });
 
   it('replaces the same batch reservation history and preserves independent model ordinals in batch export', async () => {
-    const first = await capturedSession({ batchId: 'first', modelId: 'fixture/first' });
-    const second = await capturedSession({ batchId: 'second', modelId: 'fixture/second' });
+    const first = await capturedSession({ batchId: 'first', modelId: 'fixture/first', observation: 'legacy' });
+    const second = await capturedSession({ batchId: 'second', modelId: 'fixture/second', observation: 'parts' });
     const view = createInvestigationSessionView({ initialSnapshot: undefined });
     view.remember({ snapshot: first });
     view.remember({ snapshot: second });
@@ -138,6 +148,8 @@ describe('Session native evidence retention and actual Evidence Worker export', 
       expect(await zip.file(prefix + 'generation-native/tensors/000001.bin')!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
       const restored = readProductionProviderCaptureEvidence({ json: await zip.file(prefix + 'production-provider/capture.json')!.async('string'), runId: item.run.runId, modelId: item.run.modelId });
       expect(Object.hasOwn(restored.requests[0]!.trace, 'failure')).toBe(true);
+      expect(restored.format).toBe(index === 0 ? 'production-provider-capture-v2' : 'production-provider-capture-v3');
+      if (index === 1) expect(restored.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_text', partType: 'reasoning', text: '  reason\n' }));
     }
   });
 });

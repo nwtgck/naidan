@@ -22,7 +22,12 @@ export type ChatVolatileState = {
     messageId: MessageId,
   }): void,
 
-  applyVolatileAssistantErrorsToChat({
+  getVolatileAssistantError({ chatId, messageId }: {
+    chatId: ChatId,
+    messageId: MessageId,
+  }): string | undefined,
+
+  pruneVolatileAssistantErrorsForChat({
     chat,
   }: {
     chat: Chat,
@@ -98,7 +103,7 @@ export function createChatVolatileState(): ChatVolatileState {
     }
   }
 
-  function applyVolatileAssistantErrorsToChat({
+  function pruneVolatileAssistantErrorsForChat({
     chat,
   }: {
     chat: Chat,
@@ -106,11 +111,26 @@ export function createChatVolatileState(): ChatVolatileState {
     const errors = volatileAssistantErrors.get(chat.id);
     if (!errors || errors.size === 0) return;
 
-    for (const [messageId, error] of errors.entries()) {
+    for (const messageId of errors.keys()) {
       const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
-      if (!node || node.role !== 'assistant') continue;
-      node.error = error;
+      if (!node) {
+        errors.delete(messageId); continue;
+      }
+      switch (node.role) {
+      case 'assistant': break;
+      case 'user':
+      case 'system':
+      case 'tool': errors.delete(messageId); break;
+      default: { const _ex: never = node; throw new Error(`Unhandled message: ${_ex}`); }
+      }
     }
+    if (errors.size === 0) volatileAssistantErrors.delete(chat.id);
+  }
+
+  // UI diagnostics stay outside the persisted message. Reloading history must
+  // not turn a storage/title error into a model-generation interruption.
+  function getVolatileAssistantError({ chatId, messageId }: { chatId: ChatId, messageId: MessageId }): string | undefined {
+    return volatileAssistantErrors.get(chatId)?.get(messageId);
   }
 
   function setVolatileToolOutput({
@@ -153,7 +173,8 @@ export function createChatVolatileState(): ChatVolatileState {
   return {
     setVolatileAssistantError,
     clearVolatileAssistantError,
-    applyVolatileAssistantErrorsToChat,
+    getVolatileAssistantError,
+    pruneVolatileAssistantErrorsForChat,
     setVolatileToolOutput,
     appendVolatileToolOutput,
     deleteVolatileToolOutput,

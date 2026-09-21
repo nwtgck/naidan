@@ -1,8 +1,10 @@
 /* eslint-disable no-restricted-imports -- Worker-only protocol detection intentionally depends on transformers.js tokenizer types. */
 import type { PreTrainedTokenizer } from '@huggingface/transformers';
-import type { ChatMessage, ToolCall } from '@/01-models/types';
+import type { ToolCall } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import type { WorkerToolDefinition } from './types';
 import { z } from 'zod';
+import { exactObject } from '@/utils/exact-object';
 import { ToolCallStreamParser } from './tool-call-parser';
 import {
   DELIMITED_PYTHONIC_TOOL_CALL_CLOSE,
@@ -96,7 +98,7 @@ export function detectStandardToolCallProtocol({
   let protocol: StandardToolCallProtocol = 'json-tagged';
   try {
     const rendered = tokenizer.apply_chat_template(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Probe shape intentionally matches Transformers.js chat-template input rather than Naidan ChatMessage.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Probe shape intentionally matches Transformers.js chat-template input rather than Naidan InferenceMessage.
       PROBE_MESSAGES as any,
       {
         tools: [PROBE_TOOL],
@@ -233,8 +235,9 @@ export function validateStandardToolCallsForHandling({ toolCalls, handling, assi
 }
 
 export function formatStandardMessagesForToolHandling({ messages, handling }: {
-  messages: ChatMessage[]; handling: StandardToolHandling;
-}): Array<Record<string, unknown>> {
+  messages: InferenceMessage[]; handling: StandardToolHandling;
+}): Array<{ role: string; content: string; tool_calls?: unknown; tool_call_id?: InferenceMessage['tool_call_id'] }> {
+  if (messages.some(message => message.reasoning !== undefined)) throw new Error('Structured reasoning requires a reviewed model-specific template adapter.');
   switch (handling.historyEncoding) {
   case 'native-template': return formatStandardMessagesForToolCallProtocol({ messages, protocol: handling.outputProtocol });
   case 'verified-content': break;
@@ -243,11 +246,11 @@ export function formatStandardMessagesForToolHandling({ messages, handling }: {
   const consumedResults = new Set<number>();
   const usedIds = new Set<ToolCall['id']>();
   return messages.map((message, index) => {
-    const { role, content, tool_calls, tool_call_id, ...unhandledMessage } = message;
+    const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandledMessage } = message;
     unhandledMessage satisfies Record<PropertyKey, never>;
     if (role === 'tool' && !consumedResults.has(index)) throw new Error('Unassociated tool result in content history');
     if (tool_calls === undefined || tool_calls.length === 0) {
-      return { role, content: typeof content === 'string' ? content : '', tool_call_id };
+      return { role, content: readStandardTextContent({ content }), ...(tool_call_id === undefined ? {} : { tool_call_id }) };
     }
     const call = tool_calls[0]!;
     const result = messages[index + 1];
@@ -258,7 +261,7 @@ export function formatStandardMessagesForToolHandling({ messages, handling }: {
     usedIds.add(call.id);
     consumedResults.add(index + 1);
     const frame = serializeContentToolCall({ call });
-    return { role: 'assistant', content: readContentToolAssistantText({ content }) + frame };
+    return { role: 'assistant', content: readContentToolAssistantText({ content: readStandardTextContent({ content }) }) + frame };
   });
 }
 
@@ -283,15 +286,35 @@ export function formatStandardMessagesForToolCallProtocol({
   messages,
   protocol,
 }: {
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   protocol: StandardToolCallProtocol,
-}): Array<Record<string, unknown>> {
-  return messages.map(message => ({
-    role: message.role,
-    content: typeof message.content === 'string' ? message.content : '',
-    tool_calls: formatToolCallsForProtocol({ toolCalls: message.tool_calls, protocol }),
-    tool_call_id: message.tool_call_id,
-  }));
+}): Array<{ role: string; content: string; tool_calls?: unknown; tool_call_id?: InferenceMessage['tool_call_id'] }> {
+  if (messages.some(message => message.reasoning !== undefined)) throw new Error('Structured reasoning requires a reviewed model-specific template adapter.');
+  return messages.map(message => {
+    const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<{ role: InferenceMessage['role']; content: string; tool_calls?: unknown; tool_call_id?: InferenceMessage['tool_call_id'] }>()({
+      role, content: readStandardTextContent({ content }),
+      ...(tool_calls === undefined ? {} : { tool_calls: formatToolCallsForProtocol({ toolCalls: tool_calls, protocol }) }),
+      ...(tool_call_id === undefined ? {} : { tool_call_id }),
+    });
+  });
+}
+
+// Join text only at this model boundary, with no invented separators or trim.
+function readStandardTextContent({ content }: { content: InferenceMessage['content'] }): string {
+  if (typeof content === 'string') return content;
+  return content.map(part => {
+    switch (part.type) {
+    case 'text': {
+      const { type: _type, text, ...unhandled } = part;
+      unhandled satisfies Record<PropertyKey, never>;
+      return text;
+    }
+    case 'image_url': throw new Error('The standard text strategy cannot preserve an image input.');
+    default: { const exhaustive: never = part; throw new Error(`Unhandled standard content: ${String(exhaustive)}`); }
+    }
+  }).join('');
 }
 
 function formatToolCallsForProtocol({

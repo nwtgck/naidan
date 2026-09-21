@@ -1,13 +1,34 @@
 import { z } from 'zod';
-import type { LmProvider } from '@/01-models/lm';
+import type { ToolCallId } from '@/01-models/ids';
+import type { ChatGenerationResult } from '@/01-models/lm';
+import type { AssistantMessageNode } from '@/01-models/types';
+import { idToRaw } from '@/01-models/ids';
+import type { ToolExecutionEvent, ToolExecutionOutcome } from '@/01-models/tool';
 
-type ProviderCallbacks = Required<Pick<Parameters<LmProvider['chat']>[0],
-  'onChunk' | 'onAssistantMessageStart' | 'onToolCall' | 'onToolEvent' | 'onToolResult'>>;
+// Frozen observation boundary for existing callback-era evidence. It must not
+// obtain its shape from the current (iterable) Provider contract.
+type ProviderCallbacks = {
+  onChunk: ({ chunk }: { chunk: string }) => void,
+  onAssistantMessageStart: () => void,
+  onToolCall: ({ id, toolName, modelVisibleArguments }: { id: ToolCallId; toolName: string; modelVisibleArguments: string }) => void,
+  onToolEvent: ({ id, event }: { id: ToolCallId; event: ToolExecutionEvent }) => void,
+  onToolResult: ({ id, result }: { id: ToolCallId; result: ToolExecutionOutcome }) => void,
+};
 type Phase = 'before-settlement' | 'after-settlement';
 type FailureReason = 'event-limit' | 'character-limit' | 'unreadable-callback' | 'duplicate-settlement';
 type CaptureFailure = Readonly<{ reason: FailureReason; phase: Phase; sequence: number }>;
+export type CaptureAssistantPart =
+  | Readonly<{ id: string; type: 'text' | 'reasoning'; text: string; completeness: 'complete' | 'partial' }>
+  | Readonly<{ id: string; type: 'tool_call'; toolCall: Readonly<{ id: string; type: 'function'; function: Readonly<{ name: string; arguments: string }> }> }>;
+
 type ErrorName = 'Error' | 'TypeError' | 'RangeError' | 'SyntaxError' | 'AbortError' | 'ProductionWorkerLifecycleError' | 'unknown';
 type EventPayload =
+  | { kind: 'assistant_message'; messageId: string }
+  | { kind: 'part_text'; messageId: string; partId: string; index: number; partType: 'text' | 'reasoning'; text: string; completeness: 'complete' | 'partial' }
+  | { kind: 'part_call'; messageId: string; partId: string; index: number; toolCallId: string; toolName: string; modelVisibleArguments: string }
+  | { kind: 'generation_finished'; next: 'user' | 'tool_results' }
+  | { kind: 'generation_interrupted'; reason: 'aborted' | 'limit' | 'stop_sequence' | 'unknown' }
+  | { kind: 'generation_error'; errorName: ErrorName }
   | { kind: 'chunk'; chunk: string }
   | { kind: 'assistant-start' }
   | { kind: 'tool-call'; toolCallId: string; toolName: string; modelVisibleArguments: string }
@@ -31,7 +52,7 @@ export interface ProductionProviderSettledSnapshot {
  * alone cannot reconstruct the exact prompt following an errored tool result.
  */
 export interface ProductionProviderTraceSnapshot {
-  readonly format: 'production-provider-trace-v2';
+  readonly format: 'production-provider-trace-v2' | 'production-provider-trace-v3';
   readonly requestId: string;
   // Actual validated configuration, not the enclosing archive's policy ceilings.
   // Characters are UTF-16 code units across retained payload fields.
@@ -84,9 +105,26 @@ function rejectionName({ error }: { error: unknown }): ErrorName {
 }
 
 /** One fixed synthetic Provider request. No timers, Promise reactions or generation authority. */
-export function createProductionProviderTrace({ requestId: inputRequestId, limits }: {
+/** Retains the old callback observation format for reading/testing earlier evidence. */
+export function createProductionProviderTrace({ requestId, limits }: {
   requestId: string;
   limits: { maximumEvents: number; maximumCharacters: number };
+}) {
+  return createTrace({ requestId, limits, format: 'production-provider-trace-v2' });
+}
+
+/** Current captures observe the production parts consumer and common tool loop. */
+export function createProductionProviderPartsTrace({ requestId, limits }: {
+  requestId: string;
+  limits: { maximumEvents: number; maximumCharacters: number };
+}) {
+  return createTrace({ requestId, limits, format: 'production-provider-trace-v3' });
+}
+
+function createTrace({ requestId: inputRequestId, limits, format }: {
+  requestId: string;
+  limits: { maximumEvents: number; maximumCharacters: number };
+  format: ProductionProviderTraceSnapshot['format'];
 }) {
   const requestId = requestIdSchema.parse(inputRequestId);
   const { maximumEvents, maximumCharacters } = limitsSchema.parse(limits);
@@ -179,8 +217,67 @@ export function createProductionProviderTrace({ requestId: inputRequestId, limit
     } }),
   };
 
+  // Keep only the latest revision for each part. A text snapshot records the
+  // consumer's applied content, not raw token chunks or a normalized transcript.
+  let assistantId: string | undefined;
+  const partRevisions = new Map<string, { index: number; part: CaptureAssistantPart }>();
+  function observeAssistant({ message }: { message: AssistantMessageNode }): void {
+    switch (format) {
+    case 'production-provider-trace-v3': break;
+    case 'production-provider-trace-v2': throw new Error('Parts observations require the parts trace format');
+    default: { const exhaustive: never = format; throw new Error('Unhandled trace format: ' + exhaustive); }
+    }
+    if (failure !== undefined) return;
+    const messageId = idToRaw({ id: message.id });
+    if (assistantId !== messageId) {
+      assistantId = messageId;
+      partRevisions.clear();
+      append({ project: ({ text }) => ({ kind: 'assistant_message', messageId: text({ value: messageId }) }) });
+    }
+    for (const [index, part] of message.parts.entries()) {
+      if (failure !== undefined) break;
+      const previous = partRevisions.get(part.id);
+      switch (part.type) {
+      case 'text': case 'reasoning': {
+        const { id, type, text: value, completeness, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+        if (previous?.index === index && previous.part.type === type && previous.part.text === value && previous.part.completeness === completeness) break;
+        append({ project: ({ text }) => ({ kind: 'part_text', messageId: text({ value: messageId }), partId: text({ value: id }), index, partType: type, text: text({ value }), completeness }) });
+        if (failure === undefined) partRevisions.set(id, { index, part: Object.freeze({ id, type, text: value, completeness }) });
+        break;
+      }
+      case 'tool_call': {
+        const { id, type, toolCall, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+        const { id: callId, type: callType, function: fn, ...restCall } = toolCall; restCall satisfies Record<PropertyKey, never>;
+        const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
+        const rawId = idToRaw({ id: callId });
+        if (previous?.index === index && previous.part.type === type && previous.part.toolCall.id === rawId && previous.part.toolCall.function.name === name && previous.part.toolCall.function.arguments === args) break;
+        append({ project: ({ text }) => ({ kind: 'part_call', messageId: text({ value: messageId }), partId: text({ value: id }), index,
+          toolCallId: text({ value: rawId }), toolName: text({ value: name }), modelVisibleArguments: text({ value: args }) }) });
+        if (failure === undefined) partRevisions.set(id, { index, part: Object.freeze({ id, type, toolCall: Object.freeze({ id: rawId, type: callType, function: Object.freeze({ name, arguments: args }) }) }) });
+        break;
+      }
+      default: { const exhaustive: never = part; throw new Error('Unhandled assistant part: ' + exhaustive); }
+      }
+    }
+  }
+
+  function observeResult({ result }: { result: ChatGenerationResult }): void {
+    switch (format) {
+    case 'production-provider-trace-v3': break;
+    case 'production-provider-trace-v2': throw new Error('Generation results require the parts trace format');
+    default: { const exhaustive: never = format; throw new Error('Unhandled trace format: ' + exhaustive); }
+    }
+    switch (result.type) {
+    case 'finished': append({ project: () => ({ kind: 'generation_finished', next: result.next }) }); break;
+    case 'interrupted': append({ project: () => ({ kind: 'generation_interrupted', reason: result.reason }) }); break;
+    case 'error': append({ project: () => ({ kind: 'generation_error', errorName: rejectionName({ error: result.error }) }) }); break;
+    default: { const exhaustive: never = result; throw new Error('Unhandled generation result: ' + exhaustive); }
+    }
+  }
+
   return {
     callbacks: Object.freeze(callbacks),
+    observeAssistant, observeResult,
     /** Call synchronously immediately after the caller's direct await or catch. */
     settle({ outcome: requestedOutcome, error }: { outcome: 'fulfilled'; error: undefined } | { outcome: 'rejected'; error: unknown }): ProductionProviderSettledSnapshot {
       if (settled !== undefined) {
@@ -197,6 +294,7 @@ export function createProductionProviderTrace({ requestId: inputRequestId, limit
       }
       }
       // Transfer ownership at the boundary instead of cloning a transcript.
+      partRevisions.clear();
       events = Object.freeze(pendingEvents);
       pendingEvents = [];
       settled = Object.freeze({ sequence, outcome, events, completeness: failure === undefined ? 'complete' : 'incomplete', failure });
@@ -205,7 +303,7 @@ export function createProductionProviderTrace({ requestId: inputRequestId, limit
     },
     snapshot(): ProductionProviderTraceSnapshot {
       return Object.freeze({
-        format: 'production-provider-trace-v2', requestId, limits: configuredLimits,
+        format, requestId, limits: configuredLimits,
         completeness: failure === undefined ? 'complete' : 'incomplete', failure,
         events: settled === undefined ? Object.freeze(pendingEvents.slice()) : events,
         settled, lateEvents: Object.freeze(lateEvents.slice()), retainedCharacters,

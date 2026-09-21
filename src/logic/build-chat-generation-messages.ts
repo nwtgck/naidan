@@ -1,86 +1,35 @@
-import type {
-  ChatContent,
-  ChatMessage,
-  MultimodalContent,
-  ToolMessageNode,
-  UserMessageNode,
-} from '@/01-models/types';
-import type { MessageId } from '@/01-models/ids';
+import type { ChatContent, ChatMessage } from '@/01-models/types';
+import { idToRaw, toMessageId, type MessageId } from '@/01-models/ids';
+import { createChatMessageSnapshot } from '@/01-models/chat-message';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 
 /**
- * Projects Naidan chat history into the exact ChatMessage shape passed to LM providers.
- * Storage/blob access stays with the caller so this projection remains reusable by
- * production Chat and deterministic investigation fixtures.
+ * Captures the selected history before asynchronous input preparation begins.
+ * Provider adapters resolve binary references and model-specific formats later.
  */
-export async function buildChatGenerationMessages({
-  chat,
-  excludedMessageId,
-  systemPromptMessages,
-  resolveUserContent,
-  resolveToolResultText,
-}: {
+export function buildChatGenerationMessages({ chat, excludedMessageId, systemPromptMessages }: {
   chat: ChatContent | Readonly<ChatContent>,
   excludedMessageId: MessageId | undefined,
-  systemPromptMessages: string[],
-  resolveUserContent: ({ message }: { message: UserMessageNode }) => Promise<string | MultimodalContent[]>,
-  resolveToolResultText: ({ result }: { result: ToolMessageNode['results'][number] }) => Promise<string>,
-}): Promise<ChatMessage[]> {
-  const messages: ChatMessage[] = [];
-  systemPromptMessages.forEach((content) => {
-    messages.push({ role: 'system', content });
-  });
-
+  systemPromptMessages: readonly string[],
+}): ChatMessage[] {
   const history = Array.from(getChatBranchIterator({ chat })).filter(message => message.id !== excludedMessageId);
-  for (const message of history) {
-    switch (message.role) {
-    case 'tool':
-      for (const result of message.results) {
-        messages.push({
-          role: 'tool',
-          tool_call_id: result.toolCallId,
-          content: await resolveToolResultText({ result }),
-        });
-      }
-      break;
-    case 'user': {
-      const content = await resolveUserContent({ message });
-      if (typeof content === 'string') {
-        messages.push({
-          role: message.role,
-          content,
-          tool_calls: undefined,
-        });
-      } else {
-        messages.push({ role: message.role, content });
-      }
-      break;
-    }
-    case 'assistant':
-      messages.push({
-        role: message.role,
-        content: message.content || '',
-        tool_calls: message.toolCalls,
-      });
-      break;
-    case 'system':
-      messages.push({
-        role: message.role,
-        content: message.content || '',
-        tool_calls: undefined,
-      });
-      break;
-    default: {
-      const _ex: never = message;
-      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
-    }
-    }
+  const usedIds = new Set(history.map(message => idToRaw({ id: message.id })));
+  const messages: ChatMessage[] = systemPromptMessages.map((text, index) => {
+    // These request-local IDs are not persisted and do not become model content.
+    let raw = `system_prompt_${index}`;
+    while (usedIds.has(raw)) raw += '_';
+    usedIds.add(raw);
+    return {
+      id: toMessageId({ raw }), role: 'system',
+      parts: [{ id: 'text', type: 'text', text, completeness: 'complete' }],
+    };
+  });
+  for (const node of history) {
+    messages.push(createChatMessageSnapshot({ node }));
   }
-
   return messages;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
-// ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
 };

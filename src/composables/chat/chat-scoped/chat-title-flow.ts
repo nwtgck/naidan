@@ -1,6 +1,8 @@
 import type { Chat, ChatMessage, Endpoint } from '@/01-models/types';
 import { isConfiguredEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
-import type { ChatId } from '@/01-models/ids';
+import { toMessageId, type ChatId } from '@/01-models/ids';
+import { getMessageText } from '@/01-models/message-text';
+import { collectChatGeneration } from '@/logic/collect-chat-generation';
 import type { LmProvider } from '@/01-models/lm';
 import { loadLmProvider } from '@/features/lm/providerFactory';
 import { getChatBranchIterator } from '@/logic/chat-tree';
@@ -80,7 +82,8 @@ export async function generateChatTitleForChat({
     }
 
     const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
-    const content = stripNaidanSentinels({ content: history[0]?.content || '' });
+    const firstMessage = history[0];
+    const content = stripNaidanSentinels({ content: firstMessage ? getMessageText({ message: firstMessage }) : '' });
     if (typeof content !== 'string' || content.length === 0) {
       return undefined;
     }
@@ -104,19 +107,27 @@ export async function generateChatTitleForChat({
     const { language } = getTitleLanguage({ content });
     const systemPrompt = getTitleSystemPrompt({ language });
     const promptMessages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
+      { id: toMessageId({ raw: 'title-system' }), role: 'system', parts: [{ id: 'text', type: 'text', text: systemPrompt, completeness: 'complete' }] },
+      { id: toMessageId({ raw: 'title-user' }), role: 'user', parts: [{ id: 'text', type: 'text', text: `Message content to summarize: "${content.slice(0, 1000)}"`, completeness: 'complete' }] },
     ];
-    let generatedTitle = '';
-    await provider.chat({
-      messages: promptMessages,
-      model: titleModelId,
-      onChunk: ({ chunk }) => {
-        generatedTitle += chunk;
-      },
-      parameters: resolved.titleGeneration.lmParameters,
-      signal: combinedSignal,
+    const { text: generatedTitle, result } = await collectChatGeneration({
+      items: provider.chat({ debug: undefined, messages: promptMessages, model: titleModelId,
+        parameters: resolved.titleGeneration.lmParameters, tools: undefined,
+        readBinaryObject: undefined, signal: combinedSignal }),
+      abortController: controller,
     });
+    switch (result.type) {
+    case 'error': throw result.error;
+    case 'interrupted': return undefined;
+    case 'finished':
+      switch (result.next) {
+      case 'user': break;
+      case 'tool_results': throw new Error('Title generation unexpectedly requested tools.');
+      default: { const _ex: never = result.next; throw new Error(`Unhandled title step: ${_ex}`); }
+      }
+      break;
+    default: { const _ex: never = result; throw new Error(`Unhandled title generation result: ${_ex}`); }
+    }
 
     const finalTitle = cleanGeneratedTitle({ title: generatedTitle });
     if (!finalTitle) {

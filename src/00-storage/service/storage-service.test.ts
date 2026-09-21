@@ -196,17 +196,21 @@ describe('StorageService Migration', () => {
         items: [{
           id: 'msg-1',
           role: 'user',
-          content: 'hello',
-          attachments: [{
-            id: 'att-1',
-            binaryObjectId: 'bin-1',
-            status: 'memory',
-            blob: mockBlob,
-            originalName: 'test.png',
-            mimeType: 'image/png',
-            size: 4,
-            uploadedAt: Date.now(),
-          }],
+          createdAt: 0,
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [
+            { id: 'text', type: 'text', text: 'hello', completeness: 'complete' },
+            { id: 'attachment', type: 'attachment', attachment: {
+              id: 'att-1',
+              binaryObjectId: 'bin-1',
+              status: 'memory',
+              blob: mockBlob,
+              originalName: 'test.png',
+              mimeType: 'image/png',
+              size: 4,
+              uploadedAt: Date.now(),
+            } }],
           replies: { items: [] },
         }],
       },
@@ -239,7 +243,7 @@ describe('StorageService Migration', () => {
 
     // Chat chunk should have been updated to 'persisted' status
     const chatChunk = receivedChunks.find(c => c.type === 'chat');
-    expect(chatChunk.data.root.items[0].attachments[0].status).toBe('persisted');
+    expect(chatChunk.data.root.items[0].parts.filter(part => part.type === 'attachment').map(part => part.attachment)[0].status).toBe('persisted');
   });
 
   it('should rescue attachments in nested replies (recursion test)', async () => {
@@ -247,31 +251,18 @@ describe('StorageService Migration', () => {
     const chat: any = {
       id: 'chat-recursive',
       root: {
-        items: [{
-          id: 'msg-1',
-          role: 'user',
-          content: 'msg 1',
-          timestamp: Date.now(),
-          replies: {
-            items: [{
-              id: 'msg-2',
-              role: 'user',
-              content: 'msg 2',
-              timestamp: Date.now(),
-              attachments: [{
-                id: 'att-nested',
-                binaryObjectId: 'bin-nested',
-                status: 'memory',
-                blob: mockBlob,
-                originalName: 'nested.png',
-                mimeType: 'image/png',
-                size: 6,
-                uploadedAt: Date.now(),
-              }],
-              replies: { items: [] },
-            }],
-          },
-        }],
+        items: [{ id: 'msg-1', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'msg 1', completeness: 'complete' }], replies: {
+          items: [{ id: 'msg-2', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'msg 2', completeness: 'complete' }, { id: 'test_attachment_0', type: 'attachment', attachment: {
+            id: 'att-nested',
+            binaryObjectId: 'bin-nested',
+            status: 'memory',
+            blob: mockBlob,
+            originalName: 'nested.png',
+            mimeType: 'image/png',
+            size: 6,
+            uploadedAt: Date.now(),
+          } }], replies: { items: [] } }],
+        } }],
       },
     };
 

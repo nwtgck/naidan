@@ -4,7 +4,7 @@ import ChatDebugInspector from './ChatDebugInspector.vue';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
 import { NetworkIcon } from 'lucide-vue-next';
-import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/01-models/types';
+import type { MessageNode, Chat, Attachment, LmParameters } from '@/01-models/types';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
@@ -90,55 +90,23 @@ Object.assign(navigator, {
 });
 
 describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
-  const createNode = (
-    id: string,
-    role: 'user' | 'assistant' | 'system',
-    content: string,
-    replies: MessageNode[] = [],
-    extra: {
-      modelId?: string,
-      thinking?: string,
-      error?: string,
-      attachments?: any[],
-      lmParameters?: LmParameters,
-    } = {},
-  ): MessageNode => {
-    const common = { id: toMessageId({ raw: id }), content, timestamp: Date.now(), replies: { items: replies } };
+  const createNode = ({ id, role, content, replies, extra }: {
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    replies: MessageNode[];
+    extra: { modelId?: string; thinking?: string; error?: string; attachments?: Attachment[]; lmParameters?: LmParameters };
+  }): MessageNode => {
+    const common = { id: toMessageId({ raw: id }), createdAt: Date.now(), replies: { items: replies } };
+    const body = { id: 'text', type: 'text', text: content, completeness: 'complete' } as const;
     switch (role) {
-    case 'user':
-      return {
-        ...common,
-        role: 'user',
-        attachments: extra.attachments || [],
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: extra.lmParameters || { reasoning: { effort: undefined } },
-      } as unknown as UserMessageNode;
-    case 'assistant':
-      return {
-        ...common,
-        role: 'assistant',
-        attachments: undefined,
-        thinking: extra.thinking,
-        error: extra.error,
-        modelId: extra.modelId || 'test-model',
-        lmParameters: extra.lmParameters || { reasoning: { effort: undefined } },
-      } as unknown as AssistantMessageNode;
-    case 'system':
-      return {
-        ...common,
-        role: 'system',
-        attachments: undefined,
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: undefined,
-      } as unknown as SystemMessageNode;
-    default: {
-      const _ex: never = role;
-      throw new Error(`Unhandled role: ${_ex}`);
-    }
+    case 'user': return { ...common, role, modelId: undefined, lmParameters: extra.lmParameters,
+      parts: [body, ...(extra.attachments ?? []).map((attachment, index) => ({ id: `attachment_${index}`, type: 'attachment' as const, attachment }))] };
+    case 'assistant': return { ...common, role, modelId: extra.modelId, lmParameters: extra.lmParameters,
+      parts: [...(extra.thinking === undefined ? [] : [{ id: 'reasoning', type: 'reasoning' as const, text: extra.thinking, completeness: 'complete' as const }]), body],
+      interruption: extra.error === undefined ? undefined : { type: 'error', message: extra.error } };
+    case 'system': return { ...common, role, modelId: undefined, lmParameters: undefined, parts: [body] };
+    default: { const unhandled: never = role; throw new Error(`Unhandled role: ${unhandled}`); }
     }
   };
 
@@ -161,7 +129,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     });
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
   });
 
@@ -181,11 +150,11 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 1: Pure Linear Path (A -> B -> C)', async () => {
     const chat = createMockChat([
-      createNode('A', 'user', 'A', [
-        createNode('B', 'assistant', 'B', [
-          createNode('C', 'user', 'C'),
-        ]),
-      ]),
+      createNode({ id: 'A', role: 'user', content: 'A', replies: [
+        createNode({ id: 'B', role: 'assistant', content: 'B', replies: [
+          createNode({ id: 'C', role: 'user', content: 'C', replies: [], extra: {} }),
+        ], extra: {} }),
+      ], extra: {} }),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -206,8 +175,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 2: Root Branching ([A, B])', async () => {
     const chat = createMockChat([
-      createNode('A', 'user', 'A'),
-      createNode('B', 'user', 'B'),
+      createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} }),
+      createNode({ id: 'B', role: 'user', content: 'B', replies: [], extra: {} }),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -225,12 +194,12 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 3: Branching followed by Linear (A -> [B -> D, C])', async () => {
     const chat = createMockChat([
-      createNode('A', 'user', 'A', [
-        createNode('B', 'assistant', 'B', [
-          createNode('D', 'user', 'D'),
-        ]),
-        createNode('C', 'assistant', 'C'),
-      ]),
+      createNode({ id: 'A', role: 'user', content: 'A', replies: [
+        createNode({ id: 'B', role: 'assistant', content: 'B', replies: [
+          createNode({ id: 'D', role: 'user', content: 'D', replies: [], extra: {} }),
+        ], extra: {} }),
+        createNode({ id: 'C', role: 'assistant', content: 'C', replies: [], extra: {} }),
+      ], extra: {} }),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -248,11 +217,11 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 4: Detail Panel Full Context Path', async () => {
     const chat = createMockChat([
-      createNode('A', 'user', 'A', [
-        createNode('B', 'assistant', 'B', [
-          createNode('C', 'user', 'C'),
-        ]),
-      ]),
+      createNode({ id: 'A', role: 'user', content: 'A', replies: [
+        createNode({ id: 'B', role: 'assistant', content: 'B', replies: [
+          createNode({ id: 'C', role: 'user', content: 'C', replies: [], extra: {} }),
+        ], extra: {} }),
+      ], extra: {} }),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -275,7 +244,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 5: Tree Map Collapsibility', async () => {
-    const chat = createMockChat([createNode('A', 'user', 'A')]);
+    const chat = createMockChat([createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} })]);
     const wrapper = mountInspector(chat);
     await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
     await nextTick();
@@ -290,7 +259,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 6: JSON Highlighting Toggle', async () => {
-    const chat = createMockChat([createNode('A', 'user', 'A')]);
+    const chat = createMockChat([createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} })]);
     const wrapper = mountInspector(chat);
 
     await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
@@ -307,7 +276,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('copies the currently displayed full chat JSON', async () => {
-    const nodeA = createNode('A', 'user', 'A');
+    const nodeA = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} });
     const chat = createMockChat([nodeA]);
     const wrapper = mountInspector(chat, [nodeA]);
 
@@ -319,10 +288,10 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('shows and copies only the active branch in current-thread JSON scope', async () => {
-    const nodeC = createNode('C', 'assistant', 'C');
-    const nodeB = createNode('B', 'user', 'B', [nodeC]);
-    const sibling = createNode('X', 'user', 'sibling');
-    const nodeA = createNode('A', 'assistant', 'A', [nodeB, sibling]);
+    const nodeC = createNode({ id: 'C', role: 'assistant', content: 'C', replies: [], extra: {} });
+    const nodeB = createNode({ id: 'B', role: 'user', content: 'B', replies: [nodeC], extra: {} });
+    const sibling = createNode({ id: 'X', role: 'user', content: 'sibling', replies: [], extra: {} });
+    const nodeA = createNode({ id: 'A', role: 'assistant', content: 'A', replies: [nodeB, sibling], extra: {} });
     const chat = createMockChat([nodeA]);
     chat.currentLeafId = nodeC.id;
     const originalChatJson = JSON.stringify(chat);
@@ -355,7 +324,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   it('keeps copy feedback scoped to the latest JSON copy request', async () => {
     vi.useFakeTimers();
     try {
-      const nodeA = createNode('A', 'user', 'A');
+      const nodeA = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} });
       const chat = createMockChat([nodeA]);
       chat.currentLeafId = nodeA.id;
       const wrapper = mountInspector(chat, [nodeA]);
@@ -388,7 +357,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 7: Mode Transitions', async () => {
-    const nodeA = createNode('A', 'user', 'A');
+    const nodeA = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} });
     const activeMessages = [nodeA];
     const chat = createMockChat(activeMessages);
     const wrapper = mountInspector(chat, activeMessages);
@@ -405,7 +374,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 8: ModelID Display', async () => {
-    const nodeWithModel = createNode('A', 'assistant', 'Response', [], { modelId: 'gpt-4o' });
+    const nodeWithModel = createNode({ id: 'A', role: 'assistant', content: 'Response', replies: [], extra: { modelId: 'gpt-4o' } });
     const activeMessages = [nodeWithModel];
 
     const chat = createMockChat(activeMessages);
@@ -418,17 +387,17 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 9: Attachment Event Handling', async () => {
-    const nodeWithAtt = createNode('A', 'user', 'A', [], {
+    const nodeWithAtt = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {
       attachments: [{
-        id: 'att-1',
-        binaryObjectId: 'obj-1',
+        id: toAttachmentId({ raw: 'att-1' }),
+        binaryObjectId: toBinaryObjectId({ raw: 'obj-1' }),
         originalName: 'test.png',
         mimeType: 'image/png',
         size: 100,
         uploadedAt: Date.now(),
         status: 'persisted' as const,
       }],
-    });
+    } });
     const activeMessages = [nodeWithAtt];
 
     const chat = createMockChat(activeMessages);
@@ -442,10 +411,10 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 10: Thinking and Error Display', async () => {
-    const nodeWithDetails = createNode('A', 'assistant', 'Final Content', [], {
+    const nodeWithDetails = createNode({ id: 'A', role: 'assistant', content: 'Final Content', replies: [], extra: {
       thinking: 'Analyzing the request...',
       error: 'Simulated API Timeout',
-    });
+    } });
     const activeMessages = [nodeWithDetails];
     const chat = createMockChat(activeMessages);
     const wrapper = mountInspector(chat, activeMessages);
@@ -458,7 +427,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 11: Copy Content Functionality', async () => {
-    const node = createNode('A', 'user', 'Target Text to Copy');
+    const node = createNode({ id: 'A', role: 'user', content: 'Target Text to Copy', replies: [], extra: {} });
     const activeMessages = [node];
     const chat = createMockChat(activeMessages);
     const wrapper = mountInspector(chat, activeMessages);
@@ -470,11 +439,11 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('opens the selected tree node with a message-id query parameter', async () => {
-    const nodeB = createNode('B', 'assistant', 'B content', [
-      createNode('C', 'user', 'C content'),
-    ]);
+    const nodeB = createNode({ id: 'B', role: 'assistant', content: 'B content', replies: [
+      createNode({ id: 'C', role: 'user', content: 'C content', replies: [], extra: {} }),
+    ], extra: {} });
     const chat = createMockChat([
-      createNode('A', 'user', 'A content', [nodeB]),
+      createNode({ id: 'A', role: 'user', content: 'A content', replies: [nodeB], extra: {} }),
     ]);
     const wrapper = mountInspector(chat);
 
@@ -502,7 +471,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 13: JSON Content Escaping (Technical Comments Visibility)', async () => {
     const chat = createMockChat([
-      createNode('A', 'user', 'Check this <!-- technical_comment -->'),
+      createNode({ id: 'A', role: 'user', content: 'Check this <!-- technical_comment -->', replies: [], extra: {} }),
     ]);
     const wrapper = mountInspector(chat);
 
@@ -516,7 +485,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 14: Technical Comments remain visible when Highlighting is OFF', async () => {
     const chat = createMockChat([
-      createNode('A', 'user', 'Check this <!-- technical_comment -->'),
+      createNode({ id: 'A', role: 'user', content: 'Check this <!-- technical_comment -->', replies: [], extra: {} }),
     ]);
     const wrapper = mountInspector(chat);
 
@@ -537,15 +506,11 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   it('reports malformed preview image metadata once per scanned node', async () => {
     await ensureAllStringsForTest({ locale: 'en' });
 
-    const node = createNode(
-      'A',
-      'assistant',
-      `\
+    const node = createNode({ id: 'A', role: 'assistant', content: `\
 \`\`\`naidan_experimental_image
 not-json
 \`\`\`
-`,
-    );
+`, replies: [], extra: {} });
     const activeMessages = [node];
     const chat = createMockChat(activeMessages);
     const clickedBinaryObjectId = toBinaryObjectId({ raw: 'clicked-image' });
@@ -598,14 +563,12 @@ not-json
       uploadedAt: Date.now(),
     };
 
-    const nodeB = createNode('B', 'assistant', 'B content', []);
-    nodeB.attachments = [img1];
+    const nodeB = createNode({ id: 'B', role: 'user', content: 'B content', replies: [], extra: { attachments: [img1] } });
 
-    const nodeC = createNode('C', 'assistant', 'C content', []);
-    nodeC.attachments = [img2];
+    const nodeC = createNode({ id: 'C', role: 'user', content: 'C content', replies: [], extra: { attachments: [img2] } });
 
     const chat = createMockChat([
-      createNode('A', 'user', 'A', [nodeB, nodeC]),
+      createNode({ id: 'A', role: 'user', content: 'A', replies: [nodeB, nodeC], extra: {} }),
     ]);
 
     // Mock storageService.getBinaryObject to return valid objects
@@ -645,4 +608,28 @@ not-json
     expect(ids).toContain('obj-1');
     expect(ids).not.toContain('obj-2');
   });
+  it('keeps unsaved attachment bytes when opening its preview without persisted metadata', async () => {
+    const blob = new Blob(['local'], { type: 'image/png' });
+    const attachment: Attachment = {
+      id: toAttachmentId({ raw: 'memory-a' }), binaryObjectId: toBinaryObjectId({ raw: 'memory-b' }),
+      originalName: 'memory.png', mimeType: 'image/png', size: blob.size, uploadedAt: 0, status: 'memory', blob,
+    };
+    const node = createNode({ id: 'memory-u', role: 'user', content: 'local', replies: [], extra: { attachments: [attachment] } });
+    const { storageService } = await import('@/00-storage/service');
+    vi.mocked(storageService.getBinaryObject).mockResolvedValue(null);
+    const wrapper = mount(ChatDebugInspector, {
+      props: { show: true, chat: createMockChat([node]), activeMessages: [node] },
+      global: { stubs: { BinaryObjectPreviewModal: true } },
+    });
+    wrapper.getComponent(ChatDebugTreeNode).vm.$emit('preview-attachment', attachment.binaryObjectId);
+    await flushPromises();
+    const modal = wrapper.getComponent({ name: 'BinaryObjectPreviewModal' });
+    expect(modal.props('objects')).toEqual([{
+      id: attachment.binaryObjectId, name: attachment.originalName, mimeType: attachment.mimeType,
+      size: blob.size, createdAt: 0, memoryBlob: blob,
+    }]);
+    expect(storageService.getBinaryObject).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
 });

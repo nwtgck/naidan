@@ -15,6 +15,7 @@ import type {
   ModelSupportInvestigationRun,
   ModelSupportInvestigationRuntimeAssetIdentity,
 } from "@/features/transformers-js/model-support-investigation/types";
+import { inspectChatPersistenceRoundTrip } from "./inspect-chat-persistence-roundtrip";
 import {
   createBatchModelSupportEvidence,
   createPartialModelSupportEvidence,
@@ -796,6 +797,8 @@ describe("createPartialModelSupportEvidence", () => {
     const secondRun = structuredClone(run);
     secondRun.runId = "run-2";
     secondRun.modelId = "org/second";
+    secondRun.persistenceRoundTrip = await inspectChatPersistenceRoundTrip();
+    expect(secondRun.persistenceRoundTrip.status).toBe("observed");
     const batchEvidence = await createBatchModelSupportEvidence({
       batchId: "batch-1",
       items: [
@@ -842,6 +845,20 @@ describe("createPartialModelSupportEvidence", () => {
       expect(batchArchive.file(`${target.evidencePath}manifest.json`)).not.toBeNull();
       expect(batchArchive.file(`${target.evidencePath}PACKAGE.md`)).not.toBeNull();
     }
+    // Legacy flat projection and current parts evidence keep separate identities.
+    const firstPath = batchIndex.targets[0]!.evidencePath!;
+    const secondPath = batchIndex.targets[1]!.evidencePath!;
+    const oldPersistence = JSON.parse(await batchArchive.file(`${firstPath}continuity/persistence-roundtrip.json`)!.async('text'));
+    const currentPersistence = JSON.parse(await batchArchive.file(`${secondPath}continuity/persistence-roundtrip.json`)!.async('text'));
+    expect(oldPersistence.method).toBe('chat-content-dto-json-roundtrip-v1');
+    expect(currentPersistence).toEqual(JSON.parse(JSON.stringify(secondRun.persistenceRoundTrip)));
+    expect(currentPersistence.modelVisibleProjectionMethod).toBe('build_chat_generation_messages_parts_v2');
+    expect(currentPersistence.originalMessages[2].parts.map((part: { type: string }) => part.type)).toEqual(['reasoning', 'text', 'text', 'tool_call']);
+    expect(currentPersistence.originalMessages[2].parts[2].text).toBe('<think>preserve this exact model-visible tool-call prefix</think>');
+    expect(currentPersistence.restoredMessages[4].parts[0].completeness).toBe('partial');
+    const currentRun = JSON.parse(await batchArchive.file(`${secondPath}run.json`)!.async('text'));
+    expect(currentRun.persistenceRoundTrip).toEqual(currentPersistence);
+
     expect(batchIndex.targets[2]?.evidencePath).toBeUndefined();
     expect(batchArchive.file("manifest.json")).not.toBeNull();
 

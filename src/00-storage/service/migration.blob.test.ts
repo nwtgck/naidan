@@ -79,8 +79,15 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
           }
           return subEntries.get(n);
         }),
-        getFileHandle: vi.fn().mockImplementation(async (n, _opts) => {
-          if (!subEntries.has(n) && _opts?.create) subEntries.set(n, createMockFile(n));
+        getFileHandle: vi.fn().mockImplementation(async (n: string, _opts?: { create?: boolean }) => {
+          if (!subEntries.has(n)) {
+            if (_opts?.create) subEntries.set(n, createMockFile(n));
+            else {
+              const error = new Error(`File not found: ${n}`);
+              error.name = 'NotFoundError';
+              throw error;
+            }
+          }
           return subEntries.get(n);
         }),
         removeEntry: vi.fn().mockResolvedValue(undefined),
@@ -117,23 +124,16 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       id: '550e8400-e29b-41d4-a716-446655440000',
       title: 'Test',
       root: {
-        items: [{
-          id: '550e8400-e29b-41d4-a716-446655440001',
-          role: 'user',
-          content: 'text',
-          timestamp: Date.now(),
-          attachments: [{
-            id: '550e8400-e29b-41d4-a716-446655440002',
-            binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
-            originalName: 'test.png',
-            mimeType: 'image/png',
-            size: 100,
-            uploadedAt: Date.now(),
-            status: 'memory',
-            blob: mockBlob,
-          }],
-          replies: { items: [] },
-        }],
+        items: [{ id: '550e8400-e29b-41d4-a716-446655440001', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'text', completeness: 'complete' }, { id: 'test_attachment_0', type: 'attachment', attachment: {
+          id: '550e8400-e29b-41d4-a716-446655440002',
+          binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
+          originalName: 'test.png',
+          mimeType: 'image/png',
+          size: 100,
+          uploadedAt: Date.now(),
+          status: 'memory',
+          blob: mockBlob,
+        } }], replies: { items: [] } }],
       },
       modelId: 'm1',
       createdAt: Date.now(),
@@ -156,9 +156,9 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     expect(loadedChat).toBeDefined();
     const firstNode = loadedChat!.root.items[0]!;
     expect(firstNode).toBeDefined();
-    expect(firstNode.attachments).toBeDefined();
+    expect(firstNode.parts.filter(part => part.type === 'attachment').map(part => part.attachment)).toBeDefined();
     // In our test environment, switchProvider will rescue the blob and updated status should be persisted
-    const firstAttachment = firstNode.attachments![0]!;
+    const firstAttachment = firstNode.parts.filter(part => part.type === 'attachment').map(part => part.attachment)![0]!;
     expect(firstAttachment.status).toBe('persisted');
   });
 });

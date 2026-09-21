@@ -1,4 +1,5 @@
-import type { ChatMessage, LmParameters } from '@/01-models/types';
+import type { LmParameters } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import type { ProgressInfo, WorkerToolDefinition, TransformersJsChunkCallback, TransformersJsToolCallsCallback } from './types';
 import type { TransformersJsInferenceOperation } from './inference-operation';
 import type { DownloadProgressSnapshot } from './download-progress';
@@ -96,7 +97,7 @@ export const transformersJsService = {
   async resetCache() {},
 
   async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools, signal: _signal }: {
-    messages: ChatMessage[],
+    messages: InferenceMessage[],
     onChunk: TransformersJsChunkCallback,
     onToolCalls: TransformersJsToolCallsCallback,
     params?: LmParameters,

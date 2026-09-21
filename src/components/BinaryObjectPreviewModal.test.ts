@@ -4,7 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { storageService } from '@/00-storage/service';
-import type { BinaryObject } from '@/01-models/types';
+import type { BinaryObjectPreviewItem } from '@/composables/useImagePreview';
 import { toBinaryObjectId } from '@/01-models/ids';
 
 // --- Mocks ---
@@ -17,10 +17,10 @@ vi.mock('../00-storage/service', () => ({
 
 // --- Test Data ---
 
-const mockObjects: BinaryObject[] = [
-  { id: toBinaryObjectId({ raw: '1' }), name: 'image1.png', mimeType: 'image/png', size: 1024, createdAt: 1000 },
-  { id: toBinaryObjectId({ raw: '2' }), name: 'image2.jpg', mimeType: 'image/jpeg', size: 2048, createdAt: 2000 },
-  { id: toBinaryObjectId({ raw: '3' }), name: 'doc.pdf', mimeType: 'application/pdf', size: 512, createdAt: 500 },
+const mockObjects: BinaryObjectPreviewItem[] = [
+  { id: toBinaryObjectId({ raw: '1' }), name: 'image1.png', mimeType: 'image/png', size: 1024, createdAt: 1000, memoryBlob: undefined },
+  { id: toBinaryObjectId({ raw: '2' }), name: 'image2.jpg', mimeType: 'image/jpeg', size: 2048, createdAt: 2000, memoryBlob: undefined },
+  { id: toBinaryObjectId({ raw: '3' }), name: 'doc.pdf', mimeType: 'application/pdf', size: 512, createdAt: 500, memoryBlob: undefined },
 ];
 
 const globalStubs = {

@@ -4,21 +4,24 @@ import { ref, computed, watch } from 'vue';
 import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon, CopyIcon, CheckIcon } from 'lucide-vue-next';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
+import type { BinaryObjectPreviewItem } from '@/composables/useImagePreview';
 import { storageService } from '@/00-storage/service';
 import { useRouter } from 'vue-router';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import type { BinaryObject, MessageBranch, MessageNode } from '@/01-models/types';
+import type { Chat, MessageBranch, MessageNode } from '@/01-models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { allowedHtml, jsonToHighlightedHtml } from '@/logic/security/allowedHtml';
 import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/features/fake-lm';
 import { useSettings } from '@/composables/useSettings';
 import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
 import type { BinaryObjectId, MessageId } from '@/01-models/ids';
+import { inspectDebugImages } from '@/logic/chat-debug-images';
+import { getChatBranchIterator } from '@/logic/chat-tree';
+import { onUnmounted } from 'vue';
 
 const props = defineProps<{
   show: boolean,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  chat: any, // Using any to avoid deep readonly incompatibility with store output
+  chat: Readonly<Chat> | undefined,
   activeMessages: ReadonlyArray<MessageNode>,
 }>();
 
@@ -62,38 +65,28 @@ function handleOpenMessage({ messageId }: { messageId: MessageId }) {
   emit('close');
 }
 
-// Calculate the path from root to the selected node
+// Resolve only the selected branch; a removed node must not silently select a sibling.
 const selectedPath = computed(() => {
-  if (!selectedNode.value) return [];
-  const path: MessageNode[] = [];
-  const targetId = selectedNode.value.id;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const findPath = ({ items, currentPath }: { items: ReadonlyArray<any>, currentPath: MessageNode[] }): boolean => {
-    for (const item of items) {
-      if (item.id === targetId) {
-        path.push(...currentPath, item as MessageNode);
-        return true;
-      }
-      if (item.replies?.items?.length) {
-        if (findPath({ items: item.replies.items, currentPath: [...currentPath, item as MessageNode] })) return true;
-      }
-    }
-    return false;
-  };
-
-  if (props.chat?.root?.items) {
-    findPath({ items: props.chat.root.items, currentPath: [] });
-  }
-  return path;
+  if (!selectedNode.value || !props.chat) return [];
+  const path = [...getChatBranchIterator({ chat: { ...props.chat, currentLeafId: selectedNode.value.id } })];
+  return path.at(-1)?.id === selectedNode.value.id ? path : [];
 });
 
 // Attachment Preview Logic
-const previewObjects = ref<BinaryObject[]>([]);
+const previewObjects = ref<BinaryObjectPreviewItem[]>([]);
 const previewInitialId = ref<BinaryObjectId | null>(null);
 
+let previewRequest = 0;
+watch([() => props.show, mode, () => props.chat, () => selectedNode.value?.id], () => {
+  previewRequest += 1; previewObjects.value = []; previewInitialId.value = null;
+});
+onUnmounted(() => {
+  previewRequest += 1;
+});
 async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
+  const request = ++previewRequest;
   const allImageIds = new Set<BinaryObjectId>();
+  const attachmentImages = new Map<BinaryObjectId, BinaryObjectPreviewItem>();
 
   // Determine which nodes to scan based on the current mode
   const nodesToScan = (() => {
@@ -111,35 +104,30 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
 
   // Helper to extract IDs from a node
   const extractIds = async ({ node }: { node: MessageNode }): Promise<void> => {
-    // From attachments
-    if (node.attachments) {
-      for (const att of node.attachments) {
-        if (att.mimeType?.startsWith('image/')) {
-          allImageIds.add(att.binaryObjectId);
-        }
+    for (const part of node.parts) {
+      if (part.type === 'attachment' && part.attachment.status !== 'missing' && part.attachment.mimeType.startsWith('image/')) {
+        const attachment = part.attachment;
+        allImageIds.add(attachment.binaryObjectId);
+        attachmentImages.set(attachment.binaryObjectId, {
+          id: attachment.binaryObjectId, name: attachment.originalName,
+          mimeType: attachment.mimeType, size: attachment.size, createdAt: attachment.uploadedAt,
+          memoryBlob: (() => {
+            switch (attachment.status) {
+            case 'memory': return attachment.blob;
+            case 'persisted': return undefined;
+            default: {
+              const unhandled: never = attachment;
+              throw new Error(`Unhandled attachment: ${unhandled}`);
+            }
+            }
+          })(),
+        });
       }
     }
-    // From content (naidan_experimental_image)
-    if (node.content) {
-      const regex = /```naidan_experimental_image\n([\s\S]*?)\n```/g;
-      let match;
-      while ((match = regex.exec(node.content)) !== null) {
-        const jsonStr = match[1];
-        if (!jsonStr) continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-          if (parsed.binaryObjectId) {
-            allImageIds.add(toBinaryObjectId({ raw: parsed.binaryObjectId }));
-          }
-        } catch (e) {
-          console.error('Failed to parse image block in ChatDebugInspector:', e);
-          addErrorEvent({
-            source: 'ChatDebugInspector:handlePreviewAttachment',
-            message: await ensureStrings.ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection(),
-            details: e instanceof Error ? e.message : String(e),
-          });
-        }
-      }
+    const inspection = inspectDebugImages({ message: node });
+    for (const { image } of inspection.images) allImageIds.add(toBinaryObjectId({ raw: image.binaryObjectId }));
+    for (const details of inspection.errors) {
+      addErrorEvent({ source: 'ChatDebugInspector:handlePreviewAttachment', message: await ensureStrings.ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection(), details });
     }
   };
 
@@ -152,18 +140,22 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
   allImageIds.add(binaryObjectId);
 
   // Fetch metadata for all found images
-  const objects: BinaryObject[] = [];
+  const objects: BinaryObjectPreviewItem[] = [];
   for (const id of allImageIds) {
-    const obj = await storageService.getBinaryObject({ binaryObjectId: id });
-    if (obj && obj.mimeType.startsWith('image/')) {
-      objects.push(obj);
+    const attachment = attachmentImages.get(id);
+    if (attachment) {
+      objects.push(attachment);
+      continue;
     }
+    const obj = await storageService.getBinaryObject({ binaryObjectId: id });
+    if (request !== previewRequest) return;
+    if (obj && obj.mimeType.startsWith('image/')) objects.push({ ...obj, memoryBlob: undefined });
   }
 
   // Sort by creation date if available, otherwise keep order
   objects.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
-  if (objects.length > 0) {
+  if (request === previewRequest && props.show && objects.length > 0) {
     previewObjects.value = objects;
     previewInitialId.value = binaryObjectId;
   }

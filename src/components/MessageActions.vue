@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { GitForkIcon, PencilIcon, CopyIcon, CheckIcon, RefreshCwIcon, SendIcon, MoreVerticalIcon, HistoryIcon, MoreHorizontalIcon, LinkIcon } from 'lucide-vue-next';
 import type { MessageNode, LmParameters } from '@/01-models/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
+import { getMessageText } from '@/01-models/message-text';
 import { isImageGenerationPending } from '@/utils/image-generation';
 import { generateMessageLink } from '@/logic/chat-links';
 import { useToast } from '@/composables/useToast';
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   (e: 'update:showExtensions', val: boolean): void,
 }>();
 
+const rawContent = computed(() => getMessageText({ message: props.message }));
 const copied = ref(false);
 const showMoreMenu = ref(false);
 const moreActionsTriggerRef = ref<HTMLElement | null>(null);
@@ -50,7 +52,7 @@ async function handleCopy() {
 
 async function handleCopyRaw() {
   try {
-    await navigator.clipboard.writeText(props.message.content || '');
+    await navigator.clipboard.writeText(rawContent.value);
     // Use a temporary visual feedback or just close the menu
     // For now, let's just close the menu which is handled by the click
   } catch (err) {
@@ -104,7 +106,7 @@ defineExpose({
     </div>
 
     <!-- Speech Controls -->
-    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
+    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending({ content: rawContent })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
 
     <button
       v-if="!isUser"
@@ -117,7 +119,7 @@ defineExpose({
     </button>
     <button
       v-if="isUser"
-      @click="emit('edit', message.id, message.content || '', message.lmParameters)"
+      @click="emit('edit', message.id, rawContent, message.lmParameters)"
       tw-class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       :title="lazyStrings.MessageActions__resend_message()"
       data-testid="resend-button"

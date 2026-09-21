@@ -1,4 +1,6 @@
+import { inferenceGenerationEventSchema, type InferenceGenerationCallback } from '@/features/transformers-js/generation-events';
 import { workerProxy } from '@/utils/worker-transport';
+import { cloneChatMessages, cloneLmParameters, cloneWorkerTools } from '@/features/transformers-js/inference-input-snapshot';
 import { createProductionWorkerSession } from './production-worker-session';
 import { generationCaptureLimitsSchema } from './generation-capture';
 import { createLoadDiagnosticLedger, type LoadDiagnosticPacket } from './load-diagnostics';
@@ -13,7 +15,8 @@ import {
   type GenerationCaptureClient,
   type GenerationCaptureClientLifetime,
 } from './generation-capture-protocol';
-import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import type { LmParameters, ToolCall } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import type {
   TransformersJsWorkerClient,
   WorkerToolDefinition,
@@ -167,6 +170,9 @@ function createWorkerClientCore({ capture }: {
       async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools }) {
         throw createUnavailableEnvironmentError();
       },
+      async generateMessage({ messages: _messages, onEvent: _onEvent, params: _params, tools: _tools, continuationOwner: _continuationOwner }) {
+        throw createUnavailableEnvironmentError();
+      },
       async dispose() {
       },
     };
@@ -214,18 +220,25 @@ function createWorkerClientCore({ capture }: {
       return session.run({ operation: ({ remote }) => remote.resetCache() });
     },
     async generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner }: {
-      messages: ChatMessage[],
+      messages: InferenceMessage[],
       onChunk: TransformersJsChunkCallback,
       onToolCalls: TransformersJsToolCallsCallback,
       params?: LmParameters,
       tools?: WorkerToolDefinition[],
       continuationOwner?: string,
     }): Promise<void> {
+      // Freeze at the client call, not after asynchronous Worker startup.
+      // Direct investigation clients share this boundary with the owned service.
+      const accepted = {
+        messages: cloneChatMessages({ messages }),
+        params: cloneLmParameters({ params }),
+        tools: cloneWorkerTools({ tools }),
+      };
       const request = capture?.createRequest();
       let acceptingCallbacks = true;
       try {
         return await session.run({ operation: ({ remote }) => remote.generateText(
-          messages,
+          accepted.messages,
           // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
           workerProxy({ value: (chunk: string) => {
             if (acceptingCallbacks && session.isActive()) return onChunk({ chunk });
@@ -234,14 +247,48 @@ function createWorkerClientCore({ capture }: {
           workerProxy({ value: (toolCalls: ToolCall[]) => {
             if (acceptingCallbacks && session.isActive()) return onToolCalls({ toolCalls });
           } }),
-          params,
-          tools,
+          accepted.params,
+          accepted.tools,
           request,
           continuationOwner,
         ) });
       } finally {
         // A failed or disposed RPC cannot deliver into a later request, even
         // when its callback MessagePort still has queued messages.
+        acceptingCallbacks = false;
+      }
+    },
+    async generateMessage({ messages, onEvent, params, tools, continuationOwner }: {
+      messages: InferenceMessage[],
+      onEvent: InferenceGenerationCallback,
+      params: LmParameters | undefined,
+      tools: WorkerToolDefinition[] | undefined,
+      continuationOwner: string | undefined,
+    }): Promise<void> {
+      const accepted = {
+        messages: cloneChatMessages({ messages }),
+        params: cloneLmParameters({ params }),
+        tools: cloneWorkerTools({ tools }),
+      };
+      const request = capture?.createRequest();
+      let acceptingCallbacks = true;
+      try {
+        await session.run({ operation: ({ remote }) => remote.generateText(
+          accepted.messages,
+          workerProxy({ value: () => {
+            throw new Error('Structured generation received a legacy text callback.');
+          } }),
+          workerProxy({ value: () => {
+            throw new Error('Structured generation received a legacy tool callback.');
+          } }),
+          accepted.params, accepted.tools, request, continuationOwner,
+          workerProxy({ value: ({ event }: { event: unknown }) => {
+            if (acceptingCallbacks && session.isActive()) {
+              return onEvent({ event: inferenceGenerationEventSchema.parse(event) });
+            }
+          } }),
+        ) });
+      } finally {
         acceptingCallbacks = false;
       }
     },

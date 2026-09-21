@@ -189,23 +189,13 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       mimeType: undefined,
     });
 
-    const nodes: MessageNode[] = [{
-      id: toMessageId({ raw: '11111111-1111-4111-a111-111111111111' }),
-      role: 'user',
-      content: 'hello',
-      timestamp: Date.now(),
-      attachments: [
-        { id: toAttachmentId({ raw: '22222222-2222-4222-a222-222222222222' }), binaryObjectId: toBinaryObjectId({ raw: id1 }), originalName: 'img1.png', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 },
-        { id: toAttachmentId({ raw: '33333333-3333-4333-a333-333333333333' }), binaryObjectId: toBinaryObjectId({ raw: id2 }), originalName: 'doc2.pdf', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 },
-      ],
-      replies: { items: [] },
-    }];
+    const nodes: MessageNode[] = [{ id: toMessageId({ raw: '11111111-1111-4111-a111-111111111111' }), role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'hello', completeness: 'complete' }, { id: 'test_attachment_0', type: 'attachment', attachment: { id: toAttachmentId({ raw: '22222222-2222-4222-a222-222222222222' }), binaryObjectId: toBinaryObjectId({ raw: id1 }), originalName: 'img1.png', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 } }, { id: 'test_attachment_1', type: 'attachment', attachment: { id: toAttachmentId({ raw: '33333333-3333-4333-a333-333333333333' }), binaryObjectId: toBinaryObjectId({ raw: id2 }), originalName: 'doc2.pdf', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 } }], replies: { items: [] } }];
 
     // Hydrate
     // @ts-expect-error: Accessing private for test
     await provider.hydrateAttachments({ nodes });
 
-    const atts = nodes[0]!.attachments!;
+    const atts = nodes[0]!.parts.filter(part => part.type === 'attachment').map(part => part.attachment)!;
     expect(atts[0]!.mimeType).toBe('image/png');
     expect(atts[0]!.size).toBe(1);
     expect(atts[1]!.mimeType).toBe('application/pdf');
@@ -227,22 +217,15 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       id: chatId,
       content: {
         root: {
-          items: [{
-            id: toMessageId({ raw: '00000000-0000-4000-a000-000000000012' }),
-            role: 'user',
-            content: 'hello',
-            timestamp: 1,
-            attachments: [{
-              id: toAttachmentId({ raw: '00000000-0000-4000-a000-000000000013' }),
-              binaryObjectId,
-              originalName: 'attachment.txt',
-              mimeType: 'text/plain',
-              size: 10,
-              uploadedAt: 1,
-              status: 'persisted',
-            }],
-            replies: { items: [] },
-          }],
+          items: [{ id: toMessageId({ raw: '00000000-0000-4000-a000-000000000012' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'hello', completeness: 'complete' }, { id: 'test_attachment_0', type: 'attachment', attachment: {
+            id: toAttachmentId({ raw: '00000000-0000-4000-a000-000000000013' }),
+            binaryObjectId,
+            originalName: 'attachment.txt',
+            mimeType: 'text/plain',
+            size: 10,
+            uploadedAt: 1,
+            status: 'persisted',
+          } }], replies: { items: [] } }],
         },
       },
     });
@@ -250,11 +233,11 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     const unhydrated = await provider.loadChatContentWithoutAttachments({ id: chatId });
     const hydrated = await provider.loadChatContent({ id: chatId });
 
-    expect(unhydrated?.root.items[0]?.attachments?.[0]).toMatchObject({
+    expect(unhydrated?.root.items[0]?.parts.filter(part => part.type === 'attachment').map(part => part.attachment)?.[0]).toMatchObject({
       mimeType: 'application/octet-stream',
       size: 0,
     });
-    expect(hydrated?.root.items[0]?.attachments?.[0]).toMatchObject({
+    expect(hydrated?.root.items[0]?.parts.filter(part => part.type === 'attachment').map(part => part.attachment)?.[0]).toMatchObject({
       mimeType: 'text/plain',
       size: 10,
     });

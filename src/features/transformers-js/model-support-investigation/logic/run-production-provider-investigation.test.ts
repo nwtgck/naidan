@@ -21,6 +21,7 @@ function fixture({ plan }: { plan: Arguments['plan'] }) {
   const client = {
     loadDownloadedModel: vi.fn<TransformersJsWorkerClient['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
     generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockResolvedValue(undefined),
+    generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>().mockResolvedValue(undefined),
     interrupt: vi.fn<TransformersJsWorkerClient['interrupt']>().mockResolvedValue(undefined),
     unloadModel: vi.fn<TransformersJsWorkerClient['unloadModel']>().mockResolvedValue(undefined),
     resetCache: vi.fn<TransformersJsWorkerClient['resetCache']>().mockResolvedValue(undefined),
@@ -33,12 +34,15 @@ function fixture({ plan }: { plan: Arguments['plan'] }) {
     return { status: 'not-started' };
   });
   const createCaptureClient = vi.fn<Arguments['createCaptureClient']>(({ runId, workerEpoch, getActiveRequest }) => {
-    client.generateText.mockImplementation(async ({ onChunk }) => {
+    client.generateMessage.mockImplementation(async ({ onEvent }) => {
       const request = getActiveRequest();
       if (request === undefined) throw new Error('Expected public request');
       issuedCalls.push({ runId, workerEpoch, requestId: request.requestId, generationCallId: issuedCalls.length + 1 });
       entered.resolve();
-      onChunk({ chunk: 'Synthetic reply.' });
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'Synthetic reply.' } });
+      await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+      await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
     return { client, takeGenerationCapture: take, getCaptureLifetime: () => ({
       runId, workerEpoch, session, issuedCalls, loadRequests: [], incompleteReasons: [],
@@ -86,7 +90,7 @@ describe('bounded Production Provider investigation', () => {
     const original = createCaptureClient.getMockImplementation()!;
     createCaptureClient.mockImplementation(input => {
       const capture = original(input);
-      client.generateText.mockRejectedValueOnce(new Error('First request failed'));
+      client.generateMessage.mockRejectedValueOnce(new Error('First request failed'));
       return capture;
     });
     onProgress.mockImplementation(({ progress }) => {
@@ -96,7 +100,7 @@ describe('bounded Production Provider investigation', () => {
     expect(result.summary.requests[1]).toMatchObject({ scenario: 'continuity', status: 'not-started', notStartedReason: 'first-settlement-unavailable' });
     expect(result.summary.providerProgress).toMatchObject({ run: { status: 'completed' }, selectedRequests: 13, settledRequests: 12 });
     expect(result.summary.progressCallbackFailures).toBe(0);
-    expect(client.generateText).toHaveBeenCalledTimes(12);
+    expect(client.generateMessage).toHaveBeenCalledTimes(12);
   });
   it('publishes every immediate phase boundary without waiting for the sampling timer', async () => {
     const { investigation, onProgress } = fixture({ plan: 'first-only' });
@@ -156,8 +160,9 @@ describe('bounded Production Provider investigation', () => {
     const pending = Promise.withResolvers<void>();
     createCaptureClient.mockImplementation(input => {
       const capture = original(input);
-      client.generateText.mockImplementation(async () => {
+      client.generateMessage.mockImplementation(async ({ onEvent }) => {
         entered.resolve(); await pending.promise;
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
     });
@@ -194,7 +199,7 @@ describe('bounded Production Provider investigation', () => {
     const originalClient = createCaptureClient.getMockImplementation()!;
     createCaptureClient.mockImplementation(input => {
       const result = originalClient(input);
-      client.generateText.mockImplementation(async () => {
+      client.generateMessage.mockImplementation(async () => {
         entered.resolve(); await new Promise(() => undefined);
       });
       return result;
@@ -253,8 +258,9 @@ describe('bounded Production Provider investigation', () => {
     const pending = Promise.withResolvers<void>();
     createCaptureClient.mockImplementation(input => {
       const capture = original(input);
-      client.generateText.mockImplementation(async () => {
+      client.generateMessage.mockImplementation(async ({ onEvent }) => {
         entered.resolve(); await pending.promise;
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
     });
@@ -361,11 +367,16 @@ describe('bounded Production Provider investigation', () => {
       'natural-tool-minimal', 'natural-tool-representative', 'structured-tool-history', 'image',
     ]);
     expect(result.provider?.requests.map(request => request.status)).toEqual(Array.from({ length: 13 }, () => 'settled'));
-    expect(client.generateText).toHaveBeenCalledTimes(13);
+    expect(client.generateMessage).toHaveBeenCalledTimes(13);
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
     expect(createCaptureClient).toHaveBeenCalledOnce();
     expect(take).toHaveBeenCalledOnce();
-    expect(client.generateText.mock.calls[1]?.[0].messages).toEqual(result.provider?.requests[1]?.input?.messages);
+    expect(client.generateMessage.mock.calls[1]?.[0].messages).toEqual([
+      { role: 'user', content: 'Template probe user message.' },
+      { role: 'assistant', content: 'Synthetic reply.' },
+      { role: 'user', content: 'Continue the synthetic conversation with a short response.' },
+    ]);
+    expect(result.provider?.requests[1]?.input?.messages[1]).toMatchObject({ role: 'assistant', parts: [{ type: 'text', text: 'Synthetic reply.' }] });
     expect(result.summary.requests.every(request => request.limits.maximumEvents === 1024 && request.limits.maximumCharacters === 65536)).toBe(true);
   });
 
@@ -375,8 +386,9 @@ describe('bounded Production Provider investigation', () => {
     const pending = Promise.withResolvers<void>();
     createCaptureClient.mockImplementation(input => {
       const capture = original(input);
-      client.generateText.mockImplementation(async () => {
+      client.generateMessage.mockImplementation(async ({ onEvent }) => {
         entered.resolve(); await pending.promise;
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
     });

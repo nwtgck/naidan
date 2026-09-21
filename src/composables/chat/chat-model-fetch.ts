@@ -133,7 +133,7 @@ export async function fetchModelsForEndpoint({
 
   try {
     const provider = await loadProviderForEndpoint({ endpoint });
-    const models = await provider.listModels({});
+    const models = await provider.listModels({ signal: undefined });
     return Array.isArray(models) ? models : [];
   } catch (error) {
     addErrorEvent({

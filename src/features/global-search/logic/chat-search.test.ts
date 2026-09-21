@@ -4,19 +4,20 @@ import type { MessageBranch, MessageNode } from '@/01-models/types';
 import { toChatId, toMessageId } from '@/01-models/ids';
 
 describe('searchChatTree', () => {
-  const createNode = (id: string, content: string, replies: MessageNode[] = []): MessageNode => ({
+  const createNode = ({ id, content, replies }: { id: string, content: string, replies: MessageNode[] }): MessageNode => ({
     id: toMessageId({ raw: id }),
     role: 'user',
-    content,
+    modelId: undefined, lmParameters: undefined,
+    parts: [{ id: 'text', type: 'text', text: content, completeness: 'complete' }],
     replies: { items: replies },
-    timestamp: Date.now(),
+    createdAt: Date.now(),
   });
 
   it('finds match in root level', () => {
     const root: MessageBranch = {
       items: [
-        createNode('1', 'Hello world'),
-        createNode('2', 'Another message'),
+        createNode({ id: '1', content: 'Hello world', replies: [] }),
+        createNode({ id: '2', content: 'Another message', replies: [] }),
       ],
     };
 
@@ -29,9 +30,9 @@ describe('searchChatTree', () => {
   it('finds match in nested branch and identifies correct leaf', () => {
     // Structure:
     // 1: "Start" -> 2: "Target content here" -> 3: "End leaf"
-    const node3 = createNode('3', 'End leaf');
-    const node2 = createNode('2', 'Target content here', [node3]);
-    const node1 = createNode('1', 'Start', [node2]);
+    const node3 = createNode({ id: '3', content: 'End leaf', replies: [] });
+    const node2 = createNode({ id: '2', content: 'Target content here', replies: [node3] });
+    const node1 = createNode({ id: '1', content: 'Start', replies: [node2] });
 
     const root: MessageBranch = { items: [node1] };
 
@@ -49,9 +50,9 @@ describe('searchChatTree', () => {
     //    -> 2a: "Branch A specific"
     //    -> 2b: "Branch B specific"
 
-    const node2a = createNode('2a', 'Branch A specific');
-    const node2b = createNode('2b', 'Branch B specific');
-    const node1 = createNode('1', 'Common', [node2a, node2b]);
+    const node2a = createNode({ id: '2a', content: 'Branch A specific', replies: [] });
+    const node2b = createNode({ id: '2b', content: 'Branch B specific', replies: [] });
+    const node1 = createNode({ id: '1', content: 'Common', replies: [node2a, node2b] });
 
     const root: MessageBranch = { items: [node1] };
 
@@ -63,7 +64,7 @@ describe('searchChatTree', () => {
 
   it('is case insensitive', () => {
     const root: MessageBranch = {
-      items: [createNode('1', 'HeLLo ThErE')],
+      items: [createNode({ id: '1', content: 'HeLLo ThErE', replies: [] })],
     };
 
     const matches = searchChatTree({ root, query: 'hello', chatId: toChatId({ raw: 'chat-1' }) });
@@ -72,10 +73,10 @@ describe('searchChatTree', () => {
 
   it('searches a deeply nested branch without recursive traversal', () => {
     const depth = 10_000;
-    let rootNode = createNode(String(depth - 1), 'deep target');
+    let rootNode = createNode({ id: String(depth - 1), content: 'deep target', replies: [] });
 
     for (let index = depth - 2; index >= 0; index--) {
-      rootNode = createNode(String(index), index === 0 ? 'root target' : 'intermediate', [rootNode]);
+      rootNode = createNode({ id: String(index), content: index === 0 ? 'root target' : 'intermediate', replies: [rootNode] });
     }
 
     const matches = searchChatTree({
@@ -93,18 +94,19 @@ describe('searchChatTree', () => {
 });
 
 describe('searchLinearBranch', () => {
-  const createNode = (id: string, content: string): MessageNode => ({
+  const createNode = ({ id, content, replies }: { id: string, content: string, replies: MessageNode[] }): MessageNode => ({
     id: toMessageId({ raw: id }),
     role: 'user',
-    content,
-    replies: { items: [] },
-    timestamp: Date.now(),
+    modelId: undefined, lmParameters: undefined,
+    parts: [{ id: 'text', type: 'text', text: content, completeness: 'complete' }],
+    replies: { items: replies },
+    createdAt: Date.now(),
   });
 
   it('searches only the provided array', () => {
     const branch = [
-      createNode('1', 'Hello world'),
-      createNode('2', 'Hidden text in linear path'),
+      createNode({ id: '1', content: 'Hello world', replies: [] }),
+      createNode({ id: '2', content: 'Hidden text in linear path', replies: [] }),
     ];
 
     const matches = searchLinearBranch({ branch, query: 'Hidden', chatId: toChatId({ raw: 'chat-1' }), targetLeafId: toMessageId({ raw: '99' }) });

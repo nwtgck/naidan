@@ -176,11 +176,11 @@ const formatDate = ({ timestamp }: { timestamp: number }) => {
 };
 
 const handleDownload = async ({ obj }: { obj: BinaryObject }) => {
-  await downloadBinaryObject({ obj });
+  await downloadBinaryObject({ obj, memoryBlob: undefined });
 };
 
 const handlePreview = ({ obj }: { obj: BinaryObject }) => {
-  openPreview({ objects: filteredObjects.value, initialId: obj.id });
+  openPreview({ objects: filteredObjects.value.map(object => ({ ...object, memoryBlob: undefined })), initialId: obj.id });
 };
 
 const handleDelete = async ({ obj }: { obj: BinaryObject }) => {

@@ -20,71 +20,14 @@ function createMessage({
   role: MessageNode['role'],
   content: string | undefined,
 }): MessageNode {
+  const base = { id: toMessageId({ raw: id }), createdAt: 1, replies: { items: [] }, lmParameters: undefined };
+  const parts = [{ id: 'text', type: 'text' as const, text: content ?? '', completeness: 'complete' as const }];
   switch (role) {
-  case 'user':
-    return {
-      id: toMessageId({ raw: id }),
-      role,
-      content: content ?? '',
-      attachments: undefined,
-      timestamp: 1,
-      replies: { items: [] },
-      thinking: undefined,
-      error: undefined,
-      modelId: undefined,
-      lmParameters: undefined,
-      toolCalls: undefined,
-      results: undefined,
-    };
-  case 'assistant':
-    return {
-      id: toMessageId({ raw: id }),
-      role,
-      content: content ?? '',
-      attachments: undefined,
-      timestamp: 1,
-      replies: { items: [] },
-      thinking: undefined,
-      error: undefined,
-      modelId: 'model-1',
-      lmParameters: undefined,
-      toolCalls: undefined,
-      results: undefined,
-    };
-  case 'system':
-    return {
-      id: toMessageId({ raw: id }),
-      role,
-      content: content ?? '',
-      attachments: undefined,
-      timestamp: 1,
-      replies: { items: [] },
-      thinking: undefined,
-      error: undefined,
-      modelId: undefined,
-      lmParameters: undefined,
-      toolCalls: undefined,
-      results: undefined,
-    };
-  case 'tool':
-    return {
-      id: toMessageId({ raw: id }),
-      role,
-      content: undefined,
-      attachments: undefined,
-      timestamp: 1,
-      replies: { items: [] },
-      thinking: undefined,
-      error: undefined,
-      modelId: undefined,
-      lmParameters: undefined,
-      toolCalls: undefined,
-      results: [],
-    };
-  default: {
-    const _ex: never = role;
-    throw new Error(`Unhandled message role: ${_ex}`);
-  }
+  case 'user': return { ...base, role, parts, modelId: undefined };
+  case 'assistant': return { ...base, role, parts, modelId: 'model-1', interruption: undefined };
+  case 'system': return { ...base, role, parts, modelId: undefined };
+  case 'tool': return { ...base, role, parts: [], modelId: undefined };
+  default: { const _ex: never = role; throw new Error(`Unhandled message role: ${_ex}`); }
   }
 }
 
@@ -131,25 +74,23 @@ describe('context-compact', () => {
   it('builds an English compact instruction and request messages', () => {
     const requestMessages = buildCompactRequestMessages({
       prefix: [
-        { role: 'user', content: `\
+        { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: `\
 messageId=msg-1
 
-Question` },
+Question`, completeness: 'complete' }] },
       ],
       promptMode: 'with_message_ids',
       instructionContent: undefined,
     });
 
     expect(requestMessages).toEqual([
-      { role: 'user', content: `\
+      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: `\
 messageId=msg-1
 
-Question` },
+Question`, completeness: 'complete' }] },
       {
-        role: 'user',
-        content: createCompactInstruction({
-          promptMode: 'with_message_ids',
-        }),
+        id: toMessageId({ raw: 'compact_instruction' }), role: 'user',
+        parts: [{ id: 'text', type: 'text', text: createCompactInstruction({ promptMode: 'with_message_ids' }), completeness: 'complete' }],
       },
     ]);
   });
@@ -163,8 +104,8 @@ Question` },
 
     expect(requestMessages).toEqual([
       {
-        role: 'user',
-        content: 'Custom compact prompt',
+        id: toMessageId({ raw: 'compact_instruction' }), role: 'user',
+        parts: [{ id: 'text', type: 'text', text: 'Custom compact prompt', completeness: 'complete' }],
       },
     ]);
   });

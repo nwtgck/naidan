@@ -1,5 +1,5 @@
 import { prepareMultimodal } from './multimodal';
-import { LlamaCppBrowserError, type GenerationResult, type Progress } from '@/features/llama-cpp-browser/types';
+import { LlamaCppBrowserError, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
 import { logDiagnostic, logFailure, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
 import { createOutputStream } from './output-stream';
@@ -8,15 +8,16 @@ import { prepareChat } from './native-chat';
 import { createChatSampler } from './chat-sampler';
 
 /** Reuse only a verified decoded prefix; sampling and parsing stay request-local. */
-export async function generate({ request, onChunk, onProgress, signal }: {
+export async function generate({ request, onEvent, onProgress, signal }: {
   request: WorkerGenerateInput,
   signal: AbortSignal | undefined,
-  onChunk: ({ chunk }: { chunk: string }) => void,
+  onEvent: GenerationCallback,
   onProgress: ({ progress }: { progress: Progress }) => void,
 }): Promise<GenerationResult> {
   const started = performance.now();
   let stage: DiagnosticStage = 'session';
   let generated = 0;
+  let flushPartial: (() => Promise<void>) | undefined;
   const progress = ({ phase, completed, total }: Progress): void => onProgress({ progress: { phase, completed, total } });
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -182,32 +183,41 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     const samplingChain = sampler; sampler = 0n;
     chatSampler = await createChatSampler({ core, vocab, chain: samplingChain, params: chat.params });
     const stream = createOutputStream({ stops: [...request.stop, ...chat.additionalStops], harmony: false, initialChannel: 'final' });
-    let output = ''; let content = ''; let reasoning = ''; let thinkingOpen = false;
-    const emitParsed = ({ parsed }: { parsed: Omit<GenerationResult, 'finishReason'> }): void => {
+    let output = ''; let content = ''; let reasoning = ''; let pendingCalls = 0;
+    let deliveryFailed = false;
+    const send: GenerationCallback = async ({ event }) => {
       stage = 'stream-emit';
-      if (!parsed.content.startsWith(content) || !parsed.reasoningContent.startsWith(reasoning)) {
+      try {
+        await onEvent({ event });
+      } catch (error) {
+        deliveryFailed = true; throw error;
+      }
+    };
+    const emitParsed = async ({ parsed }: { parsed: Omit<GenerationResult, 'finishReason'> }): Promise<void> => {
+      stage = 'stream-emit';
+      if (!parsed.content.startsWith(content) || !parsed.reasoningContent.startsWith(reasoning) || parsed.toolCalls.length < pendingCalls) {
         logDiagnostic({ diagnostic: { event: 'failed', stage, tokens: generated,
           reason: !parsed.content.startsWith(content) ? 'non-monotonic-content' : 'non-monotonic-reasoning' } });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
       const thought = parsed.reasoningContent.slice(reasoning.length);
-      if (thought) {
-        if (!thinkingOpen) {
-          onChunk({ chunk: '<think>' }); thinkingOpen = true; checkCancelled();
-        }
-        onChunk({ chunk: thought }); checkCancelled();
-      }
       const text = parsed.content.slice(content.length);
-      if (text) {
-        if (thinkingOpen) {
-          onChunk({ chunk: '</think>' }); thinkingOpen = false; checkCancelled();
-        }
-        onChunk({ chunk: text }); checkCancelled();
-      }
+      // Commit the accepted parser snapshot before awaiting delivery; never resend a delta.
       content = parsed.content; reasoning = parsed.reasoningContent;
+      if (thought) await send({ event: { type: 'reasoning', text: thought } });
+      if (text) await send({ event: { type: 'text', text } });
+      while (pendingCalls < parsed.toolCalls.length) {
+        const index = pendingCalls++;
+        await send({ event: { type: 'tool_call_start', index } });
+      }
     };
     let finishReason: GenerationResult['finishReason'] = 'length';
     const decoder = new TextDecoder(); const nextToken = alloc({ bytes: 4 });
+    flushPartial = async () => {
+      if (deliveryFailed) return;
+      output += stream.push({ text: decoder.decode() }).text + stream.finish();
+      await emitParsed({ parsed: chat!.parse({ text: output, partial: true }) });
+    };
     const position = multimodal ? alloc({ bytes: 4 }) : undefined;
     let piece = alloc({ bytes: 256 }); let pieceCapacity = 256;
     const remaining = capacity - Math.max(tokenCount, nextPosition);
@@ -235,9 +245,10 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       checkCancelled();
       output += rendered.text;
       stage = 'partial-parse';
-      emitParsed({ parsed: chat.parse({ text: output, partial: true }) });
+      await emitParsed({ parsed: chat.parse({ text: output, partial: true }) });
       if (rendered.done || endOfGeneration) {
-        finishReason = 'stop'; break;
+        const stop = stream.getMatchedStop();
+        finishReason = stop !== undefined && request.stop.includes(stop) ? 'stop_sequence' : 'stop'; break;
       }
       stage = 'generation-decode';
       const tokenBytes = core.bytes({ pointer: nextToken, length: 4 }); new DataView(tokenBytes.buffer, tokenBytes.byteOffset, 4).setInt32(0, token, true);
@@ -262,15 +273,28 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     const tail = stream.push({ text: decoder.decode() }).text + stream.finish();
     output += tail;
     stage = 'final-parse';
-    const parsed = chat.parse({ text: output, partial: finishReason === 'length' });
-    emitParsed({ parsed });
-    if (thinkingOpen) {
-      onChunk({ chunk: '</think>' }); checkCancelled();
+    const parsed = chat.parse({ text: output, partial: finishReason !== 'stop' });
+    await emitParsed({ parsed });
+    // Only a completed native turn confirms calls. JSON validity alone does not.
+    switch (finishReason) {
+    case 'stop':
+      for (const [index, toolCall] of parsed.toolCalls.entries()) await send({ event: { type: 'tool_call', index, toolCall } });
+      break;
+    case 'length': case 'stop_sequence': break;
+    default: { const exhaustive: never = finishReason; throw new Error(`Unknown completion: ${exhaustive}`); }
     }
+    flushPartial = undefined;
     logDiagnostic({ diagnostic: { event: 'generation-complete', tokens: generated, elapsedMs: performance.now() - started } });
     cache.validity = !multimodal && memory !== 0n ? 'valid' : 'invalid';
     return { ...parsed, finishReason };
   } catch (error) {
+    // Drain already accepted bytes before reporting a cooperative cancellation or failure.
+    // Do not retry delivery after a consumer failure or replace the original error.
+    try {
+      await flushPartial?.();
+    } catch (drainError) {
+      logFailure({ stage: 'stream-emit', error: drainError });
+    }
     cache.validity = 'invalid';
     logFailure({ stage, error });
     logDiagnostic({ diagnostic: { event: 'failed', stage, tokens: generated } });

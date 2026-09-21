@@ -412,7 +412,7 @@ export function useSettings(): UseSettingsApi {
         fakeLmDebugModeStatus: _settings.value.experimental?.fakeLm ?? 'disabled',
       });
 
-      const models = await provider.listModels({});
+      const models = await provider.listModels({ signal: undefined });
       if (requestId === latestModelFetchRequestId) {
         availableModels.value = models;
       }

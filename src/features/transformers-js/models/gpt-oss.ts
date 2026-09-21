@@ -5,14 +5,17 @@ import {
   type PreTrainedModel,
   type PreTrainedTokenizer,
 } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import type { LmParameters, ToolCall } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/features/transformers-js/models/gpt-oss-harmony';
 import type { WorkerToolDefinition } from '@/features/transformers-js/types';
 import type { ToolCallId } from '@/01-models/ids';
-import { idToRaw } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
-import { exactObject } from '@/utils/exact-object';
 import { prepareGptOssContinuation, retainGptOssContinuation } from './gpt-oss-cache';
+import { buildGptOssPromptMessages, readGptOssTextContent } from './gpt-oss-input';
+import { createGptOssGeneration } from './gpt-oss-generation';
+import { NativeProtocolStreamer } from './native-protocol-streamer';
+import type { InferenceGenerationEvent } from '@/features/transformers-js/generation-events';
 
 interface GenerationResult {
   past_key_values: unknown,
@@ -57,11 +60,12 @@ export async function generateGptOss({
   continuationOwner,
   stoppingCriteria,
   onInputPrepared,
+  onGenerationEvent,
   generateWithModel,
 }: {
   model: PreTrainedModel,
   tokenizer: PreTrainedTokenizer,
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   onChunk: ({ chunk }: { chunk: string }) => void,
   onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void,
   params: LmParameters | undefined,
@@ -73,6 +77,7 @@ export async function generateGptOss({
     interrupt(): void,
   },
   onInputPrepared: GptOssInputPreparedObserver | undefined,
+  onGenerationEvent: (({ event }: { event: InferenceGenerationEvent }) => void) | undefined,
   generateWithModel: ({ model, inputs, pastKeyValues, params, streamer, stoppingCriteria }: {
     model: PreTrainedModel,
     inputs: Record<string, unknown>,
@@ -125,7 +130,17 @@ export async function generateGptOss({
   let pendingAnalysisClose = false;
   const parser = new GptOssHarmonyStreamParser();
   const pendingToolCalls: ToolCall[] = [];
-  const streamer = new TextStreamer(tokenizer, {
+  const structured = onGenerationEvent === undefined ? undefined : createGptOssGeneration({
+    emit: ({ event }) => {
+      onGenerationEvent({ event });
+      switch (event.type) {
+      case 'tool_call': stoppingCriteria.interrupt(); break;
+      case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'result': break;
+      default: { const exhaustive: never = event; throw new Error(`Unhandled generation event: ${exhaustive}`); }
+      }
+    },
+  });
+  const streamer = structured === undefined ? new TextStreamer(tokenizer, {
     skip_prompt: true,
     skip_special_tokens: false,
     callback_function: (output: string) => {
@@ -199,7 +214,9 @@ export async function generateGptOss({
               type: 'function',
               function: {
                 name: functionName,
-                arguments: JSON.stringify(parsedArgs),
+                // Preserve the generated JSON spelling, including whitespace and
+                // escapes. Validation must not rewrite the stored call arguments.
+                arguments: message.content,
               },
             });
           }
@@ -222,6 +239,9 @@ export async function generateGptOss({
       }
       }
     },
+  }) : new NativeProtocolStreamer({ protocolTokens: undefined, tokenizer,
+    onText: ({ text }) => structured.text({ text }),
+    onControl: ({ token }) => structured.control({ token }),
   });
 
   const result = await generateWithModel({
@@ -232,40 +252,19 @@ export async function generateGptOss({
     streamer,
     stoppingCriteria,
   });
+  if (structured !== undefined) {
+    // Absence of a native terminator is not success, even when generate() fulfilled.
+    structured.finish({ reason: 'unknown' });
+    const assistant = structured.assistant();
+    if (assistant === undefined) return undefined;
+    return retainGptOssContinuation({ owner: continuationOwner, model, config: model.config, messages,
+      assistant, baseInputs: fullInputs, inputs, sequences: result.sequences,
+      pastKeyValues: result.past_key_values, tensorClass: Tensor });
+  }
   if (pendingToolCalls.length > 0) onToolCalls({ toolCalls: pendingToolCalls });
   return retainGptOssContinuation({ owner: continuationOwner, model, config: model.config, messages,
     assistant: { role: 'assistant', content: emittedContent, tool_calls: pendingToolCalls },
     baseInputs: fullInputs, inputs, sequences: result.sequences, pastKeyValues: result.past_key_values, tensorClass: Tensor });
-}
-
-function jsonSchemaToTsType({ schema }: { schema: Record<string, unknown> }): string {
-  const type = schema['type'];
-  if (type === 'object') {
-    const properties = schema['properties'] as Record<string, Record<string, unknown>> | undefined;
-    const required = schema['required'] as string[] | undefined;
-    if (!properties || Object.keys(properties).length === 0) return '{}';
-    const fields = Object.entries(properties).map(([key, prop]) => {
-      const isRequired = required?.includes(key) ?? false;
-      return `  ${key}${isRequired ? '' : '?'}: ${jsonSchemaToTsType({ schema: prop })},`;
-    });
-    return `{\n${fields.join('\n')}\n}`;
-  }
-  if (type === 'string') return 'string';
-  if (type === 'number' || type === 'integer') return 'number';
-  if (type === 'boolean') return 'boolean';
-  if (type === 'array') {
-    const items = schema['items'] as Record<string, unknown> | undefined;
-    return items ? `${jsonSchemaToTsType({ schema: items })}[]` : 'unknown[]';
-  }
-  return 'unknown';
-}
-
-function formatGptOssToolDefinitions({ tools }: { tools: WorkerToolDefinition[] }): string {
-  const functions = tools.map(tool => {
-    const parameterType = jsonSchemaToTsType({ schema: tool.function.parameters });
-    return `// ${tool.function.description}\ntype ${tool.function.name} = (_: ${parameterType}) => any;`;
-  }).join('\n\n');
-  return `namespace functions {\n${functions}\n\n} // namespace functions`;
 }
 
 function buildGptOssFullConversationInputs({
@@ -273,7 +272,7 @@ function buildGptOssFullConversationInputs({
   tools,
   tokenizer,
 }: {
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   tools: WorkerToolDefinition[] | undefined,
   tokenizer: PreTrainedTokenizer,
 }): Record<string, unknown> {
@@ -289,7 +288,7 @@ function buildGptOssToolResultTokens({
   messages,
   tokenizer,
 }: {
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   tokenizer: PreTrainedTokenizer,
 }): Record<string, unknown> {
   const idToName = new Map<ToolCallId, string>();
@@ -302,7 +301,7 @@ function buildGptOssToolResultTokens({
 
   const harmonyText = messages.filter(message => message.tool_call_id).map(message => {
     const functionName = idToName.get(message.tool_call_id!) ?? 'tool';
-    const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+    const content = readGptOssTextContent({ content: message.content });
     return `<|start|>${functionName} to=assistant<|channel|>commentary<|message|>${content}<|end|>`;
   }).join('');
 
@@ -310,11 +309,11 @@ function buildGptOssToolResultTokens({
   return (tokenizer as any)(harmonyText, { add_special_tokens: false });
 }
 
-function isGptOssToolContinuationRequest({ messages }: { messages: ChatMessage[] }): boolean {
+function isGptOssToolContinuationRequest({ messages }: { messages: InferenceMessage[] }): boolean {
   return isToolContinuationRequest({ messages });
 }
 
-function isToolContinuationRequest({ messages }: { messages: ChatMessage[] }): boolean {
+function isToolContinuationRequest({ messages }: { messages: InferenceMessage[] }): boolean {
   if (messages.length < 2) return false;
 
   let assistantIndex = messages.length - 1;
@@ -339,46 +338,6 @@ function isToolContinuationRequest({ messages }: { messages: ChatMessage[] }): b
   return true;
 }
 
-function buildGptOssPromptMessages({
-  messages,
-  tools,
-}: {
-  messages: ChatMessage[],
-  tools: WorkerToolDefinition[] | undefined,
-}): Array<{
-  role: string,
-  content: string,
-  tool_calls?: ChatMessage['tool_calls'],
-  tool_call_id?: string,
-}> {
-  const formattedMessages = messages.map(message => {
-    const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
-    unhandled satisfies Record<PropertyKey, never>;
-    // The native template checks key membership, so an absent optional field
-    // must not become an own undefined property while formatting history.
-    return exactObject<{ role: string; content: string; tool_calls?: ChatMessage['tool_calls']; tool_call_id?: string }>()({
-      role,
-      content: typeof content === 'string' ? content : '',
-      ...(tool_calls === undefined ? {} : { tool_calls }),
-      ...(tool_call_id === undefined ? {} : { tool_call_id: idToRaw({ id: tool_call_id }) }),
-    });
-  });
-
-  // Keep gpt-oss close to the last known-good naidan path: pass the user's
-  // existing conversation through with minimal reshaping, and only prepend the
-  // TypeScript namespace tool definitions that gpt-oss expects.
-  // We intentionally do not synthesize Harmony system/developer scaffolding
-  // here because that changed prompt semantics and caused UX regressions.
-  if (tools && tools.length > 0) {
-    formattedMessages.unshift({
-      role: 'developer',
-      content: formatGptOssToolDefinitions({ tools }),
-    });
-  }
-
-  return formattedMessages;
-}
-
 function tryParseGptOssToolArguments({
   content,
 }: {
@@ -398,4 +357,5 @@ function tryParseGptOssToolArguments({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  buildGptOssToolResultTokens,
 };

@@ -1,4 +1,5 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject, Volume, VolumeType, Mount } from '@/01-models/types';
+import { iterateAttachmentParts } from './message-attachments';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, StorageSnapshot, BinaryObject, Volume, VolumeType, Mount } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move storage notification text translation to the application layer.
 import { ensureStrings } from '@/strings';
 import type { IStorageProvider } from './interface';
@@ -572,41 +573,33 @@ export class StorageService {
                 }
 
                 const rescued: MigrationChunkDto[] = [];
-                const findAndRescue = ({ nodes }: { nodes: MessageNode[] }) => {
-                  for (const node of nodes) {
-                    if (node.attachments) {
-                      for (let i = 0; i < node.attachments.length; i++) {
-                        const att = node.attachments[i]!;
-                        const status = att.status;
-                        switch (status) {
-                        case 'memory':
-                          if (att.blob) {
-                            rescued.push({
-                              type: 'binary_object',
-                              id: idToRaw({ id: att.binaryObjectId }),
-                              name: att.originalName,
-                              mimeType: att.mimeType,
-                              size: att.size,
-                              createdAt: att.uploadedAt,
-                              blob: att.blob,
-                            });
-                            node.attachments[i] = { ...att, status: 'persisted' as const };
-                          }
-                          break;
-                        case 'persisted':
-                        case 'missing':
-                          break;
-                        default: {
-                          const _ex: never = status;
-                          throw new Error(`Unhandled attachment status: ${_ex}`);
-                        }
-                        }
-                      }
+                for (const part of iterateAttachmentParts({ nodes: chat.root.items })) {
+                  const att = part.attachment;
+                  switch (att.status) {
+                  case 'memory':
+                    if (att.blob) {
+                      rescued.push({
+                        type: 'binary_object',
+                        id: idToRaw({ id: att.binaryObjectId }),
+                        name: att.originalName,
+                        mimeType: att.mimeType,
+                        size: att.size,
+                        createdAt: att.uploadedAt,
+                        blob: att.blob,
+                      });
+                      const { blob: _blob, ...persisted } = att;
+                      part.attachment = { ...persisted, status: 'persisted' };
                     }
-                    if (node.replies?.items) findAndRescue({ nodes: node.replies.items });
+                    break;
+                  case 'persisted':
+                  case 'missing':
+                    break;
+                  default: {
+                    const _ex: never = att;
+                    throw new Error(`Unhandled attachment status: ${_ex}`);
                   }
-                };
-                findAndRescue({ nodes: chat.root.items });
+                  }
+                }
                 for (const r of rescued) yield r;
                 yield { type: 'chat', data: chatToDto({ domain: chat }) };
               } else {

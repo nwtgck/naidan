@@ -1,37 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import { ref, computed, nextTick } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
-import type { MessageNode, Chat } from '@/01-models/types';
+import type { MessageNode, AssistantMessageNode, Chat } from '@/01-models/types';
 import { generateId } from '@/01-models/id';
 import { toChatId, toMessageId, toToolCallId } from '@/01-models/ids';
 import type { MessageId } from '@/01-models/ids';
 
 describe('useChatDisplayFlow', () => {
-  const createAssistantMsg = (content: string): MessageNode => ({
+  const createAssistantMsg = (content: string): AssistantMessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
-  } as MessageNode);
+    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
+  } as AssistantMessageNode);
 
   const createToolNode = (toolCallId: string): MessageNode => ({
     id: generateId<MessageId>(),
     role: 'tool',
-    content: undefined,
-    attachments: undefined,
-    thinking: undefined,
-    error: undefined,
     modelId: undefined,
     lmParameters: undefined,
-    toolCalls: undefined,
-    results: [{
+    replies: { items: [] },
+    parts: [...([{
       toolCallId: toToolCallId({ raw: toolCallId }),
       status: 'success',
       content: { type: 'text', text: 'ok' },
-    }],
-    timestamp: Date.now(),
-    replies: { items: [] },
+    }]).map((result, index) => ({ id: `tool_result-${index}`, type: 'tool_result' as const, result }))],
+    createdAt: Date.now(),
   } as MessageNode);
 
   const createFlow = ({ messages, isProcessing = false }: { messages: MessageNode[], isProcessing?: boolean }) => {
@@ -58,7 +56,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups internal processes: thought followed by tool', () => {
     const m1 = createAssistantMsg('<think>thinking...</think>');
-    m1.toolCalls = [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
+    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall, index) => ({ id: `call-${index}`, type: 'tool_call' as const, toolCall })));
     const t1 = createToolNode('tc1');
 
     const { chatFlow } = createFlow({ messages: [m1, t1] });
@@ -73,7 +71,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups internal processes: tool followed by thought', () => {
     const m1 = createAssistantMsg('');
-    m1.toolCalls = [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
+    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall, index) => ({ id: `call-${index}`, type: 'tool_call' as const, toolCall })));
     const t1 = createToolNode('tc1');
     const m2 = createAssistantMsg('<think>thinking...</think>');
 
@@ -93,7 +91,7 @@ describe('useChatDisplayFlow', () => {
 
   it('keeps an error-only assistant node visible after processing stops', () => {
     const message = createAssistantMsg('');
-    message.error = 'mock error 500';
+    message.interruption = { type: 'error', message: 'mock error 500' };
 
     const { chatFlow } = createFlow({ messages: [message] });
 
@@ -104,16 +102,24 @@ describe('useChatDisplayFlow', () => {
       expect(item.mode).toBe('content');
       expect(item.partContent).toBe('');
       expect(item.node).toBe(message);
-      expect(item.node.error).toBe('mock error 500');
+      expect(item.node.role === 'assistant' && item.node.interruption).toEqual({ type: 'error', message: 'mock error 500' });
       expect(item.isFirstInNode).toBe(true);
       expect(item.isLastInNode).toBe(true);
     }
   });
 
   it('correctly calculates sequence position metadata', () => {
-    const user = { role: 'user', content: 'hi', id: toMessageId({ raw: 'u1' }), timestamp: 0, replies: { items: [] } } as MessageNode;
+    const user = {
+      role: 'user',
+      id: toMessageId({ raw: 'u1' }),
+      replies: { items: [] },
+      parts: [{ id: 'text', type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
+    } as MessageNode;
     const m1 = createAssistantMsg('<think>thinking...</think>');
-    m1.toolCalls = [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
+    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall, index) => ({ id: `call-${index}`, type: 'tool_call' as const, toolCall })));
     const t1 = createToolNode('tc1');
     const m2 = createAssistantMsg('Final answer');
 
@@ -151,7 +157,10 @@ describe('useChatDisplayFlow', () => {
     expect(item.type).toBe('message');
     expect(isThinkingActive({ item: item as any })).toBe(true);
 
-    messages.value[0]!.content = '<think>thought</think>';
+    const node = messages.value[0]!;
+    const part = node.parts.find(part => part.type === 'text');
+    if (part?.type !== 'text') throw new Error('Missing text part');
+    part.text = '<think>thought</think>';
     isProcessingRef.value = false;
     await nextTick();
 
@@ -172,7 +181,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups assistant message with content if it has tool calls (the original bug)', () => {
     const m1 = createAssistantMsg('<think>thinking...</think>Partially done...');
-    m1.toolCalls = [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'calc', arguments: '{}' } }];
+    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'calc', arguments: '{}' } }].map((toolCall, index) => ({ id: `call-${index}`, type: 'tool_call' as const, toolCall })));
     const t1 = createToolNode('tc1');
 
     const { chatFlow } = createFlow({ messages: [m1, t1] });

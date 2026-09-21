@@ -1,3 +1,4 @@
+import { getMessageText } from '@/01-models/message-text';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -220,7 +221,7 @@ describe('useImageGeneration', () => {
       id: chatId,
       root: {
         items: [
-          { id: assistantId, role: 'assistant', content: '', replies: { items: [] } },
+          { id: assistantId, role: 'assistant', createdAt: 1, parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } },
         ],
       },
     };
@@ -258,12 +259,12 @@ describe('useImageGeneration', () => {
 
       const assistantNode = mockChat.root.items[0];
       expect(assistantNode).toBeDefined();
-      expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
-      expect(assistantNode!.content).toContain('```' + IMAGE_BLOCK_LANG);
-      expect(assistantNode!.content).toContain('"binaryObjectId":');
-      expect(assistantNode!.content).toContain('"displayWidth": 410');
-      expect(assistantNode!.content).toContain('"displayHeight": 410');
-      expect(assistantNode!.content).toContain('"prompt": "a futuristic city"');
+      expect(getMessageText({ message: assistantNode! })).toContain(SENTINEL_IMAGE_PROCESSED);
+      expect(getMessageText({ message: assistantNode! })).toContain('```' + IMAGE_BLOCK_LANG);
+      expect(getMessageText({ message: assistantNode! })).toContain('"binaryObjectId":');
+      expect(getMessageText({ message: assistantNode! })).toContain('"displayWidth": 410');
+      expect(getMessageText({ message: assistantNode! })).toContain('"displayHeight": 410');
+      expect(getMessageText({ message: assistantNode! })).toContain('"prompt": "a futuristic city"');
     });
 
     it('generates a legacy img tag when using local storage', async () => {
@@ -276,9 +277,9 @@ describe('useImageGeneration', () => {
 
       const assistantNode = mockChat.root.items[0];
       expect(assistantNode).toBeDefined();
-      expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
-      expect(assistantNode!.content).toContain('<img src="blob:');
-      expect(assistantNode!.content).not.toContain('```' + IMAGE_BLOCK_LANG);
+      expect(getMessageText({ message: assistantNode! })).toContain(SENTINEL_IMAGE_PROCESSED);
+      expect(getMessageText({ message: assistantNode! })).toContain('<img src="blob:');
+      expect(getMessageText({ message: assistantNode! })).not.toContain('```' + IMAGE_BLOCK_LANG);
     });
 
     it('generates multiple images sequentially', async () => {
@@ -286,7 +287,7 @@ describe('useImageGeneration', () => {
       const triggerChatRef = vi.fn();
 
       // Reset assistant content
-      mockChat.root.items[0]!.content = '';
+      mockChat.root.items[0]!.parts = [];
 
       await handleImageGeneration({
         ...commonParams,
@@ -298,14 +299,14 @@ describe('useImageGeneration', () => {
       const assistantNode = mockChat.root.items[0];
 
       // Should have 3 image tags
-      const imgMatches = assistantNode!.content.match(/<img/g);
+      const imgMatches = getMessageText({ message: assistantNode! }).match(/<img/g);
       expect(imgMatches?.length).toBe(3);
 
       // Should have triggered ref update at least once for each image + start/end
       expect(triggerChatRef).toHaveBeenCalled();
 
       // Verify final content has the processed sentinel
-      expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
+      expect(getMessageText({ message: assistantNode! })).toContain(SENTINEL_IMAGE_PROCESSED);
     });
 
     it('converts image to requested format when persistAs is specified', async () => {
@@ -364,7 +365,7 @@ describe('useImageGeneration', () => {
 
       const assistantNode = mockChat.root.items[0];
       // Find the JSON block content (more flexible regex)
-      const blockMatch = assistantNode!.content.match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
+      const blockMatch = getMessageText({ message: assistantNode! }).match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
       expect(blockMatch).not.toBeNull();
       const blockData = JSON.parse(blockMatch![1]!);
 
@@ -388,7 +389,7 @@ describe('useImageGeneration', () => {
       });
 
       const assistantNode = mockChat.root.items[0];
-      const blockMatch = assistantNode!.content.match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
+      const blockMatch = getMessageText({ message: assistantNode! }).match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
       expect(blockMatch).not.toBeNull();
       const blockData = JSON.parse(blockMatch![1]!);
 
@@ -416,7 +417,7 @@ describe('useImageGeneration', () => {
       });
 
       const assistantNode = mockChat.root.items[0];
-      const blockMatch = assistantNode!.content.match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
+      const blockMatch = getMessageText({ message: assistantNode! }).match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
       const blockData = JSON.parse(blockMatch![1]!);
 
       expect(blockData.steps).toBeUndefined();

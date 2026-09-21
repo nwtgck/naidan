@@ -9,14 +9,16 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import { idToRaw, toToolCallId, type ToolCallId } from '@/01-models/ids';
-import { zodToJsonSchema } from '@/utils/lm-tools';
-import type { LmParameters, ChatMessage, MultimodalContent } from '@/01-models/types';
+import { nanoid } from 'nanoid';
+import { toToolCallId, type BinaryObjectId } from '@/01-models/ids';
+import type { LmParameters, ChatMessage } from '@/01-models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import { formatToolExecutionOutcomeForLm, type Tool, type ToolExecutionOutcome } from '@/01-models/tool';
-import type { ToolApprovalContext } from '@/features/tools/approval';
 import { getDefaultLmFetch, type LmFetch } from '@/features/lm/fetch';
-import { type LmProvider, UNKNOWN_STEPS } from '@/01-models/lm';
+import { type LmProvider, type ChatGenerationItem, UNKNOWN_STEPS } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { buildApiChatMessages, snapshotChatRequest } from './chat-request';
+import { readApiErrorDetails } from './response-stream';
+import { readStreamLines } from '@/utils/read-stream-lines';
 
 const { addErrorEvent } = useGlobalEvents();
 
@@ -29,11 +31,13 @@ const OllamaChatChunkSchema = z.object({
       id: z.string().optional(),
       function: z.object({
         name: z.string(),
-        arguments: z.union([z.string(), z.record(z.string(), z.any())]),
+        arguments: z.union([z.string(), z.record(z.string(), z.json())]),
       }),
     })).optional(),
   }).optional(),
   done: z.boolean().optional(),
+  done_reason: z.string().optional(),
+  error: z.string().optional(),
 });
 
 const OllamaTagsSchema = z.object({
@@ -106,6 +110,8 @@ interface OllamaMessage {
   role: string,
   content: string,
   images?: string[],
+  thinking?: string,
+  tool_name?: string,
   tool_calls?: unknown[],
   tool_call_id?: string,
 }
@@ -177,389 +183,138 @@ export class OllamaProvider implements LmProvider {
     this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
-  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
-    messages: ChatMessage[],
+  chat({ messages, model, parameters, tools, readBinaryObject, signal }: {
+    messages: readonly ChatMessage[],
     model: string,
-    onChunk: ({ chunk }: { chunk: string }) => void,
-    parameters?: LmParameters,
-    tools?: Tool[],
-    toolApprovalContext?: ToolApprovalContext,
-    onToolCall?: ({ id, toolName, modelVisibleArguments }: { id: ToolCallId, toolName: string, modelVisibleArguments: string }) => void,
-    onToolEvent?: ({ id, event }: { id: ToolCallId, event: import('@/01-models/tool').ToolExecutionEvent }) => void,
-    onToolResult?: ({ id, result }: {
-      id: ToolCallId,
-      result: ToolExecutionOutcome,
-    }) => void,
-    onAssistantMessageStart?: () => void,
-    signal?: AbortSignal,
-  }): Promise<void> {
+    parameters: LmParameters | undefined,
+    tools: Parameters<LmProvider['chat']>[0]['tools'],
+    readBinaryObject: (({ binaryObjectId, signal }: { binaryObjectId: BinaryObjectId, signal: AbortSignal | undefined }) => Promise<Blob>) | undefined,
+    signal: AbortSignal | undefined,
+  }): AsyncIterable<ChatGenerationItem> {
+    const snapshot = snapshotChatRequest({ messages, parameters, tools });
     const { endpoint, headers, fetcher } = this.config;
-    const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
-
-    const currentMessages = [...messages];
-
-    while (true) {
-      if (signal?.aborted) throw new Error('Generation aborted');
-
-      onAssistantMessageStart?.();
-
-      // Transform messages to Ollama format
-      const ollamaMessages: OllamaMessage[] = currentMessages.map(m => {
-        const contentType = typeof m.content;
-
-        const tool_calls = m.tool_calls?.map(tc => ({
-          id: idToRaw({ id: tc.id }),
-          type: tc.type,
-          function: {
-            name: tc.function.name,
-            arguments: (() => {
-              if (typeof tc.function.arguments === 'string') {
-                try {
-                  return JSON.parse(tc.function.arguments);
-                } catch (e) {
-                  return tc.function.arguments;
-                }
-              }
-              return tc.function.arguments;
-            })(),
-          },
-        }));
-
-        switch (contentType) {
-        case 'string':
-          return { role: m.role, content: m.content as string, tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
-        case 'object': {
-          // Multimodal
-          let content = '';
+    const requestHeaders = headers?.map(([name, value]): [string, string] => [name, value]);
+    return createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
+      const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
+      const projected = await buildApiChatMessages({ messages: snapshot.messages, readBinaryObject, signal });
+      const callNames = new Map<string, string>();
+      const body: OllamaChatRequest = {
+        model, stream: true,
+        messages: projected.map(message => {
+          const { role, content, reasoning_content, tool_calls, tool_call_id, ...unhandled } = message;
+          unhandled satisfies Record<PropertyKey, never>;
           const images: string[] = [];
-          if (m.content) {
-            for (const part of (m.content as MultimodalContent[])) {
+          let text = '';
+          if (typeof content === 'string') text = content;
+          else if (content) {
+            for (const part of content) {
               switch (part.type) {
-              case 'text':
-                content += part.text;
-                break;
-              case 'image_url': {
-                // Strip data URL prefix if present: data:image/png;base64,xxxx
-                const b64 = part.image_url.url.split(',')[1] || part.image_url.url;
-                images.push(b64);
-                break;
-              }
-              default: {
-                const _ex: never = part;
-                throw new Error(`Unhandled multimodal content type: ${_ex}`);
-              }
+              case 'text': text += part.text; break;
+              case 'image_url': images.push(part.image_url.url.split(',')[1]!); break;
+              default: { const _ex: never = part; throw new Error(`Unhandled API content: ${_ex}`); }
               }
             }
           }
-          return { role: m.role, content, images, tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
-        }
-        case 'undefined': {
-          if (m.role === 'assistant' && tool_calls) {
-            return { role: m.role, content: '', tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
-          }
-          throw new Error(`Unexpected content type for role ${m.role}: ${contentType}`);
-        }
-        case 'boolean':
-        case 'number':
-        case 'function':
-        case 'symbol':
-        case 'bigint':
-          throw new Error(`Unexpected content type: ${contentType}`);
-        default: {
-          const _ex: never = contentType;
-          throw new Error(`Unhandled content type: ${_ex}`);
-        }
-        }
-      });
-      const body: OllamaChatRequest = {
-        model,
-        messages: ollamaMessages,
-        stream: true,
-      };
-
-      if (tools && tools.length > 0) {
-        body.tools = tools.map(t => ({
-          type: 'function',
-          function: {
-            name: t.name,
-            description: t.description,
-            parameters: zodToJsonSchema({ schema: t.parametersSchema }),
-          },
-        }));
-      }
-
-      if (parameters) {
-        const options: Record<string, unknown> = {};
-        if (parameters.temperature !== undefined) options.temperature = parameters.temperature;
-        if (parameters.topP !== undefined) options.top_p = parameters.topP;
-        if (parameters.maxCompletionTokens !== undefined) options.num_predict = parameters.maxCompletionTokens;
-        if (parameters.presencePenalty !== undefined) options.presence_penalty = parameters.presencePenalty;
-        if (parameters.frequencyPenalty !== undefined) options.frequency_penalty = parameters.frequencyPenalty;
-        if (parameters.stop !== undefined) options.stop = parameters.stop;
-
-        if (Object.keys(options).length > 0) {
-          body.options = options;
-        }
-
-        if (parameters.reasoning?.effort !== undefined) {
-          const effort = parameters.reasoning.effort;
-          switch (effort) {
-          case 'none':
-            body.think = false;
-            break;
-          case 'low':
-          case 'medium':
-          case 'high':
-            body.think = effort;
-            break;
-          default: {
-            const _ex: never = effort;
-            throw new Error(`Unhandled reasoning effort: ${_ex}`);
-          }
-          }
-        }
-      }
-
-      let response: Response;
-      try {
-        response = await fetcher(url, {
-          method: 'POST',
-          headers: [
-            ['Content-Type', 'application/json'],
-            ...(headers || []),
-          ],
-          body: JSON.stringify(body),
-          signal,
-        });
-      } catch (e) {
-        const isAbort = e instanceof Error && e.name === 'AbortError';
-        if (!isAbort) {
-          let message = `Network error or CORS issue: ${e instanceof Error ? e.message : String(e)}`;
-          if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
-            message += ". Since you are running from a file URL, ensure Ollama is started with OLLAMA_ORIGINS='*' (e.g., OLLAMA_ORIGINS='*' ollama serve).";
-          }
-          addErrorEvent({
-            source: 'OllamaProvider',
-            message,
-            details: { error: e, url, method: 'POST' },
+          const calls = tool_calls?.map(call => {
+            callNames.set(call.id, call.function.name);
+            let args: unknown;
+            try {
+              args = JSON.parse(call.function.arguments);
+            } catch {
+              args = call.function.arguments;
+            }
+            // Ollama expects object arguments, unlike the string form kept in history.
+            // This API projection never changes the persisted call text.
+            return { id: call.id, type: call.type, function: { name: call.function.name, arguments: args } };
           });
+          return {
+            role, content: text, images: images.length ? images : undefined,
+            thinking: reasoning_content, tool_calls: calls, tool_call_id,
+            tool_name: tool_call_id === undefined ? undefined : callNames.get(tool_call_id),
+          };
+        }),
+      };
+      if (snapshot.tools?.length) body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
+      if (snapshot.parameters) {
+        const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = snapshot.parameters;
+        unhandled satisfies Record<PropertyKey, never>;
+        body.options = { temperature, top_p: topP, num_predict: maxCompletionTokens, presence_penalty: presencePenalty, frequency_penalty: frequencyPenalty, stop };
+        switch (reasoning.effort) {
+        case undefined: break;
+        case 'none': body.think = false; break;
+        case 'low':
+        case 'medium':
+        case 'high': body.think = reasoning.effort; break;
+        default: { const _ex: never = reasoning.effort; throw new Error(`Unhandled effort: ${_ex}`); }
+        }
+      }
+      async function request(): Promise<Response> {
+        signal.throwIfAborted();
+        try {
+          return await fetcher(url, { method: 'POST', headers: [['Content-Type', 'application/json'], ...(requestHeaders ?? [])], body: JSON.stringify(body), signal });
+        } catch (error) {
+          if (signal.aborted) throw error;
+          const message = createOllamaNetworkErrorMessage({ error });
+          addErrorEvent({ source: 'OllamaProvider', message, details: { error, url, method: 'POST' } });
           throw new Error(message);
         }
-        throw e;
       }
-
-      // Handle model not supporting specific effort levels
+      let response = await request();
       if (!response.ok && typeof body.think === 'string') {
-        let isRetryable = false;
-        try {
-          const errorJson = await response.clone().json();
-          const errorMsg = errorJson.error || JSON.stringify(errorJson);
-          if (errorMsg.includes('think value') && errorMsg.includes('is not supported')) {
-            isRetryable = true;
-          }
-        } catch (e) { /* ignore */ }
-
-        if (isRetryable) {
-          body.think = true; // Fallback to basic thinking
-          response = await fetcher(url, {
-            method: 'POST',
-            headers: [
-              ['Content-Type', 'application/json'],
-              ...(headers || []),
-            ],
-            body: JSON.stringify(body),
-            signal,
-          });
+        const details = await readApiErrorDetails({ response: response.clone() });
+        if (details.includes('think value') && details.includes('is not supported')) {
+          await response.body?.cancel();
+          body.think = true;
+          response = await request();
         }
       }
-
       if (!response.ok) {
-        let details = response.statusText;
-        try {
-          const errorJson = await response.json();
-          details = errorJson.error || JSON.stringify(errorJson);
-        } catch (e) { /* ignore */ }
-        const errorMsg = `Ollama API Error (${response.status}): ${details}`;
-        addErrorEvent({
-          source: 'OllamaProvider',
-          message: errorMsg,
-          details: { status: response.status, statusText: response.statusText, url },
-        });
-        throw new Error(errorMsg);
+        const message = `Ollama API Error (${response.status}): ${await readApiErrorDetails({ response })}`;
+        addErrorEvent({ source: 'OllamaProvider', message, details: { status: response.status, url } });
+        throw new Error(message);
       }
       if (!response.body) throw new Error('No response body');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      let isThinking = false;
-      const accumulatedToolCalls: import('@/01-models/types').ToolCall[] = [];
-      let fullContent = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
+      let calls = 0;
+      const ids = new Set<string>();
+      try {
+        for await (const line of readStreamLines({ stream: response.body, signal, maxLineLength: 8 * 1024 * 1024 })) {
           if (!line.trim()) continue;
-          try {
-            const rawJson = JSON.parse(line);
-            // Validate with Zod
-            const validated = OllamaChatChunkSchema.parse(rawJson);
-
-            const thinking = validated.message?.thinking || '';
-            if (thinking) {
-              if (!isThinking) {
-                onChunk({ chunk: '<think>' });
-                fullContent += '<think>';
-                isThinking = true;
-              }
-              fullContent += thinking;
-              onChunk({ chunk: thinking });
+          const chunk = OllamaChatChunkSchema.parse(JSON.parse(line));
+          if (chunk.message === undefined && chunk.done === undefined && chunk.error === undefined) {
+            throw new Error('Ollama returned neither generation content nor a completion state.');
+          }
+          if (chunk.error !== undefined) throw new Error(chunk.error);
+          if (chunk.message?.thinking) await writer.text({ type: 'reasoning', text: chunk.message.thinking });
+          if (chunk.message?.content) await writer.text({ type: 'text', text: chunk.message.content });
+          for (const call of chunk.message?.tool_calls ?? []) {
+            if (!call.function.name) throw new Error('The tool call has no function name.');
+            const id = call.id || nanoid();
+            if (ids.has(id)) throw new Error('Duplicate completed tool call ID.');
+            ids.add(id);
+            // An Ollama tool_calls item carries the complete call, not token deltas.
+            await writer.call({ key: calls++, toolCall: { id: toToolCallId({ raw: id }), type: 'function', function: {
+              name: call.function.name,
+              arguments: typeof call.function.arguments === 'string' ? call.function.arguments : JSON.stringify(call.function.arguments),
+            } } });
+          }
+          if (chunk.done) {
+            switch (chunk.done_reason) {
+            case undefined:
+            case 'stop': return { type: 'finished', next: calls ? 'tool_results' : 'user' };
+            case 'length': return { type: 'interrupted', reason: 'limit' };
+            default: return { type: 'interrupted', reason: 'unknown' };
             }
-
-            const content = validated.message?.content || '';
-            if (content) {
-              if (isThinking) {
-                onChunk({ chunk: '</think>' });
-                fullContent += '</think>';
-                isThinking = false;
-              }
-              fullContent += content;
-              onChunk({ chunk: content });
-            }
-
-            if (validated.message?.tool_calls) {
-              for (const tc of validated.message.tool_calls) {
-                accumulatedToolCalls.push({
-                  id: toToolCallId({ raw: tc.id || '' }),
-                  type: 'function',
-                  function: {
-                    name: tc.function.name,
-                    arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments),
-                  },
-                });
-              }
-            }
-
-            if (validated.done) {
-              if (isThinking) {
-                onChunk({ chunk: '</think>' });
-                fullContent += '</think>';
-                isThinking = false;
-              }
-              break;
-            }
-          } catch (e) {
-            addErrorEvent({
-              source: 'OllamaProvider',
-              message: 'Failed to parse or validate Ollama JSON',
-              details: { line, error: e instanceof Error ? e : String(e) },
-            });
-            console.warn('Failed to parse or validate Ollama JSON', line, e);
           }
         }
-        // If we broke out of the for loop due to validated.done, we should break the reader loop too
-        const lastLine = lines[lines.length - 1];
-        if (lastLine) {
-          try {
-            if (JSON.parse(lastLine).done) break;
-          } catch (e) { /* ignore */ }
-        }
+        return { type: 'interrupted', reason: 'unknown' };
+      } catch (error) {
+        if (!signal.aborted) addErrorEvent({ source: 'OllamaProvider', message: 'Failed to read or validate Ollama JSON', details: { error: error instanceof Error ? error : String(error) } });
+        throw error;
       }
-
-      if (accumulatedToolCalls.length > 0) {
-        currentMessages.push({
-          role: 'assistant',
-          content: fullContent,
-          tool_calls: accumulatedToolCalls,
-        });
-
-        for (const tc of accumulatedToolCalls) {
-          if (signal?.aborted) throw new Error('Generation aborted');
-
-          onToolCall?.({
-            id: tc.id,
-            toolName: tc.function.name,
-            modelVisibleArguments: tc.function.arguments,
-          });
-
-          const tool = tools?.find(t => t.name === tc.function.name);
-          let result: string;
-          let args: unknown;
-
-          if (typeof tc.function.arguments === 'string') {
-            try {
-              args = JSON.parse(tc.function.arguments);
-            } catch (e) {
-              const errorResult: ToolExecutionOutcome = {
-                status: 'error',
-                code: 'invalid_arguments',
-                message: `Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
-              };
-              onToolResult?.({ id: tc.id, result: errorResult });
-              result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
-            }
-          } else {
-            args = tc.function.arguments;
-          }
-
-          if (tool && args !== undefined) {
-            try {
-              if (signal?.aborted) throw new Error('Generation aborted');
-
-              // Perform common strict validation here to enforce strictness globally
-              const validatedArgs = tool.parametersSchema.strict().parse(args);
-
-              const executionResult = await tool.execute({
-                args: validatedArgs,
-                signal,
-                onEvent: async ({ event }) => {
-                  onToolEvent?.({ id: tc.id, event });
-                },
-                approvalContext: toolApprovalContext,
-              });
-
-              if (signal?.aborted) throw new Error('Generation aborted');
-
-              onToolResult?.({ id: tc.id, result: executionResult });
-              result = formatToolExecutionOutcomeForLm({ outcome: executionResult });
-            } catch (e) {
-              if (e instanceof Error && e.message === 'Generation aborted') throw e;
-
-              const errorResult: ToolExecutionOutcome = e instanceof z.ZodError
-                ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
-                : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
-
-              onToolResult?.({ id: tc.id, result: errorResult });
-              result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
-            }
-          } else if (!tool) {
-
-            const errorResult: ToolExecutionOutcome = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
-            onToolResult?.({ id: tc.id, result: errorResult });
-            result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
-          } else {
-            result = result! || 'Error: Unknown failure.';
-          }
-          currentMessages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: result,
-          });
-        }
-        continue;
-      }
-      break;
-    }
+    } });
   }
 
-  async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
+  async listModels({ signal }: { signal: AbortSignal | undefined }): Promise<string[]> {
     const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
     let response: Response;
@@ -583,11 +338,7 @@ export class OllamaProvider implements LmProvider {
     }
 
     if (!response.ok) {
-      let details = response.statusText;
-      try {
-        const errorJson = await response.json();
-        details = errorJson.error || JSON.stringify(errorJson);
-      } catch (e) { /* ignore */ }
+      const details = await readApiErrorDetails({ response });
       const errorMsg = `Failed to fetch models (${response.status}): ${details}`;
       addErrorEvent({
         source: 'OllamaProvider:listModels',

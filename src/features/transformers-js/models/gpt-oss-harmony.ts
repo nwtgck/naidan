@@ -91,7 +91,8 @@ export class HarmonyStreamParser {
   private _closeMessage({ reason }: { reason: "end" | "return" | "call" }): HarmonyDelta {
     const msg = this._current;
     if (msg) {
-      msg.content = msg.content.trimEnd();
+      // Only the framing token ends the message. Its text, including trailing
+      // whitespace, must match the deltas already delivered to the consumer.
       msg.endReason = reason;
     }
     this._state = State.IDLE;
@@ -154,6 +155,12 @@ export class HarmonyStreamParser {
       return this._closeMessage({ reason: "call" });
     }
 
+    return this.pushText({ text: token });
+  }
+
+  /** Decoded ordinary token text is data, even when it spells a control token. */
+  pushText({ text: token }: { text: string }): HarmonyDelta | null {
+    if (this._done) return null;
     switch (this._state) {
     case State.HEADER_ROLE: {
       this._buf += token;

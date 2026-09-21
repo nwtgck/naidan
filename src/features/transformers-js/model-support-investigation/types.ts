@@ -1,3 +1,4 @@
+import type { PersistencePartsMessage } from '@/features/transformers-js/model-support-investigation/logic/persistence-parts-evidence';
 import type { ModelSupportInvestigationConfiguration, ModelSupportInvestigationExecutionPlan } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import type { InvestigationReplayMetadataSummary, InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 import type { FreshMetadataRequest, FreshMetadataResult, FreshMetadataSummary } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
@@ -639,7 +640,29 @@ export interface ModelSupportInvestigationPersistenceMessage {
   tool_call_id: string | undefined,
 }
 
+export type ModelSupportInvestigationPersistencePartsRoundTrip =
+  | {
+      status: 'observed',
+      fixtureId: 'parts_history_v2',
+      method: 'chat_content_parts_json_roundtrip_v2',
+      modelVisibleProjectionMethod: 'build_chat_generation_messages_parts_v2',
+      serializedByteLength: number,
+      serializedSha256: string,
+      originalMessages: PersistencePartsMessage[],
+      restoredMessages: PersistencePartsMessage[],
+      exactModelVisibleMatch: boolean,
+      firstMismatchIndex: number | undefined,
+    }
+  | {
+      status: 'failed',
+      fixtureId: 'parts_history_v2',
+      method: 'chat_content_parts_json_roundtrip_v2',
+      error: ModelSupportInvestigationLoadAttemptError,
+    };
+
+// Older observations keep their original flat history and provenance; do not relabel them.
 export type ModelSupportInvestigationPersistenceRoundTrip =
+  | ModelSupportInvestigationPersistencePartsRoundTrip
   | {
       status: 'observed',
       fixtureId: 'tool-call-history-v1',

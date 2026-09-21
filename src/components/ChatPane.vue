@@ -19,6 +19,7 @@ import {
   isChatGeneratingTitle,
   isChatProcessing,
 } from '@/composables/chat/chat-activity-queries';
+import { getDisplayedMessageText } from '@/logic/message-display';
 import { useChatDisplayFlow, type ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import { prefetchImageGenerationRuntime, useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
@@ -53,7 +54,7 @@ import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 // Lazily load the outline overlay, prefetch on mounted.
 const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ConversationOutlineOverlay.vue') });
-import { useImagePreview } from '@/composables/useImagePreview';
+import { useImagePreview, type BinaryObjectPreviewItem } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { Endpoint, LmParameters, ScopedTitleGeneration, SettingsTitleGeneration } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
@@ -443,7 +444,7 @@ async function exportChat() {
           }
           }
         })();
-        markdownContent += `## ${role}:\n${prefix}${item.partContent || msg.content}\n\n`;
+        markdownContent += `## ${role}:\n${prefix}${item.partContent ?? getDisplayedMessageText({ message: msg })}\n\n`;
         break;
       }
       case 'tool_group': {
@@ -1527,7 +1528,7 @@ watch(
       >
         <template v-if="chat">
           <div v-if="activeMessages.length > 0" tw-class="relative p-2">
-            <template v-for="(flowItem, flowIdx) in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
+            <template v-for="(flowItem, flowIdx) in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? flowItem.key : flowItem.id)">
               <!-- AI Process Sequence (Collapsible Group) -->
               <AssistantProcessSequence
                 v-if="flowItem.type === 'process_sequence'"
@@ -1543,7 +1544,7 @@ watch(
                 </template>
                 <template #peek>
                   <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
-                    <template v-for="lastItem in ([flowItem.items[flowItem.items.length - 1]] as ChatFlowItem[])" :key="lastItem.type === 'message' ? lastItem.node.id : lastItem.id">
+                    <template v-for="lastItem in ([flowItem.items[flowItem.items.length - 1]] as ChatFlowItem[])" :key="lastItem.type === 'message' ? lastItem.key : lastItem.id">
                       <!-- Active Thinking Peek -->
                       <MessageThinking
                         v-if="lastItem.type === 'message' && isThinkingActive({ item: lastItem })"
@@ -1560,7 +1561,7 @@ watch(
                   </template>
                 </template>
                 <template #default="{ isExpanded }">
-                  <template v-for="subItem in (flowItem.items as ChatFlowItem[])" :key="subItem.type === 'message' ? `${subItem.node.id}-${subItem.mode}` : subItem.id">
+                  <template v-for="subItem in (flowItem.items as ChatFlowItem[])" :key="subItem.type === 'message' ? subItem.key : subItem.id">
                     <MessageItem
                       v-if="subItem.type === 'message' && isExpanded"
                       :id="'message-' + subItem.node.id"
@@ -1570,6 +1571,7 @@ watch(
                       :can-generate-image="canGenerateImage && hasImageModel"
                       :is-processing="isChatStreaming"
                       :is-generating="isChatStreaming && subItem.node.id === chat?.currentLeafId"
+                      :is-thinking-active="isThinkingActive({ item: subItem })"
                       :available-image-models="availableImageModels"
                       :endpoint-type="resolvedEndpointType"
                       :flow="subItem.flow"
@@ -1604,6 +1606,7 @@ watch(
                 :can-generate-image="canGenerateImage && hasImageModel"
                 :is-processing="isChatStreaming"
                 :is-generating="isChatStreaming && flowItem.node.id === chat?.currentLeafId"
+                :is-thinking-active="isThinkingActive({ item: flowItem })"
                 :available-image-models="availableImageModels"
                 :endpoint-type="resolvedEndpointType"
                 :flow="flowItem.flow"
@@ -1661,7 +1664,7 @@ watch(
       <ChatDebugInspector
         v-if="showChatInspector"
         :show="showChatInspector"
-        :chat="chat"
+        :chat="chat ?? undefined"
         :active-messages="activeMessages"
         @close="showChatInspector = false"
         @enable-fake-lm="handleEnableFakeLmForChat()"
@@ -1723,8 +1726,8 @@ watch(
       :objects="previewState.objects"
       :initial-id="previewState.initialId"
       @close="closePreview"
-      @delete="(obj) => deleteBinaryObject({ id: obj.id })"
-      @download="(obj) => downloadBinaryObject({ obj })"
+      @delete="(obj: BinaryObjectPreviewItem) => deleteBinaryObject({ id: obj.id })"
+      @download="(obj: BinaryObjectPreviewItem) => downloadBinaryObject({ obj, memoryBlob: obj.memoryBlob })"
     />
   </div>
 </template>

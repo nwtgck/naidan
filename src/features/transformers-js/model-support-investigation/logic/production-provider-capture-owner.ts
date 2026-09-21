@@ -3,12 +3,12 @@ import { createTransformersJsService } from '@/features/transformers-js/index-ho
 import { createTransformersJsProvider } from '@/features/transformers-js/provider-hosted';
 import type { TransformersJsWorkerClient } from '@/features/transformers-js/types';
 import { exactObject } from '@/utils/exact-object';
-import { createModelSupportWeatherTool } from './tool-protocol-fixture';
-import { capturePlanSchema, captureScenarios, isCapturePlanV2, isCaptureScenarioSelected, captureScenarioInput, captureProviderMessages,
+import { generateProductionProviderCapture } from './production-provider-capture-generation';
+import { capturePlanSchema, captureScenarios, isCapturePlanV2, isCaptureScenarioSelected, captureScenarioInput, isCapturedContinuityAvailable,
   type ProductionProviderCapturePlan, type CaptureScenario, type CaptureRequestInput } from './production-provider-capture-plan';
 export type { ProductionProviderCapturePlan } from './production-provider-capture-plan';
 import {
-  createProductionProviderTrace,
+  createProductionProviderPartsTrace,
   type ProductionProviderSettledSnapshot,
   type ProductionProviderTraceSnapshot,
 } from './production-provider-trace';
@@ -39,7 +39,7 @@ interface CaptureSnapshotBase {
   readonly observation: 'open' | 'end-requested-by-dispose';
   readonly events: readonly OwnerEvent[];
   readonly capabilities: Readonly<{
-    providerCallbacks: 'bounded-projection';
+    providerCallbacks: 'bounded-projection' | 'parts_and_tools_projection';
     nativeInvocations: 'not-collected-by-this-owner';
     tools: 'not-selected' | 'fixed-public-weather-tool';
     images: 'not-selected' | 'fixed-public-image';
@@ -52,7 +52,7 @@ type CaptureRequestSnapshot = Readonly<ProductionProviderCaptureRequestIdentity 
   notStartedReason: CaptureNotStartedReason | undefined;
 }>;
 export type ProductionProviderCaptureSnapshot = CaptureSnapshotBase & {
-  readonly format: 'production-provider-capture-v2'; readonly plan: ProductionProviderCapturePlan; readonly requests: readonly CaptureRequestSnapshot[];
+  readonly format: 'production-provider-capture-v2' | 'production-provider-capture-v3'; readonly plan: ProductionProviderCapturePlan; readonly requests: readonly CaptureRequestSnapshot[];
 };
 
 export interface ProductionProviderCaptureProgress {
@@ -80,8 +80,7 @@ const identitySchema = z.object({
 
 /**
  * Hosted investigation owner, never the ordinary service singleton. Uses the
- * real service and Provider implementations, including their Load, cloning,
- * abort and tool loop. The versioned fixed scripts offer no arbitrary messages/tools,
+ * real service and Provider implementations and the common generation/tool loop. The versioned fixed scripts offer no arbitrary messages/tools,
  * no Download operations, no native observer installation, and no timers.
  */
 export function createProductionProviderCaptureOwner({ runId: inputRunId, modelId: inputModelId, plan: inputPlan, createWorkerClient, traceLimits }: {
@@ -89,7 +88,7 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
   modelId: string;
   plan: ProductionProviderCapturePlan;
   createWorkerClient: () => TransformersJsWorkerClient;
-  traceLimits: Parameters<typeof createProductionProviderTrace>[0]['limits'];
+  traceLimits: Parameters<typeof createProductionProviderPartsTrace>[0]['limits'];
 }) {
   const { runId, modelId, plan } = identitySchema.parse({ runId: inputRunId, modelId: inputModelId, plan: inputPlan });
   const version2 = isCapturePlanV2({ plan });
@@ -97,12 +96,12 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
     identity: ProductionProviderCaptureRequestIdentity;
     input: CaptureRequestInput | undefined;
     notStartedReason: CaptureNotStartedReason | undefined;
-    trace: ReturnType<typeof createProductionProviderTrace>;
+    trace: ReturnType<typeof createProductionProviderPartsTrace>;
   } => ({
     identity: Object.freeze({ runId, requestId: runId + '-' + scenario, scenario }),
     input: undefined,
     notStartedReason: isCaptureScenarioSelected({ plan, scenario }) ? 'not-yet-started' : 'scope-not-selected',
-    trace: createProductionProviderTrace({ requestId: runId + '-' + scenario, limits: traceLimits }),
+    trace: createProductionProviderPartsTrace({ requestId: runId + '-' + scenario, limits: traceLimits }),
   }));
   const serviceOwner = createTransformersJsService({ createWorkerClient });
   const provider = createTransformersJsProvider({ service: serviceOwner.service });
@@ -150,7 +149,7 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
       observation: observationStatus(),
       events: Object.freeze(events.slice()),
       capabilities: Object.freeze({
-        providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner',
+        providerCallbacks: 'parts_and_tools_projection', nativeInvocations: 'not-collected-by-this-owner',
         tools: isCaptureScenarioSelected({ plan, scenario: 'natural-tool-minimal' }) ? 'fixed-public-weather-tool' : 'not-selected',
         images: isCaptureScenarioSelected({ plan, scenario: 'image' }) ? 'fixed-public-image' : 'not-selected',
       }),
@@ -163,7 +162,7 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
         input, trace: captured, notStartedReason,
       }));
     });
-    return Object.freeze(exactObject<ProductionProviderCaptureSnapshot>()({ ...base, format: 'production-provider-capture-v2', plan, requests: Object.freeze(capturedRequests) }));
+    return Object.freeze(exactObject<ProductionProviderCaptureSnapshot>()({ ...base, format: 'production-provider-capture-v3', plan, requests: Object.freeze(capturedRequests) }));
   }
 
   function requestedStop(): StopReason | undefined {
@@ -227,7 +226,7 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
         return stop({ reason: before });
       }
       if (!isCaptureScenarioSelected({ plan, scenario: request.identity.scenario })) continue;
-      if (version2 && request.identity.scenario === 'continuity' && (firstSettled?.outcome.status !== 'fulfilled' || firstSettled.completeness !== 'complete')) {
+      if (version2 && request.identity.scenario === 'continuity' && !isCapturedContinuityAvailable({ settled: firstSettled })) {
         request.notStartedReason = 'first-settlement-unavailable';
         continue;
       }
@@ -239,18 +238,18 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
       }
       request.input = captureScenarioInput({ scenario: request.identity.scenario, firstSettled });
       request.notStartedReason = undefined;
-      const messages = captureProviderMessages({ input: request.input });
-      const { parameters } = request.input;
-      const tools = request.input.tools.length === 0 ? [] : [createModelSupportWeatherTool()];
       activeRequest = request.identity;
       let settled: ProductionProviderSettledSnapshot;
       try {
-        // Direct await: do not interpose a wrapped chat Promise, extra reaction,
-        // trace RPC, callback drain or timer before taking the settled snapshot.
-        await provider.chat({
-          model: modelId, messages, parameters, tools,
-          ...request.trace.callbacks, signal: controller.signal,
-        });
+        // Settlement is the ordinary common operation after every child, tool
+        // and Provider scope has completed, not a callback-era chat Promise.
+        const result = await generateProductionProviderCapture({ provider, modelId,
+          input: request.input, trace: request.trace, abortController: controller });
+        switch (result.type) {
+        case 'error': throw result.error;
+        case 'finished': case 'interrupted': break;
+        default: { const exhaustive: never = result; throw new Error('Unhandled capture result: ' + exhaustive); }
+        }
       } catch (error) {
         settled = request.trace.settle({ outcome: 'rejected', error });
         settledRequests += 1;
@@ -266,7 +265,9 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
       activeRequest = undefined;
       retainFirstSettlement({ scenario: request.identity.scenario, settled });
       const after = requestedStop();
-      if (after !== undefined || (!version2 && settled.completeness !== 'complete')) {
+      const requiresHistory = request.identity.scenario === 'first-turn' && isCaptureScenarioSelected({ plan, scenario: 'continuity' });
+      if (after !== undefined || (!version2 && (settled.completeness !== 'complete'
+        || (requiresHistory && !isCapturedContinuityAvailable({ settled }))))) {
         return stop({ reason: after ?? 'capture-incomplete' });
       }
       // Build the next request immediately from this immutable settlement.
@@ -311,7 +312,7 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
   return {
     run, snapshot, abort, dispose,
     /** Sampling must neither copy captured output nor interpose UI callbacks
-     * between direct chat settlement and the next continuity request. */
+     * between common operation settlement and the next continuity request. */
     getProgress(): ProductionProviderCaptureProgress {
       return Object.freeze(exactObject<ProductionProviderCaptureProgress>()({
         runId, modelId, plan, run: runState, lifetime, activeRequest,
