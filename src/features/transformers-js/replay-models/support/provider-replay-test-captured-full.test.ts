@@ -77,6 +77,36 @@ describe('reviewed public contracts remain separate from immutable capture', () 
       correctedEvents: [], invalidatedOutputs: [{ ...invalidated, requestInput: structuredClone(original.input) }],
     } })).toThrow('changed public input');
   });
+  it('keeps current pre-native rejection separate from historical fulfillment and native output', () => {
+    const before = structuredClone(evidence);
+    const result = TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [],
+      preNativeRejections: [{ scenario: 'natural-tool-minimal', reason: 'No reviewed structured tool adapter' }],
+    } });
+    expect([...result.preNativeRejections]).toEqual(['natural-tool-minimal']);
+    expect(result.gaps).toEqual([]);
+    expect(result.correctedEvents.size).toBe(0);
+    expect(evidence).toEqual(before);
+    expect(evidence.invocations.some(call => call.scenario === 'natural-tool-minimal')).toBe(true);
+  });
+  it.each([
+    { name: 'missing rejection rationale', rejections: [{ scenario: 'image' as const, reason: '' }], error: 'reason' },
+    { name: 'duplicate rejection', rejections: [{ scenario: 'image' as const, reason: 'Image' }, { scenario: 'image' as const, reason: 'Image' }], error: 'Duplicate' },
+    { name: 'unrecorded rejection', rejections: [{ scenario: 'missing' as never, reason: 'Missing' }], error: 'one recorded request' },
+  ])('rejects $name', ({ rejections, error }) => {
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [], preNativeRejections: rejections,
+    } })).toThrow(error);
+  });
+  it('cannot use a native output gap or an unmigrated observation contract as a pre-native rejection', () => {
+    const preNativeRejections = [{ scenario: 'first-turn' as const, reason: 'Explicit rejection' }];
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      correctedEvents: [], invalidatedOutputs: [], preNativeRejections,
+    } })).toThrow('structured parts');
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [invalidated], reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [], preNativeRejections,
+    } })).toThrow('conflicting');
+  });
 });
 
 describe('captured Full native inference gate', () => {

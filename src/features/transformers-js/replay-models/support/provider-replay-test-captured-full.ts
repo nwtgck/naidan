@@ -300,6 +300,9 @@ export type ReviewedProviderReplayContract = {
   // Opt-in only for model-owned single-text captures. Other archived protocols
   // retain their exact callback contract until explicitly migrated.
   singleTextParts?: SingleTextPartsReplayContract;
+  // Explicit model-owned input restrictions. Historical output remains in the
+  // evidence, but must never be released for a currently rejected request.
+  preNativeRejections?: readonly { scenario: z.infer<typeof captureScenarioSchema>; reason: string }[];
   correctedEvents: readonly {
     scenario: z.infer<typeof captureScenarioSchema>;
     reason: string;
@@ -323,6 +326,7 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
 }) {
   const correctedEvents = new Map<string, readonly unknown[]>();
   const correctedFinalizedStreams = new Map<number, { text: string; streamEnd: boolean }[]>();
+  const preNativeRejections = new Set<string>();
   const invalidated = reviewedPublicContract?.invalidatedOutputs ?? [];
   const gapOrdinals = new Set(originalGaps.map(gap => gap.callOrdinal));
   const gapScenarios = new Set(originalGaps.map(gap => gap.scenario));
@@ -358,7 +362,22 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
       || evidence.unavailableRecordedCalls?.includes(correction.callOrdinal)) throw new Error('Finalized-stream correction must identify one replayable native invocation');
     correctedFinalizedStreams.set(correction.callOrdinal, z.array(z.object({ text: z.string(), streamEnd: z.boolean() }).strict()).parse(correction.expectedFinalized));
   }
-  return { correctedEvents, correctedFinalizedStreams, gaps: [...originalGaps, ...invalidated].sort((left, right) => left.callOrdinal - right.callOrdinal) };
+  for (const rejection of reviewedPublicContract?.preNativeRejections ?? []) {
+    if (rejection.reason.trim().length === 0) throw new Error('Missing reviewed pre-native rejection reason');
+    if (reviewedPublicContract?.singleTextParts === undefined) throw new Error('Pre-native rejection requires the structured parts contract');
+    if (preNativeRejections.has(rejection.scenario) || gapScenarios.has(rejection.scenario)
+      || correctedEvents.has(rejection.scenario)
+      || evidence.invocations.some(call => call.scenario === rejection.scenario && correctedFinalizedStreams.has(call.callOrdinal))) {
+      throw new Error('Duplicate or conflicting pre-native rejection');
+    }
+    if (evidence.requests.filter(request => request.scenario === rejection.scenario).length !== 1
+      || !evidence.invocations.some(call => call.scenario === rejection.scenario)) {
+      throw new Error('Pre-native rejection must identify one recorded request with historical output');
+    }
+    preNativeRejections.add(rejection.scenario);
+  }
+  return { correctedEvents, correctedFinalizedStreams, preNativeRejections,
+    gaps: [...originalGaps, ...invalidated].sort((left, right) => left.callOrdinal - right.callOrdinal) };
 }
 
 function verifyFinalizedCorrectionsUsed({ expected, used }: { expected: readonly number[]; used: readonly number[] }) {
@@ -389,7 +408,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
   const evidence = parseCapturedFullReplay({ value: source });
   const singleTextParts = reviewedPublicContract?.singleTextParts;
   expect(originalGaps.filter(item => evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)).map(item => item.callOrdinal)).toEqual(evidence.unavailableRecordedCalls ?? []);
-  const { correctedEvents, correctedFinalizedStreams, gaps: unavailableOutputs } = validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps });
+  const { correctedEvents, correctedFinalizedStreams, preNativeRejections, gaps: unavailableOutputs } = validateReviewedProviderContract({ evidence, reviewedPublicContract, originalGaps });
   const usedCorrections: string[] = [];
   const usedFinalizedCorrections: number[] = [];
   const metadata = readModelFixture({ modelId: evidence.modelId });
@@ -413,6 +432,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       expect(active, 'one active request before stream release').toHaveLength(1);
       const request = active[0];
       if (request === undefined) throw new Error('Missing active Provider request');
+      expect(preNativeRejections.has(request.scenario), 'rejected input must never reach native generation').toBe(false);
       const localOrdinal = (requestOrdinals.get(request.scenario) ?? 0) + 1;
       requestOrdinals.set(request.scenario, localOrdinal);
       // Source-global ordinals are provenance only. The active public request
@@ -499,6 +519,24 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     const capture = epoch.collection.result.capture;
     let precedingEvents: readonly ProductionProviderTraceEvent[] | undefined;
     for (const request of provider.requests) {
+      if (preNativeRejections.has(request.scenario)) {
+        const recorded = evidence.requests.find(item => item.scenario === request.scenario)!;
+        expect(jsonProjection({ value: request.input }), `${request.scenario}/unchanged rejected input`).toEqual(recorded.input);
+        expect(request.trace.settled?.outcome, `${request.scenario}/explicit rejection`).toEqual({ status: 'rejected', errorName: 'Error' });
+        const first = z.object({ kind: z.literal('assistant_message'), messageId: z.string().min(1) }).parse(request.trace.settled?.events[0]);
+        expect(request.trace.settled?.events, `${request.scenario}/no parts or tool execution`).toEqual([
+          { kind: 'assistant_message', messageId: first.messageId, sequence: 0, phase: 'before-settlement' },
+          { kind: 'generation_error', errorName: 'Error', sequence: 1, phase: 'before-settlement' },
+        ]);
+        expect(request.trace.completeness).toBe('complete');
+        expect(request.trace.lateEvents).toEqual([]);
+        const calls = capture.calls.filter(call => call.context.requestId === request.requestId);
+        expect(calls, `${request.scenario}/one Worker generation attempt`).toHaveLength(1);
+        expect(calls[0]).toMatchObject({ outcome: 'rejected', invocations: [] });
+        expect(capture.events.filter(event => event.identity.requestId === request.requestId
+          && (event.kind === 'native-stream' || event.kind === 'sequence')), `${request.scenario}/no native output`).toEqual([]);
+        continue;
+      }
       const gap = unavailableOutputs.find(item => item.scenario === request.scenario);
       if (gap !== undefined) {
         // The bounded public trace intentionally maps nonstandard error names to
@@ -534,8 +572,8 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       expect(request.trace.lateEvents, request.scenario).toEqual([]);
     }
     expect(usedCorrections.sort(), 'every reviewed public contract actually settled').toEqual([...correctedEvents.keys()].sort());
-    expect(provider.requests.filter(request => request.trace.settled?.outcome.status === 'fulfilled')).toHaveLength(provider.requests.length - unavailableOutputs.length);
-    const expectedCallCount = new Set([...evidence.invocations.map(item => item.callOrdinal), ...unavailableOutputs.map(item => item.callOrdinal)]).size;
+    expect(provider.requests.filter(request => request.trace.settled?.outcome.status === 'fulfilled')).toHaveLength(provider.requests.length - unavailableOutputs.length - preNativeRejections.size);
+    const expectedCallCount = new Set([...evidence.invocations.filter(item => !preNativeRejections.has(item.scenario)).map(item => item.callOrdinal), ...unavailableOutputs.map(item => item.callOrdinal)]).size;
     expect(callOrdinal).toBe(expectedCallCount);
     expect(verifiedGaps, gapFailures.join('\n')).toEqual(unavailableOutputs.map(item => item.callOrdinal));
     const load = epoch.collection.result.loadObservation;
@@ -558,7 +596,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       ...expectedReceipt.cacheLookup, hitPaths: expectedReceipt.cacheLookup.hitPaths.filter(path => availablePaths.has(path)),
     } });
     expect(capture.incompleteReasons).toEqual([]);
-    expect(capture.calls).toHaveLength(expectedCallCount);
+    expect(capture.calls).toHaveLength(expectedCallCount + preNativeRejections.size);
     for (const gap of unavailableOutputs) {
       const runtimeOrdinal = runtimeOrdinals.get(gap.callOrdinal);
       expect(runtimeOrdinal, `${gap.scenario}/actual capture identity`).toBeDefined();
@@ -568,6 +606,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       if (recordedInputs !== undefined) verifyCapturedGapInputs({ events: capture.events.filter(event => event.identity.generationCallId === runtimeOrdinal), expected: recordedInputs });
     }
     for (const invocation of evidence.invocations) {
+      if (preNativeRejections.has(invocation.scenario)) continue;
       if (unavailableOutputs.some(gap => gap.callOrdinal === invocation.callOrdinal)) continue;
       const label = `${invocation.scenario}/call-${invocation.callOrdinal}`;
       const runtimeOrdinal = runtimeOrdinals.get(invocation.callOrdinal);

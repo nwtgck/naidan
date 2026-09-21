@@ -18,7 +18,7 @@ export async function runProviderReplayTurn({ provider, request, tools, abortCon
   const toolEvents: { toolCallId: ToolCallId; event: ToolExecutionEvent }[] = [];
   const { model, parameters, messages, readBinaryObject, debug, ...unhandled } = request;
   unhandled satisfies Record<PropertyKey, never>;
-  const result = await generateChatTurn({
+  const outcome = await generateChatTurn({
     provider, model, parameters, tools, readBinaryObject, debug, abortController, approvalContext: undefined,
     createAssistantMessage: () => {
       const node: AssistantMessageNode = {
@@ -46,8 +46,13 @@ export async function runProviderReplayTurn({ provider, request, tools, abortCon
     },
     persistToolContent: async ({ text }) => ({ type: 'text', text }),
     describeError: ({ error }) => error.message,
-  });
-  return { result, generated, toolEvents };
+  }).then(
+    result => ({ status: 'fulfilled' as const, result }),
+    (error: unknown) => ({ status: 'rejected' as const, error }),
+  );
+  // Operation release can reject even after the consumer recorded an error.
+  // Keep that rejection distinct from a successfully returned terminal result.
+  return { outcome, generated, toolEvents };
 }
 
 /** Preserve the exact locally embedded image bytes, without fetching or model logic. */

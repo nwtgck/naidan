@@ -1246,14 +1246,13 @@ describe('SmolLM2 135M Provider / reasoning', () => {
 });
 
 describe('SmolLM2 135M Provider / tools', () => {
-  it("tools-generation preserves arguments up to a template that does not render tool definitions or calls", async () => {
+  it("tools-generation rejects before inference while retaining the historical template oracle", async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
     const nativeInputs: ReturnType<typeof captureSmol135NativeInput>[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tools-generation");
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'SmolLM2 135M tool input inspected; no inference output supplied';
-    let actualTokenizer: Parameters<ProviderReplayGenerate>[0]['tokenizer'] | undefined;
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
@@ -1271,7 +1270,6 @@ describe('SmolLM2 135M Provider / tools', () => {
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
         nativeInputs.push(captureSmol135NativeInput(context));
-        actualTokenizer = context.tokenizer;
         // No captured output is supplied at this observation-only boundary.
         throw new Error(boundary);
       },
@@ -1280,58 +1278,43 @@ describe('SmolLM2 135M Provider / tools', () => {
     // its receiver, arguments, result, tokenizer instance or native tokenization.
     const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
     try {
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: toolInputEvidence.modelId,
-          messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
-          ],
-          tools: [publicTool],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+      const request: CapturedChatRequest = {
+        model: toolInputEvidence.modelId,
+        messages: [
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
+        ],
+        tools: [publicTool],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined
         },
-      });
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined
+      };
+      const originalInput = structuredClone({ messages: request.messages, tools: request.tools, parameters: request.parameters });
+      capture = captureProviderChat({ provider: harness.provider, request });
       captures.push(capture);
       await capture.completion;
-      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: 'This standard tool protocol has no structured generation adapter.' } });
       const observed = capture.snapshot();
       expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
       expect(observed.parts).toHaveLength(0);
       expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
       expect(observed.result).toBeDefined();
       const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      expect(nativeInputs).toHaveLength(1);
-      const native = nativeInputs[0];
-      if (!native) throw new Error('Input-only inference was not observed');
-      if (!native.input.isTensor || !native.mask.isTensor) {
-        throw new Error('Expected actual SmolLM2 135M tokenizer tensors');
-      }
-      expect(native.input.type).toBe('int64');
-      expect(native.input.location).toBe('cpu');
-      expect(native.input.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(Array.from(native.input.data, Number)).toEqual(scenario.inputTokenIds);
-      expect(native.mask.type).toBe('int64');
-      expect(native.mask.location).toBe('cpu');
-      expect(native.mask.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(Array.from(native.mask.data, BigInt)).toEqual(scenario.inputTokenIds.map(() => 1n));
-      // Nothing was generated in this matrix capture. Neither streamer tokens
-      // nor fabricated return sequences/KV are released at this boundary.
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
+      expect(nativeInputs).toEqual([]);
+      expect(harness.observations.inferenceCalls).toEqual([]);
       expect(chunks).toEqual([]);
-      expect(capture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect({ messages: request.messages, tools: request.tools, parameters: request.parameters }).toEqual(originalInput);
+      const actualTokenizer = templateSpy.mock.contexts[0];
 
       // Snapshot Production calls BEFORE the native oracle below makes any
       // extra calls. Protocol/reasoning probes explicitly use tokenize:false;
@@ -1361,7 +1344,7 @@ describe('SmolLM2 135M Provider / tools', () => {
         })),
         { add_generation_prompt: true, return_dict: true, tools: strictToolDefinitions },
       ]]);
-      if (!actualTokenizer) throw new Error('Actual tokenizer did not reach the inference boundary');
+      if (!(actualTokenizer instanceof harness.runtime.PreTrainedTokenizer)) throw new Error('Expected the real tokenizer to inspect the unsupported protocol');
       expect(createHash('sha256').update(actualTokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
         .toBe(toolInputEvidence.selectedTemplateSha256);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
@@ -1408,14 +1391,13 @@ describe('SmolLM2 135M Provider / tools', () => {
     }
 
   }, 30_000);
-  it("tool-result-continuation preserves arguments up to a template that does not render tool definitions or calls", async () => {
+  it("tool-result-continuation rejects before inference while retaining the historical template oracle", async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
     const nativeInputs: ReturnType<typeof captureSmol135NativeInput>[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tool-result-continuation");
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'SmolLM2 135M tool input inspected; no inference output supplied';
-    let actualTokenizer: Parameters<ProviderReplayGenerate>[0]['tokenizer'] | undefined;
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
@@ -1433,7 +1415,6 @@ describe('SmolLM2 135M Provider / tools', () => {
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
         nativeInputs.push(captureSmol135NativeInput(context));
-        actualTokenizer = context.tokenizer;
         // No captured output is supplied at this observation-only boundary.
         throw new Error(boundary);
       },
@@ -1442,68 +1423,53 @@ describe('SmolLM2 135M Provider / tools', () => {
     // its receiver, arguments, result, tokenizer instance or native tokenization.
     const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
     try {
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: toolInputEvidence.modelId,
-          messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
-            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "", completeness: 'complete' },
-              { id: 'call_1_0', type: 'tool_call', toolCall: {
-                id: toToolCallId({ raw: "call_template_probe_1" }),
-                type: "function",
-                function: {
-                  name: "lookup_weather",
-                  arguments: "{\"city\":\"Tokyo\"}",
-                },
-              } }] },
-            { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
-          ],
-          tools: [publicTool],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+      const request: CapturedChatRequest = {
+        model: toolInputEvidence.modelId,
+        messages: [
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
+          { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "", completeness: 'complete' },
+            { id: 'call_1_0', type: 'tool_call', toolCall: {
+              id: toToolCallId({ raw: "call_template_probe_1" }),
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Tokyo\"}",
+              },
+            } }] },
+          { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
+        ],
+        tools: [publicTool],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined
         },
-      });
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined
+      };
+      const originalInput = structuredClone({ messages: request.messages, tools: request.tools, parameters: request.parameters });
+      capture = captureProviderChat({ provider: harness.provider, request });
       captures.push(capture);
       await capture.completion;
-      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: 'This standard tool history has no reviewed structured input adapter.' } });
       const observed = capture.snapshot();
       expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
       expect(observed.parts).toHaveLength(0);
       expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
       expect(observed.result).toBeDefined();
       const chunks = observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      expect(nativeInputs).toHaveLength(1);
-      const native = nativeInputs[0];
-      if (!native) throw new Error('Input-only inference was not observed');
-      if (!native.input.isTensor || !native.mask.isTensor) {
-        throw new Error('Expected actual SmolLM2 135M tokenizer tensors');
-      }
-      expect(native.input.type).toBe('int64');
-      expect(native.input.location).toBe('cpu');
-      expect(native.input.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(Array.from(native.input.data, Number)).toEqual(scenario.inputTokenIds);
-      expect(native.mask.type).toBe('int64');
-      expect(native.mask.location).toBe('cpu');
-      expect(native.mask.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(Array.from(native.mask.data, BigInt)).toEqual(scenario.inputTokenIds.map(() => 1n));
-      // Nothing was generated in this matrix capture. Neither streamer tokens
-      // nor fabricated return sequences/KV are released at this boundary.
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
+      expect(nativeInputs).toEqual([]);
+      expect(harness.observations.inferenceCalls).toEqual([]);
       expect(chunks).toEqual([]);
-      expect(capture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+      expect({ messages: request.messages, tools: request.tools, parameters: request.parameters }).toEqual(originalInput);
+      const actualTokenizer = templateSpy.mock.contexts[0];
 
       // Snapshot Production calls BEFORE the native oracle below makes any
       // extra calls. Protocol/reasoning probes explicitly use tokenize:false;
@@ -1525,15 +1491,8 @@ describe('SmolLM2 135M Provider / tools', () => {
             return { role, content, tool_calls, tool_call_id };
           }), options,
         ]);
-      expect(productionTokenizations).toStrictEqual([[
-        scenario.messages.map(message => ({
-          role: message.role, content: message.content,
-          tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
-          tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
-        })),
-        { add_generation_prompt: true, return_dict: true, tools: strictToolDefinitions },
-      ]]);
-      if (!actualTokenizer) throw new Error('Actual tokenizer did not reach the inference boundary');
+      expect(productionTokenizations).toEqual([]);
+      if (!(actualTokenizer instanceof harness.runtime.PreTrainedTokenizer)) throw new Error('Expected the real tokenizer to inspect the unsupported protocol');
       expect(createHash('sha256').update(actualTokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
         .toBe(toolInputEvidence.selectedTemplateSha256);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
@@ -1580,7 +1539,7 @@ describe('SmolLM2 135M Provider / tools', () => {
     }
 
   }, 30_000);
-  it('tools: preserves the recorded minimal no-call response without claiming model-wide non-support', async () => {
+  it('tools: rejects the recorded minimal tool-enabled input before native generation', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["natural-tool-minimal"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = {
       temperature: 0,
@@ -1607,35 +1566,35 @@ describe('SmolLM2 135M Provider / tools', () => {
     }];
     try {
       replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
-      // The caller runner owns tool execution and one runtime operation. This
-      // recording produces no call, including from supplied historical calls.
-      turn = await runProviderReplayTurn({
-        provider: replay.provider, tools, abortController: new AbortController(),
-        request: { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
-          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
-        ], parameters, debug: undefined, readBinaryObject: undefined },
-      });
+      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
+        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
+      ], parameters, debug: undefined, readBinaryObject: undefined };
+      const originalInput = structuredClone(request);
+      // The ordinary caller runner owns the error and must not execute tools.
+      turn = await runProviderReplayTurn({ provider: replay.provider, tools, abortController: new AbortController(), request });
       settled = true;
-      replay.endNativeRequest();
-      expect(turn.result).toEqual({ type: 'finished', next: 'user' });
+      replay.endRejectedRequest({ outcome: turn.outcome });
+      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'This standard tool protocol has no structured generation adapter.' } });
+      expect(request).toEqual(originalInput);
       expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
       const assistant = turn.generated[0];
       if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
-      expect(assistant.parts.map(part => part.type)).toEqual(['text']);
-      expect(assistant.parts.filter(part => part.type === 'text').map(part => part.text)).toEqual(["I'm sorry for the misunderstanding, but as a weather-related AI, I don't have the capability to access real-time weather data. I recommend using a weather-related service like Weather.com, the Japan Meteorological Agency, or the National Weather Service."]);
-      expect(assistant.parts.filter(part => part.type === 'tool_call')).toEqual([]);
+      expect(assistant.parts).toEqual([]);
+      expect(assistant.interruption).toEqual({ type: 'error', message: 'This standard tool protocol has no structured generation adapter.' });
       expect(turn.toolEvents).toEqual([]);
       expect(executions).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      replay.assertComplete({ requests: 1, nativeCalls: 0 });
     } finally {
       const beforeDisposal = structuredClone(turn);
       await replay.close();
-      expect(turn, 'through awaited Worker disposal').toEqual(beforeDisposal);
+      // Compare the same clone representation on both sides: Comlink Error
+      // values can own a name property that structured clone omits.
+      expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(beforeDisposal);
       expect(executions).toEqual([]);
       expect(lateExecutions).toEqual([]);
     }
   }, 30_000);
-  it('tools: preserves the recorded representative no-call response without claiming model-wide non-support', async () => {
+  it('tools: rejects the recorded representative tool-enabled input before native generation', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["natural-tool-representative"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = {
       temperature: 0,
@@ -1662,35 +1621,35 @@ describe('SmolLM2 135M Provider / tools', () => {
     }];
     try {
       replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
-      // The caller runner owns tool execution and one runtime operation. This
-      // recording produces no call, including from supplied historical calls.
-      turn = await runProviderReplayTurn({
-        provider: replay.provider, tools, abortController: new AbortController(),
-        request: { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
-          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
-        ], parameters, debug: undefined, readBinaryObject: undefined },
-      });
+      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
+        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
+      ], parameters, debug: undefined, readBinaryObject: undefined };
+      const originalInput = structuredClone(request);
+      // The ordinary caller runner owns the error and must not execute tools.
+      turn = await runProviderReplayTurn({ provider: replay.provider, tools, abortController: new AbortController(), request });
       settled = true;
-      replay.endNativeRequest();
-      expect(turn.result).toEqual({ type: 'finished', next: 'user' });
+      replay.endRejectedRequest({ outcome: turn.outcome });
+      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'This standard tool protocol has no structured generation adapter.' } });
+      expect(request).toEqual(originalInput);
       expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
       const assistant = turn.generated[0];
       if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
-      expect(assistant.parts.map(part => part.type)).toEqual(['text']);
-      expect(assistant.parts.filter(part => part.type === 'text').map(part => part.text)).toEqual(["I'm sorry for the misunderstanding, but as a weather-related AI, I don't have the capability to provide a lookup-weather response. I'd recommend using the weather-related tool, such as the one provided by Hugging Face, to get the weather information."]);
-      expect(assistant.parts.filter(part => part.type === 'tool_call')).toEqual([]);
+      expect(assistant.parts).toEqual([]);
+      expect(assistant.interruption).toEqual({ type: 'error', message: 'This standard tool protocol has no structured generation adapter.' });
       expect(turn.toolEvents).toEqual([]);
       expect(executions).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      replay.assertComplete({ requests: 1, nativeCalls: 0 });
     } finally {
       const beforeDisposal = structuredClone(turn);
       await replay.close();
-      expect(turn, 'through awaited Worker disposal').toEqual(beforeDisposal);
+      // Compare the same clone representation on both sides: Comlink Error
+      // values can own a name property that structured clone omits.
+      expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(beforeDisposal);
       expect(executions).toEqual([]);
       expect(lateExecutions).toEqual([]);
     }
   }, 30_000);
-  it('tools: preserves structured caller history and the recorded response', async () => {
+  it('tools: rejects structured caller history without executing historical calls', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["structured-tool-history"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = {
       temperature: 0,
@@ -1717,40 +1676,40 @@ describe('SmolLM2 135M Provider / tools', () => {
     }];
     try {
       replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
-      // The caller runner owns tool execution and one runtime operation. This
-      // recording produces no call, including from supplied historical calls.
-      turn = await runProviderReplayTurn({
-        provider: replay.provider, tools, abortController: new AbortController(),
-        request: { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
-          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
-          { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "", completeness: 'complete' },
-            { id: 'call_1_0', type: 'tool_call', toolCall: {
-              id: toToolCallId({ raw: "call_model_support_probe_1" }),
-              type: "function",
-              function: {
-                name: "lookup_weather",
-                arguments: "{\"city\":\"Tokyo\"}",
-              },
-            } }] },
-          { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
-        ], parameters, debug: undefined, readBinaryObject: undefined },
-      });
+      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
+        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
+        { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "", completeness: 'complete' },
+          { id: 'call_1_0', type: 'tool_call', toolCall: {
+            id: toToolCallId({ raw: "call_model_support_probe_1" }),
+            type: "function",
+            function: {
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Tokyo\"}",
+            },
+          } }] },
+        { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
+      ], parameters, debug: undefined, readBinaryObject: undefined };
+      const originalInput = structuredClone(request);
+      // The ordinary caller runner owns the error and must not execute tools.
+      turn = await runProviderReplayTurn({ provider: replay.provider, tools, abortController: new AbortController(), request });
       settled = true;
-      replay.endNativeRequest();
-      expect(turn.result).toEqual({ type: 'finished', next: 'user' });
+      replay.endRejectedRequest({ outcome: turn.outcome });
+      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'This standard tool history has no reviewed structured input adapter.' } });
+      expect(request).toEqual(originalInput);
       expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
       const assistant = turn.generated[0];
       if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
-      expect(assistant.parts.map(part => part.type)).toEqual(['text']);
-      expect(assistant.parts.filter(part => part.type === 'text').map(part => part.text)).toEqual(["You are a helpful AI named Huggs, trained by Hugging Face."]);
-      expect(assistant.parts.filter(part => part.type === 'tool_call')).toEqual([]);
+      expect(assistant.parts).toEqual([]);
+      expect(assistant.interruption).toEqual({ type: 'error', message: 'This standard tool history has no reviewed structured input adapter.' });
       expect(turn.toolEvents).toEqual([]);
       expect(executions).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      replay.assertComplete({ requests: 1, nativeCalls: 0 });
     } finally {
       const beforeDisposal = structuredClone(turn);
       await replay.close();
-      expect(turn, 'through awaited Worker disposal').toEqual(beforeDisposal);
+      // Compare the same clone representation on both sides: Comlink Error
+      // values can own a name property that structured clone omits.
+      expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(beforeDisposal);
       expect(executions).toEqual([]);
       expect(lateExecutions).toEqual([]);
     }
@@ -1758,7 +1717,7 @@ describe('SmolLM2 135M Provider / tools', () => {
 });
 
 describe('SmolLM2 135M Provider / images', () => {
-  it('images: preserves the recorded text-only native handling of an image-bearing request', async () => {
+  it('images: rejects the recorded image-bearing input before text-only native generation', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
@@ -1782,36 +1741,30 @@ describe('SmolLM2 135M Provider / images', () => {
         };
         const signal = new AbortController().signal;
         replay.beginNativeRequest({ caseId: "image", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "HuggingFaceTB/SmolLM2-135M-Instruct",
-            messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'part_0_0', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-                { id: 'part_0_1', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }
-            ],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined
-          },
-        });
+        const request: CapturedChatRequest = {
+          model: "HuggingFaceTB/SmolLM2-135M-Instruct",
+          messages: [
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'part_0_0', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { id: 'part_0_1', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }
+          ],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined
+        };
+        const originalInput = structuredClone({ messages: request.messages, parameters: request.parameters });
+        const capture = captureProviderChat({ provider: replay.provider, request });
         captures.push(capture);
         await capture.completion;
         const observed = capture.snapshot();
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(observed.parts.filter(part => part.type === 'text').map(part => part.completeness)).toEqual(['partial']);
-        replay.endNativeRequest();
+        expect(observed.result).toMatchObject({ type: 'error', error: { message: 'The standard text strategy cannot preserve an image input.' } });
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        const calls = observed.parts.filter(part => part.type === 'tool_call');
-        const order = observed.events.filter(event => event.kind !== 'chunk' && event.kind !== 'result').map(event => event.kind);
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["part", "part-complete", "settled"]);
-        expect(calls).toEqual([]);
+        expect(observed.parts).toEqual([]);
+        expect({ messages: request.messages, parameters: request.parameters }).toEqual(originalInput);
+        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      replay.assertComplete({ requests: 1, nativeCalls: 0 });
     } finally {
       await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
@@ -1819,6 +1772,91 @@ describe('SmolLM2 135M Provider / images', () => {
 });
 
 describe('SmolLM2 135M Provider / sequences', () => {
+  it('reuses the same runtime for ordinary chat after tool and image operation rejections', async () => {
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog, caseIds: ['natural-tool-minimal', 'image', 'first-turn'],
+      artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined,
+    });
+    const parameters: NonNullable<CapturedChatRequest['parameters']> = {
+      temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined,
+      frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined },
+    };
+    const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
+    const tools: Tool[] = [{ name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }), execute,
+    }];
+    const observedTurns: Awaited<ReturnType<typeof runProviderReplayTurn>>[] = [];
+    try {
+      const toolRequest: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
+        model: 'HuggingFaceTB/SmolLM2-135M-Instruct', parameters: { ...parameters, maxCompletionTokens: 128 },
+        messages: [{ id: toMessageId({ raw: 'tool-user' }), role: 'user', parts: [
+          { id: 'text', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+        ] }], debug: undefined, readBinaryObject: undefined,
+      };
+      const toolInput = structuredClone(toolRequest);
+      replay.beginNativeRequest({ caseId: 'natural-tool-minimal', parameters: toolRequest.parameters! });
+      const rejectedTool = await runProviderReplayTurn({ provider: replay.provider, request: toolRequest, tools, abortController: new AbortController() });
+      observedTurns.push(rejectedTool);
+      expect(rejectedTool.outcome).toMatchObject({ status: 'rejected', error: { message: 'This standard tool protocol has no structured generation adapter.' } });
+      replay.endRejectedRequest({ outcome: rejectedTool.outcome });
+      expect(toolRequest).toEqual(toolInput);
+      expect(replay.observations.inferenceCalls).toEqual([]);
+      expect(execute).not.toHaveBeenCalled();
+      expect(replay.service.getState().status).toBe('ready');
+      const loadedModel = replay.service.getState().activeModelId;
+      const worker = replay.observations.workers[0];
+      expect(worker).toBeDefined();
+
+      const imageRequest: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
+        model: 'HuggingFaceTB/SmolLM2-135M-Instruct', parameters: { ...parameters, maxCompletionTokens: 1 },
+        messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
+          { id: 'text', type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+          { id: 'image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
+        ] }], debug: undefined, readBinaryObject: undefined,
+      };
+      const imageInput = structuredClone(imageRequest);
+      replay.beginNativeRequest({ caseId: 'image', parameters: imageRequest.parameters! });
+      const rejectedImage = await runProviderReplayTurn({ provider: replay.provider, request: imageRequest, tools: [], abortController: new AbortController() });
+      observedTurns.push(rejectedImage);
+      expect(rejectedImage.outcome).toMatchObject({ status: 'rejected', error: { message: 'The standard text strategy cannot preserve an image input.' } });
+      replay.endRejectedRequest({ outcome: rejectedImage.outcome });
+      expect(imageRequest).toEqual(imageInput);
+      expect(replay.observations.inferenceCalls).toEqual([]);
+      expect(execute).not.toHaveBeenCalled();
+      expect(replay.service.getState()).toMatchObject({ status: 'ready', activeModelId: loadedModel });
+
+      // The unchanged first-turn native input/token gate must still match after
+      // both failed operations release their lane. No fresh runtime repairs it.
+      replay.beginNativeRequest({ caseId: 'first-turn', parameters });
+      const recovered = await runProviderReplayTurn({
+        provider: replay.provider, tools: [], abortController: new AbortController(),
+        request: { model: 'HuggingFaceTB/SmolLM2-135M-Instruct', parameters,
+          messages: [{ id: toMessageId({ raw: 'plain-user' }), role: 'user', parts: [
+            { id: 'text', type: 'text', text: 'Template probe user message.', completeness: 'complete' },
+          ] }], debug: undefined, readBinaryObject: undefined },
+      });
+      observedTurns.push(recovered);
+      expect(recovered.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
+      expect(recovered.generated).toEqual([expect.objectContaining({ role: 'assistant', interruption: undefined, parts: [
+        expect.objectContaining({ type: 'text', completeness: 'partial', text: `\
+"Dear Hugging Face,
+
+I hope this message finds you well.` }),
+      ] })]);
+      replay.endNativeRequest();
+      replay.assertComplete({ requests: 3, nativeCalls: 1 });
+      expect(replay.observations.workers[0]).toBe(worker);
+      expect(worker?.terminated).toBe(false);
+      expect(replay.service.getState()).toMatchObject({ status: 'ready', activeModelId: loadedModel });
+      expect(observedTurns.every(turn => turn.toolEvents.length === 0)).toBe(true);
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      const beforeDisposal = structuredClone(observedTurns);
+      await replay.close();
+      expect(structuredClone(observedTurns)).toEqual(beforeDisposal);
+      expect(execute).not.toHaveBeenCalled();
+    }
+  }, 30_000);
   it('uses only the settled first part text for a second request in the same loaded runtime', async () => {
     const captures: ProviderChatCapture[] = [];
     let firstCapture: ProviderChatCapture | undefined;
@@ -2078,7 +2116,14 @@ I hope this message finds you well.`]);
     expect(fullEvidenceJson.observedCacheRevision).toBe('12fd25f77366fa6b3b4b768ec3050bf629380bac');
     // This exact tokenizer/generation config uses token 2 as its end marker.
     // A fulfilled old callback request without it remains a partial generation.
-    await verifyCapturedFullReplay({ reviewedPublicContract: { singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [] },
-      unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ['onnx/model_q4f16.onnx'] });
+    await verifyCapturedFullReplay({ reviewedPublicContract: { singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [],
+      preNativeRejections: [
+        { scenario: 'natural-tool-minimal', reason: 'This text model has no reviewed structured tool adapter.' },
+        { scenario: 'natural-tool-representative', reason: 'Enabling tool definitions is rejected before generation.' },
+        { scenario: 'structured-tool-history', reason: 'The current adapter cannot preserve historical tool associations.' },
+        { scenario: 'image', reason: 'The current text adapter rejects images instead of silently discarding them.' },
+      ],
+    },
+    unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ['onnx/model_q4f16.onnx'] });
   }, 30_000);
 });

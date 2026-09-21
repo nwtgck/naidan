@@ -6,6 +6,7 @@ import { replayCapturedFullInvocation, replayCapturedFullInvocationWithOwnedCach
 import { createProviderReplayTestRuntime, type ProviderReplayTestRuntime } from './provider-replay-test-runtime';
 import { readModelFixture } from './model-runtime-fixture';
 import { createSyntheticModelBody } from './download-synthetic-session-oracle';
+import type { ChatGenerationResult } from '@/01-models/lm';
 
 /** Native plan for one model test's explicitly written public requests.
  * This setup never calls chat or constructs public messages and expectations.
@@ -28,12 +29,16 @@ export type ProviderRequestNativeController = {
 };
 
 type PublicParameters = NonNullable<Parameters<ProviderReplayTestRuntime['provider']['chat']>[0]['parameters']>;
+type RejectedRequestObservation =
+  | { status: 'fulfilled'; result: ChatGenerationResult | undefined }
+  | { status: 'rejected'; error: unknown };
 const nativeParameterSnapshotSchema = z.object({
   maxCompletionTokens: z.number().int().positive(), temperature: z.number(), topP: z.number(),
 });
 export interface ProviderRequestReplay extends ProviderReplayTestRuntime {
   beginNativeRequest({ caseId, parameters }: { caseId: RequestReplayArguments['caseIds'][number]; parameters: PublicParameters }): void;
   endNativeRequest(): void;
+  endRejectedRequest({ outcome }: { outcome: RejectedRequestObservation }): void;
   assertComplete({ requests, nativeCalls }: { requests: number; nativeCalls: number }): void;
 }
 
@@ -107,6 +112,20 @@ async function createNativeRequestReplay({ catalog, caseIds, artifactPaths, imag
       if (active === undefined) throw new Error('No active native request');
       expect(active.attempted, `${active.evidence.caseId}/attempted native inventory`).toBe(active.evidence.invocations.length);
       expect(active.completed, `${active.evidence.caseId}/completed native inventory`).toBe(active.evidence.invocations.length);
+      active = undefined;
+      ++requestOrdinal;
+    },
+    endRejectedRequest({ outcome }) {
+      if (active === undefined) throw new Error('No active request');
+      // A current unsupported-input result does not replay or validate the
+      // historical output. Model tests own the exact reason and unchanged input.
+      switch (outcome.status) {
+      case 'fulfilled': expect(outcome.result, 'explicit current rejection, not absent output').toMatchObject({ type: 'error' }); break;
+      case 'rejected': expect(outcome.error, 'observed operation rejection').toBeInstanceOf(Error); break;
+      default: { const exhaustive: never = outcome; throw new Error(`Unhandled rejection observation: ${exhaustive}`); }
+      }
+      expect(active.attempted, `${active.evidence.caseId}/no rejected native invocation`).toBe(0);
+      expect(active.completed, `${active.evidence.caseId}/no rejected native output`).toBe(0);
       active = undefined;
       ++requestOrdinal;
     },
