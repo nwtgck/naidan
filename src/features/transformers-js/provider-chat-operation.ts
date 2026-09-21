@@ -111,7 +111,10 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
               if (next.done) detach();
               return next;
             } catch (error) {
-              failures.push(error); detach(); throw error;
+              // A rejected read (for example, concurrent next calls) does not
+              // settle the producer or its unread children. Keep ownership so
+              // close can return the iterator and release bounded delivery.
+              failures.push(error); throw error;
             }
           },
           async return() {

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { LmProvider } from '@/01-models/lm';
+import type { ChatGenerationItem, LmProvider } from '@/01-models/lm';
 import type { MessageNode, ChatMessage, AssistantMessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
@@ -236,6 +236,69 @@ describe('hosted structured generation with the real service lane', () => {
     await f.owner.service.resetCache(); expect(f.client.resetCache).toHaveBeenCalledOnce(); expect(f.client.interrupt).toHaveBeenCalledOnce();
   });
 
+  it('reclaims an unread child after concurrent reads reject without stranding its runtime owner', async () => {
+    const f = fixture();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const escaped = Promise.withResolvers<AsyncIterator<ChatGenerationItem>>();
+    const firstItem = Promise.withResolvers<IteratorResult<ChatGenerationItem>>();
+    const queueFilled = Promise.withResolvers<void>();
+    let producerSettled = false;
+    f.client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      entered.resolve();
+      await release.promise;
+      try {
+        await onEvent({ event: { type: 'part_start', kind: 'text', index: 0 } });
+        // Leave a child unread so merely aborting without cancelling its bounded
+        // queue cannot settle the producer or admit the next runtime operation.
+        for (let i = 0; i < 40; i++) {
+          await onEvent({ event: { type: 'text_delta', index: 0, text: 'data' } });
+          if (i === 14) queueFilled.resolve();
+        }
+        await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+      } finally {
+        producerSettled = true;
+      }
+    });
+    let settled = false;
+    const operation = f.provider.runChatOperation!({ signal: undefined, operation: async ({ chat, signal }) => {
+      const iterator = chat(request({ signal, model: 'fixture/m', messages: [] }))[Symbol.asyncIterator]();
+      escaped.resolve(iterator);
+      const first = iterator.next();
+      await entered.promise;
+      await expect(iterator.next()).rejects.toThrow('Concurrent reads');
+      release.resolve();
+      firstItem.resolve(await first);
+      await queueFilled.promise;
+    } }).then(
+      () => ({ type: 'resolved' as const }),
+      (error: unknown) => ({ type: 'rejected' as const, error }),
+    ).finally(() => {
+      settled = true;
+    });
+    await entered.promise;
+    const queued = f.owner.service.resetCache();
+    try {
+      await vi.waitFor(() => expect(settled).toBe(true), { timeout: 500 });
+      expect(await operation).toMatchObject({ type: 'rejected', error: expect.any(Error) });
+      expect(producerSettled).toBe(true);
+      const first = await firstItem.promise;
+      if (first.done || first.value.type !== 'text') throw new Error('Missing owned text child');
+      expect(await first.value.completeness).toBe('partial');
+      expect(await first.value.chunks[Symbol.asyncIterator]().next()).toEqual({ done: true, value: undefined });
+      await queued;
+      expect(f.client.resetCache).toHaveBeenCalledOnce();
+      expect(f.client.interrupt).toHaveBeenCalledOnce();
+    } finally {
+      release.resolve();
+      // Also release the reproducer's resources when the regression is present.
+      await (await escaped.promise).return?.();
+      await operation;
+      await queued;
+    }
+  });
+
   it('keeps independent service instances out of each other\'s lane', async () => {
     const a = fixture(); const b = fixture(); const entered = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
     const held = a.provider.runChatOperation!({ signal: undefined, operation: async () => {
@@ -293,6 +356,52 @@ describe('hosted structured generation with the real service lane', () => {
       expect(f.owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
     } finally {
       release.resolve(); await outcome;
+    }
+  });
+
+  it('keeps accepted text but ignores structured events arriving after runtime replacement', async () => {
+    const f = fixture();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const remoteSettled = Promise.withResolvers<void>();
+    f.client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
+      entered.resolve();
+      await release.promise;
+      try {
+        await onEvent({ event: { type: 'text_delta', index: 0, text: 'stale' } });
+        await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+      } finally {
+        remoteSettled.resolve();
+      }
+    });
+    const old = turn({ provider: f.provider, model: 'fixture/old', tools: [] });
+    const outcome = old.run().then(value => ({ value }), error => ({ error }));
+    await entered.promise;
+    try {
+      await f.owner.service.restart();
+      expect(await outcome).toMatchObject({ error: { reason: 'restarted' } });
+      const fresh = turn({ provider: f.provider, model: 'fixture/fresh', tools: [] });
+      expect(await fresh.run()).toEqual({ type: 'finished', next: 'user' });
+      const before = structuredClone(fresh.history);
+      release.resolve();
+      await remoteSettled.promise;
+      await vi.waitFor(() => expect(old.history[0]).toMatchObject({
+        // Runtime retirement propagates as a lifecycle error to its caller;
+        // it does not record a user cancellation on the original history.
+        interruption: undefined,
+        parts: [{ type: 'text', text: 'accepted', completeness: 'partial' }],
+      }));
+      expect(fresh.history).toEqual(before);
+      expect(f.client.generateMessage).toHaveBeenCalledOnce();
+      expect(f.clients[1]!.generateMessage).toHaveBeenCalledOnce();
+      expect(f.owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
+    } finally {
+      release.resolve();
+      await outcome;
+      await remoteSettled.promise;
     }
   });
 

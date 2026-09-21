@@ -583,4 +583,77 @@ describe('structured generation through the real Comlink callback boundary', () 
       await client.dispose(); for (const callback of retained) callback[C.releaseProxy](); channel.port1.close(); channel.port2.close();
     }
   });
+
+  it.each(['dispose', 'worker-error', 'dispose-failure'] as const)('settles an accepted acknowledgement but ignores later structured events after %s', async retirement => {
+    const C = await vi.importActual<typeof import('comlink')>('comlink');
+    const channel = new MessageChannel();
+    type Callback = import('comlink').Remote<({ event }: { event: unknown }) => void | Promise<void>>;
+    const retained: Array<import('comlink').Remote<(...args: never[]) => unknown>> = [];
+    const accepted = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const remoteSettled = Promise.withResolvers<void>();
+    const api = {
+      // Mirrors the positional Comlink transport, including a queued callback
+      // that survives physical retirement in this controlled MessageChannel.
+      async generateText(_messages: unknown, chunk: typeof retained[number], calls: typeof retained[number], _params: unknown, _tools: unknown, _capture: unknown, _owner: unknown, event: Callback) {
+        retained.push(chunk, calls, event);
+        try {
+          await event({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
+          await event({ event: { type: 'text_delta', index: 0, text: 'retired' } });
+        } finally {
+          remoteSettled.resolve();
+        }
+      },
+    };
+    C.expose(api, channel.port1);
+    mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
+    const { createTransformersJsWorkerClient } = await import('./client-hosted');
+    const client = createTransformersJsWorkerClient();
+    const sink = vi.fn(async () => {
+      accepted.resolve();
+      await release.promise;
+    });
+    const pending = client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: 'retiring', onEvent: sink });
+    const outcome = pending.then(
+      () => ({ type: 'resolved' as const }),
+      (error: unknown) => ({ type: 'rejected' as const, error }),
+    );
+    try {
+      await MockWorker.latest.publishReady();
+      await accepted.promise;
+      switch (retirement) {
+      case 'dispose':
+        await client.dispose();
+        break;
+      case 'worker-error':
+        MockWorker.latest.dispatchEvent(new ErrorEvent('error', { message: 'Synthetic Worker failure' }));
+        break;
+      case 'dispose-failure': {
+        const failure = new Error('Synthetic physical termination failure');
+        mocks.terminate.mockImplementationOnce(() => {
+          throw failure;
+        });
+        await expect(client.dispose()).rejects.toBe(failure);
+        break;
+      }
+      default: {
+        const exhaustive: never = retirement;
+        throw new Error(`Unhandled retirement: ${exhaustive}`);
+      }
+      }
+      expect(await outcome).toMatchObject({ type: 'rejected', error: { reason: retirement === 'worker-error' ? 'worker-error' : 'disposed' } });
+      release.resolve();
+      await remoteSettled.promise;
+      expect(sink).toHaveBeenCalledExactlyOnceWith({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
+      expect(mocks.terminate).toHaveBeenCalledOnce();
+    } finally {
+      release.resolve();
+      await client.dispose().catch(() => undefined);
+      await outcome;
+      await remoteSettled.promise;
+      for (const callback of retained) callback[C.releaseProxy]();
+      channel.port1.close();
+      channel.port2.close();
+    }
+  });
 });
