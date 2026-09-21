@@ -19,7 +19,7 @@ describe('shared browser core adapter', () => {
     });
     try {
       const id = `virtual:llama-cpp-browser-core/${profile}`;
-      const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/core.mjs`);
+      const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
       const resolved = await server.environments.client.pluginContainer.resolveId(id);
       expect(resolved?.id).toBe(realPath);
       expect(server.config.optimizeDeps.exclude).toContain(id);
@@ -47,7 +47,7 @@ describe('shared browser core adapter', () => {
     try {
       const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
       cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
-      const relative = 'profiles/cpu-wasm32/core.mjs';
+      const relative = 'profiles/cpu-wasm32/browser/core.mjs';
       const data = readFileSync(path.join(artifact, relative), 'utf8') + '\n';
       writeFileSync(path.join(artifact, relative), data);
       // JSON here is an owned fixture; only change its existing reviewed record.
@@ -63,7 +63,7 @@ describe('shared browser core adapter', () => {
   });
   it('initializes real CPU Wasm from the original non-zero-offset byte view with no fetch or Node imports', async () => {
     const profile = 'cpu-wasm32';
-    const id = path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/core.mjs`);
+    const id = path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const source = transformBrowserCore({ source: readFileSync(id, 'utf8'), id, profile }).code;
     const binary = readFileSync(id.replace('core.mjs', 'core.wasm'));
     const storage = new Uint8Array(binary.length + 32);
@@ -92,6 +92,10 @@ describe('shared browser core adapter', () => {
     await factory({ wasmBinary: supplied, print() {}, printErr() {} });
     expect(instantiate).toHaveBeenCalledOnce();
     expect(instantiate.mock.calls[0]?.[0]).toBe(supplied);
+    await expect(factory({ printErr() {} })).rejects.toThrow('Browser core requires supplied wasmBinary');
+    await expect(factory({ wasmBinary: new Uint8Array(), printErr() {} })).rejects.toThrow('Browser core requires supplied wasmBinary');
+    await expect(factory({ wasmBinary: supplied.buffer, printErr() {} })).rejects.toThrow('Expected Wasm byte view');
+    expect(instantiate).toHaveBeenCalledOnce();
     expect(fetcher).not.toHaveBeenCalled();
   });
 });

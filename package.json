@@ -25,7 +25,7 @@
     "he": "^1.2.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
-    "llama-cpp-browser-core": "github:nwtgck/llama-cpp-browser-core#61e9c34b3970cb036e99e274f28d54f4db0b0629",
+    "llama-cpp-browser-core": "github:nwtgck/llama-cpp-browser-core#0a05a0ae05a2b13125cfaecc8407fa6bc200d061",
     "lucide-vue-next": "^0.562.0",
     "marked": "^18.0.5",
     "marked-highlight": "^2.2.4",

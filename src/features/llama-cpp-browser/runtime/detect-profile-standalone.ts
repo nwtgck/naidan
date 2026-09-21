@@ -43,7 +43,7 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
     return selected;
   } catch {
     // Required-capability failures never select CPU or Asyncify. Initialization still
-    // has the final say, including the pinned core's upstream version checks.
+    // has the final say on whether the selected browser artifact can initialize.
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
 }

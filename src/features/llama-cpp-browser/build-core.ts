@@ -8,27 +8,27 @@ import { profileSchema, type LlamaCppProfile } from './types';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed artifact commit: 61e9c34b3970cb036e99e274f28d54f4db0b0629.
+// Reviewed browser variant artifact commit: 0a05a0ae05a2b13125cfaecc8407fa6bc200d061.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 const coreHashes = {
-  'webgpu-wasm64-jspi': '1c3853d8672243155c87ad76adbe0615dc1ea8dda3511b19cc7ec323f04b5ee8',
-  'webgpu-wasm32-jspi': 'fc881a4036dc090bd947cec879e9ebcea7b54f83b39fbdfe30e189459802f738',
-  'webgpu-wasm32-asyncify': '4228f3f146ef747fa149f976caf35928e5908d88edf96c0ae7e86071ed3b99fd',
-  'cpu-wasm64': '2d9126fdffe538dd9b79acd44bdeb78189c3254c40d5d3c760b708335807bbb5',
-  'cpu-wasm32': '0c94cc55e07709a73bf24d0b11dc9b0a9ccbde5ab8387095a553ee3746825676',
+  'webgpu-wasm64-jspi': 'ff3786e68fa11050df3950980116e19988ef790da382b3eb3abd7ef2c5424921',
+  'webgpu-wasm32-jspi': 'c676739632d85c50ab7798df591d7fe4b59a5dedfb068756837bf775e9a6f785',
+  'webgpu-wasm32-asyncify': 'ec17b1a5397bc3cfb2481996f472ce01446c5fc3605c59780a439bfc07a7c0df',
+  'cpu-wasm64': '6e499ce22b0eea54a204713d3c8fa99b5971ac9ccf44edc4d7767f50ef7de298',
+  'cpu-wasm32': 'd5dc3e3115cacaff3e7dab6122b96b4c77f1a69cc7aee21b8b2844ff31a6bc86',
 } as const satisfies Record<LlamaCppProfile, string>;
 // Standalone selects either embedded JSPI artifact through Worker capability checks.
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
 const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '404b128b7ba76208a8ec6d3f5726572d44139ee95051103233577124853ce090' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'd834485354f43d03d0cd32d87e80a79473699f2505f2ddd1e58eed032c49c2ea' },
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '7c6ca268e5fe66ac884d86ba4d71721785efa7f8c8a5c4db02d43ce182fa5d4a' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'f00a014d118145ed53182cf7ff469f0f7ba4f007795a40a53e1320423904d53b' },
 } as const;
-const manifestSchema = z.object({ files: z.array(z.object({
+const manifestSchema = z.object({ formatVersion: z.literal(2), files: z.array(z.object({
   path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
 })) });
 
-/** Version-bound packaging adapter. The upstream browser/version checks are preserved. */
+/** Version-bound adapter for the browser variant, which has no upstream version guards. */
 export function transformBrowserCore({ source, id, profile }: { source: string, id: string, profile: LlamaCppProfile }) {
   if (createHash('sha256').update(source).digest('hex') !== coreHashes[profile]) {
     throw new Error('Unreviewed llama.cpp browser core; review the pinned packaging adapter before updating it');
@@ -44,14 +44,6 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     if (from < 0 || to < 0) throw new Error('Browser core adapter range changed');
     replace({ before: source.slice(from, to), after: replacement });
   }
-  replace({
-    before: 'var ENVIRONMENT_IS_NODE=globalThis.process?.versions?.node&&globalThis.process?.type!="renderer";',
-    after: '/* Naidan fix: hosted and standalone use the browser runtime, never Node.js. */var ENVIRONMENT_IS_NODE=false;',
-  });
-  replace({
-    before: 'if(ENVIRONMENT_IS_NODE){const{createRequire}=await import("node:module");var require=createRequire(import.meta.url)}',
-    after: '/* Naidan fix: exclude Node.js imports before Vite dependency analysis. */',
-  });
   replaceBetween({
     start: 'var readAsync,readBinary;', end: 'var out=console.log.bind(console);',
     replacement: '/* Naidan fix: Naidan supplies wasmBinary in every build mode; external runtime reads must never be attempted. */var readBinary=()=>{throw new Error("Browser core requires supplied wasmBinary")};var readAsync=async()=>readBinary();',
@@ -68,16 +60,6 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     before: 'if(file==wasmBinaryFile&&wasmBinary){return new Uint8Array(wasmBinary)}',
     after: '/* Naidan fix: keep the supplied byte view, including its offset, without copying the complete Wasm. */if(file==wasmBinaryFile&&wasmBinary){assert(ArrayBuffer.isView(wasmBinary)&&wasmBinary.BYTES_PER_ELEMENT===1,"Expected Wasm byte view");return wasmBinary}',
   });
-  switch (profile) {
-  case 'cpu-wasm32': case 'webgpu-wasm32-jspi': case 'webgpu-wasm32-asyncify':
-    replace({
-      before: 'if(ENVIRONMENT_IS_NODE){var nodeCrypto=require("node:crypto");return view=>(nodeCrypto.randomFillSync(view),0)}',
-      after: '/* Naidan fix: keep the existing browser random source, without a Node.js dependency. */',
-    });
-    break;
-  case 'cpu-wasm64': case 'webgpu-wasm64-jspi': break;
-  default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
-  }
   return { code: transformed.toString(), map: transformed.generateMap({ source: id, includeContent: true, hires: true }) };
 }
 
@@ -122,14 +104,14 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   })();
   const profiles: readonly LlamaCppProfile[] = isStandalone ? standaloneProfiles : profileSchema.options;
   const cores = profiles.map(profile => {
-    const core = readArtifact({ relative: `profiles/${profile}/core.mjs` });
+    const core = readArtifact({ relative: `profiles/${profile}/browser/core.mjs` });
     if (core.sha256 !== coreHashes[profile]) throw new Error(`Unreviewed browser core artifact: ${profile}`);
     // Validate at plugin creation too: an optimizer cache must not hide a changed input.
     const transformed = transformBrowserCore({ source: core.data.toString('utf8'), id: core.filePath, profile });
     return { profile, core, transformed };
   });
   const embeddedBinaries = isStandalone ? standaloneProfiles.map(profile => {
-    const wasm = readArtifact({ relative: `profiles/${profile}/core.wasm` });
+    const wasm = readArtifact({ relative: `profiles/${profile}/browser/core.wasm` });
     const expected = standaloneWasm[profile];
     if (wasm.sha256 !== expected.sha256) throw new Error('Unreviewed standalone Wasm artifact');
     return { virtualId: expected.virtualId, filePath: wasm.filePath, bytes: wasm.bytes, sha256: wasm.sha256 };

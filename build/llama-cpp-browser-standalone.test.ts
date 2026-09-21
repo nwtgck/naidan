@@ -22,9 +22,9 @@ import { BOUNDARY_STRING_LOCALES } from './boundary-strings/message-catalog';
 import { createZipPackages } from './zip-packages';
 
 const repo = process.cwd();
-const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/core.mjs');
+const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs');
 const binaryId = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser';
-const core32Id = path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/core.mjs');
+const core32Id = path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
 const binary32Id = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi';
 function closure({ entry, chunks, dynamic }: { entry: Rollup.OutputChunk, chunks: Rollup.OutputChunk[], dynamic: boolean }): Set<string> {
   const found = new Set<string>();
@@ -62,12 +62,12 @@ function evaluateDataModule({ source }: { source: string }): Record<string, unkn
 }
 
 describe('pinned standalone native artifacts', () => {
-  it('retains upstream browser checks and rejects an unreviewed generated core', () => {
+  it('uses the browser variant without upstream version guards and rejects an unreviewed generated core', () => {
     const source = readFileSync(coreId, 'utf8');
     const transformed = transformBrowserCore({ source, id: coreId, profile: 'webgpu-wasm64-jspi' }).code;
     const guardsEnd = source.indexOf('var ENVIRONMENT_IS_WEB=');
     expect(transformed.slice(0, guardsEnd)).toBe(source.slice(0, guardsEnd));
-    expect(transformed).toContain('This page was compiled without support for Safari browser');
+    expect(transformed).not.toContain('This page was compiled without support for Safari browser');
     expect(transformed).not.toContain('import("node:module")');
     expect(transformed).not.toContain('require("node:fs")');
     expect(transformed).not.toContain('new URL("core.wasm",import.meta.url)');
@@ -78,7 +78,8 @@ describe('pinned standalone native artifacts', () => {
     const plugin = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' }).corePlugin;
     const load = plugin.load;
     if (typeof load !== 'function') throw new Error('Expected a load hook');
-    expect(() => load.call({} as never, path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/core.mjs`))).toThrow('Unavailable llama.cpp artifact');
+    expect(() => load.call({} as never, path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`))).toThrow('Unavailable llama.cpp artifact');
+    expect(() => load.call({} as never, path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/test/core.mjs'))).toThrow('Unavailable llama.cpp artifact');
   });
   it('registers both reviewed JSPI binaries and core imports for standalone capability selection', () => {
     const { corePlugin, embeddedBinaries } = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
@@ -90,8 +91,8 @@ describe('pinned standalone native artifacts', () => {
     if (typeof resolve !== 'function') throw new Error('Expected a resolve hook');
     for (const profile of ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi']) {
       expect(resolve.call({} as never, `virtual:llama-cpp-browser-core/${profile}`, undefined, {} as never))
-        .toBe(path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/core.mjs`));
-      expect(embeddedBinaries.some(binary => binary.filePath === path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/core.wasm`))).toBe(true);
+        .toBe(path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`));
+      expect(embeddedBinaries.some(binary => binary.filePath === path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`))).toBe(true);
     }
   });
   it('keeps complete native legal comments without copying implementation bodies', () => {

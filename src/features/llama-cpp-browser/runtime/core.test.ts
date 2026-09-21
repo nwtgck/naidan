@@ -11,7 +11,7 @@ describe('native call adaptation', () => {
   beforeAll(async () => {
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({ profile: 'cpu-wasm32', baseURL, moduleOptions: {
-      wasmBinary: await readFile(new URL('cpu-wasm32/core.wasm', baseURL)), print() {}, printErr() {},
+      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {},
     } });
   });
   afterEach(() => vi.restoreAllMocks());
@@ -23,7 +23,7 @@ describe('native call adaptation', () => {
     const load = vi.spyOn(artifacts, 'loadCoreModule').mockImplementationOnce(args => original({ ...args, profile: 'cpu-wasm32' }));
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/profiles') + '/');
     const jspiCore = await createCore({ profile: 'webgpu-wasm32-jspi', baseURL, moduleOptions: {
-      wasmBinary: await readFile(new URL('cpu-wasm32/core.wasm', baseURL)), print() {}, printErr() {},
+      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {},
     } });
     const ccall = vi.spyOn(jspiCore.module, 'ccall');
     const pointer = jspiCore.allocRecord({ name: 'llama_model_params' });

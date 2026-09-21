@@ -2,7 +2,7 @@ import { loadCoreModule, type CoreModuleOptions } from '@/features/llama-cpp-bro
 import { z } from 'zod';
 import rawSchema from 'llama-cpp-browser-core/api/schema.mjs';
 import type { LowLevelFunctions } from 'llama-cpp-browser-core/api/functions.js';
-import type { MainModule } from 'llama-cpp-browser-core/profiles/cpu-wasm64/core.mjs';
+import type { MainModule } from 'llama-cpp-browser-core/profiles/cpu-wasm64/browser/core.mjs';
 import type { ChatParams, NativeChat } from './chat-bindings';
 import type { LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 
