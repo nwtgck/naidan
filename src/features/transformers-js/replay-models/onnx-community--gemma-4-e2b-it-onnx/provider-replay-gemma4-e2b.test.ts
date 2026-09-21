@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { captureProviderChat, type ProviderChatCapture } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
+import { captureProviderChat, type CapturedChatRequest, type ProviderChatCapture } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
+import { closeProviderReplayCaptures, createReplayImageAttachment, runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
 import { providerReplayCatalog } from './provider-evidence-catalog';
 import { assembleProviderSequenceEvidence } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
 import { createProviderRequestReplay } from '@/features/transformers-js/replay-models/support/provider-replay-request';
@@ -8,10 +9,9 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { Tool } from '@/01-models/tool';
-import { formatToolExecutionOutcomeForLm } from '@/01-models/tool';
-import type { ChatMessage, ChatContent } from '@/01-models/types';
+import type { ChatMessage } from '@/01-models/types';
 import { toMessageId, toToolCallId } from '@/01-models/ids';
-import { buildChatGenerationMessages } from '@/logic/build-chat-generation-messages';
+import { createChatMessageSnapshot } from '@/01-models/chat-message';
 import imageJson from './provider-image-input-only.evidence.json';
 import { createProviderReplayTestImagePlatform } from '@/features/transformers-js/replay-models/support/provider-replay-test-image-platform';
 import inputJson from './provider-template-inputs.evidence.json';
@@ -22,6 +22,75 @@ import budgetContinuityJson from './provider-supplied-history-budget-prefix.evid
 import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/transformers-js/replay-models/support/provider-replay-test-causal-gate';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
+import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
+
+function textMessage({ id, role, text }: {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  text: string;
+}): ChatMessage {
+  return {
+    id: toMessageId({ raw: id }),
+    role,
+    parts: [{ id: `${id}_text`, type: 'text', text, completeness: 'complete' }],
+  };
+}
+
+function capturedTextChunks({ capture, type }: {
+  capture: ProviderChatCapture;
+  type: 'text' | 'reasoning';
+}): string[] {
+  return capture.snapshot().parts.flatMap(part => part.type === type ? part.chunks : []);
+}
+
+function capturedToolCalls({ capture }: { capture: ProviderChatCapture }) {
+  return capture.snapshot().parts.flatMap(part => part.type === 'tool_call' ? [part.toolCall] : []);
+}
+
+function expectEmptyInterruptedCapture({ capture }: { capture: ProviderChatCapture }): void {
+  const observed = capture.snapshot();
+  expect(observed.settlement).toEqual({ status: 'fulfilled' });
+  expect(observed.parts).toEqual([]);
+  expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+  expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
+}
+
+function expectPartialTextCapture({ capture, type, text }: {
+  capture: ProviderChatCapture;
+  type: 'text' | 'reasoning';
+  text: string;
+}): void {
+  const observed = capture.snapshot();
+  expect(observed.settlement).toEqual({ status: 'fulfilled' });
+  expect(observed.parts).toEqual([
+    expect.objectContaining({ type, index: 0, completeness: 'partial' }),
+  ]);
+  expect(capturedTextChunks({ capture, type }).join('')).toBe(text);
+  expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+  expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind))
+    .toEqual(['part', 'part-complete', 'result', 'settled']);
+}
+
+function expectDeliveredErrorCapture({ capture, message }: {
+  capture: ProviderChatCapture;
+  message: string;
+}): void {
+  const observed = capture.snapshot();
+  expect(observed.settlement).toEqual({ status: 'fulfilled' });
+  expect(observed.parts).toEqual([]);
+  expect(observed.result).toMatchObject({ type: 'error', error: { message } });
+  expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
+}
+
+function recordedTextMessages({ messages }: {
+  messages: readonly { role: 'system' | 'user' | 'assistant'; content: string }[];
+}): ChatMessage[] {
+  return messages.map((message, index) => {
+    const { role, content, ...unhandled } = message;
+    unhandled satisfies Record<PropertyKey, never>;
+    return textMessage({ id: `message_${index}`, role, text: content });
+  });
+}
 
 const inputEvidence = z.object({
   schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
@@ -288,7 +357,7 @@ describe('Gemma4 E2B Provider / basic', () => {
         provider: replay.harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: scenario.messages,
+          messages: recordedTextMessages({ messages: scenario.messages }),
           tools: [],
           parameters: {
             temperature: 0,
@@ -301,19 +370,15 @@ describe('Gemma4 E2B Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(INPUT_BOUNDARY);
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
       replay.verifyNativeInput();
       expect(replay.inputs).toEqual([scenario.inputTokenIds]);
       expect(chunks).toEqual([]);
@@ -326,8 +391,7 @@ describe('Gemma4 E2B Provider / basic', () => {
       expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
       expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
     } finally {
-      await replay.harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
   it('delivers the recorded first-turn prefix through the actual processor and streamer before Provider settlement', async () => {
@@ -365,7 +429,7 @@ describe('Gemma4 E2B Provider / basic', () => {
         provider: harness.provider,
         request: {
           model: generationEvidence.identity.modelId,
-          messages: generationEvidence.scenario.messages,
+          messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
           tools: [],
           parameters: {
             ...generationEvidence.scenario.lmParameters,
@@ -376,20 +440,15 @@ describe('Gemma4 E2B Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
-      const settledChunks = [...chunks];
+      const settledChunks = capturedTextChunks({ capture, type: 'text' });
+      expectPartialTextCapture({ capture, type: 'text', text: settledChunks.join('') });
       expect(releasedTokenCount).toBe(16);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.processors).toHaveLength(1);
@@ -398,13 +457,9 @@ describe('Gemma4 E2B Provider / basic', () => {
       expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
       // Exact original stream chunks; no timer or drain turns an unsettled
       // callback transport into a successful public generation trace.
-      expect(settledChunks).toEqual([
-        'Please ', 'provide ', 'the ', '**context** ', 'or ', '**purpose** ',
-        'of ', 'the ', '"template ', 'probe ', 'user',
-      ]);
+      expect(settledChunks.join('')).toBe(generationEvidence.expectedProviderSemantic.visibleContent);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
@@ -433,35 +488,21 @@ describe('Gemma4 E2B Provider / basic', () => {
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-          ],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual(["Please provide the **context** or **purpose** of the \"template probe user"]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expectPartialTextCapture({ capture, type: 'text', text: "Please provide the **context** or **purpose** of the \"template probe user" });
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
@@ -494,38 +535,23 @@ describe('Gemma4 E2B Provider / system', () => {
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
           messages: [
-            {
-              role: "system",
-              content: "Template probe system instruction.",
-            },
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
+            textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
+            textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
           ],
           tools: [],
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual(["Please"]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
@@ -569,7 +595,7 @@ describe('Gemma4 E2B Provider / history', () => {
         provider: harness.provider,
         request: {
           model: continuity.identity.modelId,
-          messages: continuity.scenario.messages,
+          messages: recordedTextMessages({ messages: continuity.scenario.messages }),
           tools: [],
           parameters: {
             ...continuity.scenario.lmParameters,
@@ -580,20 +606,20 @@ describe('Gemma4 E2B Provider / history', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
-      const settledChunks = [...chunks];
+      const settledChunks = capturedTextChunks({ capture, type: 'text' });
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, completeness: 'complete' })]);
+      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind))
+        .toEqual(['part', 'part-complete', 'result', 'settled']);
       expect(releasedTokenCount).toBe(12);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.processors).toHaveLength(1);
@@ -602,10 +628,9 @@ describe('Gemma4 E2B Provider / history', () => {
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
       // Recorded output, not a claim that native stop-cause selection or a
       // previous Provider callback completed successfully in this harness.
-      expect(settledChunks).toEqual(['**What ', 'kind ', 'of ', 'template ', 'are ', 'you ', 'looking ', 'for?**']);
+      expect(settledChunks.join('')).toBe(continuity.expectedProviderSemantic.visibleContent);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
   it('preserves the separate 16-token continuation capture without inferring why native generation stopped', async () => {
@@ -658,7 +683,7 @@ describe('Gemma4 E2B Provider / history', () => {
         provider: harness.provider,
         request: {
           model: budgetContinuity.identity.modelId,
-          messages: budgetContinuity.scenario.messages,
+          messages: recordedTextMessages({ messages: budgetContinuity.scenario.messages }),
           tools: [],
           parameters: {
             ...budgetContinuity.scenario.lmParameters,
@@ -669,20 +694,18 @@ describe('Gemma4 E2B Provider / history', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
-      const settledChunks = [...chunks];
+      const settledChunks = capturedTextChunks({ capture, type: 'text' });
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, completeness: 'complete' })]);
+      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
       expect(releasedTokenCount).toBe(16);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.processors).toHaveLength(1);
@@ -691,10 +714,9 @@ describe('Gemma4 E2B Provider / history', () => {
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
       expect(budgetContinuitySource.originalStreamChunks).toEqual(['**What ', 'kind ', 'of ', 'template ', 'are ', 'you ', 'looking ', 'for?**']);
-      expect(settledChunks).toEqual(budgetContinuitySource.originalStreamChunks);
+      expect(settledChunks.join('')).toBe(budgetContinuitySource.originalStreamChunks.join(''));
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
@@ -724,42 +746,24 @@ describe('Gemma4 E2B Provider / history', () => {
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
           messages: [
-            {
-              role: "user",
-              content: "Template probe first user message.",
-            },
-            {
-              role: "assistant",
-              content: "Template probe assistant response.",
-            },
-            {
-              role: "user",
-              content: "Template probe second user message.",
-            },
+            textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
+            textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
+            textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
           ],
           tools: [],
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual(["Please"]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
@@ -769,12 +773,8 @@ describe('Gemma4 E2B Provider / independent', () => {
     const captures: ProviderChatCapture[] = [];
     let firstCapture: ProviderChatCapture | undefined;
     let secondCapture: ProviderChatCapture | undefined;
-    const nextMessages: ChatMessage[] = [
-      {
-        role: 'user',
-        content: 'A separate synthetic Gemma conversation.',
-      },
-    ];
+    const nextMessages: ChatMessage[] = [textMessage({ id: 'message_0', role: 'user', text: 'A separate synthetic Gemma conversation.' })];
+    const nextTemplateMessages = [{ role: 'user' as const, content: 'A separate synthetic Gemma conversation.' }];
     const nextPrompt = `\
 <bos><|turn>user
 A separate synthetic Gemma conversation.<turn|>
@@ -820,7 +820,7 @@ A separate synthetic Gemma conversation.<turn|>
         provider: harness.provider,
         request: {
           model: generationEvidence.identity.modelId,
-          messages: generationEvidence.scenario.messages,
+          messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
           tools: [],
           parameters: {
             ...generationEvidence.scenario.lmParameters,
@@ -831,19 +831,14 @@ A separate synthetic Gemma conversation.<turn|>
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(firstCapture);
       await firstCapture.completion;
-      const firstObserved = firstCapture.snapshot();
-      expect(firstObserved.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(firstObserved.preStartChunks).toEqual([]);
-      expect(firstObserved.responses).toHaveLength(1);
-      expect(firstObserved.toolCalls).toEqual([]);
-      expect(firstObserved.toolResults).toEqual([]);
-      expect(firstObserved.toolEvents).toEqual([]);
-      expect(firstObserved.lateEvents).toEqual([]);
-      expect(firstObserved.chunks.join('')).toBe(generationEvidence.expectedProviderSemantic.visibleContent);
+      expectPartialTextCapture({ capture: firstCapture, type: 'text', text: generationEvidence.expectedProviderSemantic.visibleContent });
       const ortCountAfterFirst = harness.observations.ortCalls.length;
       expect(harness.observations.processors).toHaveLength(1);
       const processorAfterFirst = harness.observations.processors[0];
@@ -864,10 +859,14 @@ A separate synthetic Gemma conversation.<turn|>
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(secondCapture);
-      await expect(secondCapture.completion).rejects.toThrow(stop);
+      await secondCapture.completion;
+      expectDeliveredErrorCapture({ capture: secondCapture, message: stop });
       const tokenizer = contexts[1]!.tokenizer;
       expect(stoppedInputs).toHaveLength(1);
       const native = stoppedInputs[0];
@@ -879,7 +878,7 @@ A separate synthetic Gemma conversation.<turn|>
       const processor = harness.observations.processors[0];
       if (!processor) throw new Error('Expected actual loaded Gemma processor');
       expect(tokenizer).toBe(processor.tokenizer);
-      expect(processor.apply_chat_template(nextMessages, { add_generation_prompt: true })).toBe(nextPrompt);
+      expect(processor.apply_chat_template(nextTemplateMessages, { add_generation_prompt: true })).toBe(nextPrompt);
       const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
       expect(input.type).toBe('int64');
       expect(input.location).toBe('cpu');
@@ -899,17 +898,8 @@ A separate synthetic Gemma conversation.<turn|>
       expect(native.isTextStreamer).toBe(true);
       expect(native.stoppingCriteriaType).toBe('function');
       expect(native.pastIsNull).toBe(true);
-      const secondObserved = secondCapture.snapshot();
-      expect(secondObserved.settlement).toMatchObject({ status: 'rejected' });
-      expect(secondObserved.preStartChunks).toEqual([]);
-      expect(secondObserved.responses).toHaveLength(1);
-      expect(secondObserved.toolCalls).toEqual([]);
-      expect(secondObserved.toolResults).toEqual([]);
-      expect(secondObserved.toolEvents).toEqual([]);
-      expect(secondObserved.lateEvents).toEqual([]);
-      const secondChunks = secondObserved.chunks;
       expect(firstReleased).toBe(16);
-      expect(secondChunks).toEqual([]);
+      expect(capturedTextChunks({ capture: secondCapture, type: 'text' })).toEqual([]);
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
       expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
@@ -927,8 +917,7 @@ A separate synthetic Gemma conversation.<turn|>
       expect(harness.observations.localImageFetchCalls).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
@@ -957,31 +946,19 @@ A separate synthetic Gemma conversation.<turn|>
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-          ],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: firstParameters,
           signal: firstSignal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(firstCapture);
       await firstCapture.completion;
       replay.endNativeRequest();
-      const firstObserved = firstCapture.snapshot();
-      expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
-      const { responses: firstResponses, preStartChunks: firstEarlyChunks, toolCalls: firstToolCalls, toolResults: firstToolResults, toolEvents: firstToolEvents } = firstObserved;
-      const firstOrder = firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(firstResponses.map(chunks => chunks.join(''))).toEqual(["Please provide the **context** or **purpose** of the \"template probe user"]);
-      expect(firstEarlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(firstOrder).toEqual(["assistant-start", "settled"]);
-      expect(firstToolEvents).toEqual([]);
-      expect(firstToolCalls).toEqual([]);
-      expect(firstToolResults).toEqual([]);
+      const firstText = "Please provide the **context** or **purpose** of the \"template probe user";
+      expectPartialTextCapture({ capture: firstCapture, type: 'text', text: firstText });
       const nextSignal = new AbortController().signal;
       const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
         temperature: 0,
@@ -1000,38 +977,21 @@ A separate synthetic Gemma conversation.<turn|>
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
           messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-            {
-              role: "assistant",
-              content: firstResponses[0]!.join(''),
-            },
-            {
-              role: "user",
-              content: "Continue the synthetic conversation with a short response.",
-            },
+            textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
+            textMessage({ id: 'message_1', role: 'assistant', text: firstText }),
+            textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
           ],
           tools: [],
           parameters: nextParameters,
           signal: nextSignal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(nextCapture);
       await nextCapture.completion;
       replay.endNativeRequest();
-      const nextObserved = nextCapture.snapshot();
-      expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
-      const { responses: nextResponses, preStartChunks: nextEarlyChunks, toolCalls: nextToolCalls, toolResults: nextToolResults, toolEvents: nextToolEvents } = nextObserved;
-      const nextOrder = nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(nextResponses.map(chunks => chunks.join(''))).toEqual(["Please provide the **previous part of the conversation** or the **topic** you"]);
-      expect(nextEarlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(nextOrder).toEqual(["assistant-start", "settled"]);
-      expect(nextToolEvents).toEqual([]);
-      expect(nextToolCalls).toEqual([]);
-      expect(nextToolResults).toEqual([]);
+      expectPartialTextCapture({ capture: nextCapture, type: 'text', text: "Please provide the **previous part of the conversation** or the **topic** you" });
       const independentSignal = new AbortController().signal;
       const independentParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
         temperature: 0,
@@ -1049,35 +1009,21 @@ A separate synthetic Gemma conversation.<turn|>
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "A separate synthetic capture conversation.",
-            },
-          ],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "A separate synthetic capture conversation." })],
           tools: [],
           parameters: independentParameters,
           signal: independentSignal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(independentCapture);
       await independentCapture.completion;
       replay.endNativeRequest();
-      const independentObserved = independentCapture.snapshot();
-      expect(independentObserved.settlement).toEqual({ status: 'fulfilled' });
-      const { responses: independentResponses, preStartChunks: independentEarlyChunks, toolCalls: independentToolCalls, toolResults: independentToolResults, toolEvents: independentToolEvents } = independentObserved;
-      const independentOrder = independentObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(independentResponses.map(chunks => chunks.join(''))).toEqual(["Please"]);
-      expect(independentEarlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(independentOrder).toEqual(["assistant-start", "settled"]);
-      expect(independentToolEvents).toEqual([]);
-      expect(independentToolCalls).toEqual([]);
-      expect(independentToolResults).toEqual([]);
+      expectPartialTextCapture({ capture: independentCapture, type: 'text', text: 'Please' });
       replay.assertComplete({ requests: 3, nativeCalls: 3 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
@@ -1101,12 +1047,8 @@ Template probe user message.<turn|>
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
     const replay = await createGemmaInputReplay();
-    const messages = [
-      {
-        role: 'user',
-        content: 'Template probe user message.',
-      },
-    ];
+    const templateMessages = [{ role: 'user' as const, content: 'Template probe user message.' }];
+    const messages = [textMessage({ id: 'message_0', role: 'user', text: 'Template probe user message.' })];
     try {
       await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
       const processor = replay.harness.observations.processors[0]!;
@@ -1114,7 +1056,7 @@ Template probe user message.<turn|>
       if (tokenizer === undefined) throw new Error('Expected actual selected tokenizer');
       expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(toolInputEvidence.selectedTemplateSha256);
       const nativeOptions = { add_generation_prompt: true, enable_thinking: enableThinking };
-      expect(processor.apply_chat_template(messages, nativeOptions)).toBe(expectedPrompt);
+      expect(processor.apply_chat_template(templateMessages, nativeOptions)).toBe(expectedPrompt);
       const expectedIds = tokenizer.encode(expectedPrompt, { add_special_tokens: false });
       capture = captureProviderChat({
         provider: replay.harness.provider,
@@ -1133,19 +1075,15 @@ Template probe user message.<turn|>
               effort,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(INPUT_BOUNDARY);
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.toolEvents).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
       expect(chunks, 'Input-only reasoning control must not release output').toEqual([]);
       replay.verifyNativeInput();
       expect(replay.inputs).toEqual([expectedIds]);
@@ -1153,9 +1091,8 @@ Template probe user message.<turn|>
       expect(replay.harness.observations.forbiddenTransport).toEqual([]);
       expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await replay.harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
-      expect(capture?.snapshot().chunks, 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
+      expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
@@ -1184,35 +1121,21 @@ Template probe user message.<turn|>
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-          ],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual(["Please"]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
   it('reasoning: preserves the recorded low-effort request and its bounded native channel prefix', async () => {
@@ -1241,35 +1164,21 @@ Template probe user message.<turn|>
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-          ],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses).toEqual([[]]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expectEmptyInterruptedCapture({ capture });
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
   it('reasoning: preserves the recorded medium-effort request and its bounded native channel prefix', async () => {
@@ -1298,35 +1207,21 @@ Template probe user message.<turn|>
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-          ],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses).toEqual([[]]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expectEmptyInterruptedCapture({ capture });
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
   it('reasoning: preserves the recorded high-effort request and its bounded native channel prefix', async () => {
@@ -1355,35 +1250,21 @@ Template probe user message.<turn|>
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-          ],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses).toEqual([[]]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expectEmptyInterruptedCapture({ capture });
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
@@ -1402,22 +1283,25 @@ Partial` });
     try {
       capture = captureProviderChat({ provider: harness.provider, request: {
         model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [{ role: 'user', content: 'Synthetic failed thought control.' }],
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic failed thought control.' })],
         tools: [],
+        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+          frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'high' } },
+        signal: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
       } });
-      await expect(capture.completion).rejects.toThrow('Synthetic native failure after partial thought');
+      await capture.completion;
       const observed = capture.snapshot();
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual(['<think>Partial</think>']);
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['assistant-start', 'settled']);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.parts).toEqual([expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'partial' })]);
+      expect(capturedTextChunks({ capture, type: 'reasoning' }).join('')).toBe('Partial');
+      expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic native failure after partial thought' } });
+      expect(capturedToolCalls({ capture })).toEqual([]);
       expect(inputs).toHaveLength(1);
       expect(inputs[0]!.pastIsNull).toBe(true);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
     } finally {
-      await harness.close();
-      expect(capture?.snapshot().lateEvents).toEqual([]);
+      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
   }, 30_000);
 
@@ -1451,50 +1335,55 @@ Continue.<turn|>
 Reason<channel|>Answer<turn|>` });
     } });
     try {
-      const tools: Tool[] = toolMode === 'disabled' ? [] : [{ name: 'probe', description: 'Must not execute.', parametersSchema: z.object({}),
-        execute: async ({ args }) => {
-          executions.push(structuredClone(args)); return { status: 'success', content: 'Must not execute.' };
-        } }];
+      const tools: CapturedChatRequest['tools'] = toolMode === 'disabled' ? [] : [{
+        name: 'probe', description: 'Must not execute.', parameters: { type: 'object', properties: {}, additionalProperties: false },
+      }];
       const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
         frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'high' as const } };
       const capture = captureProviderChat({ provider: harness.provider, request: {
         model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [{ role: 'user', content: 'Synthetic thinking control.' }],
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' })],
         tools, parameters,
+        signal: undefined, readBinaryObject: undefined, debug: undefined,
       } });
       captures.push(capture);
       await capture.completion;
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses.map(response => response.join(''))).toEqual(['<think>Reason</think>Answer']);
-      expect(observed.toolCalls).toEqual([]);
-      expect(observed.toolResults).toEqual([]);
+      expect(observed.parts).toEqual([
+        expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'complete' }),
+        expect.objectContaining({ type: 'text', index: 1, completeness: 'complete' }),
+      ]);
+      expect(capturedTextChunks({ capture, type: 'reasoning' }).join('')).toBe('Reason');
+      expect(capturedTextChunks({ capture, type: 'text' }).join('')).toBe('Answer');
+      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+      expect(capturedToolCalls({ capture })).toEqual([]);
       expect(executions).toEqual([]);
-      expect(observed.preStartChunks).toEqual([]);
       const nextCapture = captureProviderChat({ provider: harness.provider, request: {
         model: 'onnx-community/gemma-4-E2B-it-ONNX',
         messages: [
-          { role: 'user', content: 'Synthetic thinking control.' },
-          { role: 'assistant', content: observed.responses[0]!.join('') },
-          { role: 'user', content: 'Continue.' },
+          textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' }),
+          { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
+            { id: 'message_1_reasoning', type: 'reasoning', text: 'Reason', completeness: 'complete' },
+            { id: 'message_1_text', type: 'text', text: 'Answer', completeness: 'complete' },
+          ] },
+          textMessage({ id: 'message_2', role: 'user', text: 'Continue.' }),
         ],
         tools, parameters,
+        signal: undefined, readBinaryObject: undefined, debug: undefined,
       } });
       captures.push(nextCapture);
-      await expect(nextCapture.completion).rejects.toThrow('Synthetic next-input boundary; no continuation output');
-      expect(nextCapture.snapshot().responses).toEqual([[]]);
-      expect(nextCapture.snapshot().toolCalls).toEqual([]);
+      await nextCapture.completion;
+      expectDeliveredErrorCapture({ capture: nextCapture, message: 'Synthetic next-input boundary; no continuation output' });
       expect(nativeInputs).toHaveLength(2);
       expect(expectedNextInputs).toHaveLength(1);
       const input = nativeInputs[1]!.tensors.input_ids;
       if (!input.isTensor) throw new Error('Expected detached real next-input tensor');
       expect(Array.from(input.data, Number)).toEqual(expectedNextInputs[0]);
       expect(nativeInputs.map(input => input.pastIsNull), 'Gemma is stateless; this is input fidelity, not owned KV reuse').toEqual([true, true]);
-      expect(captures.flatMap(item => item.snapshot().lateEvents)).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
-      await harness.close();
-      expect(captures.flatMap(item => item.snapshot().lateEvents)).toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       expect(executions).toEqual([]);
     }
   }, 30_000);
@@ -1519,8 +1408,12 @@ describe('Gemma4 E2B Provider / tools', () => {
         provider: replay.harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: scenario.messages,
-          tools: [tool],
+          messages: recordedTextMessages({ messages: scenario.messages }),
+          tools: [{
+            name: tool.name,
+            description: tool.description,
+            parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+          }],
           parameters: {
             temperature: 0,
             topP: 1,
@@ -1532,16 +1425,15 @@ describe('Gemma4 E2B Provider / tools', () => {
               effort: undefined,
             },
           },
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(INPUT_BOUNDARY);
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
       expect(chunks, 'Input-only test must not emit generated content').toEqual([]);
       expect(execute).not.toHaveBeenCalled();
       expect(replay.harness.observations.processors).toHaveLength(1);
@@ -1569,9 +1461,8 @@ describe('Gemma4 E2B Provider / tools', () => {
       replay.verifyNativeInput();
       expect(replay.inputs).toEqual([scenario.inputTokenIds]);
     } finally {
-      await replay.harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
-      expect(capture?.snapshot().chunks, 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
+      expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('retains structured tool-call and result association instead of flattening them into ordinary conversation text', async () => {
@@ -1583,21 +1474,29 @@ describe('Gemma4 E2B Provider / tools', () => {
     const execute = vi.fn<Tool['execute']>(async () => {
       throw new Error('This supplied-history matrix did not capture a natural tool loop');
     });
-    const publicTool: Tool = {
+    const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     const publicMessages: ChatMessage[] = [
-      scenario.messages[0],
-      { role: 'assistant', content: '', tool_calls: [{
-        id: toToolCallId({ raw: 'call_template_probe_1' }), type: 'function',
-        function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      }] },
-      { role: 'tool', content: scenario.messages[2].content, tool_call_id: toToolCallId({ raw: 'call_template_probe_1' }) },
+      textMessage({ id: 'message_0', role: 'user', text: scenario.messages[0].content }),
+      { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
+        { id: 'message_1_text', type: 'text', text: '', completeness: 'complete' },
+        { id: 'message_1_call', type: 'tool_call', toolCall: {
+          id: toToolCallId({ raw: 'call_template_probe_1' }), type: 'function',
+          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        } },
+      ] },
+      { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
+        { id: 'message_2_result', type: 'tool_result', result: {
+          toolCallId: toToolCallId({ raw: 'call_template_probe_1' }), status: 'success',
+          content: { type: 'text', text: scenario.messages[2].content },
+        } },
+      ] },
     ];
     const replay = await createGemmaInputReplay();
     try {
-      expect(publicMessages).toStrictEqual(scenario.messages);
+      expect(publicMessages.map(message => message.role)).toEqual(['user', 'assistant', 'tool']);
       await replay.harness.service.loadDownloadedModel({ modelId: scenario.modelId });
       expect(replay.harness.observations.processors).toHaveLength(1);
       const processor = replay.harness.observations.processors[0];
@@ -1674,20 +1573,18 @@ describe('Gemma4 E2B Provider / tools', () => {
               effort: undefined,
             },
           },
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(INPUT_BOUNDARY);
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
       expect(chunks).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
-      expect(capture?.snapshot().toolCalls).toEqual([]);
-      expect(capture?.snapshot().toolResults).toEqual([]);
+      expect(capturedToolCalls({ capture })).toEqual([]);
       expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
       expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
       expect(replay.harness.observations.forbiddenTransport).toEqual([]);
@@ -1699,83 +1596,77 @@ describe('Gemma4 E2B Provider / tools', () => {
       replay.verifyNativeInput();
       expect(replay.inputs).toEqual([expectedIds]);
     } finally {
-      await replay.harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
   it('executes a native-format synthetic tool call once and supplies its structured result to the next real processor input', async () => {
-    const captures: ProviderChatCapture[] = [];
-    let capture: ProviderChatCapture | undefined;
     const executedArgs: unknown[] = [];
-    const messages = [
-      {
-        role: 'user',
-        content: 'Use the synthetic weather tool for Tokyo.',
-      },
-    ];
+    const templateMessages = [{ role: 'user', content: 'Use the synthetic weather tool for Tokyo.' }];
     const execute = vi.fn<Tool['execute']>(async ({ args }) => {
       executedArgs.push(structuredClone(args));
       return { status: 'success', content: 'Synthetic weather result: clear.' };
     });
-    const tool: Tool = { name: 'lookup_weather', description: 'Return deterministic weather fixture data.', parametersSchema: z.object({ city: z.string() }), execute };
+    const tool: Tool = {
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
+    };
     const definition = { type: 'function', function: { name: tool.name, description: tool.description,
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false } } };
     let turns = 0;
     const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
       const { tokenizer, options, runtime } = context;
       ++turns;
-      let nativeMessages: Array<{ role: string; content: string } & Record<string, unknown>>;
+      if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
+      const decoded = tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false });
       if (turns === 1) {
-        nativeMessages = messages;
+        const expected = tokenizer.apply_chat_template(templateMessages, { tokenize: false, add_generation_prompt: true, tools: [definition] });
+        expect(decoded).toBe(expected);
       } else {
         expect(turns).toBe(2);
         expect(execute).toHaveBeenCalledOnce();
-        expect(capture?.snapshot().toolCalls).toHaveLength(1);
-        const id = z.string().parse(capture?.snapshot().toolCalls[0]?.id);
-        nativeMessages = [...messages, { role: 'assistant', content: '', tool_calls: [{ id, type: 'function', function: { name: tool.name, arguments: { city: 'Tokyo' } } }] },
-          { role: 'tool', tool_call_id: id, content: 'Synthetic weather result: clear.' }];
+        expect(decoded).toContain('call:lookup_weather{city:<|"|>Tokyo<|"|>}');
+        expect(decoded).toContain('response:lookup_weather{value:<|"|>Synthetic weather result: clear.<|"|>}');
       }
-      const expected = tokenizer.apply_chat_template(nativeMessages, { tokenize: false, add_generation_prompt: true, tools: [definition] });
-      if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
-      expect(Array.from(options.input_ids.data, Number)).toEqual(tokenizer.encode(z.string().parse(expected), { add_special_tokens: false }));
       expect(options.past_key_values).toBeNull();
       return emitSyntheticGemmaProtocol({ context, text: turns === 1
         ? '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>'
         : 'Synthetic final answer.<turn|>' });
     } });
+    const parameters: NonNullable<CapturedChatRequest['parameters']> = {
+      temperature: 0, topP: 1, maxCompletionTokens: 128,
+      presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+      reasoning: { effort: undefined },
+    };
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      capture = captureProviderChat({
+      turn = await runProviderReplayTurn({
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages,
-          tools: [tool],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
-          },
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic weather tool for Tokyo.' })],
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
       });
-      captures.push(capture);
-      await capture.completion;
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(2);
-      expect(observed.lateEvents).toEqual([]);
-      const chunks = observed.chunks;
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+      ] });
+      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
+        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic weather result: clear.' } } },
+      ] });
+      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'text', text: 'Synthetic final answer.', completeness: 'complete' },
+      ] });
       expect(turns).toBe(2);
-      expect(execute).toHaveBeenCalledOnce();
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
-      expect(capture?.snapshot().toolResults).toContainEqual(expect.objectContaining({ result: { status: 'success', content: 'Synthetic weather result: clear.' } }));
-      expect(chunks.join('')).toBe('Synthetic final answer.');
       expect(harness.observations.workers).toHaveLength(1);
       expect(harness.observations.inferenceCalls).toHaveLength(2);
       expect(harness.observations.processors).toHaveLength(1);
@@ -1783,365 +1674,286 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
-  it('rejects an unfinished second native tool call without executing the earlier complete call', async () => {
-    const captures: ProviderChatCapture[] = [];
-    let capture: ProviderChatCapture | undefined;
+  it('interrupts an unfinished second native tool call without executing the earlier complete call', async () => {
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
-    const tool: Tool = { name: 'lookup_weather', description: 'Synthetic weather tool.', parametersSchema: z.object({ city: z.string() }), execute };
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({ context,
-      text: '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_call>call:lookup_weather{city:' }) });
+    const tool: Tool = {
+      name: 'lookup_weather',
+      description: 'Synthetic weather tool.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
+    };
+    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({
+      context,
+      text: '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_call>call:lookup_weather{city:',
+    }) });
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      capture = captureProviderChat({
+      turn = await runProviderReplayTurn({
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [
-            {
-              role: 'user',
-              content: 'Use the synthetic tool.',
-            },
-          ],
-          tools: [tool],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
-          },
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          readBinaryObject: undefined,
+          debug: undefined,
         },
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
       });
-      captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(/Gemma.*tool.*protocol/i);
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.lateEvents).toEqual([]);
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
+      expect(turn.generated).toHaveLength(1);
+      expect(turn.generated[0]).toMatchObject({ role: 'assistant', interruption: undefined, parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+      ] });
       expect(execute).not.toHaveBeenCalled();
-      expect(capture?.snapshot().toolCalls).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {
       await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it.each([
-    { label: 'explicit null accepted by the registered tool schema', payload: 'value:null' },
-    { label: 'an unsafe bare argument key accepted by the registered tool schema', payload: 'params:{unsafe:key:1}' },
-    { label: 'an unbalanced native quote delimiter', payload: 'value:<|"|>first<|"|>second<|"|>' },
-  ])('rejects $label before publishing or executing any call', async ({ payload }) => {
-    const captures: ProviderChatCapture[] = [];
-    let capture: ProviderChatCapture | undefined;
+    { label: 'explicit null accepted by the registered tool schema', payload: 'value:null', settlement: 'rejected' as const },
+    { label: 'an unsafe bare argument key accepted by the registered tool schema', payload: 'params:{unsafe:key:1}', settlement: 'rejected' as const },
+    { label: 'an unbalanced native quote delimiter', payload: 'value:<|"|>first<|"|>second<|"|>', settlement: 'interrupted' as const },
+  ])('retains an earlier complete call but never executes it when followed by $label', async ({ payload, settlement }) => {
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
-    const tool: Tool = { name: 'capture_value', description: 'Accept a synthetic value.',
-      parametersSchema: z.object({ value: z.null().optional(), params: z.object({}).catchall(z.number()).optional() }), execute };
+    const tool: Tool = {
+      name: 'capture_value',
+      description: 'Accept a synthetic value.',
+      parametersSchema: z.object({ value: z.null().optional(), params: z.object({}).catchall(z.number()).optional() }),
+      execute,
+    };
     expect(tool.parametersSchema.strict().safeParse({ value: null }).success).toBe(true);
     expect(tool.parametersSchema.strict().safeParse({ params: { 'unsafe:key': 1 } }).success).toBe(true);
     expect(tool.parametersSchema.strict().safeParse({}).success).toBe(true);
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({ context,
-      text: `<|tool_call>call:capture_value{}<tool_call|><|tool_call>call:capture_value{${payload}}<tool_call|>` }) });
+    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({
+      context,
+      text: `<|tool_call>call:capture_value{}<tool_call|><|tool_call>call:capture_value{${payload}}<tool_call|>`,
+    }) });
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      capture = captureProviderChat({
+      turn = await runProviderReplayTurn({
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [
-            {
-              role: 'user',
-              content: 'Use the synthetic tool.',
-            },
-          ],
-          tools: [tool],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
-          },
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          readBinaryObject: undefined,
+          debug: undefined,
         },
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
       });
-      captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(/Gemma.*(?:tool.*protocol|template)/i);
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.lateEvents).toEqual([]);
+      if (settlement === 'rejected') {
+        expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringMatching(/Gemma.*(?:tool.*protocol|template)/i) } });
+      } else {
+        expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
+      }
+      expect(turn.generated).toHaveLength(1);
+      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{}' } } },
+      ] });
       expect(execute).not.toHaveBeenCalled();
-      expect(capture?.snapshot().toolCalls).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {
       await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('reports an unknown native tool name without executing a registered tool and continues with the actual error result input', async () => {
-    const captures: ProviderChatCapture[] = [];
-    let capture: ProviderChatCapture | undefined;
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
-    const tool: Tool = { name: 'registered_tool', description: 'Registered synthetic tool.', parametersSchema: z.object({ value: z.number() }), execute };
+    const tool: Tool = {
+      name: 'registered_tool',
+      description: 'Registered synthetic tool.',
+      parametersSchema: z.object({ value: z.number() }),
+      execute,
+    };
     let turns = 0;
     const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
       ++turns;
       if (turns === 2) {
         const { options, runtime, tokenizer } = context;
         if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
-        expect(tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false })).toContain('Tool "unknown_tool" not found.');
+        expect(tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false }))
+          .toContain('Tool "unknown_tool" not found.');
       }
       expect(turns).toBeLessThanOrEqual(2);
       return emitSyntheticGemmaProtocol({ context, text: turns === 1
-        ? '<|tool_call>call:unknown_tool{value:1}<tool_call|>' : 'Synthetic unavailable tool answer.<turn|>' });
+        ? '<|tool_call>call:unknown_tool{value:1}<tool_call|><|tool_response>' : 'Synthetic unavailable tool answer.<turn|>' });
     } });
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      capture = captureProviderChat({
+      turn = await runProviderReplayTurn({
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [
-            {
-              role: 'user',
-              content: 'Use the synthetic tool.',
-            },
-          ],
-          tools: [tool],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
-          },
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          readBinaryObject: undefined,
+          debug: undefined,
         },
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
       });
-      captures.push(capture);
-      await capture.completion;
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.responses).toHaveLength(2);
-      expect(observed.lateEvents).toEqual([]);
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'unknown_tool', arguments: '{"value":1}' } } },
+      ] });
+      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
+        { type: 'tool_result', result: { status: 'error' } },
+      ] });
+      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'text', text: 'Synthetic unavailable tool answer.', completeness: 'complete' },
+      ] });
       expect(execute).not.toHaveBeenCalled();
-      expect(capture?.snapshot().toolResults).toContainEqual(expect.objectContaining({ result: { status: 'error', code: 'other', message: 'Tool "unknown_tool" not found.' } }));
       expect(harness.observations.inferenceCalls).toHaveLength(2);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {
       await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('rejects a lossy tool result after its one actual execution and before the next native inference', async () => {
-    const captures: ProviderChatCapture[] = [];
-    let capture: ProviderChatCapture | undefined;
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Synthetic result<|"|>delimiter' }));
-    const tool: Tool = { name: 'capture_value', description: 'Synthetic tool result.', parametersSchema: z.object({ value: z.number() }), execute };
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({ context,
-      text: '<|tool_call>call:capture_value{value:1}<tool_call|>' }) });
+    const tool: Tool = {
+      name: 'capture_value',
+      description: 'Synthetic tool result.',
+      parametersSchema: z.object({ value: z.number() }),
+      execute,
+    };
+    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({
+      context,
+      text: '<|tool_call>call:capture_value{value:1}<tool_call|><|tool_response>',
+    }) });
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      capture = captureProviderChat({
+      turn = await runProviderReplayTurn({
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [
-            {
-              role: 'user',
-              content: 'Use the synthetic tool.',
-            },
-          ],
-          tools: [tool],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
-          },
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          readBinaryObject: undefined,
+          debug: undefined,
         },
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
       });
-      captures.push(capture);
-      await expect(capture.completion).rejects.toThrow('quote delimiter');
-      const observed = capture.snapshot();
-      expect(observed.settlement).toMatchObject({ status: 'rejected' });
-      expect(observed.preStartChunks).toEqual([]);
-      // The Provider starts its second response before prompt preparation
-      // rejects the result; this does not imply a second native inference.
-      expect(observed.responses).toEqual([[], []]);
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind))
-        .toEqual(['assistant-start', 'tool-call', 'tool-result', 'assistant-start', 'settled']);
-      expect(observed.lateEvents).toEqual([]);
+      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringContaining('quote delimiter') } });
+      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{"value":1}' } } },
+      ] });
+      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
+        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result<|"|>delimiter' } } },
+      ] });
+      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
       expect(execute).toHaveBeenCalledOnce();
-      expect(capture?.snapshot().toolResults).toHaveLength(1);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {
       await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
-  it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
+  it.each([
+    {
+      caseId: 'natural-tool-minimal' as const,
+      prompt: 'Use the weather tool for Tokyo.',
+    },
+    {
+      caseId: 'natural-tool-representative' as const,
+      prompt: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.',
+    },
+  ])('tools: executes the recorded $caseId Tokyo call once and continues with its result', async ({ caseId, prompt }) => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["natural-tool-minimal"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      caseIds: [caseId],
+      artifactPaths: ['onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
+        'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
+        'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
+        'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data'],
       imagePlatform: undefined,
     });
-    const captures: ProviderChatCapture[] = [];
+    const parameters: NonNullable<CapturedChatRequest['parameters']> = {
+      temperature: 0, topP: 1, maxCompletionTokens: 128,
+      presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+      reasoning: { effort: undefined },
+    };
+    const executedSignals: Array<AbortSignal | undefined> = [];
+    const executedArgs: unknown[] = [];
+    const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
+      executedArgs.push(structuredClone(args));
+      executedSignals.push(signal);
+      return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+    });
+    const tools: Tool[] = [{
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
+    }];
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 128,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      const executedSignals: Array<AbortSignal | undefined> = [];
-      const executedArgs: unknown[] = [];
-      const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
-        executedArgs.push(structuredClone(args));
-        executedSignals.push(signal);
-        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-      });
-      const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.", parametersSchema: z.object({ city: z.string() }), execute: execute }];
-      replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters: parameters });
-      const capture = captureProviderChat({
+      replay.beginNativeRequest({ caseId, parameters });
+      turn = await runProviderReplayTurn({
         provider: replay.provider,
         request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Use the weather tool for Tokyo.",
-            },
-          ],
-          tools: tools,
-          parameters: parameters,
-          signal: signal,
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [textMessage({ id: 'message_0', role: 'user', text: prompt })],
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
+        tools,
+        abortController: new AbortController(),
+        onChange: undefined,
       });
-      captures.push(capture);
-      await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual(["", "The weather in Tokyo is clear with a temperature of 20°C."]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "tool-call", "tool-result", "assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
+      const [callAssistant, toolResult, finalAssistant] = turn.generated;
+      expect(callAssistant).toMatchObject({
+        role: 'assistant',
+        parts: [{ type: 'tool_call', toolCall: {
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        } }],
+      });
+      if (callAssistant?.role !== 'assistant') throw new Error('Expected the tool-calling assistant');
+      const callPart = callAssistant.parts.find(part => part.type === 'tool_call');
+      if (callPart?.type !== 'tool_call') throw new Error('Expected the recorded structured tool call');
+      expect(toolResult).toMatchObject({
+        role: 'tool',
+        parts: [{ type: 'tool_result', result: {
+          toolCallId: callPart.toolCall.id,
+          status: 'success',
+          content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+        } }],
+      });
+      expect(finalAssistant).toMatchObject({
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }],
+      });
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
       expect(executedSignals).toHaveLength(1);
       expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
-      expect(executedSignals[0]).not.toBe(signal);
       expect(executedSignals[0]?.aborted).toBe(false);
-      expect(toolCalls).toHaveLength(1);
-      expect(toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
-      expect(toolResults).toEqual([{  id: toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);
+      expect(turn.toolEvents).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
     } finally {
       await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
-    }
-  }, 30_000);
-  it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
-    const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog,
-      caseIds: ["natural-tool-representative"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
-      imagePlatform: undefined,
-    });
-    const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 128,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      const executedSignals: Array<AbortSignal | undefined> = [];
-      const executedArgs: unknown[] = [];
-      const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
-        executedArgs.push(structuredClone(args));
-        executedSignals.push(signal);
-        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-      });
-      const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.", parametersSchema: z.object({ city: z.string() }), execute: execute }];
-      replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.",
-            },
-          ],
-          tools: tools,
-          parameters: parameters,
-          signal: signal,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual(["", "The weather in Tokyo is clear with a temperature of 20°C."]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "tool-call", "tool-result", "assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
-      expect(execute).toHaveBeenCalledOnce();
-      expect(executedSignals).toHaveLength(1);
-      expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
-      expect(executedSignals[0]).not.toBe(signal);
-      expect(executedSignals[0]?.aborted).toBe(false);
-      expect(toolCalls).toHaveLength(1);
-      expect(toolCalls[0]).toEqual({ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' });
-      expect(toolResults).toEqual([{  id: toolCalls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }  }]);
-      replay.assertComplete({ requests: 1, nativeCalls: 2 });
-    } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
   it('tools: preserves structured caller history and the recorded response', async () => {
@@ -2172,40 +1984,34 @@ describe('Gemma4 E2B Provider / tools', () => {
         executedSignals.push(signal);
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       });
-      const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.", parametersSchema: z.object({ city: z.string() }), execute: execute }];
+      const tools: NonNullable<CapturedChatRequest['tools']> = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
+        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false } }];
       replay.beginNativeRequest({ caseId: "structured-tool-history", parameters: parameters });
       const capture = captureProviderChat({
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
           messages: [
-            {
-              role: "user",
-              content: "Use the weather tool for Tokyo.",
-            },
-            {
-              role: "assistant",
-              content: "",
-              tool_calls: [
-                {
-                  id: toToolCallId({ raw: "call_model_support_probe_1" }),
-                  type: "function",
-                  function: {
-                    name: "lookup_weather",
-                    arguments: "{\"city\":\"Tokyo\"}",
-                  },
-                },
-              ],
-            },
-            {
-              role: "tool",
-              content: "{\"temperatureC\":20,\"condition\":\"clear\"}",
-              tool_call_id: toToolCallId({ raw: "call_model_support_probe_1" }),
-            },
+            textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." }),
+            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
+              { id: 'message_1_text', type: 'text', text: '', completeness: 'complete' },
+              { id: 'message_1_call', type: 'tool_call', toolCall: {
+                id: toToolCallId({ raw: "call_model_support_probe_1" }), type: 'function',
+                function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" },
+              } },
+            ] },
+            { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
+              { id: 'message_2_result', type: 'tool_result', result: {
+                toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success',
+                content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" },
+              } },
+            ] },
           ],
           tools: tools,
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
@@ -2213,26 +2019,20 @@ describe('Gemma4 E2B Provider / tools', () => {
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual(["The weather in Tokyo is clear with a temperature of 20°C."]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', completeness: 'complete' })]);
+      expect(capturedTextChunks({ capture, type: 'text' }).join('')).toBe("The weather in Tokyo is clear with a temperature of 20°C.");
+      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+      expect(capturedToolCalls({ capture })).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
 
 describe('Gemma source-derived tool/history controls, not recorded inference', () => {
-  it('maps the delivered inline tool thought to the original canonical result-continuation input', async () => {
+  it('maps delivered reasoning and a tool call to the original canonical result-continuation input', async () => {
     const inputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
     const expectedInputs: number[][] = [];
     const executions: unknown[] = [];
@@ -2246,34 +2046,50 @@ describe('Gemma source-derived tool/history controls, not recorded inference', (
 Use the synthetic tool.<turn|>
 <|turn>model
 <|channel>thought
-Reason
+ Reason${' '}
 <channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>response:probe{value:<|"|>Synthetic result.<|"|>}<tool_response|>`, { add_special_tokens: false }));
         throw new Error('Canonical tool-thought input observed; no continuation output');
       }
       return emitSyntheticGemmaProtocol({ context, text: `\
 <|channel>thought
  Reason${' '}
-<channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|>` });
+<channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>` });
     } });
-    let capture: ProviderChatCapture | undefined;
+    const tool: Tool = {
+      name: 'probe',
+      description: 'Synthetic tool thought control.',
+      parametersSchema: z.object({ value: z.string() }),
+      execute: async ({ args }) => {
+        executions.push(structuredClone(args));
+        return { status: 'success', content: 'Synthetic result.' };
+      },
+    };
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      capture = captureProviderChat({ provider: harness.provider, request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [{ role: 'user', content: 'Use the synthetic tool.' }],
-        tools: [{ name: 'probe', description: 'Synthetic tool thought control.', parametersSchema: z.object({ value: z.string() }),
-          execute: async ({ args }) => {
-            executions.push(structuredClone(args));
-            return { status: 'success', content: 'Synthetic result.' };
-          } }],
-      } });
-      await expect(capture.completion).rejects.toThrow('Canonical tool-thought input observed; no continuation output');
-      const observed = capture.snapshot();
-      expect(observed.responses.map(chunks => chunks.join(''))).toEqual([`\
-<think> Reason${' '}
-</think>`, '']);
-      expect(observed.toolCalls).toHaveLength(1);
-      expect(observed.toolCalls[0]).toMatchObject({ toolName: 'probe', modelVisibleArguments: '{"value":"Tokyo"}' });
-      expect(observed.toolResults).toEqual([{ id: observed.toolCalls[0]!.id, result: { status: 'success', content: 'Synthetic result.' } }]);
+      turn = await runProviderReplayTurn({
+        provider: harness.provider,
+        request: {
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
+      });
+      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'Canonical tool-thought input observed; no continuation output' } });
+      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'reasoning', text: ` Reason${' '}`, completeness: 'complete' },
+        { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"Tokyo"}' } } },
+      ] });
+      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
+        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
+      ] });
+      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
       expect(executions).toEqual([{ value: 'Tokyo' }]);
       expect(inputs).toHaveLength(2);
       expect(expectedInputs).toHaveLength(1);
@@ -2281,17 +2097,13 @@ Reason
       if (!input.isTensor) throw new Error('Expected detached canonical continuation Tensor');
       expect(Array.from(input.data, Number)).toEqual(expectedInputs[0]);
       expect(inputs.map(item => item.pastIsNull)).toEqual([true, true]);
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['assistant-start', 'tool-call', 'tool-result', 'assistant-start', 'settled']);
-      expect(observed.preStartChunks).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
       await harness.close();
-      expect(capture?.snapshot().lateEvents).toEqual([]);
-      expect(executions).toEqual([{ value: 'Tokyo' }]);
     }
   }, 30_000);
 
-  it('preserves quoted tool data and rebuilds the delivered inline thought through shared history', async () => {
+  it('preserves quoted tool data and rebuilds delivered ordered parts through shared history', async () => {
     const executions: unknown[] = [];
     const nativeInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
     let nativeCalls = 0;
@@ -2299,78 +2111,79 @@ Reason
       nativeCalls++;
       nativeInputs.push(captureGemmaNativeInput(context));
       if (nativeCalls === 3) throw new Error('Rebuilt tool-history input observed; no synthetic continuation output');
-      if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
+      if (nativeCalls > 3) throw new Error('Unexpected synthetic generation');
       return emitSyntheticGemmaProtocol({ context, text: nativeCalls === 1
         ? `\
-<bos><|channel>thought
+<|channel>thought
 Use the quoted value.
-<channel|><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|>`
+<channel|><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|><|tool_response>`
         : 'Synthetic completion.<turn|>' });
     } });
-    let capture: ProviderChatCapture | undefined;
+    const tools: Tool[] = [{
+      name: 'probe',
+      description: 'Preserve native quoted strings.',
+      parametersSchema: z.object({ value: z.string() }),
+      execute: async ({ args }) => {
+        executions.push(structuredClone(args));
+        return { status: 'success', content: 'Synthetic result.' };
+      },
+    }];
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let rebuiltCapture: ProviderChatCapture | undefined;
     try {
-      const tools: Tool[] = [{ name: 'probe', description: 'Preserve native quoted strings.', parametersSchema: z.object({ value: z.string() }),
-        execute: async ({ args }) => {
-          executions.push(structuredClone(args)); return { status: 'success', content: 'Synthetic result.' };
-        } }];
-      capture = captureProviderChat({ provider: harness.provider, request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX', messages: [{ role: 'user', content: 'Synthetic native quote control.' }],
+      const user = textMessage({ id: 'synthetic_user', role: 'user', text: 'Synthetic native quote control.' });
+      turn = await runProviderReplayTurn({
+        provider: harness.provider,
+        request: {
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [user],
+          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
         tools,
-      } });
-      await capture.completion;
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+        abortController: new AbortController(),
+        onChange: undefined,
+      });
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'reasoning', text: 'Use the quoted value.', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } } },
+      ] });
+      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
+        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
+      ] });
+      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'text', text: 'Synthetic completion.', completeness: 'complete' },
+      ] });
       expect(executions).toEqual([{ value: '<bos><pad>' }]);
-      expect(observed.toolCalls).toHaveLength(1);
-      expect(observed.toolResults).toHaveLength(1);
-      expect(observed.responses.map(response => response.join(''))).toEqual([`\
-<think>Use the quoted value.
-</think>`, 'Synthetic completion.']);
-      expect(nativeCalls).toBe(2);
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      const call = observed.toolCalls[0]!;
-      expect(observed.toolResults).toEqual([{ id: call.id, result: { status: 'success', content: 'Synthetic result.' } }]);
-      const result = observed.toolResults[0]!.result;
-      if (result.status !== 'success') throw new Error('Expected the actual successful synthetic tool result');
-      const resultId = toMessageId({ raw: 'synthetic-result' });
-      const chat: ChatContent = {
-        currentLeafId: resultId,
-        root: { items: [{
-          id: toMessageId({ raw: 'synthetic-user' }), role: 'user', content: 'Synthetic native quote control.', timestamp: 1,
-          replies: { items: [{
-            id: toMessageId({ raw: 'synthetic-assistant' }), role: 'assistant', content: observed.responses[0]!.join(''), timestamp: 2,
-            toolCalls: [{ id: call.id, type: 'function', function: { name: call.toolName, arguments: call.modelVisibleArguments } }],
-            replies: { items: [{
-              id: resultId, role: 'tool', content: undefined, attachments: undefined, thinking: undefined,
-              error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined, timestamp: 3,
-              results: [{ toolCallId: call.id, status: 'success', content: { type: 'text', text: result.content } }],
-              replies: { items: [] },
-            }] },
-          }] },
-        }] },
-      };
-      const messages = await buildChatGenerationMessages({
-        chat, excludedMessageId: undefined, systemPromptMessages: [],
-        resolveUserContent: async ({ message }) => message.content,
-        resolveToolResultText: async ({ result }) => {
-          if (result.status !== 'success') throw new Error('This connected history control has a successful tool result');
-          if (result.content.type !== 'text') throw new Error('This connected history control has no binary result');
-          return formatToolExecutionOutcomeForLm({ outcome: { status: 'success', content: result.content.text } });
+      const history = [
+        user,
+        createChatMessageSnapshot({ node: turn.generated[0]! }),
+        createChatMessageSnapshot({ node: turn.generated[1]! }),
+      ];
+      const publicTools: NonNullable<CapturedChatRequest['tools']> = [{
+        name: 'probe',
+        description: 'Preserve native quoted strings.',
+        parameters: { type: 'object', properties: { value: { type: 'string' } }, required: ['value'], additionalProperties: false },
+      }];
+      rebuiltCapture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: history,
+          tools: publicTools,
+          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
+            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
-      expect(messages).toEqual([
-        { role: 'user', content: 'Synthetic native quote control.', tool_calls: undefined },
-        { role: 'assistant', content: `\
-<think>Use the quoted value.
-</think>`, tool_calls: [{ id: call.id, type: 'function', function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } }] },
-        { role: 'tool', tool_call_id: call.id, content: 'Synthetic result.' },
-      ]);
-      rebuiltCapture = captureProviderChat({ provider: harness.provider, request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX', messages, tools,
-      } });
-      await expect(rebuiltCapture.completion).rejects.toThrow('Rebuilt tool-history input observed; no synthetic continuation output');
+      await rebuiltCapture.completion;
+      expectDeliveredErrorCapture({ capture: rebuiltCapture, message: 'Rebuilt tool-history input observed; no synthetic continuation output' });
       expect(nativeInputs).toHaveLength(3);
       const live = nativeInputs[1]!.tensors.input_ids;
       const rebuilt = nativeInputs[2]!.tensors.input_ids;
@@ -2378,17 +2191,10 @@ Use the quoted value.
       expect(rebuilt.data, 'shared history reconstruction must preserve the actual live tool-continuation tokenizer input').toEqual(live.data);
       expect(nativeInputs.map(input => input.pastIsNull)).toEqual([true, true, true]);
       expect(executions).toEqual([{ value: '<bos><pad>' }]);
-      expect(rebuiltCapture.snapshot().responses).toEqual([[]]);
-      expect(rebuiltCapture.snapshot().toolCalls).toEqual([]);
     } finally {
-      await harness.close();
-      expect(capture?.snapshot().lateEvents).toEqual([]);
-      expect(rebuiltCapture?.snapshot().lateEvents).toEqual([]);
+      await closeProviderReplayCaptures({ captures: [rebuiltCapture], close: () => harness.close() });
     }
   }, 30_000);
-});
-
-describe('Gemma4 E2B Provider / synthetic pixel comparison controls', () => {
   it.each([
     { name: 'first real pixel', index: 0 },
     { name: 'last real pixel', index: 2304 * 768 - 1 },
@@ -2437,23 +2243,10 @@ describe('Gemma4 E2B Provider / images', () => {
           provider: control.harness.provider,
           request: {
             model: "onnx-community/gemma-4-E2B-it-ONNX",
-            messages: [
-              {
-                role: 'user',
-                content: [
-                  {
-                    type: "text",
-                    text: "Describe the single synthetic image in one short phrase.",
-                  },
-                  {
-                    type: 'image_url',
-                    image_url: {
-                      url: imageUrl,
-                    },
-                  },
-                ],
-              },
-            ],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
+              { id: 'message_0_text', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { id: 'message_0_image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+            ] }],
             tools: [],
             parameters: {
               temperature: 0,
@@ -2466,29 +2259,19 @@ describe('Gemma4 E2B Provider / images', () => {
                 effort: undefined,
               },
             },
+            signal: undefined, readBinaryObject: undefined, debug: undefined,
           },
         });
         captures.push(capture);
-        await expect(capture.completion).rejects.toThrow(IMAGE_INPUT_BOUNDARY);
-        const observed = capture.snapshot();
-        expect(observed.settlement).toMatchObject({ status: 'rejected' });
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.responses).toHaveLength(1);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        const chunks = observed.chunks;
+        await capture.completion;
+        expectDeliveredErrorCapture({ capture, message: IMAGE_INPUT_BOUNDARY });
+        const chunks = capturedTextChunks({ capture, type: 'text' });
         expect(chunks.join('')).toBe('');
         expect(chunks).toEqual([]);
-        expect(capture?.snapshot().toolCalls).toEqual([]);
-        expect(capture?.snapshot().toolResults).toEqual([]);
-        expect(capture?.snapshot().toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        expect(capturedToolCalls({ capture })).toEqual([]);
         control.verifyNativeInput();
       } finally {
-        await control.harness.close();
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+        await closeProviderReplayCaptures({ captures, close: () => control.harness.close() });
 
       }
     }
@@ -2510,23 +2293,12 @@ describe('Gemma4 E2B Provider / images', () => {
           provider: control.harness.provider,
           request: {
             model: "onnx-community/gemma-4-E2B-it-ONNX",
-            messages: [
-              {
-                role: 'user',
-                content: [
-                  {
-                    type: "text",
-                    text: "Describe the single synthetic image in one short phrase.",
-                  },
-                  {
-                    type: 'image_url',
-                    image_url: {
-                      url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
-                    },
-                  },
-                ],
-              },
-            ],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
+              { id: 'message_0_text', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { id: 'message_0_image', type: 'attachment', attachment: createReplayImageAttachment({
+                dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
+              }) },
+            ] }],
             tools: [],
             parameters: {
               temperature: 0,
@@ -2539,29 +2311,19 @@ describe('Gemma4 E2B Provider / images', () => {
                 effort: undefined,
               },
             },
+            signal: undefined, readBinaryObject: undefined, debug: undefined,
           },
         });
         captures.push(capture);
-        await expect(capture.completion).rejects.toThrow(IMAGE_INPUT_BOUNDARY);
-        const observed = capture.snapshot();
-        expect(observed.settlement).toMatchObject({ status: 'rejected' });
-        expect(observed.preStartChunks).toEqual([]);
-        expect(observed.responses).toHaveLength(1);
-        expect(observed.toolCalls).toEqual([]);
-        expect(observed.toolResults).toEqual([]);
-        expect(observed.toolEvents).toEqual([]);
-        expect(observed.lateEvents).toEqual([]);
-        const chunks = observed.chunks;
+        await capture.completion;
+        expectDeliveredErrorCapture({ capture, message: IMAGE_INPUT_BOUNDARY });
+        const chunks = capturedTextChunks({ capture, type: 'text' });
         expect(chunks.join('')).toBe('');
         expect(chunks).toEqual([]);
-        expect(capture?.snapshot().toolCalls).toEqual([]);
-        expect(capture?.snapshot().toolResults).toEqual([]);
-        expect(capture?.snapshot().toolEvents).toEqual([]);
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+        expect(capturedToolCalls({ capture })).toEqual([]);
         control.verifyNativeInput();
       } finally {
-        await control.harness.close();
-        expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+        await closeProviderReplayCaptures({ captures, close: () => control.harness.close() });
 
       }
     }
@@ -2596,49 +2358,73 @@ describe('Gemma4 E2B Provider / images', () => {
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Describe the single synthetic image in one short phrase.",
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-                  },
-                },
-              ],
-            },
-          ],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
+            { id: 'message_0_text', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+            { id: 'message_0_image', type: 'attachment', attachment: createReplayImageAttachment({
+              dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            }) },
+          ] }],
           tools: [],
           parameters: parameters,
           signal: signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
       replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      const { responses, preStartChunks: earlyChunks, toolCalls, toolResults, toolEvents } = observed;
-      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(responses.map(chunks => chunks.join(''))).toEqual(["The"]);
-      expect(earlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(order).toEqual(["assistant-start", "settled"]);
-      expect(toolEvents).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolResults).toEqual([]);
+      expectPartialTextCapture({ capture, type: 'text', text: 'The' });
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
+
+const gemma4FullStructuredParts = {
+  completionTokenIds: ['1', '106', '50'],
+  endTokenIds: ['1'],
+  invocations: [
+    ...Array.from({ length: 9 }, (_, index) => ({ callOrdinal: index + 1, terminal: { kind: 'stream-end' as const } })),
+    { callOrdinal: 10, terminal: { kind: 'control', tokenId: '50' } },
+    { callOrdinal: 11, terminal: { kind: 'control', tokenId: '106' } },
+    { callOrdinal: 12, terminal: { kind: 'control', tokenId: '50' } },
+    { callOrdinal: 13, terminal: { kind: 'control', tokenId: '106' } },
+    { callOrdinal: 14, terminal: { kind: 'control', tokenId: '106' } },
+    { callOrdinal: 15, terminal: { kind: 'stream-end' } },
+  ],
+  requests: [
+    { scenario: 'first-turn', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'Please provide the **context** or **purpose** of the "template probe user', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'continuity', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'Please provide the **previous part of the conversation** or the **topic** you', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    ...(['independent-next-input', 'system-user', 'supplied-history', 'reasoning-none'] as const).map(scenario => ({
+      scenario, settlement: 'fulfilled' as const, events: [{ kind: 'assistant' as const, parts: [
+        { type: 'text' as const, text: 'Please', completeness: 'partial' as const },
+      ], terminal: { type: 'interrupted' as const, reason: 'unknown' as const } }],
+    })),
+    ...(['reasoning-low', 'reasoning-medium', 'reasoning-high'] as const).map(scenario => ({
+      scenario, settlement: 'fulfilled' as const, events: [{ kind: 'assistant' as const, parts: [], terminal: { type: 'interrupted' as const, reason: 'unknown' as const } }],
+    })),
+    ...(['natural-tool-minimal', 'natural-tool-representative'] as const).map(scenario => ({
+      scenario, settlement: 'fulfilled' as const, events: [
+        { kind: 'assistant' as const, parts: [{ type: 'tool_call' as const, name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'finished' as const, next: 'tool_results' as const } },
+        { kind: 'tool-success' as const, call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant' as const, parts: [{ type: 'text' as const, text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' as const }], terminal: { type: 'finished' as const, next: 'user' as const } },
+      ],
+    })),
+    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
+    ], terminal: { type: 'finished', next: 'user' } }] },
+    { scenario: 'image', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'The', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+  ],
+  legacyInputProjectionScenarios: ['continuity'],
+} satisfies StructuredPartsReplayContract;
 
 describe('Gemma4 E2B Provider / sequences', () => {
   it('uses only the settled first callback text for a second request in the same loaded runtime', async () => {
@@ -2701,7 +2487,7 @@ describe('Gemma4 E2B Provider / sequences', () => {
         provider: harness.provider,
         request: {
           model: generationEvidence.identity.modelId,
-          messages: generationEvidence.scenario.messages,
+          messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
           tools: [],
           parameters: {
             ...generationEvidence.scenario.lmParameters,
@@ -2712,19 +2498,13 @@ describe('Gemma4 E2B Provider / sequences', () => {
               effort: undefined,
             },
           },
+          signal: undefined, readBinaryObject: undefined, debug: undefined,
         },
       });
       captures.push(firstCapture);
       await firstCapture.completion;
-      const firstObserved = firstCapture.snapshot();
-      expect(firstObserved.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(firstObserved.preStartChunks).toEqual([]);
-      expect(firstObserved.responses).toHaveLength(1);
-      expect(firstObserved.toolCalls).toEqual([]);
-      expect(firstObserved.toolResults).toEqual([]);
-      expect(firstObserved.toolEvents).toEqual([]);
-      expect(firstObserved.lateEvents).toEqual([]);
-      const firstChunks = firstObserved.chunks;
+      const firstChunks = capturedTextChunks({ capture: firstCapture, type: 'text' });
+      expectPartialTextCapture({ capture: firstCapture, type: 'text', text: generationEvidence.expectedProviderSemantic.visibleContent });
       // Immutable at settlement: late first callbacks cannot rewrite the next
       // request. There is no timer, callback drain, or artificial callback ACK.
       const firstTextAtSettlement = firstChunks.join('');
@@ -2738,15 +2518,9 @@ describe('Gemma4 E2B Provider / sequences', () => {
           request: {
             model: generationEvidence.identity.modelId,
             messages: [
-              ...generationEvidence.scenario.messages,
-              {
-                role: 'assistant',
-                content: firstTextAtSettlement,
-              },
-              {
-                role: 'user',
-                content: 'Continue with one short sentence.',
-              },
+              ...recordedTextMessages({ messages: generationEvidence.scenario.messages }),
+              textMessage({ id: 'message_1', role: 'assistant', text: firstTextAtSettlement }),
+              textMessage({ id: 'message_2', role: 'user', text: 'Continue with one short sentence.' }),
             ],
             tools: [],
             parameters: {
@@ -2758,6 +2532,7 @@ describe('Gemma4 E2B Provider / sequences', () => {
                 effort: undefined,
               },
             },
+            signal: undefined, readBinaryObject: undefined, debug: undefined,
           },
         });
         captures.push(secondCapture);
@@ -2769,14 +2544,9 @@ describe('Gemma4 E2B Provider / sequences', () => {
       // The collector's completion and detached snapshot own settlement;
       // cleanup below separately checks for later delivered callbacks.
       const secondObserved = secondCapture?.snapshot();
-      expect(secondObserved?.settlement).toMatchObject({ status: 'fulfilled' });
-      expect(secondObserved?.preStartChunks).toEqual([]);
-      expect(secondObserved?.responses).toHaveLength(1);
-      expect(secondObserved?.toolCalls).toEqual([]);
-      expect(secondObserved?.toolResults).toEqual([]);
-      expect(secondObserved?.toolEvents).toEqual([]);
-      expect(secondObserved?.lateEvents).toEqual([]);
-      const secondTextAtSettlement = secondObserved?.chunks.join('');
+      expect(secondObserved?.settlement).toEqual({ status: 'fulfilled' });
+      expect(secondObserved?.result).toEqual({ type: 'finished', next: 'user' });
+      const secondTextAtSettlement = secondCapture === undefined ? undefined : capturedTextChunks({ capture: secondCapture, type: 'text' }).join('');
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
       expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
@@ -2803,8 +2573,7 @@ describe('Gemma4 E2B Provider / sequences', () => {
         released: [16, 12],
       });
     } finally {
-      await harness.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
@@ -2833,31 +2602,19 @@ describe('Gemma4 E2B Provider / sequences', () => {
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-          ],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: firstParameters,
           signal: firstSignal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(firstCapture);
       await firstCapture.completion;
       replay.endNativeRequest();
-      const firstObserved = firstCapture.snapshot();
-      expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
-      const { responses: firstResponses, preStartChunks: firstEarlyChunks, toolCalls: firstToolCalls, toolResults: firstToolResults, toolEvents: firstToolEvents } = firstObserved;
-      const firstOrder = firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(firstResponses.map(chunks => chunks.join(''))).toEqual(["Please provide the **context** or **purpose** of the \"template probe user"]);
-      expect(firstEarlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(firstOrder).toEqual(["assistant-start", "settled"]);
-      expect(firstToolEvents).toEqual([]);
-      expect(firstToolCalls).toEqual([]);
-      expect(firstToolResults).toEqual([]);
+      const firstText = "Please provide the **context** or **purpose** of the \"template probe user";
+      expectPartialTextCapture({ capture: firstCapture, type: 'text', text: firstText });
       const nextSignal = new AbortController().signal;
       const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
         temperature: 0,
@@ -2876,42 +2633,24 @@ describe('Gemma4 E2B Provider / sequences', () => {
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
           messages: [
-            {
-              role: "user",
-              content: "Template probe user message.",
-            },
-            {
-              role: "assistant",
-              content: firstResponses[0]!.join(''),
-            },
-            {
-              role: "user",
-              content: "Continue the synthetic conversation with a short response.",
-            },
+            textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
+            textMessage({ id: 'message_1', role: 'assistant', text: firstText }),
+            textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
           ],
           tools: [],
           parameters: nextParameters,
           signal: nextSignal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(nextCapture);
       await nextCapture.completion;
       replay.endNativeRequest();
-      const nextObserved = nextCapture.snapshot();
-      expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
-      const { responses: nextResponses, preStartChunks: nextEarlyChunks, toolCalls: nextToolCalls, toolResults: nextToolResults, toolEvents: nextToolEvents } = nextObserved;
-      const nextOrder = nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-      expect(nextResponses.map(chunks => chunks.join(''))).toEqual(["Please provide the **previous part of the conversation** or the **topic** you"]);
-      expect(nextEarlyChunks).toEqual([]);
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-      expect(nextOrder).toEqual(["assistant-start", "settled"]);
-      expect(nextToolEvents).toEqual([]);
-      expect(nextToolCalls).toEqual([]);
-      expect(nextToolResults).toEqual([]);
+      expectPartialTextCapture({ capture: nextCapture, type: 'text', text: "Please provide the **previous part of the conversation** or the **topic** you" });
       replay.assertComplete({ requests: 2, nativeCalls: 2 });
     } finally {
-      await replay.close();
-      expect(captures.flatMap(capture => capture.snapshot().lateEvents), 'through awaited Worker disposal').toEqual([]);
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
   it('preserves thirteen requests including natural tools and actual image processor tensors in one Load', async () => {
@@ -2931,19 +2670,10 @@ describe('Gemma4 E2B Provider / sequences', () => {
         'preprocessor_config.json', 'processor_config.json', 'tokenizer.json', 'tokenizer_config.json',
       ] }, evidence: fullEvidenceJson,
       reviewedPublicContract: {
-        correctedFinalizedStreams: [
-          { callOrdinal: 7, scenario: 'reasoning-low', reason: 'Decode the unchanged channel token instead of discarding it as special text.',
-            expectedFinalized: [{ text: '<|channel>', streamEnd: false }, { text: '', streamEnd: true }] },
-          { callOrdinal: 8, scenario: 'reasoning-medium', reason: 'Decode the unchanged channel token instead of discarding it as special text.',
-            expectedFinalized: [{ text: '<|channel>', streamEnd: false }, { text: '', streamEnd: true }] },
-          { callOrdinal: 9, scenario: 'reasoning-high', reason: 'Decode the unchanged channel token instead of discarding it as special text.',
-            expectedFinalized: [{ text: '<|channel>', streamEnd: false }, { text: '', streamEnd: true }] },
-        ],
-        // A lone native channel token contains no confirmed thought header or
-        // body. The parser now buffers it; the original public no-chunk trace
-        // remains correct without changing raw native/finalized evidence.
+        correctedFinalizedStreams: undefined,
         correctedEvents: [],
         invalidatedOutputs: [],
+        structuredParts: gemma4FullStructuredParts,
       },
       imagePlatform: { platform, allowedDataUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='] },
       artifactPaths: ['onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data', 'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data', 'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data', 'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data'],

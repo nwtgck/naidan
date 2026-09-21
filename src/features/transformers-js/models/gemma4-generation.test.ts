@@ -185,9 +185,38 @@ R
     expect(events.filter(e => e.type === 'tool_call')).toEqual([]);
     if (kind === 'thought') expect(textBodies({ events })).toEqual([{ kind: 'reasoning', text: 'R\n', completeness: 'partial' }]);
   });
+  it('accepts the recorded turn-plus-EOS ending as one completion', () => {
+    const { decoder, events } = setup({ toolCalls: 'disabled' });
+    decoder.text({ text: 'Answer' });
+    decoder.control({ token: '<turn|>' });
+    decoder.control({ token: '<eos>' });
+    decoder.finish({ reason: 'unknown' });
+    expect(textBodies({ events })).toEqual([{ kind: 'text', text: 'Answer', completeness: 'complete' }]);
+    expect(events.filter(event => event.type === 'result')).toEqual([
+      { type: 'result', result: { type: 'finished', next: 'user' } },
+    ]);
+  });
+  it.each(['thought', 'tool'] as const)('keeps an open %s interrupted across redundant end markers', kind => {
+    const { decoder, events } = setup({ toolCalls: 'enabled' });
+    if (kind === 'thought') {
+      decoder.control({ token: '<|channel>' }); decoder.text({ text: `\
+thought
+R` });
+    } else {
+      decoder.control({ token: '<|tool_call>' }); decoder.text({ text: 'call:f{}' });
+    }
+    decoder.control({ token: '<turn|>' });
+    decoder.control({ token: '<eos>' });
+    decoder.finish({ reason: 'unknown' });
+    expect(events.at(-1)).toEqual({ type: 'result', result: { type: 'interrupted', reason: 'unknown' } });
+    expect(events.filter(event => event.type === 'tool_call')).toEqual([]);
+  });
   it('rejects further content and repeated completion', () => {
     const { decoder } = setup({ toolCalls: 'disabled' }); decoder.control({ token: '<turn|>' });
-    expect(() => decoder.text({ text: 'late' })).toThrow('after completion'); decoder.finish({ reason: 'unknown' });
+    expect(() => decoder.text({ text: 'late' })).toThrow('after completion');
+    expect(() => decoder.control({ token: '<|image|>' })).toThrow('after completion');
+    decoder.finish({ reason: 'unknown' });
+    expect(() => decoder.control({ token: '<eos>' })).toThrow('after completion');
     expect(() => decoder.finish({ reason: 'unknown' })).toThrow('twice');
   });
 });

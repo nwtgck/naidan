@@ -90,6 +90,9 @@ export function createGemma4Generation({ emit, toolCalls }: {
       assertWritable(); bodyText({ text });
     },
     control({ token }: { token: string }): void {
+      // Gemma recordings can contain both a turn boundary and EOS. They are
+      // redundant native end markers, not a second semantic completion.
+      if (!settled && terminal !== undefined && (token === '<turn|>' || token === '<eos>')) return;
       assertWritable();
       switch (phase) {
       case 'tool_call':
