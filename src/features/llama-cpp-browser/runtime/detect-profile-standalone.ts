@@ -1,5 +1,6 @@
 import { LlamaCppBrowserError, type LlamaCppProfile, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 import { parseRuntimeOptions } from './profile-policy-standalone';
+import { decodeEmbeddedBrotli } from '@/features/file-protocol-standalone/embedded-binary';
 
 const memory64Probe = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1]);
 // Imports e.f(): i32 and exports run(): i32, which calls it. No model memory.
@@ -74,9 +75,16 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
     if (typeof navigator === 'undefined' || !navigator.gpu) throw new Error('WebGPU');
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter?.features.has('shader-f16')) throw new Error('shader-f16');
-    // The compressed runtime is decoded only on demand. Test constructor support
-    // here; the decoder validates the complete stream and exact output length.
-    new DecompressionStream('gzip');
+    // Standalone intentionally ships only Brotli to reduce distribution size;
+    // browser-side DecompressionStream('brotli') must remain standalone-only.
+    // Hosted browser paths must not run this probe and retain gzip decoding.
+    // Exercise a tiny known payload in the actual Worker, not User-Agent or
+    // constructor presence. This also probes the integrity checker
+    // without loading the multi-megabyte runtime chunk. The expected byte is 71.
+    await decodeEmbeddedBrotli({
+      base64: 'CwCARwM=', byteLength: 1,
+      sha256: '333e0a1e27815d0ceee55c473fe3dc93d56c63e3bee2b3b4aee8eed6d70191a3',
+    });
     await checkStorage();
     return 'webgpu-wasm64-jspi';
   } catch {

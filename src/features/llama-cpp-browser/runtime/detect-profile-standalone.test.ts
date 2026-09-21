@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveRuntimeProfile, TEST_ONLY } from './detect-profile-standalone';
+import { installBrotliDecoderForTest } from '@/features/file-protocol-standalone/embedded-binary.test-support';
 
 const actualWasm = WebAssembly;
 function platform() {
@@ -27,9 +28,12 @@ function platform() {
 }
 let environment: ReturnType<typeof platform>;
 beforeEach(() => {
+  installBrotliDecoderForTest();
   environment = platform(); vi.stubGlobal('navigator', environment.nav); vi.stubGlobal('WebAssembly', environment.wasm);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks(); vi.unstubAllGlobals();
+});
 describe('standalone Worker capability detection', () => {
   it('validates the actual small suspension probe independently of mocked capabilities', async () => {
     expect(actualWasm.validate(TEST_ONLY.suspensionProbe)).toBe(true);
@@ -60,14 +64,27 @@ describe('standalone Worker capability detection', () => {
     await expect(resolveRuntimeProfile({ profile: 'webgpu-wasm64-jspi' })).rejects.toThrow('unavailable');
     expect(environment.root.getFileHandle).not.toHaveBeenCalled();
   });
-  it.each(['memory64', 'JSPI', 'suspension', 'adapter', 'f16', 'gzip', 'sync', 'locks'] as const)('does not silently fall back when %s is unavailable', async capability => {
+  it.each(['memory64', 'JSPI', 'suspension', 'adapter', 'f16', 'compression-api', 'brotli-format', 'brotli-data', 'hash', 'sync', 'locks'] as const)('does not silently fall back when %s is unavailable', async capability => {
     switch (capability) {
     case 'memory64': environment.wasm.validate.mockReturnValue(false); break;
     case 'JSPI': vi.stubGlobal('WebAssembly', { ...environment.wasm, promising: undefined }); break;
     case 'suspension': environment.wasm.promising.mockReturnValue(async () => 6); break;
     case 'adapter': environment.nav.gpu.requestAdapter.mockRejectedValue(new Error('no adapter')); break;
     case 'f16': environment.nav.gpu.requestAdapter.mockResolvedValue({ features: new Set() }); break;
-    case 'gzip': vi.stubGlobal('DecompressionStream', undefined); break;
+    case 'compression-api': vi.stubGlobal('DecompressionStream', undefined); break;
+    case 'brotli-format': vi.stubGlobal('DecompressionStream', class {
+      constructor(format: string) {
+        expect(format).toBe('brotli'); throw new TypeError('Unsupported format');
+      }
+    }); break;
+    case 'brotli-data': vi.stubGlobal('DecompressionStream', class {
+      // Accepts the format but decodes the known probe to the wrong byte.
+      readonly readable = new ReadableStream<Uint8Array>({ start(controller) {
+        controller.enqueue(new Uint8Array([72])); controller.close();
+      } });
+      readonly writable = new WritableStream();
+    }); break;
+    case 'hash': vi.spyOn(crypto.subtle, 'digest').mockRejectedValueOnce(new Error('denied')); break;
     case 'sync': environment.sync.mockRejectedValue(new Error('sync denied')); break;
     case 'locks': environment.nav.locks.request.mockRejectedValue(new Error('locks denied')); break;
     default: { const exhaustive: never = capability; throw new Error(exhaustive); }

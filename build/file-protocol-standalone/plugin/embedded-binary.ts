@@ -1,22 +1,18 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { gzipSync } from 'node:zlib';
+import { brotliCompressSync, constants } from 'node:zlib';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 
-export type StandaloneEmbeddedBinary = Readonly<{
-  virtualId: string;
-  filePath: string;
-  bytes: number;
-  sha256: string;
-}>;
+import type { StandaloneEmbeddedBinary } from '../../../src/features/file-protocol-standalone/build-types';
 
 type BinaryDiagnostic = {
   virtualId: string;
   sourcePath: string;
   bytes: number;
   sha256: string;
-  gzipBytes: number;
+  compression: 'brotli';
+  compressedBytes: number;
   base64Bytes: number;
   owners: string[];
 };
@@ -58,11 +54,21 @@ export function createEmbeddedBinaryPlugin({ binaries, diagnostics }: {
       if (bytes.length !== input.bytes || createHash('sha256').update(bytes).digest('hex') !== input.sha256) {
         throw new Error(`Standalone embedded binary integrity mismatch: ${input.virtualId}`);
       }
-      const compressed = gzipSync(bytes, { level: 9 });
+      // Intentionally Brotli-only: standalone distribution size takes priority over
+      // decoder window memory. Hosted runtime assets remain gzip. Do not include a
+      // second gzip payload or a decoder polyfill; the actual Worker probes Brotli.
+      const compressed = brotliCompressSync(bytes, { params: {
+        [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_GENERIC,
+        [constants.BROTLI_PARAM_QUALITY]: 11,
+        // The reviewed 8.2 MB Wasm benefits from window 23; 24 adds no size saving.
+        // Keep standard Brotli, not the incompatible large-window extension.
+        [constants.BROTLI_PARAM_LGWIN]: 23,
+        [constants.BROTLI_PARAM_SIZE_HINT]: bytes.byteLength,
+      } });
       const base64 = compressed.toString('base64');
       records.set(id, {
         virtualId: input.virtualId, sourcePath: input.filePath, bytes: input.bytes,
-        sha256: input.sha256, gzipBytes: compressed.length, base64Bytes: base64.length, owners: [],
+        sha256: input.sha256, compression: 'brotli', compressedBytes: compressed.length, base64Bytes: base64.length, owners: [],
       });
       diagnostics.embeddedBinaries = [...records.values()];
       return `export const base64 = ${JSON.stringify(base64)}; export const byteLength = ${input.bytes}; export const sha256 = ${JSON.stringify(input.sha256)};`;

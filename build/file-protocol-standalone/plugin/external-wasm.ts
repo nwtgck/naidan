@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 
-const isWasmAsset = ({ fileName }: { fileName: string }): boolean => /\.wasm(?:\.gz)?$/iu.test(fileName);
+const isWasmAsset = ({ fileName }: { fileName: string }): boolean => /\.wasm(?:\.(?:gz|br))?$/iu.test(fileName);
 export function createExternalWasmGuardPlugin({ allowExternalWasmAssets }: Readonly<{allowExternalWasmAssets: boolean}>): Plugin {
   let outputDirectory: string | undefined;
   function rejectAssets({ assets }: { assets: string[] }): void {

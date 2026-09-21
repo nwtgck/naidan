@@ -1,6 +1,11 @@
-/** Decode in the consuming Worker; bound intermediate data and final output. */
-export async function decodeEmbeddedGzip({ base64, byteLength }: { base64: string, byteLength: number }): Promise<Uint8Array<ArrayBuffer>> {
+/**
+ * Decode in the consuming Worker; bound intermediate data and final output.
+ * Browser-side DecompressionStream('brotli') is allowed only on standalone paths.
+ * Hosted browser paths must not call this decoder or use native Brotli decoding.
+ */
+export async function decodeEmbeddedBrotli({ base64, byteLength, sha256 }: { base64: string, byteLength: number, sha256: string }): Promise<Uint8Array<ArrayBuffer>> {
   if (!Number.isSafeInteger(byteLength) || byteLength < 0) throw new Error('Invalid embedded binary size');
+  if (!/^[a-f0-9]{64}$/.test(sha256)) throw new Error('Invalid embedded binary hash');
   if (base64.length % 4 !== 0) throw new Error('Invalid embedded base64');
   // Allocate before opening streams so allocation failure cannot leave a reader behind.
   const result = new Uint8Array(byteLength);
@@ -26,7 +31,14 @@ export async function decodeEmbeddedGzip({ base64, byteLength }: { base64: strin
       }
     },
   }, { highWaterMark: 0 });
-  const reader = compressed.pipeThrough(new DecompressionStream('gzip')).getReader();
+  // Intentionally require native Brotli for the smaller standalone payload. This
+  // local type view bridges older TypeScript DOM declarations, not browser support:
+  // the real constructor still rejects unsupported formats. Never patch globals.
+  const NativeDecompressionStream = DecompressionStream as typeof DecompressionStream & {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Native Compression Streams constructor contract.
+    new (format: 'brotli'): DecompressionStream,
+  };
+  const reader = compressed.pipeThrough(new NativeDecompressionStream('brotli')).getReader();
   let position = 0;
   try {
     while (true) {
@@ -36,13 +48,19 @@ export async function decodeEmbeddedGzip({ base64, byteLength }: { base64: strin
       result.set(value, position); position += value.byteLength;
     }
     if (position !== byteLength) throw new Error('Embedded binary size mismatch');
-    return result;
   } catch (error) {
     await reader.cancel().catch(() => {});
     throw error;
   } finally {
     reader.releaseLock();
   }
+  // Unlike gzip, Brotli has no content checksum. Verify the decoded bytes against
+  // the build-verified manifest, including same-length corruption. Web Crypto
+  // avoids shipping a hashing library; its internal input snapshot may copy bytes.
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', result));
+  const actual = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  if (actual !== sha256) throw new Error('Embedded binary integrity mismatch');
+  return result;
 }
 export const TEST_ONLY = {
 };

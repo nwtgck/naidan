@@ -3,10 +3,11 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { gunzipSync } from 'node:zlib';
+import { brotliDecompressSync, gzipSync } from 'node:zlib';
 import { build, type Plugin } from 'vite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createEmbeddedBinaryPlugin, type StandaloneEmbeddedBinary } from './plugin/embedded-binary';
+import { createEmbeddedBinaryPlugin } from './plugin/embedded-binary';
+import type { StandaloneEmbeddedBinary } from '../../src/features/file-protocol-standalone/build-types';
 import { createExternalWasmGuardPlugin } from './plugin/external-wasm';
 
 const directories: string[] = [];
@@ -38,10 +39,20 @@ describe('standalone binary embedding', () => {
     const payload = payloads[0]; if (payload?.type !== 'chunk') throw new Error('Missing payload');
     const base64 = /base64\s*=\s*["']([^"']+)/.exec(payload.code)?.[1];
     if (!base64) throw new Error('Missing encoded payload');
-    expect(gunzipSync(Buffer.from(base64, 'base64'))).toEqual(Buffer.from(bytes));
-    expect(output.every(file => !/\.wasm(?:\.gz)?$/i.test(file.fileName))).toBe(true);
+    expect(brotliDecompressSync(Buffer.from(base64, 'base64'))).toEqual(Buffer.from(bytes));
+    expect(output.every(file => !/\.wasm(?:\.(?:gz|br))?$/i.test(file.fileName))).toBe(true);
     expect(output.filter(file => file.type === 'chunk' && file.isEntry).every(file => file.type === 'chunk' && !file.code.includes(base64))).toBe(true);
-    expect(diagnostics.embeddedBinaries).toEqual([expect.objectContaining({ sha256: binary.sha256, bytes: bytes.length, owners: [payload.fileName] })]);
+    expect(diagnostics.embeddedBinaries).toEqual([expect.objectContaining({ compression: 'brotli', compressedBytes: Buffer.from(base64, 'base64').length, sha256: binary.sha256, bytes: bytes.length, owners: [payload.fileName] })]);
+  });
+  it.each(['unexpected.wasm', 'unexpected.wasm.gz', 'unexpected.wasm.br'])('rejects emitted sidecar %s', async fileName => {
+    const { root } = fixture();
+    writeFileSync(path.join(root, 'main.js'), 'globalThis.fixture = true;');
+    await expect(build({ configFile: false, root, logLevel: 'silent',
+      plugins: [{ name: 'unexpected-sidecar', generateBundle() {
+        this.emitFile({ type: 'asset', fileName, source: gzipSync(new Uint8Array([1])) });
+      } }, createExternalWasmGuardPlugin({ allowExternalWasmAssets: false })],
+      build: { write: false, rollupOptions: { input: path.join(root, 'main.js') } },
+    })).rejects.toThrow('External WebAssembly');
   });
   it.each(['size', 'hash'] as const)('rejects an input with incorrect %s before emitting data', async corruption => {
     const { root, binary } = fixture();
@@ -53,7 +64,7 @@ describe('standalone binary embedding', () => {
     expect(() => createEmbeddedBinaryPlugin({ binaries: [binary, binary], diagnostics: {} })).toThrow('duplicate');
     expect(() => createEmbeddedBinaryPlugin({ binaries: [{ ...binary, filePath: 'input.wasm' }], diagnostics: {} })).toThrow('Invalid');
   });
-  it.each(['copied.wasm', 'nested/copied.wasm.gz'])('rejects publicDir sidecars before later packaging hooks: %s', async name => {
+  it.each(['copied.wasm', 'nested/copied.wasm.gz', 'nested/copied.wasm.br', 'nested/COPIED.WASM.BR'])('rejects publicDir sidecars before later packaging hooks: %s', async name => {
     const { root } = fixture();
     const asset = path.join(root, 'public', name); mkdirSync(path.dirname(asset), { recursive: true }); writeFileSync(asset, 'unexpected');
     writeFileSync(path.join(root, 'main.js'), 'globalThis.fixture = true;');

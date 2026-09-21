@@ -5,7 +5,8 @@ import MagicString from 'magic-string';
 import { z } from 'zod';
 import { normalizePath, type Plugin } from 'vite';
 import { profileSchema, type LlamaCppProfile } from './types';
-import type { StandaloneEmbeddedBinary } from '../../../build/file-protocol-standalone/plugin/embedded-binary';
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
+import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
 // Reviewed artifact commit: 8ef4be45622ab5f1b210ad2e7455a4ae8ac348f3.
 // This is an exact-source adapter, not a general JavaScript syntax transform.

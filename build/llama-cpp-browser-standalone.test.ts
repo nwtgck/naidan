@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { gunzipSync } from 'node:zlib';
+import { brotliDecompressSync } from 'node:zlib';
 import { runInNewContext } from 'node:vm';
 import { z } from 'zod';
 import JSZip from 'jszip';
@@ -183,14 +183,19 @@ int unrelated;`;
       expect(modules.filter(id => id.includes('llama-cpp-browser-core/profiles/'))).toEqual([coreId]);
       expect(modules.filter(id => id.startsWith('\0virtual:file-protocol-standalone/binary/'))).toEqual([binaryId]);
       expect(modules.some(id => id.includes('client-hosted.ts') || id.endsWith('/runtime/artifacts.ts') || id.endsWith('/hugging-face/writer-client.ts') || id.includes('browser-external'))).toBe(false);
+      expect(modules.some(id => id.endsWith('/embedded-binary.test-support.ts'))).toBe(false);
       const core = chunks.find(chunk => coreId in chunk.modules);
       const binary = chunks.find(chunk => binaryId in chunk.modules);
       const licenses = chunks.find(chunk => `\0${NAIDAN_LICENSE_MODULE_ID}` in chunk.modules);
       if (!core || !binary || !licenses) throw new Error('Missing lazy native or license chunks');
-      const { base64, byteLength } = z.object({ base64: z.string(), byteLength: z.number().int() }).parse(evaluateDataModule({ source: binary.code }));
-      expect(byteLength).toBe(readFileSync(coreId.replace('core.mjs', 'core.wasm')).byteLength);
+      const { base64, byteLength, sha256 } = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary.code }));
+      const wasm = readFileSync(coreId.replace('core.mjs', 'core.wasm'));
+      expect(byteLength).toBe(wasm.byteLength);
+      expect(sha256).toBe(createHash('sha256').update(wasm).digest('hex'));
+      // Keep a size budget on the encoded payload, independent of chunk naming.
+      expect(Buffer.from(base64, 'base64').byteLength).toBeLessThan(1_500_000);
       expect(evaluateDataModule({ source: licenses.code }).default).toEqual(collectedDependencies);
-      expect(gunzipSync(Buffer.from(base64, 'base64')).equals(readFileSync(coreId.replace('core.mjs', 'core.wasm')))).toBe(true);
+      expect(brotliDecompressSync(Buffer.from(base64, 'base64')).equals(readFileSync(coreId.replace('core.mjs', 'core.wasm')))).toBe(true);
       for (const entry of chunks.filter(chunk => chunk.isEntry)) {
         const initial = closure({ entry, chunks, dynamic: false });
         expect(initial.has(binary.fileName)).toBe(false); expect(initial.has(core.fileName)).toBe(false);
@@ -209,14 +214,14 @@ int unrelated;`;
         }
         expect(archive.names).not.toContain('release-report.json');
         expect(archive.names).not.toContain('debug-report.json');
-        expect(archive.names.some(name => /\.wasm(?:\.gz)?$|\/core\.mjs$|llama-cpp-browser-runtime\//.test(name))).toBe(false);
+        expect(archive.names.some(name => /\.wasm(?:\.(?:gz|br))?$|\/core\.mjs$|llama-cpp-browser-runtime\//.test(name))).toBe(false);
       }
       const notices = readFileSync(path.join(outputDirectory, 'llama-cpp-browser-native-licenses.txt'), 'utf8');
       expect(notices).toContain('Niels Lohmann'); expect(notices).toContain('David Reid');
       expect(Buffer.byteLength(notices)).toBeLessThan(512 * 1024);
-      expect(diagnostics.embeddedBinaries).toEqual([expect.objectContaining({ owners: [binary.fileName] })]);
+      expect(diagnostics.embeddedBinaries).toEqual([expect.objectContaining({ compression: 'brotli', owners: [binary.fileName] })]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 });

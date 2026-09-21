@@ -1,4 +1,4 @@
-import type { StandaloneEmbeddedBinary } from './plugin/embedded-binary.js';
+import type { StandaloneEmbeddedBinary } from '../../src/features/file-protocol-standalone/build-types.js';
 import type { FileProtocolStandaloneReleaseValidationOptions } from './release-validation.js';
 import type { FileProtocolStandaloneReleasePackagingOptions } from './plugin/release-packaging.js';
 

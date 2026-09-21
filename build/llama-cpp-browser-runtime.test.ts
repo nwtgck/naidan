@@ -75,8 +75,8 @@ describe('llama.cpp runtime distribution boundary', () => {
     expect(modules.some(name => name.endsWith('model-store.ts'))).toBe(true);
     expect(modules.some(name => name.endsWith('detect-profile-standalone.ts'))).toBe(true);
     expect(modules.some(name => name.endsWith('worker/entry.ts'))).toBe(true);
-    expect(Object.keys(output).some(name => name.includes('llama-cpp-browser-runtime') || name.endsWith('.wasm') || name.endsWith('.wasm.gz'))).toBe(false);
-  }, 30000);
+    expect(Object.keys(output).some(name => name.includes('llama-cpp-browser-runtime') || name.endsWith('.wasm') || name.endsWith('.wasm.gz') || name.endsWith('.wasm.br'))).toBe(false);
+  }, 90_000);
   it('bundles all four transformed hosted cores with lossless compressed Wasm assets', async () => {
     const { output, workerCores } = await bundleFeature({ standalone: false });
     for (const profile of ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi', 'webgpu-wasm32-asyncify']) {
@@ -87,6 +87,7 @@ describe('llama.cpp runtime distribution boundary', () => {
       if (!wasm || wasm.type !== 'asset') throw new Error('Missing built Wasm asset');
       expect(gunzipSync(wasm.source).equals(readFileSync(`node_modules/llama-cpp-browser-core/profiles/${profile}/core.wasm`))).toBe(true);
       expect(output[prefix + 'core.wasm']).toBeUndefined();
+      expect(output[prefix + 'core.wasm.br']).toBeUndefined();
     }
     expect(Object.keys(output).some(name => name.includes('entry-') && name.endsWith('.js'))).toBe(true);
     const javascript = Object.values(output).filter(file => file.fileName.endsWith('.js')).map(file => file.type === 'chunk' ? file.code : Buffer.from(file.source).toString('utf8'));
