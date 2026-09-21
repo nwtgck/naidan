@@ -54,11 +54,24 @@ const percentage = computed(() => progress.value && progress.value.total > 0
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <div v-if="progress" role="status" tw-class="flex items-start gap-3 py-3" data-testid="llama-cpp-browser-status">
-    <div tw-class="w-8 h-8 rounded-xl flex items-center justify-center bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-900/30 shrink-0"><Loader2Icon tw-class="w-4 h-4 text-purple-500 animate-spin" /></div>
-    <div tw-class="flex-1 min-w-0 space-y-2 pt-1">
-      <div tw-class="flex items-center justify-between gap-3 text-xs font-bold text-purple-600 dark:text-purple-400"><span>{{ phase }}</span><span v-if="percentage !== undefined" tw-class="tabular-nums">{{ percentage }}%</span></div>
-      <div v-if="percentage !== undefined" role="progressbar" :aria-label="phase" :aria-valuenow="percentage" :aria-valuemin="0" :aria-valuemax="100" tw-class="h-1.5 rounded-full overflow-hidden bg-purple-100 dark:bg-purple-900/30"><div tw-class="h-full rounded-full bg-purple-600 dark:bg-purple-400 transition-all duration-300 ease-out" :style="{ width: `${percentage}%` }"></div></div>
+  <div v-if="progress" role="status" tw-class="flex flex-col gap-2.5 py-3" data-testid="llama-cpp-browser-status">
+    <div tw-class="flex items-start justify-between gap-3 text-xs leading-5">
+      <div tw-class="flex min-w-0 items-start gap-2">
+        <Loader2Icon aria-hidden="true" tw-class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 animate-spin motion-reduce:animate-none" />
+        <span tw-class="font-medium text-gray-600 dark:text-gray-300">{{ phase }}</span>
+      </div>
+      <span v-if="percentage !== undefined" tw-class="shrink-0 tabular-nums text-gray-500 dark:text-gray-400">{{ percentage }}%</span>
+    </div>
+    <div
+      v-if="percentage !== undefined"
+      role="progressbar"
+      :aria-label="phase"
+      :aria-valuenow="percentage"
+      :aria-valuemin="0"
+      :aria-valuemax="100"
+      tw-class="h-1 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800"
+    >
+      <div tw-class="h-full rounded-full bg-purple-500/80 dark:bg-purple-400/80 transition-[width] duration-300 ease-out motion-reduce:transition-none" :style="{ width: `${percentage}%` }"></div>
     </div>
   </div>
   <!-- Input processing and token waits are not model loading. The same existing
