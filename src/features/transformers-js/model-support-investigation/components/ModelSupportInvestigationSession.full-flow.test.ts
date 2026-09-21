@@ -161,7 +161,14 @@ describe('complete Full collection through Session and actual Worker transports'
                   // path, not the cause of any observed browser model error.
                   throw new TypeError('Synthetic native image rejection');
                 }
-                const output = tokenizer.encode('Synthetic collection reply.', { add_special_tokens: false }).map(BigInt);
+                const prompt = tokenizer.decode([...input.data].map(Number), { skip_special_tokens: false });
+                // This synthetic successful reply must close the actual native
+                // reasoning prefix and assistant turn before the continuity probe.
+                const reasoningEnd = prompt.endsWith(`\
+<|im_start|>assistant
+<think>
+`) ? '</think>\n\n' : '';
+                const output = tokenizer.encode(`${reasoningEnd}Synthetic collection reply.<|im_end|>`, { add_special_tokens: false }).map(BigInt);
                 options.streamer.put(input.tolist()); options.streamer.put([output]); options.streamer.end();
                 const sequence = [...input.data].map(BigInt).concat(output);
                 return { sequences: new runtime.Tensor('int64', sequence, [1, sequence.length]) };

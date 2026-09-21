@@ -58,7 +58,7 @@ beforeEach(() => {
   });
   client = {
     loadDownloadedModel: vi.fn<TransformersJsWorkerClient['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
-    generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockResolvedValue(undefined),
+    generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockRejectedValue(new Error('The legacy stream must not be used.')),
     generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>().mockResolvedValue(undefined),
     interrupt: vi.fn<TransformersJsWorkerClient['interrupt']>().mockResolvedValue(undefined),
     unloadModel: vi.fn<TransformersJsWorkerClient['unloadModel']>().mockResolvedValue(undefined),
@@ -68,10 +68,13 @@ beforeEach(() => {
   take = vi.fn<GenerationCaptureClient['takeGenerationCapture']>().mockResolvedValue({ status: 'not-started' });
   mocks.captureClient.mockImplementation(({ runId, workerEpoch, getActiveRequest }) => {
     const issuedCalls: GenerationCaptureRequest['context'][] = [];
-    vi.mocked(client.generateText).mockImplementation(async ({ onChunk }) => {
+    vi.mocked(client.generateMessage).mockImplementation(async ({ onEvent }) => {
       const request = getActiveRequest();
       issuedCalls.push({ runId, workerEpoch, requestId: request.requestId, generationCallId: issuedCalls.length + 1 });
-      onChunk({ chunk: 'Synthetic public reply.' });
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'Synthetic public reply.' } });
+      await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+      await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
     return { client, takeGenerationCapture: take, getCaptureLifetime: () => ({ runId, workerEpoch, session: 'active', issuedCalls, loadRequests: [], incompleteReasons: [] }) };
   });
@@ -103,7 +106,7 @@ describe('exclusive hosted Provider investigation routing', () => {
     expect(result.runId).toBe(runId);
     expect(mocks.captureClient).toHaveBeenCalledWith(expect.objectContaining({ runId, workerEpoch: 1 }));
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
-    expect(client.generateText).toHaveBeenCalledTimes(13);
+    expect(client.generateMessage).toHaveBeenCalledTimes(13);
     expect(take).toHaveBeenCalledOnce();
     expect(mocks.acceptance).not.toHaveBeenCalled();
     expect(mocks.template).not.toHaveBeenCalled();
@@ -129,7 +132,7 @@ describe('exclusive hosted Provider investigation routing', () => {
     expect(mocks.planning.mock.calls[0]?.[0]).toMatchObject({ externalNetworkPolicy: 'deny' });
     expect(result.productionProviderCapture?.plan).toBe('full-v2');
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
-    expect(client.generateText).toHaveBeenCalledTimes(13);
+    expect(client.generateMessage).toHaveBeenCalledTimes(13);
     expect(mocks.acceptance).not.toHaveBeenCalled();
     expect(mocks.template).not.toHaveBeenCalled();
     expect(mocks.candidate).not.toHaveBeenCalled();
@@ -179,7 +182,7 @@ describe('exclusive hosted Provider investigation routing', () => {
     configuration.scope['capability-probes'] = 'not-selected';
     const result = await host.runPartialInvestigation({ modelId: 'org/model', configuration, onEvent: vi.fn(), onCheckpoint: vi.fn() });
     expect(result.productionProviderCapture?.plan).toBe('generation-v2');
-    expect(client.generateText).toHaveBeenCalledTimes(3);
+    expect(client.generateMessage).toHaveBeenCalledTimes(3);
     expect(result.productionProviderInvestigation?.requests.filter(request => request.notStartedReason === 'scope-not-selected')).toHaveLength(10);
     expect(result.currentOperation).toContain('0 unexecuted');
   });
@@ -190,12 +193,12 @@ describe('exclusive hosted Provider investigation routing', () => {
     clients.push(host);
     const entered = Promise.withResolvers<void>();
     const pending = Promise.withResolvers<void>();
-    let onChunk: Parameters<TransformersJsWorkerClient['generateText']>[0]['onChunk'] | undefined;
+    let onGenerationEvent: Parameters<TransformersJsWorkerClient['generateMessage']>[0]['onEvent'] | undefined;
     const original = mocks.captureClient.getMockImplementation()!;
     mocks.captureClient.mockImplementation(input => {
       const capture = original(input);
-      vi.mocked(client.generateText).mockImplementation(async input => {
-        onChunk = input.onChunk;
+      vi.mocked(client.generateMessage).mockImplementation(async input => {
+        onGenerationEvent = input.onEvent;
         entered.resolve();
         await pending.promise;
       });
@@ -216,7 +219,7 @@ describe('exclusive hosted Provider investigation routing', () => {
     expect(onEvent.mock.calls.flatMap(([{ event }]) => event.productionProviderProgress === undefined ? [] : [event.productionProviderProgress.progress.phase])).toEqual(['not-started', 'running', 'sealing', 'finished']);
     expect(terminal[0]?.run.productionProviderInvestigation?.progressCallbackFailures).toBe(0);
     const count = checkpoints.length;
-    onChunk?.({ chunk: 'Late private callback' });
+    await onGenerationEvent?.({ event: { type: 'text_delta', index: 0, text: 'Late private callback' } });
     pending.resolve();
     await Promise.resolve();
     expect(checkpoints).toHaveLength(count);

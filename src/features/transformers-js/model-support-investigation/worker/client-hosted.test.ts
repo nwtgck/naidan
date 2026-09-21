@@ -322,11 +322,21 @@ function attemptCheckpoint({ candidateId }: {
 }
 
 
+async function completeProductionReply({ onGenerationEvent }: {
+  onGenerationEvent: Parameters<WorkerServerApi<ITransformersJsWorker>['generateText']>[7],
+}) {
+  if (onGenerationEvent === undefined) throw new Error('Expected the structured generation callback');
+  await onGenerationEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+  await onGenerationEvent({ event: { type: 'text_delta', index: 0, text: 'production' } });
+  await onGenerationEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+  await onGenerationEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+}
+
 function ordinaryProductionRemote() {
   return {
     loadDownloadedModel: vi.fn<WorkerServerApi<ITransformersJsWorker>['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
-    generateText: vi.fn<WorkerServerApi<ITransformersJsWorker>['generateText']>(async (_messages, onChunk) => {
-      onChunk('production');
+    generateText: vi.fn<WorkerServerApi<ITransformersJsWorker>['generateText']>(async (_messages, _onChunk, _onToolCalls, _params, _tools, _capture, _continuationOwner, onGenerationEvent) => {
+      await completeProductionReply({ onGenerationEvent });
     }),
     takeGenerationCapture: vi.fn(async () => ({ status: 'not-started' as const })),
     interrupt: vi.fn(async () => undefined), unloadModel: vi.fn(async () => undefined), resetCache: vi.fn(async () => undefined),
@@ -1215,13 +1225,14 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     type PlanningArgs = Parameters<IModelSupportInvestigationWorker['runPartialInvestigation']>;
     let latePlanningEvent: PlanningArgs[1] | undefined;
     let latePlanningCheckpoint: PlanningArgs[2] | undefined;
-    let lateChunk: Parameters<WorkerServerApi<ITransformersJsWorker>['generateText']>[1] | undefined;
+    let lateGenerationEvent: Parameters<WorkerServerApi<ITransformersJsWorker>['generateText']>[7];
     const planning = remote({ runPartialInvestigation: vi.fn(async (_request, event, checkpoint) => {
       latePlanningEvent = event; latePlanningCheckpoint = checkpoint; return planningRun();
     }) });
     const production = ordinaryProductionRemote();
-    production.generateText.mockImplementation(async (_messages, onChunk) => {
-      lateChunk = onChunk; onChunk('production');
+    production.generateText.mockImplementation(async (_messages, _onChunk, _onToolCalls, _params, _tools, _capture, _continuationOwner, onGenerationEvent) => {
+      lateGenerationEvent = onGenerationEvent;
+      await completeProductionReply({ onGenerationEvent });
     });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce(production);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
@@ -1231,7 +1242,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const events = onEvent.mock.calls.length; const checkpoints = onCheckpoint.mock.calls.length;
     latePlanningEvent?.({ event: { stepId: 'repository-information', status: 'running', detail: 'stale planning' } });
     latePlanningCheckpoint?.({ run: planningRun() });
-    lateChunk?.('stale generation');
+    await lateGenerationEvent?.({ event: { type: 'text_delta', index: 0, text: 'stale generation' } });
     expect(onEvent).toHaveBeenCalledTimes(events);
     expect(onCheckpoint).toHaveBeenCalledTimes(checkpoints);
     expect(onCheckpoint.mock.calls.at(-1)?.[0].checkpoint.recovery.status).toBe('completed');
