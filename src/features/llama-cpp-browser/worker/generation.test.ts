@@ -271,8 +271,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
   it.each([
     { next: 'prefix-old', comparison: 'identical', common: 11, reused: 11 },
     { next: 'prefix-old-suffix', comparison: 'prompt-extension', common: 11, reused: 11 },
-    { next: 'prefix', comparison: 'prompt-shorter', common: 7, reused: 0 },
-    { next: 'prefix-new', comparison: 'token-mismatch', common: 8, reused: 0 },
+    { next: 'prefix', comparison: 'prompt-shorter', common: 7, reused: 6 },
+    { next: 'prefix-new', comparison: 'token-mismatch', common: 8, reused: 8 },
   ] as const)('diagnoses a $comparison using native positions and token counts only', async ({ next, comparison, common, reused }) => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
@@ -345,6 +345,136 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(differentLogits[69]).toBeGreaterThan(differentLogits[68]!);
     } finally {
       clear.mockRestore(); batch.mockRestore();
+    }
+  }, 30000);
+  it.each([
+    {
+      name: 'an edited suffix',
+      firstMessages: [{ role: 'user', content: 'aaaaaaaabbbbX' }],
+      nextMessages: [{ role: 'user', content: 'aaaaaaaaccXX' }],
+      nextPrompt: 'aaaaaaaaccXX', retained: 9,
+    },
+    {
+      name: 'a shortened prompt',
+      firstMessages: [{ role: 'user', content: 'aaaaaaaabbbbX' }],
+      nextMessages: [{ role: 'user', content: 'aaaaaaaa' }],
+      nextPrompt: 'aaaaaaaa', retained: 8,
+    },
+    {
+      name: 'reasoning omitted by the unchanged template on a new user turn',
+      firstMessages: [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: 'X', reasoning_content: 'bbbb' }],
+      nextMessages: [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: 'X', reasoning_content: 'bbbb' }, { role: 'user', content: 'X' }],
+      nextPrompt: 'aaaaaaaaXX', retained: 9,
+    },
+  ] satisfies { name: string, firstMessages: WorkerGenerateInput['messages'], nextMessages: WorkerGenerateInput['messages'], nextPrompt: string, retained: number }[])('reuses the native common prefix for $name and matches cold logits', async ({ firstMessages, nextMessages, nextPrompt, retained }) => {
+    await releaseSession({ releaseRuntime: false });
+    // This fixture deliberately omits past reasoning when a new user turn is
+    // present. The application must preserve that template's input semantics.
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate:
+      '{% for message in messages %}{% if message.reasoning_content is defined and messages[-1].role == "assistant" %}{{ message.reasoning_content }}{% endif %}{{ message.content }}{% endfor %}',
+    }));
+    const first = request({ messages: firstMessages }); first.stop = ['A', 'B'];
+    await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const originalLogits = await readNativeLogits();
+    const core = host.core!;
+    const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
+    const clear = vi.spyOn(core.api, 'llama_memory_clear');
+    const nativeBatch = core.api.llama_batch_get_one;
+    const batches: number[][] = [];
+    const batch = vi.spyOn(core.api, 'llama_batch_get_one').mockImplementation(async (destination, tokens, count) => {
+      const bytes = core.bytes({ pointer: tokens, length: count * 4 });
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      batches.push(Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true)));
+      return nativeBatch(destination, tokens, count);
+    });
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const next = request({ messages: nextMessages }); next.stop = ['A', 'B'];
+    const originalRequest = structuredClone(next);
+    const expectedTokens = [1, ...Array.from(new TextEncoder().encode(nextPrompt), byte => byte + 3)];
+    try {
+      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const warmLogits = await readNativeLogits();
+      expect(next).toEqual(originalRequest);
+      expect(remove).toHaveBeenCalledExactlyOnceWith(expect.any(BigInt), 0, retained, -1);
+      expect(clear).not.toHaveBeenCalled();
+      expect(batches).toEqual([expectedTokens.slice(retained)]);
+      expect(await sequencePosition()).toBe(expectedTokens.length - 1);
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+        event: 'cache-reuse', reason: 'prefix-partial-match', reusedTokens: retained, evaluatedTokens: expectedTokens.length - retained,
+      }));
+      expect(Math.abs(warmLogits[68]! - originalLogits[68]!)).toBeGreaterThan(0.01);
+
+      batches.length = 0; remove.mockClear();
+      const repeated = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(repeated).toEqual(warm);
+      expect(batches).toEqual([]);
+      expect(remove).not.toHaveBeenCalled();
+      expect(await readNativeLogits()).toEqual(warmLogits);
+
+      await releaseSession({ releaseRuntime: false });
+      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const coldLogits = await readNativeLogits();
+      expect(cold).toEqual(warm);
+      expect(batches).toEqual([expectedTokens]);
+      expect(await sequencePosition()).toBe(expectedTokens.length - 1);
+      expect(warmLogits).toHaveLength(259);
+      warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
+    } finally {
+      remove.mockRestore(); clear.mockRestore(); batch.mockRestore(); debug.mockRestore();
+    }
+  }, 30000);
+  it.each(['hybrid-tail-only', 'recurrent-tail-only', 'cropped-window', 'frontier-mismatch', 'remove-refused', 'remove-no-effect', 'remove-lost-prefix', 'empty-retained-prefix'] as const)('fully reevaluates instead of trusting an unsafe partial cache: %s', async condition => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
+    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbbX' }] }); first.stop = ['A', 'B'];
+    await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const core = host.core!;
+    const removeNative = core.api.llama_memory_seq_rm;
+    const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
+    const clear = vi.spyOn(core.api, 'llama_memory_clear');
+    const minimum = vi.spyOn(core.api, 'llama_memory_seq_pos_min');
+    const maximum = vi.spyOn(core.api, 'llama_memory_seq_pos_max');
+    const hybrid = vi.spyOn(core.api, 'llama_model_is_hybrid');
+    const recurrent = vi.spyOn(core.api, 'llama_model_is_recurrent');
+    const batch = vi.spyOn(core.api, 'llama_batch_get_one');
+    let nextText = 'aaaaaaaaXX';
+    let removalAttempted = false;
+    switch (condition) {
+    // These native range overrides test retained-state boundaries, not real
+    // recurrent or SWA execution. Evaluation still uses attention Wasm.
+    case 'hybrid-tail-only': hybrid.mockResolvedValueOnce(1); minimum.mockResolvedValueOnce(13); break;
+    case 'recurrent-tail-only': recurrent.mockResolvedValueOnce(1); minimum.mockResolvedValueOnce(13); break;
+    case 'cropped-window': minimum.mockResolvedValueOnce(1); break;
+    case 'frontier-mismatch': maximum.mockResolvedValueOnce(12); break;
+    case 'remove-refused': remove.mockResolvedValueOnce(0); removalAttempted = true; break;
+    case 'remove-no-effect': remove.mockResolvedValueOnce(1); removalAttempted = true; break;
+    case 'remove-lost-prefix': {
+      remove.mockImplementationOnce(async (...args) => {
+        const result = await removeNative(...args);
+        await removeNative(args[0], 0, 0, 1);
+        return result;
+      });
+      removalAttempted = true;
+      break;
+    }
+    case 'empty-retained-prefix': nextText = ''; break;
+    default: { const exhaustive: never = condition; throw new Error(`Unknown unsafe cache condition: ${exhaustive}`); }
+    }
+    const next = request({ messages: [{ role: 'user', content: nextText }] }); next.stop = ['A', 'B'];
+    try {
+      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const warmLogits = await readNativeLogits();
+      expect(remove).toHaveBeenCalledTimes(removalAttempted ? 1 : 0);
+      expect(clear).toHaveBeenCalledOnce();
+      expect(batch.mock.calls.map(call => call[2])).toEqual([nextText.length + 1]);
+      expect(await sequencePosition()).toBe(nextText.length);
+      await releaseSession({ releaseRuntime: false });
+      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const coldLogits = await readNativeLogits();
+      warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
+    } finally {
+      remove.mockRestore(); clear.mockRestore(); minimum.mockRestore(); maximum.mockRestore();
+      hybrid.mockRestore(); recurrent.mockRestore(); batch.mockRestore();
     }
   }, 30000);
   it('preserves saved ordered parts through native Jinja, byte tokens and warm cache reuse', async () => {

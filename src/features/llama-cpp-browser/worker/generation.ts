@@ -1,6 +1,6 @@
 import { prepareMultimodal } from './multimodal';
 import { LlamaCppBrowserError, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
-import { logDiagnostic, logFailure, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
+import { logDiagnostic, logFailure, type Diagnostic, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
 import { createOutputStream } from './output-stream';
 import { prepareSession } from './session';
@@ -129,16 +129,37 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     const prefixMatches = cacheValid && cachedTokens > 0 && commonPrefixTokens === cachedTokens;
     // The last successful decode owns the context logits. Native CPU sampling
     // copies them into candidates; no evaluation runs between resident requests.
-    const reuse = !multimodal && memory !== 0n && prefixMatches && nativePositionMax === cachedTokens - 1;
-    const reusedTokens = reuse ? cachedTokens : 0;
+    const cachePositionMatches = nativePositionMax === cachedTokens - 1;
+    const reuse = !multimodal && memory !== 0n && prefixMatches && cachePositionMatches;
+    let reusedTokens = reuse ? cachedTokens : 0;
+    let reason: Diagnostic['reason'] = reuse ? 'prefix-match' : !cacheValid ? 'cache-invalid'
+      : !cachePositionMatches ? 'cache-position' : 'prefix-mismatch';
+    cache.validity = 'invalid';
+    if (!reuse && !multimodal && memory !== 0n && cacheValid && cachePositionMatches && commonPrefixTokens > 0) {
+      // Require the entire original prefix to remain resident. llama.cpp's
+      // attention cache keeps every position between min/max; composite memory
+      // reports its narrowest retained range. Let native seq_rm decide whether
+      // that memory can actually rewind, without model-specific dispatch.
+      if (nativePositionMin === 0) {
+        // Removing a suffix does not refresh logits. Even a shortened prompt
+        // must decode at least its final token before sampling again.
+        const retained = Math.min(commonPrefixTokens, tokenCount - 1);
+        if (retained > 0) {
+          const removed = await api.llama_memory_seq_rm(memory, 0, retained, -1);
+          if (removed && await api.llama_memory_seq_pos_min(memory, 0) === 0
+            && await api.llama_memory_seq_pos_max(memory, 0) === retained - 1) {
+            reusedTokens = retained;
+            cache.tokens.length = retained;
+            reason = 'prefix-partial-match';
+          } else reason = 'cache-rollback-failed';
+        }
+      } else reason = 'cache-window';
+    }
     logDiagnostic({ diagnostic: { event: 'cache-reuse', reusedTokens, evaluatedTokens: tokenCount - reusedTokens,
       tokens: tokenCount, cachedTokens, commonPrefixTokens, cacheComparison,
       nativeMemoryKind, nativePositionMin, nativePositionMax, nativeRollbackTokens,
-      reason: reuse ? 'prefix-match' : !cacheValid ? 'cache-invalid' : !prefixMatches ? 'prefix-mismatch' : 'cache-position' } });
-    // No rollback or state transfer: edited/shortened prompts and uncertain state
-    // rebuild the cache, including for recurrent and sliding-window models.
-    cache.validity = 'invalid';
-    if (!reuse) {
+      reason } });
+    if (reusedTokens === 0) {
       cache.tokens = [];
       if (memory !== 0n) await api.llama_memory_clear(memory, 1);
     }
