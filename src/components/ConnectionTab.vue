@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
@@ -63,7 +64,6 @@ const { showConfirm } = useConfirm();
 const { showPrompt } = usePrompt();
 const { addToast } = useToast();
 
-const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 
 const form = computed({
   get: () => props.modelValue,
@@ -957,10 +957,10 @@ defineExpose({
                 >
                   <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
                   <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
-                  <option :disabled="isStandalone" value="transformers_js">
-                    {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ isStandalone ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
+                  <option :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'" value="transformers_js">
+                    {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available' ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
                   </option>
-                  <option value="llama_cpp_browser" :disabled="isStandalone">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
+                  <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                   <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">
                     {{ lazyStrings.SHARED__browser_provided() }}
                   </option>
@@ -1156,8 +1156,8 @@ defineExpose({
                       >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                       <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
                       <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
-                      <option value="transformers_js">{{ lazyStrings.ConnectionTab__transformers_js_experimental() }}</option>
-                      <option value="llama_cpp_browser" :disabled="isStandalone">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
+                      <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ConnectionTab__transformers_js_experimental() }}</option>
+                      <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                       <option value="browser_provided_lm">{{ lazyStrings.SHARED__browser_provided() }}</option>
                     </select>
                   </div>

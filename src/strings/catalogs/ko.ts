@@ -1762,6 +1762,11 @@ import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBro
 import { llamaCppBrowser__drop_model_folders_or_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_model_folders_or_gguf_files_here/ko';
 import { llamaCppBrowser__or_choose_files_from_your_device } from '@/strings/messages/llamaCppBrowser__or_choose_files_from_your_device/ko';
 import { llamaCppBrowser__inference_settings } from '@/strings/messages/llamaCppBrowser__inference_settings/ko';
+import { llamaCppBrowser__automatic_profile } from '@/strings/messages/llamaCppBrowser__automatic_profile/ko';
+import { llamaCppBrowser__checking_browser_support } from '@/strings/messages/llamaCppBrowser__checking_browser_support/ko';
+import { llamaCppBrowser__check_browser_support } from '@/strings/messages/llamaCppBrowser__check_browser_support/ko';
+import { llamaCppBrowser__unavailable_feature } from '@/strings/messages/llamaCppBrowser__unavailable_feature/ko';
+import { llamaCppBrowser__no_compatible_runtime } from '@/strings/messages/llamaCppBrowser__no_compatible_runtime/ko';
 import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/ko';
 import { llamaCppBrowser__automatic_profile_description } from '@/strings/messages/llamaCppBrowser__automatic_profile_description/ko';
 import { llamaCppBrowser__imported_models } from '@/strings/messages/llamaCppBrowser__imported_models/ko';
@@ -3547,6 +3552,11 @@ export const catalog = {
   llamaCppBrowser__drop_model_folders_or_gguf_files_here,
   llamaCppBrowser__or_choose_files_from_your_device,
   llamaCppBrowser__inference_settings,
+  llamaCppBrowser__automatic_profile,
+  llamaCppBrowser__checking_browser_support,
+  llamaCppBrowser__check_browser_support,
+  llamaCppBrowser__unavailable_feature,
+  llamaCppBrowser__no_compatible_runtime,
   llamaCppBrowser__automatic_recommended,
   llamaCppBrowser__automatic_profile_description,
   llamaCppBrowser__imported_models,

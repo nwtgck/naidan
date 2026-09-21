@@ -8,10 +8,11 @@ import type { generate } from "./generation";
 
 const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
 const completed = () => ({ ...result, toolCalls: [] });
-const calls = vi.hoisted(() => ({ generate: vi.fn<typeof generate>(), release: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+const calls = vi.hoisted(() => ({ probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+vi.mock("@/features/llama-cpp-browser/runtime/detect-profile", () => ({ probeRuntimeProfiles: calls.probe }));
 vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
 vi.mock("./generation", () => ({ generate: calls.generate }));
-vi.mock("./session", () => ({ invalidateStoredModel: calls.release }));
+vi.mock("./session", () => ({ invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
 vi.mock("../runtime/model-store", () => ({ withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
   importStoredModel: calls.import, removeStoredModel: calls.remove, listStoredModels: calls.list }));
 function request({ generationId }: { generationId: number }): WorkerGenerateCall {
@@ -29,6 +30,29 @@ beforeEach(() => {
   vi.clearAllMocks(); calls.list.mockResolvedValue([]); calls.remove.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
 });
 describe("generation RPC lifecycle", () => {
+  it('probes browser capabilities without loading a model or generating', async () => {
+    const capabilities = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
+    calls.probe.mockResolvedValueOnce(capabilities);
+    expect(await createWorkerApi().probeProfiles()).toEqual(capabilities);
+    expect(calls.generate).not.toHaveBeenCalled(); expect(calls.releaseSession).not.toHaveBeenCalled();
+  });
+  it('releases idle native state and refuses cleanup while generation owns it', async () => {
+    const api = createWorkerApi();
+    await api.release();
+    expect(calls.releaseSession).toHaveBeenCalledWith({ releaseRuntime: true });
+    calls.releaseSession.mockClear();
+    const blocked = deferred();
+    calls.generate.mockImplementationOnce(async () => {
+      await blocked.promise; return completed();
+    });
+    const generating = api.generate(request({ generationId: 1 }), () => {}, () => {});
+    await vi.waitFor(() => expect(calls.generate).toHaveBeenCalledOnce());
+    await expect(api.release()).rejects.toThrow('busy');
+    expect(calls.releaseSession).not.toHaveBeenCalled();
+    blocked.resolve(); await generating;
+    await api.release();
+    expect(calls.releaseSession).toHaveBeenCalledOnce();
+  });
   it("posts native callbacks immediately and drains their acknowledgements before RPC completion", async () => {
     const blocked = deferred(); const events: string[] = [];
     calls.generate.mockImplementation(async ({ onProgress, onChunk }) => {

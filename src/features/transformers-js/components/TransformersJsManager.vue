@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
@@ -98,10 +99,10 @@ const downloadFileStatusLabel = ({ status }: { status: DownloadFileStatus }): st
 };
 
 const isFileUrl = typeof window !== 'undefined' && window.location.protocol === 'file:';
-const isStandalone = __BUILD_MODE_IS_STANDALONE__;
+const isUnavailableInBuild = getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available';
 
 const isOpfsSupported = computedAsync(
-  () => checkOPFSSupport(),
+  () => isUnavailableInBuild ? true : checkOPFSSupport(),
   true, // Assume supported initially
 );
 
@@ -200,6 +201,7 @@ const handleClickOutside = ({ event }: { event: MouseEvent }) => {
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 onMounted(async () => {
+  if (isUnavailableInBuild) return;
   searchQuery.value = '';
   await refreshLocalModels();
   unsubscribe = transformersJsService.subscribe({ listener: ({ status: s, progress: p, error: e, isCached: c, isLoadingFromCache: l, progressItems: items }) => {
@@ -241,7 +243,7 @@ onUnmounted(() => {
 });
 
 const loadDownloadedModel = async ({ modelId }: { modelId: string }) => {
-  if (!modelId || isStandalone) return;
+  if (!modelId || isUnavailableInBuild) return;
   lastDownloadError.value = null; // Clear previous download error when starting a fresh load
   try {
     await transformersJsService.loadDownloadedModel({ modelId });
@@ -280,7 +282,7 @@ const handleRestart = async () => {
 
 const downloadModelById = async ({ modelId }: { modelId: string }) => {
   const normalizedModelId = modelId.trim();
-  if (!normalizedModelId || isStandalone) return;
+  if (!normalizedModelId || isUnavailableInBuild) return;
 
   lastDownloadError.value = null;
   // listCachedModels().isComplete only describes the committed files currently
@@ -392,7 +394,7 @@ defineExpose({
 <template>
   <div tw-class="p-0 space-y-8">
     <!-- Standalone Mode Header Warning -->
-    <div v-if="isStandalone" class="animate-in fade-in slide-in-from-top-2" tw-class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl space-y-4 duration-400">
+    <div v-if="isUnavailableInBuild" class="animate-in fade-in slide-in-from-top-2" tw-class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl space-y-4 duration-400">
       <div tw-class="flex items-start gap-3 text-amber-700 dark:text-amber-400 leading-relaxed italic text-sm">
         <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
         <p>
@@ -422,9 +424,11 @@ defineExpose({
       </div>
     </div>
 
-    <div
+    <fieldset
+      data-testid="transformers-js-actions"
+      :disabled="isUnavailableInBuild || !isOpfsSupported"
       class="animate-in fade-in slide-in-from-bottom-2"
-      :tw-class="['space-y-10 duration-400', { 'opacity-40 pointer-events-none grayscale select-none': isStandalone || !isOpfsSupported }]"
+      :tw-class="['space-y-10 duration-400 min-w-0', { 'opacity-40 pointer-events-none grayscale select-none': isUnavailableInBuild || !isOpfsSupported }]"
     >
       <!-- Section 1: Model Downloader & Importer -->
       <section tw-class="space-y-6">
@@ -444,7 +448,7 @@ defineExpose({
           </a>
         </div>
 
-        <template v-if="!isStandalone">
+        <template v-if="!isUnavailableInBuild">
           <!-- file:// Warning -->
           <div v-if="isFileUrl" tw-class="flex items-start gap-3 p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/50 rounded-3xl text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
             <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
@@ -821,7 +825,7 @@ defineExpose({
           </div>
         </div>
       </section>
-    </div>
+    </fieldset>
 
   </div>
 </template>

@@ -328,4 +328,31 @@ describe('Transformers.js Onboarding Integration', () => {
     // Should have automatically called loadDownloadedModel (logic is inside TransformersJsManager)
     expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
   });
+  it('opens the standalone feature explanation without scans, model loads or enabling start', async () => {
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
+    const wrapper = mountModal({ global: { stubs: { TransformersJsManager: false } } });
+    try {
+      await flushPromises();
+      const tab = wrapper.findAll('button').find(button => button.text().includes('Transformers.js'));
+      if (!tab) throw new Error('Missing discoverable feature tab');
+      expect(tab.attributes('disabled')).toBeUndefined();
+      await tab.trigger('click'); await flushPromises();
+      expect(wrapper.text()).toContain('is not available in the Standalone build');
+      expect(wrapper.get('fieldset[data-testid="transformers-js-actions"]').attributes('disabled')).toBeDefined();
+      expect(transformersJsService.subscribe).not.toHaveBeenCalled();
+      expect(transformersJsService.listCachedModels).not.toHaveBeenCalled();
+      expect(transformersJsService.loadDownloadedModel).not.toHaveBeenCalled();
+      // Even a late child event must not permit persisting an unavailable endpoint.
+      wrapper.getComponent(TransformersJsManager).vm.$emit('model-loaded', 'stale-model');
+      await flushPromises();
+      const start = wrapper.findAll('button').find(button => button.text().includes('Get Started'));
+      if (!start) throw new Error('Missing visible start action');
+      expect(start.attributes('disabled')).toBeDefined();
+      await start.trigger('click');
+      expect(mockSave).not.toHaveBeenCalled();
+    } finally {
+      wrapper.unmount(); vi.unstubAllGlobals();
+    }
+  });
+
 });

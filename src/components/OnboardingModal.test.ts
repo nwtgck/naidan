@@ -122,10 +122,11 @@ describe('OnboardingModal.vue', () => {
     });
   });
 
-  it('prepares local browser onboarding without saving settings and starts only after a stored model is selected', async () => {
+  it.each([false, true])('starts local browser onboarding only after a stored model is selected with standalone=%s', async standalone => {
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q4_K_M', target: 'onboarding', claim: () => true });
-    const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { props: ['modelPreset'], template: '<div data-testid="preset-manager">{{ modelPreset?.input }}</div>' } } } });
+    const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { name: 'PreparedManager', props: ['modelPreset'], emits: ['runtimeReady'], template: '<div data-testid="preset-manager">{{ modelPreset?.input }}</div>' } } } });
     await flushPromises();
     expect(wrapper.get('[data-testid="preset-manager"]').text()).toBe('hf.co/owner/repo:Q4_K_M');
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
@@ -137,21 +138,25 @@ describe('OnboardingModal.vue', () => {
     // Returning to the endpoint refreshes its authoritative local model list.
     const ollama = wrapper.findAll('button').find(button => button.text() === 'Ollama')!;
     await ollama.trigger('click'); await wrapper.get('[data-testid="onboarding-llama-cpp-browser-button"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
+    wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true); await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeUndefined();
     await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click'); await flushPromises();
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'hf.co/owner/repo:Q4_K_M' }) }));
-    wrapper.unmount(); list.mockRestore();
+    wrapper.unmount(); list.mockRestore(); vi.unstubAllGlobals();
   });
   it('enables Start for the freshly prepared model before persisting endpoint settings', async () => {
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true });
-    const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['modelsChanged', 'modelSelected'], template: '<div />' } } } });
+    const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['modelsChanged', 'modelSelected', 'runtimeReady'], template: '<div />' } } } });
     await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
     const child = wrapper.findComponent({ name: 'PreparedManager' });
     const target = 'hf.co/owner/repo:Q8_0';
     child.vm.$emit('modelsChanged', [{ id: 'first', name: 'first', size: 128, importedAt: 1 }, { id: 'target', name: target, size: 128, importedAt: 1 }]);
     child.vm.$emit('modelSelected', target); await flushPromises();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
+    wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true); await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeUndefined();
     expect(mockSave).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click'); await flushPromises();

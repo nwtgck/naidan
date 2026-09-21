@@ -1,3 +1,4 @@
+import { createEmbeddedBinaryPlugin } from './plugin/embedded-binary.js';
 import path from 'node:path';
 import type { PluginOption } from 'vite';
 import type {
@@ -68,6 +69,7 @@ function createSourceAuditDiagnostic(
 
 export function createNaidanStandalonePlugin({
   workers,
+  embeddedBinaries,
   systemRuntimePath,
   systemRuntimeSourceMapPath,
   diagnostics = {},
@@ -133,6 +135,7 @@ export function createNaidanStandalonePlugin({
     }
   })();
   return [
+    ...(embeddedBinaries === undefined ? [] : [createEmbeddedBinaryPlugin({ binaries: embeddedBinaries, diagnostics: buildDiagnostics })]),
     // 1. Establish the standalone build and unified UI/Worker graph.
     createStandaloneBuildConfigPlugin({ diagnostics: buildDiagnostics }),
     createSystemJsRuntimeValidationPlugin({
