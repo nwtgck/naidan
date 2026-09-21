@@ -10,6 +10,35 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({ event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' });
   });
+  it('forwards cache counts and native state without exposing either token sequence', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
+    const diagnostic = {
+      event: 'cache-reuse', reason: 'prefix-mismatch', reusedTokens: 0, evaluatedTokens: 48,
+      tokens: 48, cachedTokens: 357, commonPrefixTokens: 17, cacheComparison: 'token-mismatch',
+      nativeMemoryKind: 'hybrid', nativePositionMin: 0, nativePositionMax: 356, nativeRollbackTokens: 0,
+    } as const;
+    try {
+      logDiagnostic({ diagnostic });
+      expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
+      expect(listener).toHaveBeenCalledExactlyOnceWith({ diagnostic });
+    } finally {
+      unsubscribe();
+    }
+  });
+  it('rejects private cache fields and invalid native cache metadata', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const extra = { event: 'cache-reuse' as const, cachedTokens: 2, cachedTokenIds: [65, 66], prompt: 'private prompt' };
+    logDiagnostic({ diagnostic: extra });
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', nativePositionMin: -2 } });
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', commonPrefixTokens: -1 } });
+    // @ts-expect-error Native memory categories must not accept caller text.
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', nativeMemoryKind: 'private model' } });
+    // @ts-expect-error Comparisons must remain a closed technical vocabulary.
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', cacheComparison: 'private prompt' } });
+    expect(debug).not.toHaveBeenCalled();
+  });
   it('rejects arbitrary diagnostic keys rather than leaking personal data', () => {
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
     const extra = { event: 'failed' as const, prompt: 'private prompt', fileName: 'private.gguf', tokenIds: [1, 2], grammarText: 'private grammar', schema: { description: 'private schema' }, logits: [123] };

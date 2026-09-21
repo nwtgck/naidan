@@ -256,6 +256,39 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       batch.mockRestore(); clear.mockRestore(); debug.mockRestore(); accept.mockRestore();
     }
   }, 30000);
+  it.each([
+    { next: 'prefix-old', comparison: 'identical', common: 11, reused: 11 },
+    { next: 'prefix-old-suffix', comparison: 'prompt-extension', common: 11, reused: 11 },
+    { next: 'prefix', comparison: 'prompt-shorter', common: 7, reused: 0 },
+    { next: 'prefix-new', comparison: 'token-mismatch', common: 8, reused: 0 },
+  ] as const)('diagnoses a $comparison using native positions and token counts only', async ({ next, comparison, common, reused }) => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
+    const first = request({ messages: [{ role: 'user', content: 'prefix-old' }] });
+    first.stop = ['A'];
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    try {
+      await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+        event: 'cache-reuse', cachedTokens: 0, tokens: 11, commonPrefixTokens: 0, cacheComparison: 'empty-cache',
+        nativeMemoryKind: 'attention', nativePositionMin: -1, nativePositionMax: -1, nativeRollbackTokens: 0,
+      }));
+      debug.mockClear();
+      const second = request({ messages: [{ role: 'user', content: next }] });
+      second.stop = ['A'];
+      await generate({ request: second, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+        event: 'cache-reuse', cachedTokens: 11, tokens: next.length + 1, commonPrefixTokens: common,
+        cacheComparison: comparison, reusedTokens: reused, evaluatedTokens: next.length + 1 - reused,
+        nativeMemoryKind: 'attention', nativePositionMin: 0, nativePositionMax: 10, nativeRollbackTokens: 0,
+      }));
+      expect(JSON.stringify(debug.mock.calls)).not.toContain('prefix-old');
+      expect(JSON.stringify(debug.mock.calls)).not.toContain('prefix-new');
+      expect(JSON.stringify(debug.mock.calls)).not.toContain('private-local-name');
+    } finally {
+      debug.mockRestore();
+    }
+  }, 30000);
   it('preserves saved ordered parts through native Jinja, byte tokens and warm cache reuse', async () => {
     await releaseSession({ releaseRuntime: false });
     // This fixture has an intentionally simple independent input contract. It

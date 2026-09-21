@@ -110,14 +110,30 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       default: { const exhaustive: never = cache.validity; throw new Error(`Unknown cache validity: ${exhaustive}`); }
       }
     })();
-    const prefixMatches = cacheValid && cache.tokens.length > 0
-      && cache.tokens.length <= tokenCount && cache.tokens.every((token, index) => token === promptTokens[index]);
+    const cachedTokens = cache.tokens.length;
+    let commonPrefixTokens = 0;
+    while (commonPrefixTokens < Math.min(cachedTokens, promptTokens.length)
+      && cache.tokens[commonPrefixTokens] === promptTokens[commonPrefixTokens]) commonPrefixTokens++;
+    // Report only lengths and positions, never token IDs or prompt text. A
+    // shorter prompt and a differing token require different investigations.
+    const cacheComparison = cachedTokens === 0 ? 'empty-cache'
+      : commonPrefixTokens < Math.min(cachedTokens, promptTokens.length) ? 'token-mismatch'
+        : cachedTokens > promptTokens.length ? 'prompt-shorter'
+          : cachedTokens === promptTokens.length ? 'identical' : 'prompt-extension';
+    const nativePositionMin = memory === 0n ? undefined : await api.llama_memory_seq_pos_min(memory, 0);
+    const nativePositionMax = memory === 0n ? undefined : await api.llama_memory_seq_pos_max(memory, 0);
+    const nativeMemoryKind = memory === 0n ? 'none'
+      : await api.llama_model_is_hybrid(model) ? 'hybrid'
+        : await api.llama_model_is_recurrent(model) ? 'recurrent' : 'attention';
+    const nativeRollbackTokens = await api.llama_n_rs_seq(context);
+    const prefixMatches = cacheValid && cachedTokens > 0 && commonPrefixTokens === cachedTokens;
     // The last successful decode owns the context logits. Native CPU sampling
     // copies them into candidates; no evaluation runs between resident requests.
-    const reuse = !multimodal && memory !== 0n && prefixMatches
-      && await api.llama_memory_seq_pos_max(memory, 0) === cache.tokens.length - 1;
-    const reusedTokens = reuse ? cache.tokens.length : 0;
+    const reuse = !multimodal && memory !== 0n && prefixMatches && nativePositionMax === cachedTokens - 1;
+    const reusedTokens = reuse ? cachedTokens : 0;
     logDiagnostic({ diagnostic: { event: 'cache-reuse', reusedTokens, evaluatedTokens: tokenCount - reusedTokens,
+      tokens: tokenCount, cachedTokens, commonPrefixTokens, cacheComparison,
+      nativeMemoryKind, nativePositionMin, nativePositionMax, nativeRollbackTokens,
       reason: reuse ? 'prefix-match' : !cacheValid ? 'cache-invalid' : !prefixMatches ? 'prefix-mismatch' : 'cache-position' } });
     // No rollback or state transfer: edited/shortened prompts and uncertain state
     // rebuild the cache, including for recurrent and sliding-window models.
