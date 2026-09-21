@@ -1,3 +1,4 @@
+import type { Chat } from '@/01-models/types';
 import { getMessageText } from '@/01-models/message-text';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -217,7 +218,7 @@ describe('useImageGeneration', () => {
 
   describe('handleImageGeneration', () => {
     const assistantId = toMessageId({ raw: 'msg-assistant-1' });
-    const mockChat = {
+    const mockChat: Pick<Chat, 'id' | 'root'> = {
       id: chatId,
       root: {
         items: [

@@ -1,5 +1,9 @@
+import type { LmProvider } from '@/01-models/lm';
+import type { MessageNode } from '@/01-models/types';
+import { getMessageText } from '@/01-models/message-text';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { storageService } from '@/00-storage/service';
@@ -7,7 +11,7 @@ import { SENTINEL_IMAGE_PENDING } from '@/utils/image-generation';
 import { toRaw } from 'vue';
 
 // Mock LM
-const mockOllamaChat = vi.fn();
+const mockOllamaChat = vi.fn<LmProvider['chat']>();
 const mockOllamaGenerateImage = vi.fn().mockResolvedValue({
   image: new Blob(['test'], { type: 'image/png' }),
   totalSteps: 10,
@@ -16,6 +20,7 @@ const mockOllamaGenerateImage = vi.fn().mockResolvedValue({
 vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     chat = mockOllamaChat;
+    listModels = vi.fn().mockResolvedValue(['llama3', 'x/z-image-turbo:v1']);
     generateImage = mockOllamaGenerateImage;
   },
 }));
@@ -44,6 +49,7 @@ vi.mock('../00-storage/service', () => ({
     notify: vi.fn(),
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     canPersistBinary: true,
+    saveFile: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -65,8 +71,19 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockOllamaChat.mockReset().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Image title' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     chatStore.availableModels.value = ['llama3', 'x/z-image-turbo:v1'];
     chatStore.TEST_ONLY.clearLiveChatRegistry();
+  });
+
+  afterEach(async () => {
+    await vi.waitUntil(() => chatStore.TEST_ONLY.activeGenerations.size === 0);
   });
 
   it('sendMessage in image mode adds sentinel markers', async () => {
@@ -81,11 +98,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const assistantMessage = userMessage.replies.items[0];
 
     // Initially it should be pending
-    expect(userMessage.content).toContain('<!-- naidan_experimental_image_request');
-    expect(userMessage.content).toContain('"count":1');
-    expect(userMessage.content).toContain('"persistAs":"original"');
-    expect(assistantMessage.content).toContain(SENTINEL_IMAGE_PENDING);
-    expect(assistantMessage.content).toContain('<!-- naidan_experimental_image_response');
+    expect(getMessageText({ message: userMessage! })).toContain('<!-- naidan_experimental_image_request');
+    expect(getMessageText({ message: userMessage! })).toContain('"count":1');
+    expect(getMessageText({ message: userMessage! })).toContain('"persistAs":"original"');
+    expect(getMessageText({ message: assistantMessage! })).toContain(SENTINEL_IMAGE_PENDING);
+    expect(getMessageText({ message: assistantMessage! })).toContain('<!-- naidan_experimental_image_response');
   });
 
   it('sendImageRequest triggers message sending with correct parameters', async () => {
@@ -114,7 +131,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Check if the content updated by storageService contains the image request
     const updater = updateSpy.mock.calls[0]![0].updater;
     const result = (await updater({ current: { id: 'chat-1', root: { items: [] } } as any })) as any;
-    expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1","count":1,"persistAs":"original"} -->a cat');
+    expect(getMessageText({ message: result.root.items[0]! })).toContain('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1","count":1,"persistAs":"original"} -->a cat');
   });
 
   it('sendImageRequestForChat targets the explicit chatId without opening it', async () => {
@@ -140,7 +157,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const updater = updateSpy.mock.calls[0]![0].updater;
     const result = (await updater({ current: { id: 'chat-explicit', root: { items: [] } } as any })) as any;
-    expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":768,"height":512,"model":"x/z-image-turbo:v1","count":2,"persistAs":"png","steps":25,"seed":7} -->a fox');
+    expect(getMessageText({ message: result.root.items[0]! })).toContain('<!-- naidan_experimental_image_request {"width":768,"height":512,"model":"x/z-image-turbo:v1","count":2,"persistAs":"png","steps":25,"seed":7} -->a fox');
   });
 
   it('sendImageRequest with attachments passes them to sendMessage', async () => {
@@ -166,8 +183,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Check if the content updated by storageService contains the image request and attachments
     const updater = updateSpy.mock.calls[0]![0].updater;
     const result = (await updater({ current: { id: 'chat-attachments', root: { items: [] } } as any })) as any;
-    expect(result.root.items[0].attachments).toHaveLength(1);
-    expect(result.root.items[0].attachments[0].id).toBe('att-1');
+    const userMessage: MessageNode = result.root.items[0];
+    const attachments = userMessage.parts.filter(part => part.type === 'attachment').map(part => part.attachment);
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]?.id).toBe('att-1');
   });
 
   it('generateChatTitle strips sentinels from content', async () => {
@@ -176,7 +195,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       title: 'New Chat',
       root: {
         items: [{
-          id: '1', role: 'user', content: '<!-- naidan_experimental_image_request {"w":512} -->A beautiful landscape', replies: { items: [] },
+          id: '1', role: 'user', parts: [{ id: 'text', type: 'text', text: '<!-- naidan_experimental_image_request {"w":512} -->A beautiful landscape', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0, replies: { items: [] },
         }],
       },
     } as any;
@@ -186,12 +205,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     expect(mockOllamaChat).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([
-        expect.objectContaining({ content: expect.stringContaining('A beautiful landscape') }),
+        expect.objectContaining({ parts: expect.arrayContaining([
+          expect.objectContaining({ type: 'text', text: expect.stringContaining('A beautiful landscape') }),
+        ]) }),
       ]),
     }));
 
     // Ensure the sentinel is NOT in the prompt sent to LM
-    const sentPrompt = mockOllamaChat.mock.calls[0]![0].messages.find((m: any) => m.role === 'user')?.content;
+    const sentPrompt = mockOllamaChat.mock.calls[0]![0].messages.find(m => m.role === 'user')?.parts
+      .filter(part => part.type === 'text').map(part => part.text).join('');
     expect(sentPrompt).not.toContain('naidan_experimental');
   });
 
@@ -200,8 +222,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: 'chat-fork',
       root: {
         items: [{
-          id: 'u1', role: 'user', content: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->small cat',
-          replies: { items: [{ id: 'a1', role: 'assistant', content: 'Failed', replies: { items: [] } }] },
+          id: 'u1', role: 'user', parts: [{ id: 'text', type: 'text', text: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->small cat', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
+          replies: { items: [{ id: 'a1', role: 'assistant', parts: [{ id: 'text', type: 'text', text: 'Failed', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0, interruption: undefined, replies: { items: [] } }] },
         }],
       },
     } as any;
@@ -216,7 +238,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(forkedChatId).toBeDefined();
     const forkedChat = chatStore.getLiveChat({ chat: { id: forkedChatId! } as any }) as any;
     expect(forkedChat).toBeDefined();
-    expect(forkedChat.root.items[0].content).toContain('naidan_experimental_image_request');
+    expect(getMessageText({ message: forkedChat.root.items[0]! })).toContain('naidan_experimental_image_request');
 
     // Regerenerating on the forked chat should trigger image generation again
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
@@ -245,8 +267,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       modelId: 'llama3',
       root: {
         items: [{
-          id: 'u1', role: 'user', content: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->cat',
-          replies: { items: [{ id: 'a1', role: 'assistant', content: '', replies: { items: [] } }] },
+          id: 'u1', role: 'user', parts: [{ id: 'text', type: 'text', text: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->cat', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
+          replies: { items: [{ id: 'a1', role: 'assistant', parts: [], modelId: undefined, lmParameters: undefined, createdAt: 0, interruption: undefined, replies: { items: [] } }] },
         }],
       },
     } as any;
