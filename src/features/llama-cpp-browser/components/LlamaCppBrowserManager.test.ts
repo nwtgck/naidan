@@ -1,3 +1,4 @@
+import type { ProfileCapabilities, ProfileState } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
@@ -7,6 +8,7 @@ import LlamaCppBrowserManager from './LlamaCppBrowserManager.vue';
 import { LlamaCppBrowserError, type EngineState, type LocalModel, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 
 const notifications = vi.hoisted(() => ({
+  capabilities: new Set<(event: { state: ProfileState }) => void>(),
   state: new Set<(event: { state: EngineState }) => void>(),
   models: new Set<() => void>(),
   confirm: vi.fn<() => Promise<boolean>>(),
@@ -14,6 +16,13 @@ const notifications = vi.hoisted(() => ({
 }));
 vi.mock('@/features/llama-cpp-browser/runtime/profile-policy', () => ({ selectableProfiles: notifications.profiles }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
+  getProfileState: vi.fn<() => ProfileState>(() => ({ status: 'idle' })),
+  probeProfiles: vi.fn(),
+  subscribeProfiles: vi.fn(({ listener }: { listener: (event: { state: ProfileState }) => void }) => {
+    notifications.capabilities.add(listener); return () => {
+      notifications.capabilities.delete(listener);
+    };
+  }),
   getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
   getOptions: vi.fn(() => ({ profile: 'auto' })),
   subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
@@ -38,7 +47,16 @@ function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserManager); wrappers.push(wrapper); return wrapper;
 }
 beforeEach(async () => {
-  vi.clearAllMocks(); notifications.state.clear(); notifications.models.clear();
+  vi.clearAllMocks(); notifications.capabilities.clear(); notifications.state.clear(); notifications.models.clear();
+  vi.mocked(llamaCppBrowserService.getProfileState).mockReturnValue({ status: 'idle' });
+  vi.mocked(llamaCppBrowserService.probeProfiles).mockImplementation(async () => {
+    const capabilities: ProfileCapabilities = { recommended: 'webgpu-wasm64-jspi', profiles: [
+      { profile: 'webgpu-wasm64-jspi', status: 'available' }, { profile: 'webgpu-wasm32-jspi', status: 'available' },
+      { profile: 'webgpu-wasm32-asyncify', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' }, { profile: 'cpu-wasm32', status: 'available' },
+    ] };
+    for (const listener of notifications.capabilities) listener({ state: { status: 'ready', capabilities } });
+    return capabilities;
+  });
   notifications.confirm.mockResolvedValue(true);
   notifications.profiles.splice(0, notifications.profiles.length, 'auto', 'cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi');
   vi.mocked(llamaCppBrowserService.getOptions).mockReturnValue({ profile: 'auto' });
@@ -54,17 +72,62 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
-  it('keeps the standalone profile visible and fixed while model operations remain available', async () => {
-    notifications.profiles.splice(0, notifications.profiles.length, 'webgpu-wasm64-jspi');
+  it('shows the resolved automatic profile and disables unavailable choices without disabling model storage', async () => {
+    vi.mocked(llamaCppBrowserService.probeProfiles).mockImplementation(async () => {
+      const capabilities: ProfileCapabilities = { recommended: 'webgpu-wasm32-jspi', profiles: [
+        { profile: 'webgpu-wasm32-jspi', status: 'available' },
+        { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'memory64' },
+      ] };
+      for (const listener of notifications.capabilities) listener({ state: { status: 'ready', capabilities } });
+      return capabilities;
+    });
+    const wrapper = render(); await flushPromises();
+    const select = wrapper.get<HTMLSelectElement>('[data-testid="llama-cpp-browser-profile"]');
+    expect(select.get('option[value="auto"]').text()).toBe('Automatic (WebGPU / wasm32 / JSPI)');
+    expect(select.get('option[value="webgpu-wasm64-jspi"]').attributes('disabled')).toBeDefined();
+    expect(select.get('option[value="webgpu-wasm32-jspi"]').attributes('disabled')).toBeUndefined();
+    expect(wrapper.get('fieldset').attributes('disabled')).toBeUndefined();
+    expect(wrapper.emitted('runtimeReady')?.at(-1)).toEqual([true]);
+    for (const listener of notifications.capabilities) listener({ state: { status: 'idle' } });
+    await flushPromises();
+    expect(wrapper.emitted('runtimeReady')?.at(-1)).toEqual([false]);
+    expect(wrapper.find('[data-testid="llama-cpp-browser-probe-profiles"]').exists()).toBe(true);
+    expect(llamaCppBrowserService.probeProfiles).toHaveBeenCalledOnce();
+  });
+  it('shows pending detection and cancels only its observer when closed', async () => {
+    vi.mocked(llamaCppBrowserService.getProfileState).mockReturnValue({ status: 'checking' });
+    vi.mocked(llamaCppBrowserService.probeProfiles).mockReturnValue(new Promise(() => {}));
+    const wrapper = render(); await flushPromises();
+    expect(wrapper.get('[data-testid="llama-cpp-browser-profile-checking"]').text()).toBe('Checking browser support…');
+    expect(wrapper.emitted('runtimeReady')?.at(-1)).toEqual([false]);
+    const signal = vi.mocked(llamaCppBrowserService.probeProfiles).mock.calls[0]?.[0].signal;
+    wrapper.unmount();
+    expect(signal?.aborted).toBe(true);
+    expect(llamaCppBrowserService.release).not.toHaveBeenCalled();
+    expect(llamaCppBrowserService.cancel).not.toHaveBeenCalled();
+  });
+  it('shows terminal errors without automatically retrying and allows manual retry', async () => {
+    vi.mocked(llamaCppBrowserService.probeProfiles).mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'worker-failed' }));
+    const wrapper = render(); await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    expect(llamaCppBrowserService.probeProfiles).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="llama-cpp-browser-probe-profiles"]').trigger('click'); await flushPromises();
+    expect(llamaCppBrowserService.probeProfiles).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted('runtimeReady')?.at(-1)).toEqual([true]);
+  });
+  it('allows either standalone JSPI profile while model operations remain available', async () => {
+    notifications.profiles.splice(0, notifications.profiles.length, 'auto', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi');
     vi.mocked(llamaCppBrowserService.getOptions).mockReturnValue({ profile: 'webgpu-wasm64-jspi' });
     const wrapper = render(); await flushPromises();
     const select = wrapper.get<HTMLSelectElement>('[data-testid="llama-cpp-browser-profile"]');
     expect(select.element.value).toBe('webgpu-wasm64-jspi');
-    expect(select.element.disabled).toBe(true);
-    expect(select.findAll('option').map(option => option.element.value)).toEqual(['webgpu-wasm64-jspi']);
+    expect(select.element.disabled).toBe(false);
+    expect(select.findAll('option').map(option => option.element.value)).toEqual(['auto', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi']);
+    await select.setValue('webgpu-wasm32-jspi');
+    expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'webgpu-wasm32-jspi' } });
     expect(wrapper.get('fieldset').attributes('disabled')).toBeUndefined();
     expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
-    expect(llamaCppBrowserService.setOptions).not.toHaveBeenCalled();
+    expect(llamaCppBrowserService.setOptions).toHaveBeenCalledOnce();
   });
   it('refreshes model choices and forwards the prepared model instead of choosing the first entry', async () => {
     const wrapper = render(); await flushPromises();

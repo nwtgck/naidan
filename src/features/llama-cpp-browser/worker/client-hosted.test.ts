@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
-const transport = vi.hoisted(() => ({ remote: { listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
+const transport = vi.hoisted(() => ({ remote: { probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
   releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
 class TestWorker extends EventTarget {
@@ -24,6 +24,23 @@ afterEach(() => {
   vi.unstubAllGlobals(); vi.useRealTimers();
 });
 describe('hosted Worker lifetime', () => {
+  it('validates capability reports and notifies session observers once when the Worker dies', async () => {
+    const report = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
+    transport.remote.probeProfiles.mockResolvedValueOnce(report);
+    const client = createLlamaCppWorkerClient(); const disposed = vi.fn();
+    client.subscribeDisposed({ listener: disposed });
+    await expect(client.probeProfiles({ signal: undefined })).resolves.toEqual(report);
+    transport.remote.probeProfiles.mockResolvedValueOnce({ recommended: 'cpu-wasm32', profiles: [] });
+    await expect(client.probeProfiles({ signal: undefined })).rejects.toThrow();
+    TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { cancelable: true }));
+    expect(disposed).toHaveBeenCalledOnce(); client.dispose(); expect(disposed).toHaveBeenCalledOnce();
+    const late = vi.fn(); client.subscribeDisposed({ listener: late }); expect(late).toHaveBeenCalledOnce();
+  });
+  it('rejects unresolved automatic selection before a generation RPC', async () => {
+    const client = createLlamaCppWorkerClient();
+    await expect(client.generate({ request: { ...generationInput(), options: { profile: 'auto' } }, onChunk: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow();
+    expect(transport.remote.generate).not.toHaveBeenCalled(); client.dispose();
+  });
   it('does not construct a Worker when the platform has no Worker support', async () => {
     vi.stubGlobal('Worker', undefined);
     const client = createLlamaCppWorkerClient();

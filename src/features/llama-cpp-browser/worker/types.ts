@@ -1,17 +1,19 @@
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { z } from 'zod';
-import { generateInputSchema } from '@/features/llama-cpp-browser/types';
+import type { ProfileCapabilities } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
+import { generateInputSchema, profileSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
 import type { ModelDirectoryInput, GenerateInput, GenerationResult, LocalModel, Progress } from '@/features/llama-cpp-browser/types';
 
-export const workerGenerateInputSchema = generateInputSchema.extend({ assetBaseURL: z.url().optional() }).strict();
+export const workerGenerateInputSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional() }).strict();
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 
 export const workerGenerateCallSchema = workerGenerateInputSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
 export type WorkerGenerateCall = z.infer<typeof workerGenerateCallSchema>;
 
 export interface LlamaCppWorkerApi {
+  probeProfiles(): Promise<ProfileCapabilities>;
   verifyStorage({ probeId }: { probeId: string }): Promise<boolean>;
   release(): Promise<void>;
   cancelGeneration({ generationId }: { generationId: number }): Promise<void>;
@@ -25,6 +27,8 @@ export interface LlamaCppWorkerApi {
   generate(request: WorkerGenerateCall, onChunk: WorkerProxy<({ text }: { text: string }) => void>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
+  subscribeDisposed({ listener }: { listener: () => void }): () => void;
+  probeProfiles({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;
   canReuse(): boolean;
   listModels({ signal }: { signal: AbortSignal | undefined }): Promise<LocalModel[]>;
   importModel({ file, onProgress, signal }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;

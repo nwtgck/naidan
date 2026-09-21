@@ -10,6 +10,10 @@ const embedded = vi.hoisted(() => ({
   sha256: '333e0a1e27815d0ceee55c473fe3dc93d56c63e3bee2b3b4aee8eed6d70191a3',
 }));
 vi.mock('virtual:file-protocol-standalone/binary/llama-cpp-browser', () => embedded);
+vi.mock('virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', () => ({
+  ...embedded, base64: 'iwCASE0D', byteLength: 2,
+  sha256: '58462b5910a20aab56603dcc673dc581942c66f14846580beaaf4aaa5d6bde47',
+}));
 const nativeDecompressionStream = DecompressionStream;
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
@@ -25,11 +29,16 @@ describe('standalone artifact transport', () => {
     await expect(loadStandaloneWasm({ profile: 'webgpu-wasm64-jspi', assetBaseURL: undefined })).resolves.toEqual(new Uint8Array([71]));
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it('routes the wasm32 artifact to its own embedded payload', async () => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    await expect(loadStandaloneWasm({ profile: 'webgpu-wasm32-jspi', assetBaseURL: undefined })).resolves.toEqual(new Uint8Array([72, 77]));
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it('checks the embedded SHA-256 rather than accepting same-length changed bytes', async () => {
     embedded.base64 = brotliCompressSync(new Uint8Array([72])).toString('base64');
     await expect(loadStandaloneWasm({ profile: 'webgpu-wasm64-jspi', assetBaseURL: undefined })).rejects.toThrow('integrity mismatch');
   });
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify'] as const)('rejects the non-embedded profile %s before decoding', async profile => {
+  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects the non-embedded profile %s before decoding', async profile => {
     const digest = vi.spyOn(crypto.subtle, 'digest');
     await expect(loadStandaloneWasm({ profile, assetBaseURL: undefined })).rejects.toThrow('unavailable');
     expect(digest).not.toHaveBeenCalled();

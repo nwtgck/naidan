@@ -1,3 +1,5 @@
+import { probeRuntimeProfiles } from '@/features/llama-cpp-browser/runtime/detect-profile';
+import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { deletionPlanSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
@@ -48,6 +50,10 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
   let active: { generationId: number, controller: AbortController } | undefined;
   return {
     verifyStorage,
+    async probeProfiles() {
+      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      return profileCapabilitiesSchema.parse(await probeRuntimeProfiles());
+    },
     async release() {
       if (active) throw new LlamaCppBrowserError({ code: 'busy' });
       await releaseSession({ releaseRuntime: true });

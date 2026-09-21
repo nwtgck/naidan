@@ -3,7 +3,7 @@ import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-b
 import { createLlamaCppWorkerClient } from './client-standalone';
 
 const calls = vi.hoisted(() => ({ factory: vi.fn(), probe: vi.fn(), release: vi.fn(), remote: {
-  listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn(), release: vi.fn(), verifyStorage: vi.fn(),
+  probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn(), release: vi.fn(), verifyStorage: vi.fn(),
 } }));
 vi.mock('virtual:file-protocol-standalone/worker/llama-cpp-browser', () => ({ createStandaloneWorker: calls.factory }));
 vi.mock('../runtime/shared-storage-probe', () => ({ verifySharedStorage: calls.probe }));
@@ -25,6 +25,17 @@ afterEach(() => {
   vi.useRealTimers(); vi.unstubAllGlobals();
 });
 describe('standalone llama Worker lifetime', () => {
+  it('probes capabilities through the actual initialized Worker and propagates its disposal', async () => {
+    const report = { recommended: 'webgpu-wasm32-jspi', profiles: [{ profile: 'webgpu-wasm32-jspi', status: 'available' }] };
+    calls.remote.probeProfiles.mockResolvedValueOnce(report);
+    const client = createLlamaCppWorkerClient(); const disposed = vi.fn(); client.subscribeDisposed({ listener: disposed });
+    await expect(client.probeProfiles({ signal: undefined })).resolves.toEqual(report);
+    expect(calls.factory).toHaveBeenCalledOnce(); expect(calls.probe).toHaveBeenCalledOnce(); expect(calls.remote.generate).not.toHaveBeenCalled();
+    worker.dispatchEvent(new ErrorEvent('error', { cancelable: true }));
+    expect(disposed).toHaveBeenCalledOnce(); expect(client.canReuse()).toBe(false);
+    await expect(client.probeProfiles({ signal: undefined })).rejects.toThrow('worker-failed');
+    expect(calls.factory).toHaveBeenCalledOnce();
+  });
   it('starts lazily once, checks shared OPFS, and sends no external runtime URL', async () => {
     const client = createLlamaCppWorkerClient();
     expect(calls.factory).not.toHaveBeenCalled();
@@ -39,10 +50,23 @@ describe('standalone llama Worker lifetime', () => {
     expect(calls.remote.release).toHaveBeenCalledOnce();
     expect(calls.release).toHaveBeenCalledOnce();
   });
-  it.each(['auto', 'cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify'] as const)('rejects %s before creating the Worker', async profile => {
+  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects %s before creating the Worker', async profile => {
     const client = createLlamaCppWorkerClient();
     await expect(client.generate({ request: { ...request(), options: { profile } }, onChunk: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow('unavailable');
     expect(calls.factory).not.toHaveBeenCalled(); client.dispose();
+  });
+  it.each(['webgpu-wasm32-jspi'] as const)('forwards %s for capability resolution inside the Worker without an asset URL', async profile => {
+    const client = createLlamaCppWorkerClient();
+    await client.generate({ request: { ...request(), options: { profile } }, onChunk: () => {}, onProgress: () => {}, signal: undefined });
+    const wire = calls.remote.generate.mock.calls[0]?.[0];
+    expect(wire.options.profile).toBe(profile); expect(wire.assetBaseURL).toBeUndefined();
+    client.dispose();
+    await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
+  });
+  it('rejects unresolved auto at the generation wire boundary', async () => {
+    const client = createLlamaCppWorkerClient();
+    await expect(client.generate({ request: { ...request(), options: { profile: 'auto' } }, onChunk: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow();
+    expect(calls.remote.generate).not.toHaveBeenCalled(); client.dispose();
   });
   it('rejects promptly on disposal while startup is pending and terminates a late Worker', async () => {
     const startup = Promise.withResolvers<Worker>(); calls.factory.mockReturnValue(startup.promise);

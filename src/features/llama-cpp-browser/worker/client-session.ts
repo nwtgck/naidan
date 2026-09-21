@@ -1,3 +1,4 @@
+import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { z } from 'zod';
@@ -13,6 +14,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   getAssetBaseURL: () => string | undefined,
 }): LlamaCppWorkerClient {
   let disposed = false;
+  const disposeListeners = new Set<() => void>();
   let lastOperation: Diagnostic | undefined;
   let lastNativeFailure: Diagnostic | undefined;
   const pendingOperations = new Map<Diagnostic['stage'], { diagnostic: Diagnostic, started: number }>();
@@ -59,6 +61,12 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     worker.removeEventListener('error', onError);
     worker.removeEventListener('messageerror', onMessageError);
     disposeTransport({ active });
+    for (const listener of disposeListeners) {
+      try {
+        listener();
+      } catch { /* Disposal observers cannot interrupt cleanup. */ }
+    }
+    disposeListeners.clear();
   };
   // eslint-disable-next-line local-rules-named-args/require-named-args -- DOM Worker error listener signature.
   const onError = (event: ErrorEvent): void => {
@@ -109,6 +117,15 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     }
   }
   return {
+    subscribeDisposed({ listener }) {
+      if (disposed) {
+        listener(); return () => {};
+      }
+      disposeListeners.add(listener); return () => {
+        disposeListeners.delete(listener);
+      };
+    },
+    probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined })),
     listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined })),
     importModel: async ({ file, onProgress, signal }) => modelSchema.parse(await invoke({
       call: () => remote.importModel({ file }, workerProxy({ value: ({ ...event }) => {

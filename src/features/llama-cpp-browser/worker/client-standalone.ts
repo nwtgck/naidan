@@ -9,6 +9,7 @@ import type { LlamaCppWorkerApi, LlamaCppWorkerClient } from './types';
 
 export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
   let disposed = false;
+  const disposeListeners = new Set<() => void>();
   let client: LlamaCppWorkerClient | undefined;
   let starting: Promise<LlamaCppWorkerClient> | undefined;
   let startupFailure: LlamaCppBrowserError | undefined;
@@ -18,6 +19,12 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     disposed = true;
     lifetime.abort();
     client?.dispose();
+    for (const listener of disposeListeners) {
+      try {
+        listener();
+      } catch { /* Disposal observers cannot interrupt cleanup. */ }
+    }
+    disposeListeners.clear();
   };
   const start = async (): Promise<LlamaCppWorkerClient> => {
     if (typeof Worker === 'undefined') throw new LlamaCppBrowserError({ code: 'unavailable' });
@@ -40,6 +47,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       throw new LlamaCppBrowserError({ code: 'worker-failed' });
     }
     client = ready;
+    ready.subscribeDisposed({ listener: dispose });
     await verifySharedStorage({ verify: ({ probeId }) => session.remote.verifyStorage({ probeId }), signal: lifetime.signal });
     return ready;
   };
@@ -72,6 +80,15 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     }
   };
   return {
+    subscribeDisposed({ listener }) {
+      if (disposed) {
+        listener(); return () => {};
+      }
+      disposeListeners.add(listener); return () => {
+        disposeListeners.delete(listener);
+      };
+    },
+    probeProfiles: async ({ signal }) => (await getClient({ signal })).probeProfiles({ signal }),
     listModels: async ({ signal }) => (await getClient({ signal })).listModels({ signal }),
     importModel: async ({ file, onProgress, signal }) => (await getClient({ signal })).importModel({ file, onProgress, signal }),
     importDirectory: async ({ directory, onProgress, signal }) => (await getClient({ signal })).importDirectory({ directory, onProgress, signal }),

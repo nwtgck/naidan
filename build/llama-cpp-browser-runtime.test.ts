@@ -66,11 +66,14 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
   }
 }
 describe('llama.cpp runtime distribution boundary', () => {
-  it('embeds only the selected standalone core and keeps external runtime assets absent', async () => {
+  it('embeds both JSPI cores for standalone capability selection and keeps external runtime assets absent', async () => {
     const { output } = await bundleFeature({ standalone: true });
     const modules = Object.values(output).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     expect(modules.some(name => name.endsWith('llama-cpp-browser/index-standalone.ts'))).toBe(true);
-    expect(modules.filter(name => name.includes('llama-cpp-browser-core/profiles/'))).toEqual([path.resolve('node_modules/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/core.mjs')]);
+    expect(modules.filter(name => name.includes('llama-cpp-browser-core/profiles/')).sort()).toEqual(['webgpu-wasm32-jspi', 'webgpu-wasm64-jspi'].map(profile => path.resolve(`node_modules/llama-cpp-browser-core/profiles/${profile}/core.mjs`)).sort());
+    for (const id of ['llama-cpp-browser', 'llama-cpp-browser-wasm32-jspi']) {
+      expect(modules).toContain(`\0virtual:file-protocol-standalone/binary/${id}`);
+    }
     expect(modules.some(name => name.includes('client-hosted') || name.endsWith('runtime/artifacts.ts'))).toBe(false);
     expect(modules.some(name => name.endsWith('model-store.ts'))).toBe(true);
     expect(modules.some(name => name.endsWith('detect-profile-standalone.ts'))).toBe(true);

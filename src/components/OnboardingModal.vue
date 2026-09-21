@@ -252,10 +252,12 @@ const isTesting = ref(false);
 const error = ref<string | null>(null);
 const availableModels = ref<string[]>(onboardingDraft.value?.models ? JSON.parse(JSON.stringify(onboardingDraft.value.models)) : []);
 const sortedModels = computed(() => naturalSort({ values: availableModels.value }));
+const localRuntimeReady = ref(false);
 const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
 
 watch(effectiveType, (type, _previous, onCleanup) => {
+  localRuntimeReady.value = false;
   if (type !== 'llama_cpp_browser' || getEndpointBuildAvailability({ type }) !== 'available') return;
   const controller = new AbortController();
   const refresh = (): Promise<void> => refreshLocalModels({ signal: controller.signal });
@@ -494,6 +496,7 @@ async function handleClose() {
 }
 
 async function handleFinish() {
+  if (isLlamaCppBrowser.value && !localRuntimeReady.value) return;
   if (!isEndpointAvailable.value) return;
   const url = getNormalizedUrl();
   const type = effectiveType.value;
@@ -673,7 +676,7 @@ defineExpose({
                 </div>
 
                 <TransformersJsManager v-if="isTransformersJs" @model-loaded="modelId => handleModelLoaded({ modelId })" />
-                <LlamaCppBrowserManager v-else :model-preset="modelPreset" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ name: $event })" />
+                <LlamaCppBrowserManager v-else :model-preset="modelPreset" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ name: $event })" />
                 <div v-if="isLlamaCppBrowser && availableModels.length" tw-class="space-y-2">
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ lazyStrings.OnboardingModal__default_model() }}</label>
                   <ModelSelector v-model="selectedModel" :models="sortedModels" :loading="false" @refresh="refreshLocalModels({ signal: undefined })" :placeholder="lazyStrings.OnboardingModal__select_a_model()" />
@@ -913,7 +916,7 @@ defineExpose({
           <button
             @click="handleFinish"
             data-testid="onboarding-local-start"
-            :disabled="!selectedModel || !isEndpointAvailable"
+            :disabled="!selectedModel || !isEndpointAvailable || (isLlamaCppBrowser && !localRuntimeReady)"
             tw-class="ml-auto shrink-0 px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
           >
             <PlayIcon tw-class="w-4 h-4 fill-current" />

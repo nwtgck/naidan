@@ -24,6 +24,8 @@ import { createZipPackages } from './zip-packages';
 const repo = process.cwd();
 const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/core.mjs');
 const binaryId = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser';
+const core32Id = path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/core.mjs');
+const binary32Id = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi';
 function closure({ entry, chunks, dynamic }: { entry: Rollup.OutputChunk, chunks: Rollup.OutputChunk[], dynamic: boolean }): Set<string> {
   const found = new Set<string>();
   function visit({ fileName }: { fileName: string }): void {
@@ -72,11 +74,25 @@ describe('pinned standalone native artifacts', () => {
     expect(transformed).toContain('Browser core requires supplied wasmBinary');
     expect(() => transformBrowserCore({ source: source + '\n', id: coreId, profile: 'webgpu-wasm64-jspi' })).toThrow('Unreviewed');
   });
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify'])('rejects importing %s even before tree shaking', async profile => {
+  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'])('rejects importing %s even before tree shaking', async profile => {
     const plugin = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' }).corePlugin;
     const load = plugin.load;
     if (typeof load !== 'function') throw new Error('Expected a load hook');
     expect(() => load.call({} as never, path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/core.mjs`))).toThrow('Unavailable llama.cpp artifact');
+  });
+  it('registers both reviewed JSPI binaries and core imports for standalone capability selection', () => {
+    const { corePlugin, embeddedBinaries } = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
+    expect(embeddedBinaries.map(binary => binary.virtualId)).toEqual([
+      'virtual:file-protocol-standalone/binary/llama-cpp-browser',
+      'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi',
+    ]);
+    const resolve = corePlugin.resolveId;
+    if (typeof resolve !== 'function') throw new Error('Expected a resolve hook');
+    for (const profile of ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi']) {
+      expect(resolve.call({} as never, `virtual:llama-cpp-browser-core/${profile}`, undefined, {} as never))
+        .toBe(path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/core.mjs`));
+      expect(embeddedBinaries.some(binary => binary.filePath === path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/core.wasm`))).toBe(true);
+    }
   });
   it('keeps complete native legal comments without copying implementation bodies', () => {
     const source = `\
@@ -180,14 +196,16 @@ int unrelated;`;
       }]);
       const chunks = result.output.filter((file): file is Rollup.OutputChunk => file.type === 'chunk');
       const modules = chunks.flatMap(chunk => Object.keys(chunk.modules));
-      expect(modules.filter(id => id.includes('llama-cpp-browser-core/profiles/'))).toEqual([coreId]);
-      expect(modules.filter(id => id.startsWith('\0virtual:file-protocol-standalone/binary/'))).toEqual([binaryId]);
+      expect(modules.filter(id => id.includes('llama-cpp-browser-core/profiles/')).sort()).toEqual([coreId, core32Id].sort());
+      expect(modules.filter(id => id.startsWith('\0virtual:file-protocol-standalone/binary/')).sort()).toEqual([binaryId, binary32Id].sort());
       expect(modules.some(id => id.includes('client-hosted.ts') || id.endsWith('/runtime/artifacts.ts') || id.endsWith('/hugging-face/writer-client.ts') || id.includes('browser-external'))).toBe(false);
       expect(modules.some(id => id.endsWith('/embedded-binary.test-support.ts'))).toBe(false);
       const core = chunks.find(chunk => coreId in chunk.modules);
       const binary = chunks.find(chunk => binaryId in chunk.modules);
+      const core32 = chunks.find(chunk => core32Id in chunk.modules);
+      const binary32 = chunks.find(chunk => binary32Id in chunk.modules);
       const licenses = chunks.find(chunk => `\0${NAIDAN_LICENSE_MODULE_ID}` in chunk.modules);
-      if (!core || !binary || !licenses) throw new Error('Missing lazy native or license chunks');
+      if (!core || !binary || !core32 || !binary32 || !licenses) throw new Error('Missing lazy native or license chunks');
       const { base64, byteLength, sha256 } = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary.code }));
       const wasm = readFileSync(coreId.replace('core.mjs', 'core.wasm'));
       expect(byteLength).toBe(wasm.byteLength);
@@ -196,19 +214,26 @@ int unrelated;`;
       expect(Buffer.from(base64, 'base64').byteLength).toBeLessThan(1_500_000);
       expect(evaluateDataModule({ source: licenses.code }).default).toEqual(collectedDependencies);
       expect(brotliDecompressSync(Buffer.from(base64, 'base64')).equals(readFileSync(coreId.replace('core.mjs', 'core.wasm')))).toBe(true);
+      const data32 = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary32.code }));
+      const wasm32 = readFileSync(core32Id.replace('core.mjs', 'core.wasm'));
+      expect(data32.byteLength).toBe(wasm32.byteLength);
+      expect(data32.sha256).toBe(createHash('sha256').update(wasm32).digest('hex'));
+      expect(brotliDecompressSync(Buffer.from(data32.base64, 'base64')).equals(wasm32)).toBe(true);
       for (const entry of chunks.filter(chunk => chunk.isEntry)) {
         const initial = closure({ entry, chunks, dynamic: false });
         expect(initial.has(binary.fileName)).toBe(false); expect(initial.has(core.fileName)).toBe(false);
+        expect(initial.has(binary32.fileName)).toBe(false); expect(initial.has(core32.fileName)).toBe(false);
         expect(initial.has(licenses.fileName)).toBe(false);
       }
       const writer = chunks.find(chunk => chunk.facadeModuleId?.endsWith('/hugging-face/writer-entry.ts'));
       if (!writer) throw new Error('Missing download Worker');
       const writerGraph = closure({ entry: writer, chunks, dynamic: true });
       expect(writerGraph.has(binary.fileName)).toBe(false); expect(writerGraph.has(core.fileName)).toBe(false);
+      expect(writerGraph.has(binary32.fileName)).toBe(false); expect(writerGraph.has(core32.fileName)).toBe(false);
       expect(archives).toHaveLength(8);
       expect(archives.map(archive => archive.locale)).toEqual([undefined, ...BOUNDARY_STRING_LOCALES]);
       for (const archive of archives) {
-        for (const fileName of [core.fileName, binary.fileName, licenses.fileName, 'llama-cpp-browser-native-licenses.txt']) {
+        for (const fileName of [core.fileName, binary.fileName, core32.fileName, binary32.fileName, licenses.fileName, 'llama-cpp-browser-native-licenses.txt']) {
           expect(archive.names.filter(name => name === fileName)).toHaveLength(1);
           expect(archive.hashes.get(fileName)).toBe(createHash('sha256').update(readFileSync(path.join(outputDirectory, fileName))).digest('hex'));
         }
@@ -219,7 +244,11 @@ int unrelated;`;
       const notices = readFileSync(path.join(outputDirectory, 'llama-cpp-browser-native-licenses.txt'), 'utf8');
       expect(notices).toContain('Niels Lohmann'); expect(notices).toContain('David Reid');
       expect(Buffer.byteLength(notices)).toBeLessThan(512 * 1024);
-      expect(diagnostics.embeddedBinaries).toEqual([expect.objectContaining({ compression: 'brotli', owners: [binary.fileName] })]);
+      expect(diagnostics.embeddedBinaries).toHaveLength(2);
+      expect(diagnostics.embeddedBinaries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ virtualId: binaryId.slice(1), compression: 'brotli', owners: [binary.fileName] }),
+        expect.objectContaining({ virtualId: binary32Id.slice(1), compression: 'brotli', owners: [binary32.fileName] }),
+      ]));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

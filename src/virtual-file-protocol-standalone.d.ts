@@ -62,3 +62,9 @@ declare module 'virtual:file-protocol-standalone/binary/llama-cpp-browser' {
   export const byteLength: number;
   export const sha256: string;
 }
+
+declare module 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi' {
+  export const base64: string;
+  export const byteLength: number;
+  export const sha256: string;
+}

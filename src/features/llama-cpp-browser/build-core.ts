@@ -17,9 +17,13 @@ const coreHashes = {
   'cpu-wasm64': '2d9126fdffe538dd9b79acd44bdeb78189c3254c40d5d3c760b708335807bbb5',
   'cpu-wasm32': '0c94cc55e07709a73bf24d0b11dc9b0a9ccbde5ab8387095a553ee3746825676',
 } as const satisfies Record<LlamaCppProfile, string>;
-const standaloneProfile = 'webgpu-wasm64-jspi';
+// Standalone selects either embedded JSPI artifact through Worker capability checks.
+const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
-const wasmSha256 = '404b128b7ba76208a8ec6d3f5726572d44139ee95051103233577124853ce090';
+const standaloneWasm = {
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '404b128b7ba76208a8ec6d3f5726572d44139ee95051103233577124853ce090' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'd834485354f43d03d0cd32d87e80a79473699f2505f2ddd1e58eed032c49c2ea' },
+} as const;
 const manifestSchema = z.object({ files: z.array(z.object({
   path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
 })) });
@@ -116,7 +120,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
     default: { const exhaustive: never = mode; throw new Error(`Unhandled build mode: ${exhaustive}`); }
     }
   })();
-  const profiles: readonly LlamaCppProfile[] = isStandalone ? [standaloneProfile] : profileSchema.options;
+  const profiles: readonly LlamaCppProfile[] = isStandalone ? standaloneProfiles : profileSchema.options;
   const cores = profiles.map(profile => {
     const core = readArtifact({ relative: `profiles/${profile}/core.mjs` });
     if (core.sha256 !== coreHashes[profile]) throw new Error(`Unreviewed browser core artifact: ${profile}`);
@@ -124,8 +128,12 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
     const transformed = transformBrowserCore({ source: core.data.toString('utf8'), id: core.filePath, profile });
     return { profile, core, transformed };
   });
-  const wasm = isStandalone ? readArtifact({ relative: `profiles/${standaloneProfile}/core.wasm` }) : undefined;
-  if (wasm && wasm.sha256 !== wasmSha256) throw new Error('Unreviewed standalone Wasm artifact');
+  const embeddedBinaries = isStandalone ? standaloneProfiles.map(profile => {
+    const wasm = readArtifact({ relative: `profiles/${profile}/core.wasm` });
+    const expected = standaloneWasm[profile];
+    if (wasm.sha256 !== expected.sha256) throw new Error('Unreviewed standalone Wasm artifact');
+    return { virtualId: expected.virtualId, filePath: wasm.filePath, bytes: wasm.bytes, sha256: wasm.sha256 };
+  }) : [];
   const profileRoot = normalizePath(path.join(artifactRoot, 'profiles')) + '/';
   const byId = new Map(cores.map(entry => [normalizePath(entry.core.filePath), entry]));
   const byVirtualId = new Map(cores.map(entry => [virtualPrefix + entry.profile, normalizePath(entry.core.filePath)]));
@@ -135,7 +143,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   const licenseText = [
     'llama.cpp browser native notices',
     ...cores.map(entry => `Runtime profile: ${entry.profile}\ncore.mjs SHA-256: ${entry.core.sha256}`),
-    ...(wasm ? [`core.wasm SHA-256: ${wasm.sha256}`] : []),
+    ...embeddedBinaries.map(wasm => `${wasm.virtualId} core.wasm SHA-256: ${wasm.sha256}`),
     ...licenseFiles.map(relative => {
       const source = readArtifact({ relative }).data.toString('utf8');
       const text = relative.startsWith('licenses/embedded/') ? embeddedNotices({ source }) : source;
@@ -144,10 +152,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   ].join('\n\n');
 
   return {
-    embeddedBinaries: wasm ? [{
-      virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser',
-      filePath: wasm.filePath, bytes: wasm.bytes, sha256: wasm.sha256,
-    }] : [],
+    embeddedBinaries,
     corePlugin: {
       name: `naidan-llama-cpp-browser-core-${identity}`,
       enforce: 'pre',

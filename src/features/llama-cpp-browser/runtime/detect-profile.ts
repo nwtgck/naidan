@@ -1,3 +1,6 @@
+import { checkJspi, checkStorage, gpuUnavailableReason, supportsMemory64 } from './capability-probes';
+import { profileCapabilitiesSchema, type ProfileCapabilities, type ProfileUnavailableReason } from './profile-capabilities';
+import { profileSchema } from '@/features/llama-cpp-browser/types';
 import { LlamaCppBrowserError, type LlamaCppProfile, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 
 // An unexported memory64 with one page. Validation does not allocate model memory.
@@ -36,6 +39,40 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
     }
   }
   return memory64 ? 'cpu-wasm64' : 'cpu-wasm32';
+}
+
+/** Report browser capabilities without importing an inference runtime or a model. */
+export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
+  const memory64 = supportsMemory64();
+  let sharedReason: ProfileUnavailableReason | undefined;
+  if (typeof WebAssembly === 'undefined') sharedReason = 'wasm';
+  else {
+    try {
+      await checkStorage();
+    } catch {
+      sharedReason = 'storage';
+    }
+  }
+  let jspi = false;
+  if (!sharedReason) {
+    try {
+      await checkJspi(); jspi = true;
+    } catch { /* CPU and Asyncify remain available. */ }
+  }
+  const gpuReason = sharedReason ? undefined : await gpuUnavailableReason();
+  const profiles: ProfileCapabilities['profiles'] = profileSchema.options.map(profile => {
+    let reason = sharedReason;
+    if (!reason) switch (profile) {
+    case 'cpu-wasm32': break;
+    case 'cpu-wasm64': reason = memory64 ? undefined : 'memory64'; break;
+    case 'webgpu-wasm32-asyncify': reason = gpuReason; break;
+    case 'webgpu-wasm32-jspi': reason = gpuReason ?? (jspi ? undefined : 'jspi'); break;
+    case 'webgpu-wasm64-jspi': reason = gpuReason ?? (!memory64 ? 'memory64' : jspi ? undefined : 'jspi'); break;
+    default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+    }
+    return reason ? { profile, status: 'unavailable', reason } : { profile, status: 'available' };
+  });
+  return profileCapabilitiesSchema.parse({ profiles, recommended: profiles.find(entry => entry.status === 'available')?.profile });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
