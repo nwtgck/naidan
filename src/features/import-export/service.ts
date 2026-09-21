@@ -1140,6 +1140,37 @@ export class ImportExportService {
       } catch (e) { /* Ignore */ }
     }
 
+    // Reserve IDs only for existing fork targets in imported chats. Reading each
+    // referenced chat separately keeps forward references independent of archive
+    // order without retaining every chat body or a map of every message ID.
+    const originMessageIdMaps = new Map<string, Map<string, string | undefined>>();
+    for (const { dto } of importedMetas) {
+      const { originChatId, originMessageId } = dto;
+      if (originChatId === undefined || originMessageId === undefined || !chatIdMap.has(originChatId)) continue;
+      let messageIds = originMessageIdMaps.get(originChatId);
+      if (messageIds === undefined) {
+        messageIds = new Map();
+        originMessageIdMaps.set(originChatId, messageIds);
+      }
+      messageIds.set(originMessageId, undefined);
+    }
+    for (const [originalId, messageIds] of originMessageIdMaps) {
+      const contentFile = zip.file({ name: `${rootPath}chat-contents/${originalId}.json` });
+      if (contentFile === undefined) continue;
+      try {
+        const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
+        const visit = ({ node }: { node: MessageNodeDto }): void => {
+          if (messageIds.has(node.id) && messageIds.get(node.id) === undefined) {
+            messageIds.set(node.id, idToRaw({ id: generateId<MessageId>() }));
+          }
+          node.replies.items.forEach(node => visit({ node }));
+        };
+        content.root.items.forEach(node => visit({ node }));
+      } catch (error) {
+        throw new Error(`Cannot append chat content: ${originalId}`, { cause: error });
+      }
+    }
+
     // 3. Hierarchy
     const currentHierarchy = await this.storage.loadHierarchy() || { items: [] };
     const hierarchyFile = zip.file({ name: rootPath + 'hierarchy.json' });
@@ -1171,11 +1202,15 @@ export class ImportExportService {
 
     const mergedHierarchy: Hierarchy = { items: [...currentHierarchy.items, ...importedHierarchyItems] };
     const chatMetas = importedMetas.map(({ dto }) => {
-      // Remap fork origin if possible
-      if (dto.originChatId && chatIdMap.has(dto.originChatId)) {
-        dto.originChatId = chatIdMap.get(dto.originChatId)!;
-        // Note: originMessageId remapping is harder as we don't have all messageIdMaps yet.
-        // But we can handle it inside contentStream if we process in a way that allows it.
+      const { originChatId, originMessageId } = dto;
+      const importedOriginId = originChatId === undefined ? undefined : chatIdMap.get(originChatId);
+      if (originChatId !== undefined && importedOriginId !== undefined) {
+        dto.originChatId = importedOriginId;
+        // Missing history stays a dangling reference; never redirect it to a
+        // copied message in the fork or invent a target absent from the archive.
+        if (originMessageId !== undefined) {
+          dto.originMessageId = originMessageIdMaps.get(originChatId)?.get(originMessageId) ?? originMessageId;
+        }
       }
       return chatMetaToDomain({ dto });
     });
@@ -1214,9 +1249,10 @@ export class ImportExportService {
             } });
 
             const messageIdMap = new Map<string, string>();
+            const originMessageIds = originMessageIdMaps.get(originalId);
             const process = ({ node }: { node: MessageNodeDto }) => {
               const oldMsgId = node.id;
-              const newMsgId = idToRaw({ id: generateId<MessageId>() });
+              const newMsgId = originMessageIds?.get(oldMsgId) ?? idToRaw({ id: generateId<MessageId>() });
               messageIdMap.set(oldMsgId, newMsgId);
               node.id = newMsgId;
 
@@ -1272,11 +1308,6 @@ export class ImportExportService {
             // Remap currentLeafId using the messageIdMap
             if (dto.currentLeafId && messageIdMap.has(dto.currentLeafId)) {
               dto.currentLeafId = messageIdMap.get(dto.currentLeafId);
-            }
-
-            // Remap originMessageId if it refers to a message in this chat
-            if (dto.originMessageId && messageIdMap.has(dto.originMessageId)) {
-              dto.originMessageId = messageIdMap.get(dto.originMessageId);
             }
 
             yield { type: 'chat' as const, data: dto };

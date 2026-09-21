@@ -82,6 +82,83 @@ function modernAssistant({ parts }: { parts: unknown[] }) {
 
 beforeEach(() => vi.clearAllMocks());
 describe('parts archive boundaries', () => {
+  it.each([
+    { order: ['parent', 'fork'] },
+    { order: ['fork', 'parent'] },
+  ])('keeps appended fork origins in the parent message namespace: $order', async ({ order }) => {
+    const f = fixture();
+    const zip = new JSZip();
+    zip.file('export-manifest.json', '{}');
+    zip.file('chat-metas.json', JSON.stringify({ entries: order.map(id => ({
+      id, title: id, createdAt: 1, updatedAt: 2, debugEnabled: false,
+      titleGeneration: 'inherit', currentLeafId: 'origin-message',
+      originChatId: id === 'fork' ? 'parent' : undefined,
+      originMessageId: id === 'fork' ? 'origin-message' : undefined,
+    })) }));
+    for (const id of order) {
+      // A real fork copies the parent's message IDs, but each imported chat gets its own IDs.
+      zip.file(`chat-contents/${id}.json`, JSON.stringify({
+        currentLeafId: 'origin-message',
+        root: { items: [{
+          id: 'origin-message', role: 'assistant', createdAt: 1,
+          parts: [{ id: 'text', type: 'text', text: '  <think>literal</think> [Aborted]\n' }],
+          replies: { items: [] },
+        }] },
+      }));
+    }
+
+    await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
+
+    const chats = f.received.filter(chunk => chunk.type === 'chat').map(chunk => chunk.data);
+    const parent = chats.find(chat => chat.title === 'parent')!;
+    const fork = chats.find(chat => chat.title === 'fork')!;
+    const parentMessage = parent.root!.items[0]!;
+    const forkMessage = fork.root!.items[0]!;
+    expect(parent.id).not.toBe('parent');
+    expect(fork.id).not.toBe('fork');
+    expect(parentMessage.id).not.toBe(forkMessage.id);
+    expect(fork.originChatId).toBe(parent.id);
+    expect(fork.originMessageId).toBe(parentMessage.id);
+    expect(fork.currentLeafId).toBe(forkMessage.id);
+    const forkMeta = f.storage.restore.mock.calls[0]![0].snapshot.structure.chatMetas.find(meta => meta.title === 'fork')!;
+    expect(forkMeta.originChatId).toBe(fork.originChatId);
+    expect(forkMeta.originMessageId).toBe(fork.originMessageId);
+    expect(forkMessage.parts).toEqual(parentMessage.parts);
+    expect(forkMessage.parts?.[0]).toMatchObject({ type: 'text', text: '  <think>literal</think> [Aborted]\n' });
+  });
+
+  it.each([
+    { origin: 'self', parentContent: 'absent' },
+    { origin: 'external', parentContent: 'absent' },
+    { origin: 'imported', parentContent: 'empty' },
+    { origin: 'imported', parentContent: 'absent' },
+  ] as const)('preserves append origin semantics for $origin with $parentContent content', async ({ origin, parentContent }) => {
+    const f = fixture();
+    const content = chat({ root: { items: [modernAssistant({ parts: [{ id: 'text', type: 'text', text: 'Fork contents' }] })] } });
+    content.originChatId = origin === 'self' ? 'chat' : 'parent';
+    content.originMessageId = 'a';
+    const zip = await archive({ content });
+    if (origin === 'imported') {
+      zip.file('chat-metas.json', JSON.stringify({ entries: [
+        { ...content, root: undefined, messages: undefined },
+        { id: 'parent', title: 'Parent', createdAt: 1, updatedAt: 2, debugEnabled: false, titleGeneration: 'inherit' },
+      ] }));
+      if (parentContent === 'empty') zip.file('chat-contents/parent.json', JSON.stringify({ root: { items: [] } }));
+    }
+
+    await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
+
+    const fork = f.received.find(chunk => chunk.type === 'chat' && chunk.data.title === 'Parts');
+    if (fork?.type !== 'chat') throw new Error('Missing imported fork.');
+    const metas = f.storage.restore.mock.calls[0]![0].snapshot.structure.chatMetas;
+    const expectedChatId = origin === 'self' ? fork.data.id : origin === 'imported' ? metas.find(meta => meta.title === 'Parent')!.id : 'parent';
+    const expectedMessageId = origin === 'self' ? fork.data.root!.items[0]!.id : 'a';
+    expect(fork.data.originChatId).toBe(expectedChatId);
+    expect(fork.data.originMessageId).toBe(expectedMessageId);
+    expect(metas.find(meta => meta.title === 'Parts')?.originMessageId).toBe(expectedMessageId);
+    expect(fork.data.currentLeafId).toBe(fork.data.root!.items[0]!.id);
+  });
+
   it('exports V1 as V2 without re-parsing tags or normalizing reasoning', async () => {
     const f = fixture();
     dump({ storage: f.storage, content: chat({ root: { items: [{ id: 'a', role: 'assistant', timestamp: 7,
