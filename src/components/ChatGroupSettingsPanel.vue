@@ -1899,8 +1899,8 @@ defineExpose({
               <option value="global">{{ globalEndpointTypeLabel() }}</option>
               <option value="openai">{{ lazyStrings.ChatGroupSettingsPanel__openai_compatible() }}</option>
               <option value="ollama">{{ lazyStrings.ChatGroupSettingsPanel__ollama() }}</option>
-              <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatGroupSettingsPanel__transformers_js_experimental() }}</option>
               <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
+              <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatGroupSettingsPanel__transformers_js_experimental() }}</option>
               <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
               <option
                 v-if="localSettings.endpoint?.type === 'unsupported_experimental_endpoint'"
@@ -2066,8 +2066,8 @@ defineExpose({
                 <option value="same_scope">{{ sameScopeTitleEndpointTypeOptionLabel }}</option>
                 <option value="openai">{{ lazyStrings.ChatGroupSettingsPanel__openai_compatible() }}</option>
                 <option value="ollama">{{ lazyStrings.ChatGroupSettingsPanel__ollama() }}</option>
-                <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatGroupSettingsPanel__transformers_js_experimental() }}</option>
                 <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
+                <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatGroupSettingsPanel__transformers_js_experimental() }}</option>
                 <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
                 <option
                   v-if="localTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"
