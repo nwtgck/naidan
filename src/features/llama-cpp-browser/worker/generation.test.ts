@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { File as NodeFile } from 'node:buffer';
-import { invalidateStoredModel, releaseSession, TEST_ONLY as sessionTesting } from './session';
+import { invalidateStoredModel, prepareSession, releaseSession, TEST_ONLY as sessionTesting } from './session';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -13,6 +13,13 @@ import type { WorkerGenerateInput } from './types';
 import { profileSchema } from '@/features/llama-cpp-browser/types';
 import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { createProjectorTrace } from './projector-trace';
+import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
+import { roundTripChatContentPersistenceSerialization } from '@/00-storage/service/chat-content-serialization';
+import { toBinaryObjectId, toMessageId, toToolCallId } from '@/01-models/ids';
+import type { AssistantMessageNode, ChatContent, ToolMessageNode, UserMessageNode } from '@/01-models/types';
+import { buildChatGenerationMessages } from '@/logic/build-chat-generation-messages';
+import { prepareLlamaCppRequest } from '@/features/llama-cpp-browser/message-projection';
+import { prepareChat } from './native-chat';
 
 // Select another installed artifact without requesting real GPU allocation.
 const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ?? 'cpu-wasm32');
@@ -247,6 +254,132 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(accept.mock.calls.map(call => call[1])).toEqual(warmAccepted);
     } finally {
       batch.mockRestore(); clear.mockRestore(); debug.mockRestore(); accept.mockRestore();
+    }
+  }, 30000);
+  it('preserves saved ordered parts through native Jinja, byte tokens and warm cache reuse', async () => {
+    await releaseSession({ releaseRuntime: false });
+    // This fixture has an intentionally simple independent input contract. It
+    // tests real native rendering/tokenization/KV, not a particular model's chat protocol.
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate:
+      '{% for message in messages %}{{ message.role + ":" }}{% if message.reasoning_content is defined %}{{ message.reasoning_content }}{% endif %}{{ message.content }}{% if message.tool_calls is defined %}{% for call in message.tool_calls %}{{ call.function.name + ":" + call.function.arguments }}{% endfor %}{% endif %}{{ ";" }}{% endfor %}',
+    }));
+    const storage = new MemoryStorageProvider();
+    const binaryObjectId = toBinaryObjectId({ raw: 'native-tool-result' });
+    const callId = toToolCallId({ raw: 'call' });
+    const resultText = '\uFEFF R🙂 ';
+    await storage.saveFile({ binaryObjectId, blob: new Blob([resultText]), name: 'result.txt', mimeType: 'text/plain' });
+    const tool: ToolMessageNode = {
+      id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined,
+      parts: [{ id: 'result', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } }],
+      replies: { items: [] },
+    };
+    const assistant: AssistantMessageNode = {
+      id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 2,
+      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      parts: [
+        { id: 'reasoning', type: 'reasoning', text: ' R\n', completeness: 'complete' },
+        { id: 'text', type: 'text', text: '<think>[Aborted]</think> ', completeness: 'complete' },
+        { id: 'call', type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'lookup', arguments: ' {"value":" x "} ' } } },
+      ], replies: { items: [tool] },
+    };
+    const user: UserMessageNode = {
+      id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
+      parts: [{ id: 'question', type: 'text', text: 'Q ', completeness: 'complete' }], replies: { items: [assistant] },
+    };
+    const content: ChatContent = { currentLeafId: tool.id, root: { items: [user] } };
+    const original = structuredClone(content);
+    const { restored } = roundTripChatContentPersistenceSerialization({ content });
+    expect(restored).toEqual(original);
+    expect(content).toEqual(original);
+    const makeRequest = async ({ chat }: { chat: ChatContent }): Promise<WorkerGenerateInput> => ({
+      ...await prepareLlamaCppRequest({
+        model: 'private-local-name.gguf',
+        messages: buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] }),
+        parameters: { temperature: 0, topP: 0.95, maxCompletionTokens: 5, presencePenalty: undefined, frequencyPenalty: undefined, stop: ['A'], reasoning: { effort: undefined } },
+        tools: undefined, debug: undefined, signal: undefined,
+        readBinaryObject: async ({ binaryObjectId, signal }) => {
+          signal?.throwIfAborted();
+          const blob = await storage.getFile({ binaryObjectId });
+          if (!blob) throw new Error('Missing stored native tool result');
+          return blob;
+        },
+      }),
+      options: { profile: integrationProfile }, assetBaseURL: 'https://example.invalid/runtime/',
+    });
+    const liveRequest = await makeRequest({ chat: content });
+    const restoredRequest = await makeRequest({ chat: restored });
+    expect(restoredRequest).toEqual(liveRequest);
+    expect(restoredRequest.messages).toEqual([
+      { role: 'user', content: 'Q ' },
+      { role: 'assistant', content: '<think>[Aborted]</think> ', reasoning_content: ' R\n',
+        tool_calls: [{ id: 'call', type: 'function', function: { name: 'lookup', arguments: ' {"value":" x "} ' } }] },
+      { role: 'tool', content: resultText, name: 'lookup', tool_call_id: 'call' },
+    ]);
+    const { core, model } = await prepareSession({ request: liveRequest, signal: undefined, onProgress: () => {} });
+    const expectedPrompt = `\
+user:Q ;assistant: R
+<think>[Aborted]</think> lookup: {"value":" x "} ;tool:\uFEFF R🙂 ;`;
+    for (const request of [liveRequest, restoredRequest]) {
+      const chat = prepareChat({ core, model, request });
+      try {
+        expect(chat.params.prompt).toBe(expectedPrompt);
+      } finally {
+        chat.dispose();
+      }
+    }
+    // The fixture's SentencePiece tokenizer spells spaces as U+2581. Its byte
+    // vocabulary assigns token 1 to BOS and byte b to b + 3. These expected IDs
+    // are derived from the explicit prompt, not from native tokenizer output.
+    const expectedTokens = [1, ...Array.from(new TextEncoder().encode(expectedPrompt.replaceAll(' ', '▁')), byte => byte + 3)];
+    const batches: number[][] = [];
+    const nativeBatch = core.api.llama_batch_get_one;
+    const batch = vi.spyOn(core.api, 'llama_batch_get_one').mockImplementation(async (...args) => {
+      const count = Number(args[2]);
+      const bytes = core.bytes({ pointer: BigInt(args[1]!), length: count * 4 });
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      batches.push(Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true)));
+      return nativeBatch(...args);
+    });
+    const decode = vi.spyOn(core.api, 'llama_decode');
+    const clear = vi.spyOn(core.api, 'llama_memory_clear');
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    try {
+      const first = await generate({ request: liveRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(batches.flat()).toEqual(expectedTokens);
+      expect(await sequencePosition()).toBe(expectedTokens.length - 1);
+      batches.length = 0; decode.mockClear(); clear.mockClear(); debug.mockClear();
+      const repeated = await generate({ request: restoredRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(repeated).toEqual(first);
+      expect(decode).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+        event: 'cache-reuse', reusedTokens: expectedTokens.length, evaluatedTokens: 0, reason: 'prefix-match',
+      }));
+      const followup: UserMessageNode = {
+        id: toMessageId({ raw: 'followup' }), role: 'user', createdAt: 4, modelId: undefined, lmParameters: undefined,
+        parts: [{ id: 'question', type: 'text', text: 'next', completeness: 'complete' }], replies: { items: [] },
+      };
+      tool.replies.items.push(followup); content.currentLeafId = followup.id;
+      const savedExtension = roundTripChatContentPersistenceSerialization({ content }).restored;
+      const extension = { ...await makeRequest({ chat: savedExtension }), stop: [] };
+      const suffix = Array.from(new TextEncoder().encode('user:next;'), byte => byte + 3);
+      debug.mockClear();
+      const warm = await generate({ request: extension, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(warm.content).toBe('AAAAA');
+      expect(batches.flat()).toEqual([...suffix, 68, 68, 68, 68, 68]);
+      expect(clear).not.toHaveBeenCalled();
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+        event: 'cache-reuse', reusedTokens: expectedTokens.length, evaluatedTokens: suffix.length, reason: 'prefix-match',
+      }));
+      const warmPosition = await sequencePosition();
+      expect(warmPosition).toBe(expectedTokens.length + suffix.length + 4);
+      await releaseSession({ releaseRuntime: false });
+      batches.length = 0;
+      const cold = await generate({ request: extension, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(cold).toEqual(warm);
+      expect(batches.flat()).toEqual([...expectedTokens, ...suffix, 68, 68, 68, 68, 68]);
+      expect(await sequencePosition()).toBe(warmPosition);
+    } finally {
+      batch.mockRestore(); decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
     }
   }, 30000);
   it('reuses unchanged logits and never records a sampled stop token as decoded', async () => {

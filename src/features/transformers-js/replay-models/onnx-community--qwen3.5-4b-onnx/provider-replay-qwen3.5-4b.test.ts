@@ -704,7 +704,7 @@ describe('Qwen3.5 4B Provider / history', () => {
         control.verifyNativeInput();
       } finally {
         await closeProviderReplayCaptures({ captures: [capture], close: control.harness.close });
-    }
+      }
     }
   }, 30_000);
 });
@@ -872,7 +872,7 @@ describe('Qwen3.5 4B Provider / reasoning', () => {
         control.verifyNativeInput();
       } finally {
         await closeProviderReplayCaptures({ captures: [capture], close: control.harness.close });
-    }
+      }
     }
   }, 30_000);
 });
