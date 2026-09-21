@@ -24,6 +24,7 @@ import { Gemma4ToolCallParser } from './models/gemma4-tool-call-parser';
 import { createGemma4Generation } from './models/gemma4-generation';
 import { createQwen3_5Generation, qwen3_5ProtocolTokens } from './models/qwen3_5-generation';
 import { createLfm2Generation, formatMessagesForLfm2ReasoningProtocol, lfm2ReasoningProtocolTokens } from './models/lfm2-generation';
+import { exactObject } from '@/utils/exact-object';
 import { Qwen3_5ToolCallParser } from './models/qwen3_5-tool-call-parser';
 import { generateGptOss } from './models/gpt-oss';
 import {
@@ -357,10 +358,13 @@ const standardGenerationStrategy: GenerationStrategy = {
     const protocolProbeMessages = messages.map(message => {
       const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
       unhandled satisfies Record<PropertyKey, never>;
-      return { role, content, reasoning: undefined,
+      return exactObject<InferenceMessage>()({
+        role,
+        content,
+        reasoning: undefined,
         ...(tool_calls === undefined ? {} : { tool_calls }),
         ...(tool_call_id === undefined ? {} : { tool_call_id }),
-      };
+      });
     });
     const protocolProbeFormattedMessages = formatStandardMessagesForToolHandling({
       messages: protocolProbeMessages,
