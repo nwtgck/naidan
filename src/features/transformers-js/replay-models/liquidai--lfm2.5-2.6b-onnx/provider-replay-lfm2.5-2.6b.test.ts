@@ -4,6 +4,7 @@ import { providerReplayCatalog } from './provider-evidence-catalog';
 import { assembleProviderSequenceEvidence } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
 import { createProviderRequestReplay } from '@/features/transformers-js/replay-models/support/provider-replay-request';
 import { verifyCapturedFullReplay } from '@/features/transformers-js/replay-models/support/provider-replay-test-captured-full';
+import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -1715,7 +1716,7 @@ Let me first call the lookup_weather function with city "Tokyo".`, 'The tool ret
 });
 
 describe('LFM2.5 2.6B Provider / images', () => {
-  it('images: preserves the recorded text-only native handling of an image-bearing request', async () => {
+  it('images: rejects the recorded image-bearing input before text-only native generation', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
@@ -1754,16 +1755,103 @@ describe('LFM2.5 2.6B Provider / images', () => {
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
-        expectInterruptedReasoning({ observed, text: 'The' });
+        expect(observed.settlement).toEqual({ status: 'fulfilled' });
+        expect(observed.parts).toEqual([]);
+        expect(observed.result).toMatchObject({
+          type: 'error', error: { message: 'The standard text strategy cannot preserve an image input.' },
+        });
+        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      replay.assertComplete({ requests: 1, nativeCalls: 0 });
     } finally {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
+
+const lfm26FullStructuredParts = {
+  completionTokenIds: ['124900', '124906'],
+  endTokenIds: ['124900'],
+  invocations: [
+    { callOrdinal: 1, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 3, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 4, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 5, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 6, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 7, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 8, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 9, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 10, terminal: { kind: 'control', tokenId: '124906' } },
+    { callOrdinal: 11, terminal: { kind: 'control', tokenId: '124900' } },
+    { callOrdinal: 12, terminal: { kind: 'control', tokenId: '124906' } },
+    { callOrdinal: 13, terminal: { kind: 'control', tokenId: '124900' } },
+    { callOrdinal: 14, terminal: { kind: 'control', tokenId: '124900' } },
+  ],
+  requests: [
+    { scenario: 'first-turn', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The user wants me to "Template probe user message." This is a bit ambiguous', completeness: 'partial' }],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'continuity', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
+    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'system-user', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'reasoning-low', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'reasoning-medium', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'reasoning-high', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
+    }] },
+    { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
+      { kind: 'assistant', parts: [
+        { type: 'reasoning', text: 'The user wants me to use the weather tool for Tokyo. I need to call the lookup_weather function with the city parameter set to "Tokyo".', completeness: 'complete' },
+        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+      ], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+      { kind: 'assistant', parts: [
+        { type: 'reasoning', text: 'The weather tool has returned the weather data for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user.', completeness: 'complete' },
+        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+      ], terminal: { type: 'finished', next: 'user' } },
+    ] },
+    { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
+      { kind: 'assistant', parts: [
+        { type: 'reasoning', text: `\
+The user wants me to:
+1. Use the lookup_weather tool for Tokyo
+2. Then provide a short answer based on the tool result
+
+Let me first call the lookup_weather function with city "Tokyo".`, completeness: 'complete' },
+        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+      ], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+      { kind: 'assistant', parts: [
+        { type: 'reasoning', text: 'The tool returned weather data for Tokyo: temperature is 20°C and the condition is "clear". I need to provide a short answer based on this result.', completeness: 'complete' },
+        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+      ], terminal: { type: 'finished', next: 'user' } },
+    ] },
+    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{
+      kind: 'assistant', parts: [
+        { type: 'reasoning', text: 'The weather tool has returned the weather for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user in a clear and concise way.', completeness: 'complete' },
+        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+      ], terminal: { type: 'finished', next: 'user' },
+    }] },
+    { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
+  ],
+  legacyInputProjectionScenarios: ['continuity'],
+} satisfies StructuredPartsReplayContract;
 
 describe('LFM2.5 2.6B Provider / sequences', () => {
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
@@ -1863,6 +1951,13 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
     expect(fullEvidenceJson.modelId).toBe('LiquidAI/LFM2.5-2.6B-ONNX');
     expect(fullEvidenceJson.metadataRevision).toBe('66826372fd4fa166f53be0371c9315745c07cace');
     expect(fullEvidenceJson.observedCacheRevision).toBe('main');
-    await verifyCapturedFullReplay({ reviewedPublicContract: undefined, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"] });
+    await verifyCapturedFullReplay({ reviewedPublicContract: {
+      correctedEvents: [], correctedFinalizedStreams: undefined, invalidatedOutputs: [],
+      preNativeRejections: [
+        { scenario: 'continuity', reason: 'LFM2 cannot close partial reasoning without inventing a native delimiter.' },
+        { scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' },
+      ],
+      structuredParts: lfm26FullStructuredParts,
+    }, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"] });
   }, 30_000);
 });

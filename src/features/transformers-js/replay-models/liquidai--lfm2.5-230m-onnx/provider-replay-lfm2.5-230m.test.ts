@@ -5,6 +5,7 @@ import { providerReplayCatalog } from './provider-evidence-catalog';
 import { assembleProviderSequenceEvidence } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
 import { createProviderRequestReplay } from '@/features/transformers-js/replay-models/support/provider-replay-request';
 import { verifyCapturedFullReplay } from '@/features/transformers-js/replay-models/support/provider-replay-test-captured-full';
+import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
 import { createChatMessageSnapshot } from '@/01-models/chat-message';
 import { exactObject } from '@/utils/exact-object';
 import { zodToJsonSchema } from '@/utils/lm-tools';
@@ -1782,7 +1783,7 @@ describe('LFM2.5 230M Provider / tools', () => {
 });
 
 describe('LFM2.5 230M Provider / images', () => {
-  it('images: preserves the recorded text-only native handling of an image-bearing request', async () => {
+  it('images: rejects the recorded image-bearing input before text-only native generation', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
@@ -1820,28 +1821,87 @@ describe('LFM2.5 230M Provider / images', () => {
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
-
-        expect(calls).toEqual([]);
+        expect(observed.parts).toEqual([]);
+        expect(observed.result).toMatchObject({
+          type: 'error', error: { message: 'The standard text strategy cannot preserve an image input.' },
+        });
+        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      replay.assertComplete({ requests: 1, nativeCalls: 0 });
     } finally {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
 });
+
+const lfm230FullStructuredParts = {
+  completionTokenIds: ['7', '11'], endTokenIds: ['7'],
+  invocations: [
+    { callOrdinal: 1, terminal: { kind: 'control', tokenId: '7' } },
+    { callOrdinal: 2, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 3, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 4, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 5, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 6, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 7, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 8, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 9, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 10, terminal: { kind: 'control', tokenId: '11' } },
+    { callOrdinal: 11, terminal: { kind: 'control', tokenId: '7' } },
+    { callOrdinal: 12, terminal: { kind: 'control', tokenId: '11' } },
+    { callOrdinal: 13, terminal: { kind: 'control', tokenId: '7' } },
+    { callOrdinal: 14, terminal: { kind: 'control', tokenId: '7' } },
+  ],
+  requests: [
+    { scenario: 'first-turn', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: "I'm sorry, but I can't help with that.", completeness: 'complete' },
+    ], terminal: { type: 'finished', next: 'user' } }] },
+    { scenario: 'continuity', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: "I'm sorry for any confusion, but I'm unable to continue the conversation with", completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'I', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'system-user', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'Here', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'Template', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'I', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'reasoning-low', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'I', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'reasoning-medium', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'I', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'reasoning-high', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'I', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
+      { kind: 'assistant', parts: [
+        { type: 'text', text: "I'll retrieve the weather data for Tokyo using the available tool.", completeness: 'complete' },
+        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+      ], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+      { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+    ] },
+    { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
+      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'finished', next: 'tool_results' } },
+      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+      { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo today is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+    ] },
+    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' },
+    ], terminal: { type: 'finished', next: 'user' } }] },
+    { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
+  ],
+  legacyInputProjectionScenarios: ['continuity'],
+} satisfies StructuredPartsReplayContract;
 
 describe('LFM2.5 230M Provider / sequences', () => {
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
@@ -1962,6 +2022,10 @@ describe('LFM2.5 230M Provider / sequences', () => {
     expect(fullEvidenceJson.modelId).toBe('LiquidAI/LFM2.5-230M-ONNX');
     expect(fullEvidenceJson.metadataRevision).toBe('c6f46e4e3f885ebcad164d14059a49f90e27eb4d');
     expect(fullEvidenceJson.observedCacheRevision).toBe('c6f46e4e3f885ebcad164d14059a49f90e27eb4d');
-    await verifyCapturedFullReplay({ reviewedPublicContract: undefined, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"] });
+    await verifyCapturedFullReplay({ reviewedPublicContract: {
+      correctedEvents: [], correctedFinalizedStreams: undefined, invalidatedOutputs: [],
+      preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
+      structuredParts: lfm230FullStructuredParts,
+    }, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"] });
   }, 30_000);
 });
