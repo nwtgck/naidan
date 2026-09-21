@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild, transformBrowserCore } from '../src/features/llama-cpp-browser/build-core';
 
 const repo = process.cwd();
-const profiles = ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const;
+const profiles = ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const;
 describe('shared browser core adapter', () => {
   it.each(profiles)('transforms %s at the same virtual dev boundary used by production', async profile => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-dev-'));

@@ -10,3 +10,6 @@ declare module 'virtual:llama-cpp-browser-core/webgpu-wasm32-asyncify' {
 declare module 'virtual:llama-cpp-browser-core/webgpu-wasm64-jspi' {
   export { default } from 'llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/core.mjs';
 }
+declare module 'virtual:llama-cpp-browser-core/webgpu-wasm32-jspi' {
+  export { default } from 'llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/core.mjs';
+}

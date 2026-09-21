@@ -28,7 +28,10 @@ const tools: NonNullable<GenerateInput['tools']> = [{ type: 'function', function
 const profiles: LlamaCppProfile[] = ['cpu-wasm32'];
 if (Number(process.versions.node.split('.')[0]) >= 24) profiles.push('cpu-wasm64');
 // The JSPI artifact can exercise native chat/sampling on CPU without a GPU adapter.
-if ('promising' in WebAssembly && 'Suspending' in WebAssembly) profiles.push('webgpu-wasm64-jspi');
+if ('promising' in WebAssembly && 'Suspending' in WebAssembly) {
+  profiles.push('webgpu-wasm32-jspi');
+  if (Number(process.versions.node.split('.')[0]) >= 24) profiles.push('webgpu-wasm64-jspi');
+}
 describe.each(profiles)('native chat on %s', profile => {
   let core: Core; let model = 0n;
   beforeAll(async () => {

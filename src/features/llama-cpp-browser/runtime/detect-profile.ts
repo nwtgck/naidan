@@ -5,7 +5,7 @@ const memory64Probe = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1
 
 export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptions['profile'] }): Promise<LlamaCppProfile> {
   switch (profile) {
-  case 'cpu-wasm32': case 'cpu-wasm64': case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-asyncify':
+  case 'cpu-wasm32': case 'cpu-wasm64': case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': case 'webgpu-wasm32-asyncify':
     // Explicit choices remain explicit; model/load failures are not fallback triggers.
     return profile;
   case 'auto': break;
@@ -27,8 +27,9 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
       // The pinned backend requires shader-f16. Merely exposing navigator.gpu
       // does not mean an adapter with the required features can be obtained.
       if (adapter?.features.has('shader-f16')) {
-        // Asyncify is compiled into the wasm32 artifact and needs no JSPI or memory64 support.
-        return memory64 && jspi ? 'webgpu-wasm64-jspi' : 'webgpu-wasm32-asyncify';
+        // Prefer the larger address space when available, then JSPI over Asyncify.
+        if (jspi) return memory64 ? 'webgpu-wasm64-jspi' : 'webgpu-wasm32-jspi';
+        return 'webgpu-wasm32-asyncify';
       }
     } catch {
       // Unavailable/blocked adapters leave the CPU path available. Do not log raw errors.

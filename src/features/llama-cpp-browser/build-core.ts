@@ -8,10 +8,11 @@ import { profileSchema, type LlamaCppProfile } from './types';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed artifact commit: 8ef4be45622ab5f1b210ad2e7455a4ae8ac348f3.
+// Reviewed artifact commit: 61e9c34b3970cb036e99e274f28d54f4db0b0629.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 const coreHashes = {
   'webgpu-wasm64-jspi': '1c3853d8672243155c87ad76adbe0615dc1ea8dda3511b19cc7ec323f04b5ee8',
+  'webgpu-wasm32-jspi': 'fc881a4036dc090bd947cec879e9ebcea7b54f83b39fbdfe30e189459802f738',
   'webgpu-wasm32-asyncify': '4228f3f146ef747fa149f976caf35928e5908d88edf96c0ae7e86071ed3b99fd',
   'cpu-wasm64': '2d9126fdffe538dd9b79acd44bdeb78189c3254c40d5d3c760b708335807bbb5',
   'cpu-wasm32': '0c94cc55e07709a73bf24d0b11dc9b0a9ccbde5ab8387095a553ee3746825676',
@@ -64,7 +65,7 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     after: '/* Naidan fix: keep the supplied byte view, including its offset, without copying the complete Wasm. */if(file==wasmBinaryFile&&wasmBinary){assert(ArrayBuffer.isView(wasmBinary)&&wasmBinary.BYTES_PER_ELEMENT===1,"Expected Wasm byte view");return wasmBinary}',
   });
   switch (profile) {
-  case 'cpu-wasm32': case 'webgpu-wasm32-asyncify':
+  case 'cpu-wasm32': case 'webgpu-wasm32-jspi': case 'webgpu-wasm32-asyncify':
     replace({
       before: 'if(ENVIRONMENT_IS_NODE){var nodeCrypto=require("node:crypto");return view=>(nodeCrypto.randomFillSync(view),0)}',
       after: '/* Naidan fix: keep the existing browser random source, without a Node.js dependency. */',

@@ -10,6 +10,7 @@ export function parseRuntimeOptions({ options }: { options: RuntimeOptions }): R
   case 'auto':
   case 'cpu-wasm32':
   case 'cpu-wasm64':
+  case 'webgpu-wasm32-jspi':
   case 'webgpu-wasm32-asyncify': throw new LlamaCppBrowserError({ code: 'unavailable' });
   default: {
     const exhaustive: never = accepted.profile;

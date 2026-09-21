@@ -33,6 +33,10 @@ export async function loadCoreModule({ profile, baseURL, moduleOptions }: {
     const module = await (await import('virtual:llama-cpp-browser-core/webgpu-wasm32-asyncify')).default(moduleOptions);
     return { module, chat: bindNativeChat({ native: module }) };
   }
+  case 'webgpu-wasm32-jspi': {
+    const module = await (await import('virtual:llama-cpp-browser-core/webgpu-wasm32-jspi')).default(moduleOptions);
+    return { module, chat: bindNativeChat({ native: module }) };
+  }
   case 'webgpu-wasm64-jspi': {
     const module = await (await import('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi')).default(moduleOptions);
     return { module, chat: bindNativeChat({ native: module }) };

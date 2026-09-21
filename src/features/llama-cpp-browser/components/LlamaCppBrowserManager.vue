@@ -31,7 +31,8 @@ const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
 const profileLabels = {
   'webgpu-wasm64-jspi': 'WebGPU / wasm64',
-  'webgpu-wasm32-asyncify': 'WebGPU / wasm32',
+  'webgpu-wasm32-jspi': 'WebGPU / wasm32 / JSPI',
+  'webgpu-wasm32-asyncify': 'WebGPU / wasm32 / Asyncify',
   'cpu-wasm64': 'CPU / wasm64',
   'cpu-wasm32': 'CPU / wasm32',
 } satisfies Record<Exclude<typeof options.value.profile, 'auto'>, string>;

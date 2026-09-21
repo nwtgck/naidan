@@ -193,7 +193,7 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
   const { module, chat } = await loadCoreModule({ profile, baseURL, moduleOptions });
   switch (profile) {
   case 'webgpu-wasm32-asyncify': return { ...attachCore({ module, callMode: 'asyncify' }), chat };
-  case 'webgpu-wasm64-jspi': case 'cpu-wasm64': case 'cpu-wasm32': return { ...attachCore({ module, callMode: 'direct' }), chat };
+  case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': case 'cpu-wasm64': case 'cpu-wasm32': return { ...attachCore({ module, callMode: 'direct' }), chat };
   default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }

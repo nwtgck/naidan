@@ -29,7 +29,7 @@ describe('standalone artifact transport', () => {
     embedded.base64 = brotliCompressSync(new Uint8Array([72])).toString('base64');
     await expect(loadStandaloneWasm({ profile: 'webgpu-wasm64-jspi', assetBaseURL: undefined })).rejects.toThrow('integrity mismatch');
   });
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects the non-embedded profile %s before decoding', async profile => {
+  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify'] as const)('rejects the non-embedded profile %s before decoding', async profile => {
     const digest = vi.spyOn(crypto.subtle, 'digest');
     await expect(loadStandaloneWasm({ profile, assetBaseURL: undefined })).rejects.toThrow('unavailable');
     expect(digest).not.toHaveBeenCalled();
@@ -42,7 +42,7 @@ describe('standalone artifact transport', () => {
 });
 
 describe('hosted artifact transport', () => {
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const)('retains gzip for %s even without Brotli support', async profile => {
+  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const)('retains gzip for %s even without Brotli support', async profile => {
     const source = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
     const fetcher = vi.fn(async () => new Response(gzipSync(source)));
     vi.stubGlobal('fetch', fetcher);

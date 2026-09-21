@@ -55,7 +55,7 @@ describe('standalone Worker capability detection', () => {
     const name = environment.root.getFileHandle.mock.calls[0]?.[0];
     expect(environment.root.removeEntry).toHaveBeenCalledWith(name);
   });
-  it.each(['auto', 'cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects non-embedded profile %s without probes', async profile => {
+  it.each(['auto', 'cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify'] as const)('rejects non-embedded profile %s without probes', async profile => {
     await expect(resolveRuntimeProfile({ profile })).rejects.toThrow('unavailable');
     expect(environment.wasm.validate).not.toHaveBeenCalled();
   });

@@ -40,7 +40,7 @@ function render(): VueWrapper {
 beforeEach(async () => {
   vi.clearAllMocks(); notifications.state.clear(); notifications.models.clear();
   notifications.confirm.mockResolvedValue(true);
-  notifications.profiles.splice(0, notifications.profiles.length, 'auto', 'cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi');
+  notifications.profiles.splice(0, notifications.profiles.length, 'auto', 'cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi');
   vi.mocked(llamaCppBrowserService.getOptions).mockReturnValue({ profile: 'auto' });
   vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'idle' });
   vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([]);
@@ -269,6 +269,8 @@ describe('local GGUF manager', () => {
     const wrapper = render(); await flushPromises();
     await wrapper.get('[data-testid="llama-cpp-browser-profile"]').setValue('cpu-wasm32');
     expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'cpu-wasm32' } });
+    await wrapper.get('[data-testid="llama-cpp-browser-profile"]').setValue('webgpu-wasm32-jspi');
+    expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'webgpu-wasm32-jspi' } });
     await wrapper.get('[data-testid="llama-cpp-browser-profile"]').setValue('webgpu-wasm32-asyncify');
     expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'webgpu-wasm32-asyncify' } });
     expect(wrapper.find('[data-testid="llama-cpp-browser-context"]').exists()).toBe(false);

@@ -8,7 +8,7 @@ export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCpp
   if (usesWebGpu({ profile }) && (typeof navigator === 'undefined' || !navigator.gpu)) {
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
-  if (profile === 'webgpu-wasm64-jspi' && (!('promising' in wasmFeatures) || typeof wasmFeatures.promising !== 'function' || !('Suspending' in wasmFeatures) || typeof wasmFeatures.Suspending !== 'function')) {
+  if ((profile === 'webgpu-wasm64-jspi' || profile === 'webgpu-wasm32-jspi') && (!('promising' in wasmFeatures) || typeof wasmFeatures.promising !== 'function' || !('Suspending' in wasmFeatures) || typeof wasmFeatures.Suspending !== 'function')) {
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
   const wasmBinary = await loadWasmBinary({ profile, assetBaseURL });
