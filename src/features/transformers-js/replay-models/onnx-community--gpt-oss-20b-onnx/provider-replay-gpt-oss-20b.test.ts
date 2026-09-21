@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { providerReplayCatalog } from './provider-evidence-catalog';
-import { captureProviderChat, type ProviderChatCapture } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
+import { captureProviderChat, type CapturedChatRequest, type ProviderChatCapture } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
+import { closeProviderReplayCaptures, createReplayImageAttachment, runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
 import { assembleProviderSequenceEvidence, type ProviderReplayCatalog } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
 import { createProviderRequestReplay, createProviderRequestReplayWithOwnedCacheControl, type ProviderRequestNativeController } from '@/features/transformers-js/replay-models/support/provider-replay-request';
 import { parseCapturedFullReplay, replayCapturedFullInvocation, replayCapturedFullInvocationWithOwnedCache, verifyCapturedFullReplay, type OwnedReplayCacheControl } from '@/features/transformers-js/replay-models/support/provider-replay-test-captured-full';
@@ -14,13 +15,78 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { ChatMessage } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
-import { toToolCallId } from '@/01-models/ids';
+import { toMessageId, toToolCallId } from '@/01-models/ids';
 import evidenceJson from './provider-prefix-output.evidence.json';
 import inputJson from './provider-template-inputs.evidence.json';
 import toolInputJson from './provider-template-tool-inputs.evidence.json';
 import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/transformers-js/replay-models/support/provider-replay-test-causal-gate';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody, inspectSyntheticOrtSession } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
+
+function textMessage({ id, role, text }: {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  text: string;
+}): ChatMessage {
+  return {
+    id: toMessageId({ raw: id }),
+    role,
+    parts: [{ id: `${id}_text`, type: 'text', text, completeness: 'complete' }],
+  };
+}
+
+function capturedTextChunks({ capture, type }: {
+  capture: ProviderChatCapture;
+  type: 'text' | 'reasoning';
+}): string[] {
+  return capture.snapshot().parts.flatMap(part => part.type === type ? part.chunks : []);
+}
+
+function reasoningMessage({ id, text, completeness }: {
+  id: string;
+  text: string;
+  completeness: 'complete' | 'partial';
+}): ChatMessage {
+  return {
+    id: toMessageId({ raw: id }),
+    role: 'assistant',
+    parts: [{ id: `${id}_reasoning`, type: 'reasoning', text, completeness }],
+  };
+}
+
+function expectEmptyInterruptedCapture({ capture }: { capture: ProviderChatCapture }): void {
+  const observed = capture.snapshot();
+  expect(observed.settlement).toEqual({ status: 'fulfilled' });
+  expect(observed.parts).toEqual([]);
+  expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+  expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
+}
+
+function expectPartialReasoningCapture({ capture, text }: {
+  capture: ProviderChatCapture;
+  text: string;
+}): void {
+  const observed = capture.snapshot();
+  expect(observed.settlement).toEqual({ status: 'fulfilled' });
+  expect(observed.parts).toEqual([
+    expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'partial' }),
+  ]);
+  expect(observed.parts[0]?.type === 'reasoning' ? observed.parts[0].chunks.join('') : undefined).toBe(text);
+  expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+  expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind))
+    .toEqual(['part', 'part-complete', 'result', 'settled']);
+}
+
+function expectDeliveredErrorCapture({ capture, message }: {
+  capture: ProviderChatCapture;
+  message: string;
+}): void {
+  const observed = capture.snapshot();
+  expect(observed.settlement).toEqual({ status: 'fulfilled' });
+  expect(observed.parts).toEqual([]);
+  expect(observed.result).toMatchObject({ type: 'error', error: { message } });
+  expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
+}
 
 // New complete requests retain their own source pins. Historical suffix-only
 // outputs and their rejection tests remain in the original catalog unchanged.
@@ -242,7 +308,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [{ role: "user", content: "Template probe user message." }],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: {
             temperature: 0,
@@ -255,11 +321,15 @@ describe('GPT-OSS 20B Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
-      const { chunks } = capture.snapshot();
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: boundary });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
       expect(nativeInputs).toHaveLength(1);
       const observedInput = nativeInputs[0]!;
       expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
@@ -275,9 +345,8 @@ describe('GPT-OSS 20B Provider / basic', () => {
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it("system-user-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
@@ -319,7 +388,10 @@ describe('GPT-OSS 20B Provider / basic', () => {
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }],
+          messages: [
+            textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
+            textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
+          ],
           tools: [],
           parameters: {
             temperature: 0,
@@ -332,11 +404,15 @@ describe('GPT-OSS 20B Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
-      const { chunks } = capture.snapshot();
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: boundary });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
       expect(nativeInputs).toHaveLength(1);
       const observedInput = nativeInputs[0]!;
       expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
@@ -352,9 +428,8 @@ describe('GPT-OSS 20B Provider / basic', () => {
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it("multi-turn-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
@@ -396,7 +471,11 @@ describe('GPT-OSS 20B Provider / basic', () => {
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }],
+          messages: [
+            textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
+            textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
+            textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
+          ],
           tools: [],
           parameters: {
             temperature: 0,
@@ -409,11 +488,15 @@ describe('GPT-OSS 20B Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
-      const { chunks } = capture.snapshot();
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: boundary });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
       expect(nativeInputs).toHaveLength(1);
       const observedInput = nativeInputs[0]!;
       expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
@@ -429,9 +512,8 @@ describe('GPT-OSS 20B Provider / basic', () => {
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('refuses the recorded answer when the public caller changes the input', async () => {
     const captures: ProviderChatCapture[] = [];
@@ -441,7 +523,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
         provider: replay.harness.provider,
         request: {
           model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
-          messages: [{ role: 'user', content: 'Different synthetic replay input.' }],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Different synthetic replay input.' })],
           tools: [],
           parameters: {
             temperature: 0,
@@ -454,19 +536,22 @@ describe('GPT-OSS 20B Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow('Replay causal mismatch: actual source input');
-      const { chunks } = capture.snapshot();
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: 'Replay causal mismatch: actual source input' });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
       expect(replay.releasedTokenCount()).toBe(0);
       expect(chunks).toEqual([]);
       expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
       expect(replay.harness.observations.forbiddenTransport).toEqual([]);
     } finally {
-      await replay.harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
@@ -494,28 +579,31 @@ describe('GPT-OSS 20B Provider / basic', () => {
         provider: replay.provider,
         request: {
           model: 'onnx-community/gpt-oss-20b-ONNX',
-          messages: [{ role: 'user', content: 'Template probe user message.' }],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Template probe user message.' })],
           parameters,
           tools: [],
           signal: new AbortController().signal,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       await capture.completion;
       replay.endNativeRequest();
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.responses).toHaveLength(1);
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['assistant-start', 'settled']);
-      expect(observed.chunks.join('')).toBe('<think>The user says "Template probe user message." This seems like a');
-      expect(observed.preStartChunks).toEqual([]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(observed.parts).toEqual([
+        expect.objectContaining({ type: 'reasoning', index: 0, chunks: expect.any(Array), completeness: 'partial' }),
+      ]);
+      expect(observed.parts[0]?.type === 'reasoning' ? observed.parts[0].chunks.join('') : undefined)
+        .toBe('The user says "Template probe user message." This seems like a');
+      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind))
+        .toEqual(['part', 'part-complete', 'result', 'settled']);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
-    expect(capture?.snapshot().lateEvents).toEqual([]);
-    expect(capture?.snapshot().toolCalls).toEqual([]);
-    expect(capture?.snapshot().toolResults).toEqual([]);
-    expect(capture?.snapshot().toolEvents).toEqual([]);
+    expect(capture?.snapshot().parts.filter(part => part.type === 'tool_call')).toEqual([]);
   }, 30_000);
 });
 
@@ -549,10 +637,15 @@ describe('GPT-OSS 20B Provider / system', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }],
+            messages: [
+              textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
+              textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
+            ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -560,22 +653,15 @@ describe('GPT-OSS 20B Provider / system', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expect(observed.parts).toEqual([]);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(order).toEqual(['result', 'settled']);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -643,10 +729,16 @@ describe('GPT-OSS 20B Provider / history', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }],
+            messages: [
+              textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
+              textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
+              textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
+            ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -654,22 +746,15 @@ describe('GPT-OSS 20B Provider / history', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expect(observed.parts).toEqual([]);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(order).toEqual(['result', 'settled']);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -680,7 +765,8 @@ describe('GPT-OSS 20B Provider / independent', () => {
     if (!firstInput) throw new Error('Missing captured GPT-OSS user input');
     expect(firstInput.messages).toEqual([{ role: 'user', content: 'Template probe user message.' }]);
     expect(firstInput.renderedText.split('Template probe user message.')).toHaveLength(2);
-    const nextMessages: ChatMessage[] = [{ role: 'user', content: 'A separate synthetic conversation.' }];
+    const nextMessages: ChatMessage[] = [textMessage({ id: 'message_0', role: 'user', text: 'A separate synthetic conversation.' })];
+    const nextTemplateMessages = [{ role: 'user' as const, content: 'A separate synthetic conversation.' }];
     // The fixed captured system/date scaffold is preserved; only this one user
     // literal changes. This is an independently specified input, not new output evidence.
     const nextPrompt = firstInput.renderedText.replace('Template probe user message.', 'A separate synthetic conversation.');
@@ -706,7 +792,7 @@ describe('GPT-OSS 20B Provider / independent', () => {
         contexts.push(context);
         const { options, tokenizer, runtime } = context;
         nativeInputs.push({
-          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'), rendered: tokenizer.apply_chat_template(nextMessages, { tokenize: false, add_generation_prompt: true }), expectedIds: tokenizer.encode(nextPrompt, { add_special_tokens: false }),
+          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'), rendered: tokenizer.apply_chat_template(nextTemplateMessages, { tokenize: false, add_generation_prompt: true }), expectedIds: tokenizer.encode(nextPrompt, { add_special_tokens: false }),
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: Array.from(options.input_ids.data, Number) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { type: options.attention_mask.type, location: options.attention_mask.location, dims: [...options.attention_mask.dims], data: Array.from(options.attention_mask.data, BigInt) } : undefined,
           past: options.past_key_values, maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample,
@@ -740,7 +826,7 @@ describe('GPT-OSS 20B Provider / independent', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: {
             temperature: 0,
@@ -753,6 +839,9 @@ describe('GPT-OSS 20B Provider / independent', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(firstCapture);
@@ -777,10 +866,14 @@ describe('GPT-OSS 20B Provider / independent', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(secondCapture);
-      await expect(secondCapture.completion).rejects.toThrow(stop);
+      await secondCapture.completion;
+      expectDeliveredErrorCapture({ capture: secondCapture, message: stop });
 
       expect(nativeInputs).toHaveLength(1);
       const observedInput = nativeInputs[0]!;
@@ -800,7 +893,7 @@ describe('GPT-OSS 20B Provider / independent', () => {
       expect(observedInput.topP).toBe(1);
       expect(observedInput.doSample).toBe(false);
       expect(firstReleased).toBe(16);
-      expect(secondCapture.snapshot().chunks).toEqual([]);
+      expect(secondCapture.snapshot().parts).toEqual([]);
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
       expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
@@ -815,15 +908,14 @@ describe('GPT-OSS 20B Provider / independent', () => {
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity","independent-next-input"],
+      caseIds: ["first-turn","independent-next-input"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined
     });
@@ -849,30 +941,24 @@ describe('GPT-OSS 20B Provider / independent', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
         replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["<think>The user says \"Template probe user message.\" This seems like a"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        firstResponse = responses[0]!.join('');
+        const reasoning = 'The user says "Template probe user message." This seems like a';
+        expectPartialReasoningCapture({ capture, text: reasoning });
+        firstResponse = reasoning;
       }
-      // continuity: public inputs and settled expectations are owned by this model.
+      // The recorded prefix ended during reasoning. The ordered DTO therefore
+      // preserves it as partial and must reject it as completed history before
+      // any native continuation can consume the old continuity capture.
       {
         const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
           temperature: 0,
@@ -886,32 +972,28 @@ describe('GPT-OSS 20B Provider / independent', () => {
           },
         };
         const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "continuity", parameters });
         const capture = captureProviderChat({
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: firstResponse }, { role: "user", content: "Continue the synthetic conversation with a short response." }],
+            messages: [
+              textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
+              reasoningMessage({ id: 'message_1', text: firstResponse, completeness: 'partial' }),
+              textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
+            ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["<think>We need to respond with a short response. Probably just a short"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expectDeliveredErrorCapture({
+          capture,
+          message: 'The model template cannot close unfinished structured reasoning.',
+        });
       }
       // independent-next-input: public inputs and settled expectations are owned by this model.
       {
@@ -932,33 +1014,23 @@ describe('GPT-OSS 20B Provider / independent', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "A separate synthetic capture conversation." }],
+            messages: [textMessage({ id: 'message_0', role: 'user', text: "A separate synthetic capture conversation." })],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
         replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expectEmptyInterruptedCapture({ capture });
       }
-      replay.assertComplete({ requests: 3, nativeCalls: 3 });
+      replay.assertComplete({ requests: 2, nativeCalls: 2 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -971,7 +1043,7 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
         provider: replay.harness.provider,
         request: {
           model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
           tools: [],
           parameters: {
             temperature: 0,
@@ -984,18 +1056,14 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
-      const { chunks, toolCalls, toolResults, toolEvents, responses } = capture.snapshot();
-      const settled = {
-        assistantStarts: responses.length,
-        text: chunks.join(''),
-        toolCalls: [...toolCalls],
-        toolEvents: [...toolEvents],
-        toolResults: [...toolResults]
-      };
+      const observed = capture.snapshot();
       expect(replay.releasedTokenCount()).toBe(16);
       expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
       expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
@@ -1018,15 +1086,14 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
       // A truncated analysis prefix is not a completed answer. Do not append a
       // fabricated </think> or wait for late callbacks to make this assertion pass.
-      expect(settled).toEqual({
-        assistantStarts: 1,
-        text: '<think>The user says "Template probe user message." This seems like a',
-        toolCalls: [], toolEvents: [], toolResults: [],
+      expectPartialReasoningCapture({
+        capture,
+        text: 'The user says "Template probe user message." This seems like a',
       });
+      expect(observed.parts.filter(part => part.type === 'tool_call')).toEqual([]);
     } finally {
-      await replay.harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
@@ -1057,33 +1124,23 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
         replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expectEmptyInterruptedCapture({ capture });
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
@@ -1114,33 +1171,23 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
         replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expectEmptyInterruptedCapture({ capture });
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
@@ -1171,33 +1218,23 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
         replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expectEmptyInterruptedCapture({ capture });
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
@@ -1228,337 +1265,167 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
         replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expectEmptyInterruptedCapture({ capture });
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
 describe('GPT-OSS 20B Provider / tools', () => {
+  async function runOwnedToolCase({ caseId, prompt, expectedReasoning, expectedText, mutations }: {
+    caseId: 'natural-tool-minimal' | 'natural-tool-representative';
+    prompt: string;
+    expectedReasoning: string;
+    expectedText: string;
+    mutations: 'verify' | 'none';
+  }) {
+    vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
+    const boundaries: string[] = [];
+    const replay = await createProviderRequestReplayWithOwnedCacheControl({
+      catalog: ownedToolCatalog,
+      caseIds: [caseId],
+      artifactPaths: ownedToolArtifacts,
+      imagePlatform: undefined,
+      createNativeController: () => createOwnedToolControl({ mutations, boundaries }),
+    });
+    const parameters: NonNullable<CapturedChatRequest['parameters']> = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: { effort: undefined },
+    };
+    const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
+    const tools: Tool[] = [{
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute: async ({ args, signal }) => {
+        executions.push({ args: structuredClone(args), signal });
+        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+      },
+    }];
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    try {
+      replay.beginNativeRequest({ caseId, parameters });
+      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
+        model: 'onnx-community/gpt-oss-20b-ONNX',
+        messages: [textMessage({ id: 'message_0', role: 'user', text: prompt })],
+        parameters,
+        readBinaryObject: undefined,
+        debug: undefined,
+      };
+      const originalRequest = structuredClone(request);
+      turn = await runProviderReplayTurn({
+        provider: replay.provider,
+        request,
+        tools,
+        abortController: new AbortController(),
+        onChange: undefined,
+      });
+      replay.endNativeRequest();
+      expect(request).toEqual(originalRequest);
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
+      const [callAssistant, toolResult, finalAssistant] = turn.generated;
+      expect(callAssistant).toMatchObject({
+        role: 'assistant',
+        interruption: undefined,
+        parts: [
+          { type: 'reasoning', text: expectedReasoning, completeness: 'complete' },
+          { type: 'tool_call', toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        ],
+      });
+      if (callAssistant?.role !== 'assistant') throw new Error('Expected the tool-calling assistant');
+      const toolCallPart = callAssistant.parts.find(part => part.type === 'tool_call');
+      if (toolCallPart?.type !== 'tool_call') throw new Error('Expected a structured tool call');
+      expect(toolCallPart.toolCall.id).not.toBe('');
+      expect(toolResult).toMatchObject({
+        role: 'tool',
+        parts: [{
+          type: 'tool_result',
+          result: {
+            toolCallId: toolCallPart.toolCall.id,
+            status: 'success',
+            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+          },
+        }],
+      });
+      expect(finalAssistant).toMatchObject({
+        role: 'assistant',
+        interruption: undefined,
+        parts: [{ type: 'text', text: expectedText, completeness: 'complete' }],
+      });
+      expect(executions).toEqual([{ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal) }]);
+      expect(executions[0]?.signal?.aborted).toBe(false);
+      expect(turn.toolEvents).toEqual([]);
+      replay.assertComplete({ requests: 1, nativeCalls: 2 });
+    } finally {
+      const beforeDisposal = structuredClone(turn);
+      await replay.close();
+      expect(structuredClone(turn)).toEqual(beforeDisposal);
+    }
+    expect(boundaries).toEqual(mutations === 'verify'
+      ? [`${caseId}/1`, `${caseId}/2`, `${caseId}/rejected-identity-length-prefix-double-count`]
+      : [`${caseId}/1`, `${caseId}/2`]);
+  }
+
   it('tools: executes the recorded minimal Tokyo call once and delivers the owned-cache continuation', async () => {
-    vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
-    const boundaries: string[] = [];
-    const replay = await createProviderRequestReplayWithOwnedCacheControl({
-      catalog: ownedToolCatalog,
-      caseIds: ['natural-tool-minimal'],
-      artifactPaths: ownedToolArtifacts,
-      imagePlatform: undefined,
-      createNativeController: () => createOwnedToolControl({ mutations: 'none', boundaries }),
-    });
-    const captures: ProviderChatCapture[] = [];
-    const lateExecutions: string[] = [];
-    try {
-      // natural-tool-minimal: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined; callbackPrefix: ReturnType<ProviderChatCapture['snapshot']> | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            const callbackPrefix = captureRef.current?.snapshot();
-            executions.push({ args: structuredClone(args), signal: receivedSignal, callbackPrefix });
-            if (callbackPrefix?.settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Use the weather tool for Tokyo." }],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureRef.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        // Record the actual callback prefix at execute; do not wrap tools or infer their position.
-        for (const execution of executions) {
-          expect(execution.callbackPrefix?.settlement).toEqual({ status: 'pending' });
-          expect(execution.callbackPrefix?.events.at(-1)?.kind).toBe('tool-call');
-          expect(execution.callbackPrefix?.events).toEqual(observed.events.slice(0, execution.callbackPrefix?.events.length));
-        }
-        const detailedEvents = observed.events.flatMap((event, index) => [
-          ...executions.filter(execution => execution.callbackPrefix?.events.length === index).map(() => ['execute']),
-          event.kind === 'chunk' ? ['chunk', event.chunk] : [event.kind],
-        ]);
-        const order = detailedEvents.filter(event => event[0] !== 'chunk').map(event => event[0]);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["<think>We need to call the function.</think>", `\
+    await runOwnedToolCase({
+      caseId: 'natural-tool-minimal',
+      prompt: 'Use the weather tool for Tokyo.',
+      expectedReasoning: 'We need to call the function.',
+      expectedText: `\
 Here’s the weather for Tokyo:
 
-- **Temperature:** 20\u202f°C\u0020\u0020
+- **Temperature:** 20\u202f°C${'  '}
 - **Condition:** Clear
 
-Let me know if you’d like more details or a forecast!`]);
-        expect(order).toEqual(["assistant-start", "tool-call", "execute", "tool-result", "assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        // This complete source has no matching historical Full output: preserve its exact chunk/interleaving contract here.
-        expect(detailedEvents).toEqual([["assistant-start"], ["chunk", "<think>"], ["chunk", "We "], ["chunk", "need "], ["chunk", "to "], ["chunk", "call "], ["chunk", "the "], ["chunk", "function."], ["chunk", "</think>"], ["tool-call"], ["execute"], ["tool-result"], ["assistant-start"], ["chunk", "Here’s "], ["chunk", "the "], ["chunk", "weather "], ["chunk", "for "], ["chunk", `\
-Tokyo:
-
-`], ["chunk", "- "], ["chunk", "**Temperature:** "], ["chunk", `\
-20\u202f°C\u0020\u0020
-`], ["chunk", "- "], ["chunk", "**Condition:** "], ["chunk", `\
-Clear
-
-`], ["chunk", "Let "], ["chunk", "me "], ["chunk", "know "], ["chunk", "if "], ["chunk", "you’d "], ["chunk", "like "], ["chunk", "more "], ["chunk", "details "], ["chunk", "or "], ["chunk", "a "], ["chunk", "forecast!"], ["settled"]]);
-        expect(calls).toEqual([{ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' }]);
-        expect(calls[0]!.id).not.toBe('');
-        expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
-        expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
-        expect(executions[0]!.signal).not.toBe(signal);
-        expect(executions[0]!.signal?.aborted).toBe(false);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 2 });
-    } finally {
-      await replay.close();
-    }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-    expect(lateExecutions).toEqual([]);
-    expect(boundaries).toEqual(['natural-tool-minimal/1', 'natural-tool-minimal/2']);
+Let me know if you’d like more details or a forecast!`,
+      mutations: 'none',
+    });
   }, 30_000);
+
   it('tools: executes the recorded representative Tokyo call once and delivers the owned-cache continuation', async () => {
-    vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
-    const boundaries: string[] = [];
-    const replay = await createProviderRequestReplayWithOwnedCacheControl({
-      catalog: ownedToolCatalog,
-      caseIds: ['natural-tool-representative'],
-      artifactPaths: ownedToolArtifacts,
-      imagePlatform: undefined,
-      createNativeController: () => createOwnedToolControl({ mutations: 'none', boundaries }),
+    await runOwnedToolCase({
+      caseId: 'natural-tool-representative',
+      prompt: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.',
+      expectedReasoning: 'We need to call the function lookup_weather with city "Tokyo".',
+      expectedText: 'Tokyo is clear with a comfortable temperature of about 20\u202f°C.',
+      mutations: 'none',
     });
-    const captures: ProviderChatCapture[] = [];
-    const lateExecutions: string[] = [];
-    try {
-      // natural-tool-representative: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined; callbackPrefix: ReturnType<ProviderChatCapture['snapshot']> | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            const callbackPrefix = captureRef.current?.snapshot();
-            executions.push({ args: structuredClone(args), signal: receivedSignal, callbackPrefix });
-            if (callbackPrefix?.settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Use lookup_weather for Tokyo, then give a short answer based on the tool result." }],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureRef.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        // Record the actual callback prefix at execute; do not wrap tools or infer their position.
-        for (const execution of executions) {
-          expect(execution.callbackPrefix?.settlement).toEqual({ status: 'pending' });
-          expect(execution.callbackPrefix?.events.at(-1)?.kind).toBe('tool-call');
-          expect(execution.callbackPrefix?.events).toEqual(observed.events.slice(0, execution.callbackPrefix?.events.length));
-        }
-        const detailedEvents = observed.events.flatMap((event, index) => [
-          ...executions.filter(execution => execution.callbackPrefix?.events.length === index).map(() => ['execute']),
-          event.kind === 'chunk' ? ['chunk', event.chunk] : [event.kind],
-        ]);
-        const order = detailedEvents.filter(event => event[0] !== 'chunk').map(event => event[0]);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["<think>We need to call the function lookup_weather with city \"Tokyo\".</think>", "Tokyo is clear with a comfortable temperature of about 20\u202f°C."]);
-        expect(order).toEqual(["assistant-start", "tool-call", "execute", "tool-result", "assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        // This complete source has no matching historical Full output: preserve its exact chunk/interleaving contract here.
-        expect(detailedEvents).toEqual([["assistant-start"], ["chunk", "<think>"], ["chunk", "We "], ["chunk", "need "], ["chunk", "to "], ["chunk", "call "], ["chunk", "the "], ["chunk", "function "], ["chunk", "lookup_weather "], ["chunk", "with "], ["chunk", "city "], ["chunk", "\"Tokyo\"."], ["chunk", "</think>"], ["tool-call"], ["execute"], ["tool-result"], ["assistant-start"], ["chunk", "Tokyo "], ["chunk", "is "], ["chunk", "clear "], ["chunk", "with "], ["chunk", "a "], ["chunk", "comfortable "], ["chunk", "temperature "], ["chunk", "of "], ["chunk", "about "], ["chunk", "20\u202f°C."], ["settled"]]);
-        expect(calls).toEqual([{ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' }]);
-        expect(calls[0]!.id).not.toBe('');
-        expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
-        expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
-        expect(executions[0]!.signal).not.toBe(signal);
-        expect(executions[0]!.signal?.aborted).toBe(false);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 2 });
-    } finally {
-      await replay.close();
-    }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-    expect(lateExecutions).toEqual([]);
-    expect(boundaries).toEqual(['natural-tool-representative/1', 'natural-tool-representative/2']);
   }, 30_000);
-  it('tools: rejects wrong cache identity, length, prefix and double-counted context before native output', async () => {
-    vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
-    const boundaries: string[] = [];
-    const replay = await createProviderRequestReplayWithOwnedCacheControl({
-      catalog: ownedToolCatalog,
-      caseIds: ['natural-tool-minimal'],
-      artifactPaths: ownedToolArtifacts,
-      imagePlatform: undefined,
-      createNativeController: () => createOwnedToolControl({ mutations: 'verify', boundaries }),
-    });
-    const captures: ProviderChatCapture[] = [];
-    const lateExecutions: string[] = [];
-    try {
-      // natural-tool-minimal: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined; callbackPrefix: ReturnType<ProviderChatCapture['snapshot']> | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            const callbackPrefix = captureRef.current?.snapshot();
-            executions.push({ args: structuredClone(args), signal: receivedSignal, callbackPrefix });
-            if (callbackPrefix?.settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Use the weather tool for Tokyo." }],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureRef.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        // Record the actual callback prefix at execute; do not wrap tools or infer their position.
-        for (const execution of executions) {
-          expect(execution.callbackPrefix?.settlement).toEqual({ status: 'pending' });
-          expect(execution.callbackPrefix?.events.at(-1)?.kind).toBe('tool-call');
-          expect(execution.callbackPrefix?.events).toEqual(observed.events.slice(0, execution.callbackPrefix?.events.length));
-        }
-        const detailedEvents = observed.events.flatMap((event, index) => [
-          ...executions.filter(execution => execution.callbackPrefix?.events.length === index).map(() => ['execute']),
-          event.kind === 'chunk' ? ['chunk', event.chunk] : [event.kind],
-        ]);
-        const order = detailedEvents.filter(event => event[0] !== 'chunk').map(event => event[0]);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["<think>We need to call the function.</think>", `\
+  it('tools: rejects wrong cache identity, length, prefix and double-counted context before native output', async () => {
+    await runOwnedToolCase({
+      caseId: 'natural-tool-minimal',
+      prompt: 'Use the weather tool for Tokyo.',
+      expectedReasoning: 'We need to call the function.',
+      expectedText: `\
 Here’s the weather for Tokyo:
 
-- **Temperature:** 20\u202f°C\u0020\u0020
+- **Temperature:** 20\u202f°C${'  '}
 - **Condition:** Clear
 
-Let me know if you’d like more details or a forecast!`]);
-        expect(order).toEqual(["assistant-start", "tool-call", "execute", "tool-result", "assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        // This complete source has no matching historical Full output: preserve its exact chunk/interleaving contract here.
-        expect(detailedEvents).toEqual([["assistant-start"], ["chunk", "<think>"], ["chunk", "We "], ["chunk", "need "], ["chunk", "to "], ["chunk", "call "], ["chunk", "the "], ["chunk", "function."], ["chunk", "</think>"], ["tool-call"], ["execute"], ["tool-result"], ["assistant-start"], ["chunk", "Here’s "], ["chunk", "the "], ["chunk", "weather "], ["chunk", "for "], ["chunk", `\
-Tokyo:
-
-`], ["chunk", "- "], ["chunk", "**Temperature:** "], ["chunk", `\
-20\u202f°C\u0020\u0020
-`], ["chunk", "- "], ["chunk", "**Condition:** "], ["chunk", `\
-Clear
-
-`], ["chunk", "Let "], ["chunk", "me "], ["chunk", "know "], ["chunk", "if "], ["chunk", "you’d "], ["chunk", "like "], ["chunk", "more "], ["chunk", "details "], ["chunk", "or "], ["chunk", "a "], ["chunk", "forecast!"], ["settled"]]);
-        expect(calls).toEqual([{ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' }]);
-        expect(calls[0]!.id).not.toBe('');
-        expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
-        expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
-        expect(executions[0]!.signal).not.toBe(signal);
-        expect(executions[0]!.signal?.aborted).toBe(false);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 2 });
-    } finally {
-      await replay.close();
-    }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-    expect(lateExecutions).toEqual([]);
-    expect(boundaries).toEqual(['natural-tool-minimal/1', 'natural-tool-minimal/2', 'natural-tool-minimal/rejected-identity-length-prefix-double-count']);
+Let me know if you’d like more details or a forecast!`,
+      mutations: 'verify',
+    });
   }, 30_000);
   it("tools-generation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
     const captures: ProviderChatCapture[] = [];
@@ -1566,9 +1433,9 @@ Clear
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'GPT-OSS tool input inspected; no generated output supplied';
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
-    const publicTool: Tool = {
+    const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     // This is the separately specified current Naidan projection, NOT a browser
     // capture or native-default parity claim. GPT-OSS deliberately renders tool
@@ -1658,7 +1525,7 @@ type lookup_weather = (_: {
           provider: harness.provider,
           request: {
             model: toolInputEvidence.modelId,
-            messages: [{ role: "user", content: "Use the weather tool for Tokyo." }],
+            messages: [textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." })],
             tools: [publicTool],
             parameters: {
               temperature: 0,
@@ -1671,11 +1538,18 @@ type lookup_weather = (_: {
                 effort: undefined,
               },
             },
+            readBinaryObject: undefined,
+            debug: undefined,
+            signal: undefined,
           },
         });
         captures.push(capture);
-        await expect(capture.completion).rejects.toThrow(boundary);
-        const { chunks, toolCalls, toolResults } = capture.snapshot();
+        await capture.completion;
+        const observed = capture.snapshot();
+        expect(observed.settlement).toEqual({ status: 'fulfilled' });
+        expect(observed.result).toMatchObject({ type: 'error', error: { message: boundary } });
+        const chunks = observed.parts.filter(part => part.type === 'text' || part.type === 'reasoning').flatMap(part => part.chunks);
+        const toolCalls = observed.parts.filter(part => part.type === 'tool_call');
         const observedMessageSchema = z.object({
           role: z.string(), content: z.string(),
           tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
@@ -1719,7 +1593,6 @@ type lookup_weather = (_: {
         expect(chunks).toEqual([]);
         expect(execute).not.toHaveBeenCalled();
         expect(toolCalls).toEqual([]);
-        expect(toolResults).toEqual([]);
         expect(harness.observations.inferenceCalls).toHaveLength(1);
         expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
         expect(harness.observations.localImageFetchCalls).toEqual([]);
@@ -1736,9 +1609,8 @@ type lookup_weather = (_: {
         templateSpy.mockRestore();
       }
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it("tool-result-continuation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
     const captures: ProviderChatCapture[] = [];
@@ -1746,11 +1618,20 @@ type lookup_weather = (_: {
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'GPT-OSS tool input inspected; no generated output supplied';
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
-    const publicTool: Tool = {
+    const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
-    const messages: ChatMessage[] = [{ role: "user", content: "Use the weather tool for Tokyo." }, { role: "assistant", content: "", tool_calls: [{ id: toToolCallId({ raw: "call_template_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } }] }, { role: "tool", tool_call_id: toToolCallId({ raw: "call_template_probe_1" }), content: "{\"temperatureC\":20,\"condition\":\"clear\"}" }];
+    const messages: ChatMessage[] = [
+      textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." }),
+      { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
+        { id: 'message_1_text', type: 'text', text: '', completeness: 'complete' },
+        { id: 'message_1_call', type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" } } },
+      ] },
+      { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
+        { id: 'message_2_result', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } },
+      ] },
+    ];
     // This is the separately specified current Naidan projection, NOT a browser
     // capture or native-default parity claim. GPT-OSS deliberately renders tool
     // definitions as developer instructions rather than passing native tools.
@@ -1852,11 +1733,18 @@ type lookup_weather = (_: {
                 effort: undefined,
               },
             },
+            readBinaryObject: undefined,
+            debug: undefined,
+            signal: undefined,
           },
         });
         captures.push(capture);
-        await expect(capture.completion).rejects.toThrow(boundary);
-        const { chunks, toolCalls, toolResults } = capture.snapshot();
+        await capture.completion;
+        const observed = capture.snapshot();
+        expect(observed.settlement).toEqual({ status: 'fulfilled' });
+        expect(observed.result).toMatchObject({ type: 'error', error: { message: boundary } });
+        const chunks = observed.parts.filter(part => part.type === 'text' || part.type === 'reasoning').flatMap(part => part.chunks);
+        const toolCalls = observed.parts.filter(part => part.type === 'tool_call');
         const observedMessageSchema = z.object({
           role: z.string(), content: z.string(),
           tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
@@ -1900,7 +1788,6 @@ type lookup_weather = (_: {
         expect(chunks).toEqual([]);
         expect(execute).not.toHaveBeenCalled();
         expect(toolCalls).toEqual([]);
-        expect(toolResults).toEqual([]);
         expect(harness.observations.inferenceCalls).toHaveLength(1);
         expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
         expect(harness.observations.localImageFetchCalls).toEqual([]);
@@ -1917,14 +1804,13 @@ type lookup_weather = (_: {
         templateSpy.mockRestore();
       }
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
 describe('GPT-OSS 20B Provider / images', () => {
-  it('images: preserves the recorded text-only native handling of an image-bearing request', async () => {
+  it('images: rejects the recorded image-bearing input before text-only native generation', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
@@ -1953,33 +1839,32 @@ describe('GPT-OSS 20B Provider / images', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: [{ type: "text", text: "Describe the single synthetic image in one short phrase." }, { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" } }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
+              { id: 'message_0_text', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { id: 'message_0_image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) },
+            ] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual([""]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expect(observed.parts).toEqual([]);
+        expect(observed.result).toMatchObject({
+          type: 'error',
+          error: { message: 'GPT-OSS input is text-only; image content cannot be omitted.' },
+        });
+        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      replay.assertComplete({ requests: 1, nativeCalls: 0 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -1994,167 +1879,133 @@ describe('GPT-OSS 20B Provider / sequences', () => {
       imagePlatform: undefined,
       createNativeController: () => createOwnedToolControl({ mutations: 'none', boundaries }),
     });
-    const captures: ProviderChatCapture[] = [];
-    const lateExecutions: string[] = [];
+    const parameters: NonNullable<CapturedChatRequest['parameters']> = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: { effort: undefined },
+    };
+    const executions: unknown[] = [];
+    const tools: Tool[] = [{
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute: async ({ args }) => {
+        executions.push(structuredClone(args));
+        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+      },
+    }];
+    const turns: Awaited<ReturnType<typeof runProviderReplayTurn>>[] = [];
     try {
-      // natural-tool-representative: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined; callbackPrefix: ReturnType<ProviderChatCapture['snapshot']> | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            const callbackPrefix = captureRef.current?.snapshot();
-            executions.push({ args: structuredClone(args), signal: receivedSignal, callbackPrefix });
-            if (callbackPrefix?.settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Use lookup_weather for Tokyo, then give a short answer based on the tool result." }],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureRef.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        // Record the actual callback prefix at execute; do not wrap tools or infer their position.
-        for (const execution of executions) {
-          expect(execution.callbackPrefix?.settlement).toEqual({ status: 'pending' });
-          expect(execution.callbackPrefix?.events.at(-1)?.kind).toBe('tool-call');
-          expect(execution.callbackPrefix?.events).toEqual(observed.events.slice(0, execution.callbackPrefix?.events.length));
-        }
-        const detailedEvents = observed.events.flatMap((event, index) => [
-          ...executions.filter(execution => execution.callbackPrefix?.events.length === index).map(() => ['execute']),
-          event.kind === 'chunk' ? ['chunk', event.chunk] : [event.kind],
-        ]);
-        const order = detailedEvents.filter(event => event[0] !== 'chunk').map(event => event[0]);
+      replay.beginNativeRequest({ caseId: 'natural-tool-representative', parameters });
+      const first = await runProviderReplayTurn({
+        provider: replay.provider,
+        request: {
+          model: 'onnx-community/gpt-oss-20b-ONNX',
+          messages: [textMessage({
+            id: 'first_user',
+            role: 'user',
+            text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.',
+          })],
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+        tools,
+        abortController: new AbortController(),
+        onChange: undefined,
+      });
+      turns.push(first);
+      replay.endNativeRequest();
+      expect(first.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(first.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
+      expect(first.generated[0]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+      ] });
+      expect(first.generated[2]).toMatchObject({ role: 'assistant', parts: [
+        { type: 'text', text: 'Tokyo is clear with a comfortable temperature of about 20 °C.', completeness: 'complete' },
+      ] });
+      expect(executions).toEqual([{ city: 'Tokyo' }]);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["<think>We need to call the function lookup_weather with city \"Tokyo\".</think>", "Tokyo is clear with a comfortable temperature of about 20\u202f°C."]);
-        expect(order).toEqual(["assistant-start", "tool-call", "execute", "tool-result", "assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        // This complete source has no matching historical Full output: preserve its exact chunk/interleaving contract here.
-        expect(detailedEvents).toEqual([["assistant-start"], ["chunk", "<think>"], ["chunk", "We "], ["chunk", "need "], ["chunk", "to "], ["chunk", "call "], ["chunk", "the "], ["chunk", "function "], ["chunk", "lookup_weather "], ["chunk", "with "], ["chunk", "city "], ["chunk", "\"Tokyo\"."], ["chunk", "</think>"], ["tool-call"], ["execute"], ["tool-result"], ["assistant-start"], ["chunk", "Tokyo "], ["chunk", "is "], ["chunk", "clear "], ["chunk", "with "], ["chunk", "a "], ["chunk", "comfortable "], ["chunk", "temperature "], ["chunk", "of "], ["chunk", "about "], ["chunk", "20\u202f°C."], ["settled"]]);
-        expect(calls).toEqual([{ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' }]);
-        expect(calls[0]!.id).not.toBe('');
-        expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
-        expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
-        expect(executions[0]!.signal).not.toBe(signal);
-        expect(executions[0]!.signal?.aborted).toBe(false);
-      }
-      // structured-tool-history: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined; callbackPrefix: ReturnType<ProviderChatCapture['snapshot']> | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            const callbackPrefix = captureRef.current?.snapshot();
-            executions.push({ args: structuredClone(args), signal: receivedSignal, callbackPrefix });
-            if (callbackPrefix?.settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Use the weather tool for Tokyo." }, { role: "assistant", content: "", tool_calls: [{ id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } }] }, { role: "tool", content: "{\"temperatureC\":20,\"condition\":\"clear\"}", tool_call_id: toToolCallId({ raw: "call_model_support_probe_1" }) }],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureRef.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        // Record the actual callback prefix at execute; do not wrap tools or infer their position.
-        for (const execution of executions) {
-          expect(execution.callbackPrefix?.settlement).toEqual({ status: 'pending' });
-          expect(execution.callbackPrefix?.events.at(-1)?.kind).toBe('tool-call');
-          expect(execution.callbackPrefix?.events).toEqual(observed.events.slice(0, execution.callbackPrefix?.events.length));
-        }
-        const detailedEvents = observed.events.flatMap((event, index) => [
-          ...executions.filter(execution => execution.callbackPrefix?.events.length === index).map(() => ['execute']),
-          event.kind === 'chunk' ? ['chunk', event.chunk] : [event.kind],
-        ]);
-        const order = detailedEvents.filter(event => event[0] !== 'chunk').map(event => event[0]);
+      replay.beginNativeRequest({ caseId: 'structured-tool-history', parameters });
+      const second = await runProviderReplayTurn({
+        provider: replay.provider,
+        request: {
+          model: 'onnx-community/gpt-oss-20b-ONNX',
+          messages: [
+            textMessage({ id: 'history_user', role: 'user', text: 'Use the weather tool for Tokyo.' }),
+            { id: toMessageId({ raw: 'history_assistant' }), role: 'assistant', parts: [
+              { id: 'history_text', type: 'text', text: '', completeness: 'complete' },
+              { id: 'history_call', type: 'tool_call', toolCall: {
+                id: toToolCallId({ raw: 'call_model_support_probe_1' }),
+                type: 'function',
+                function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+              } },
+            ] },
+            { id: toMessageId({ raw: 'history_tool' }), role: 'tool', parts: [
+              { id: 'history_result', type: 'tool_result', result: {
+                toolCallId: toToolCallId({ raw: 'call_model_support_probe_1' }),
+                status: 'success',
+                content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+              } },
+            ] },
+          ],
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+        tools,
+        abortController: new AbortController(),
+        onChange: undefined,
+      });
+      turns.push(second);
+      replay.endNativeRequest();
+      expect(second.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(second.generated).toEqual([
+        expect.objectContaining({
+          role: 'assistant',
+          interruption: undefined,
+          parts: [
+            expect.objectContaining({
+              type: 'reasoning',
+              text: 'We need to respond to user: "Use the weather tool for Tokyo." We already used the tool. Now we should respond with the result. The tool returned JSON: {"temperatureC":20,"condition":"clear"}. We should present that to user.',
+              completeness: 'complete',
+            }),
+            expect.objectContaining({
+              type: 'text',
+              text: `\
+Here’s the current weather in Tokyo:
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual([`\
-<think>We need to respond to user: "Use the weather tool for Tokyo." We already used the tool. Now we should respond with the result. The tool returned JSON: {"temperatureC":20,"condition":"clear"}. We should present that to user.</think>Here’s the current weather in Tokyo:
-
-- **Temperature:** 20\u202f°C\u0020\u0020
-- **Condition:** Clear`]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        // This complete source has no matching historical Full output: preserve its exact chunk/interleaving contract here.
-        expect(detailedEvents).toEqual([["assistant-start"], ["chunk", "<think>"], ["chunk", "We "], ["chunk", "need "], ["chunk", "to "], ["chunk", "respond "], ["chunk", "to "], ["chunk", "user: "], ["chunk", "\"Use "], ["chunk", "the "], ["chunk", "weather "], ["chunk", "tool "], ["chunk", "for "], ["chunk", "Tokyo.\" "], ["chunk", "We "], ["chunk", "already "], ["chunk", "used "], ["chunk", "the "], ["chunk", "tool. "], ["chunk", "Now "], ["chunk", "we "], ["chunk", "should "], ["chunk", "respond "], ["chunk", "with "], ["chunk", "the "], ["chunk", "result. "], ["chunk", "The "], ["chunk", "tool "], ["chunk", "returned "], ["chunk", "JSON: "], ["chunk", "{\"temperatureC\":20,\"condition\":\"clear\"}. "], ["chunk", "We "], ["chunk", "should "], ["chunk", "present "], ["chunk", "that "], ["chunk", "to "], ["chunk", "user."], ["chunk", "</think>"], ["chunk", "Here’s "], ["chunk", "the "], ["chunk", "current "], ["chunk", "weather "], ["chunk", "in "], ["chunk", `\
-Tokyo:
-
-`], ["chunk", "- "], ["chunk", "**Temperature:** "], ["chunk", `\
-20\u202f°C\u0020\u0020
-`], ["chunk", "- "], ["chunk", "**Condition:** "], ["chunk", "Clear"], ["settled"]]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        expect(executions).toEqual([]);
-      }
+- **Temperature:** 20\u202f°C${'  '}
+- **Condition:** Clear`,
+              completeness: 'complete',
+            }),
+          ],
+        }),
+      ]);
+      expect(second.toolEvents).toEqual([]);
+      expect(executions).toEqual([{ city: 'Tokyo' }]);
       replay.assertComplete({ requests: 2, nativeCalls: 3 });
     } finally {
+      const beforeDisposal = structuredClone(turns);
       await replay.close();
+      expect(structuredClone(turns)).toEqual(beforeDisposal);
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-    expect(lateExecutions).toEqual([]);
-    expect(boundaries).toEqual(['natural-tool-representative/1', 'natural-tool-representative/2', 'structured-tool-history/1']);
+    expect(boundaries).toEqual([
+      'natural-tool-representative/1',
+      'natural-tool-representative/2',
+      'structured-tool-history/1',
+    ]);
   }, 30_000);
-  it('sequences: builds continuation from actually delivered first-request settlement', async () => {
+  it('sequences: refuses to turn interrupted reasoning into completed continuation history', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity"],
+      caseIds: ["first-turn"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined
     });
@@ -2180,30 +2031,24 @@ Tokyo:
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
         replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["<think>The user says \"Template probe user message.\" This seems like a"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        firstResponse = responses[0]!.join('');
+        const reasoning = 'The user says "Template probe user message." This seems like a';
+        expectPartialReasoningCapture({ capture, text: reasoning });
+        firstResponse = reasoning;
       }
-      // continuity: public inputs and settled expectations are owned by this model.
+      // The old continuity capture treated a raw `<think>` prefix as ordinary
+      // assistant content. The ordered DTO records interrupted reasoning and
+      // rejects it before native generation instead of upgrading it to history.
       {
         const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
           temperature: 0,
@@ -2217,38 +2062,33 @@ Tokyo:
           },
         };
         const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "continuity", parameters });
         const capture = captureProviderChat({
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: firstResponse }, { role: "user", content: "Continue the synthetic conversation with a short response." }],
+            messages: [
+              textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
+              reasoningMessage({ id: 'message_1', text: firstResponse, completeness: 'partial' }),
+              textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
+            ],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["<think>We need to respond with a short response. Probably just a short"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expectDeliveredErrorCapture({
+          capture,
+          message: 'The model template cannot close unfinished structured reasoning.',
+        });
       }
-      replay.assertComplete({ requests: 2, nativeCalls: 2 });
+      replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('preserves recorded calls and the independent image request without replaying invalid cached continuations', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
