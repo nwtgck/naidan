@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { errorCode, errorCodeSchema, profileSchema } from './types';
 
-const stageSchema = z.enum(['media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-probe', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
+const stageSchema = z.enum(['media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-probe', 'cache-checkpoint', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
   'reasoning-state', 'grammar-switch', 'native-sample', 'reasoning-accept', 'reasoning-replay',
   'token-render', 'partial-parse', 'stream-emit', 'generation-decode', 'final-parse', 'cleanup',
   'worker-operation', 'worker-callback', 'worker-rpc', 'worker-error', 'worker-messageerror']);
@@ -11,7 +11,7 @@ const failureKindSchema = z.enum(['wasm-trap', 'native-exception', 'binding-erro
 const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'compute_buffer_mib', 'model_buffer_mib']);
 
 const eventSchema = z.enum(['import-start', 'import-complete', 'runtime-ready', 'load-complete',
-  'load-start', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-complete', 'cancelled', 'released', 'failed', 'operation-start', 'operation-complete', 'operation-waiting', 'native-error', 'native-info', 'native-node-start', 'native-node-complete']);
+  'load-start', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'checkpoint-created', 'checkpoint-restored', 'checkpoint-skipped', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-complete', 'cancelled', 'released', 'failed', 'operation-start', 'operation-complete', 'operation-waiting', 'native-error', 'native-info', 'native-node-start', 'native-node-complete']);
 export const diagnosticSchema = z.object({
   event: eventSchema,
   lastStage: stageSchema.optional(),
@@ -19,7 +19,7 @@ export const diagnosticSchema = z.object({
   stage: stageSchema.optional(),
   failureKind: failureKindSchema.optional(),
   code: errorCodeSchema.optional(),
-  reason: z.enum(['model-directory-layout', 'non-monotonic-content', 'non-monotonic-reasoning', 'decode-status', 'invalid-token-piece', 'missing-native-binding', 'context-allocation', 'prefix-match', 'prefix-partial-match', 'prefix-mismatch', 'cache-invalid', 'cache-position', 'cache-window', 'cache-rollback-failed']).optional(),
+  reason: z.enum(['model-directory-layout', 'non-monotonic-content', 'non-monotonic-reasoning', 'decode-status', 'invalid-token-piece', 'missing-native-binding', 'context-allocation', 'prefix-match', 'prefix-partial-match', 'prefix-mismatch', 'cache-invalid', 'cache-position', 'cache-window', 'cache-rollback-failed', 'checkpoint-match', 'checkpoint-invalid', 'checkpoint-size', 'checkpoint-allocation']).optional(),
   grammar: z.boolean().optional(),
   grammarLazy: z.boolean().optional(),
   reasoning: z.boolean().optional(),
@@ -35,6 +35,7 @@ export const diagnosticSchema = z.object({
   nativePositionMax: z.number().int().min(-1).optional(),
   nativeRollbackTokens: z.number().int().nonnegative().optional(),
   cacheRemoval: z.enum(['none', 'full-only', 'bounded', 'partial']).optional(),
+  slidingWindowTokens: z.number().int().nonnegative().optional(),
   mediaType: z.enum(['image', 'audio']).optional(),
   batchIndex: z.number().int().positive().max(2147483647).optional(),
   batchCount: z.number().int().positive().max(2147483647).optional(),
@@ -84,6 +85,7 @@ const stageDescriptions = {
   'image-evaluate': 'evaluating image and text chunks with native mtmd',
   session: 'preparing the resident model and context',
   'cache-probe': 'checking native sequence removal on a new context',
+  'cache-checkpoint': 'saving or restoring native prompt state',
   prefill: 'preparing the prompt evaluation',
   template: 'applying the native chat template',
   tokenize: 'tokenizing the prompt',
@@ -132,6 +134,10 @@ const reasonDescriptions = {
   'cache-invalid': 'No verified decoded prefix is available; evaluating the full prompt.',
   'cache-window': 'Earlier native cache positions are no longer retained; evaluating the full prompt.',
   'cache-rollback-failed': 'Native suffix removal could not be verified; evaluating the full prompt.',
+  'checkpoint-match': 'Restored the matching native prompt checkpoint.',
+  'checkpoint-invalid': 'Native checkpoint state could not be verified; evaluating the full prompt.',
+  'checkpoint-size': 'The native checkpoint size cannot be allocated safely.',
+  'checkpoint-allocation': 'Native allocation declined the optional prompt checkpoint.',
   'cache-position': 'Native memory does not match the recorded token frontier; evaluating the full prompt.',
   'missing-native-binding': 'The installed runtime must be updated to provide the owned reasoning end-match binding.',
   'non-monotonic-content': 'The parser revised content that had already been streamed.',
@@ -166,6 +172,8 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
     } catch { /* Diagnostics must not interrupt inference. */ }
   }
   if (!writeToConsole) return;
+  // Use console.log intentionally so browser diagnostics remain visible at the
+  // default console level and can be copied for debugging.
   switch (safe.data.event) {
   case 'failed': {
     const { stage, failureKind, reason } = safe.data;
@@ -183,7 +191,7 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
   case 'import-start': case 'import-complete': case 'runtime-ready': case 'load-complete':
   case 'load-start': case 'model-reused': case 'context-start': case 'context-ready':
   case 'prefill-start': case 'prefill-complete': case 'generation-start': case 'sampler-ready':
-  case 'context-retry': case 'cache-reuse':
+  case 'context-retry': case 'cache-reuse': case 'checkpoint-created': case 'checkpoint-restored': case 'checkpoint-skipped':
   case 'first-token-sampled': case 'generation-complete': case 'cancelled': case 'released':
     console.log(`[llama-cpp-browser] ${JSON.stringify(safe.data)}`); return;
   default: { const exhaustive: never = safe.data.event; throw new Error(`Unknown diagnostic event: ${exhaustive}`); }

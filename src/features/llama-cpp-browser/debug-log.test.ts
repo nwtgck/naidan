@@ -39,6 +39,24 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic: { event: 'cache-reuse', cacheComparison: 'private prompt' } });
     expect(debug).not.toHaveBeenCalled();
   });
+  it('forwards checkpoint cost and effective window without forwarding stored state', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
+    const diagnostic = { event: 'checkpoint-created', bytes: 4096, tokens: 17, elapsedMs: 2 } as const;
+    try {
+      logDiagnostic({ diagnostic });
+      expect(listener).toHaveBeenCalledExactlyOnceWith({ diagnostic });
+      expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
+      debug.mockClear(); listener.mockClear();
+      const privateState = { ...diagnostic, pointer: '123', tokenIds: [1, 2], state: [3, 4] };
+      logDiagnostic({ diagnostic: privateState });
+      logDiagnostic({ diagnostic: { event: 'context-ready', slidingWindowTokens: -1 } });
+      expect(debug).not.toHaveBeenCalled(); expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
   it('rejects arbitrary diagnostic keys rather than leaking personal data', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const extra = { event: 'failed' as const, prompt: 'private prompt', fileName: 'private.gguf', tokenIds: [1, 2], grammarText: 'private grammar', schema: { description: 'private schema' }, logits: [123] };

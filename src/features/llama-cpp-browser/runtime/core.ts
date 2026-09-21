@@ -127,16 +127,20 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     const span = bytes({ pointer: pointer + offset, length: size });
     return { kind, size, view: new DataView(span.buffer, span.byteOffset, span.byteLength) };
   }
-  function alloc({ bytes: length }: { bytes: NativeScalar }): bigint {
+  function tryAlloc({ bytes: length }: { bytes: NativeScalar }): bigint | undefined {
     assertIdle(); const size = index({ value: length });
     if (!size) throw new RangeError('Allocation must be nonempty');
     const pointer = BigInt(scalar({ name: '_lcb_malloc', args: [BigInt(size)] }));
-    if (!pointer) throw new Error('Native allocation failed');
+    return pointer === 0n ? undefined : pointer;
+  }
+  function alloc({ bytes }: { bytes: NativeScalar }): bigint {
+    const pointer = tryAlloc({ bytes });
+    if (pointer === undefined) throw new Error('Native allocation failed');
     return pointer;
   }
   const recordSize = ({ name }: { name: string }): number => index({ value: scalar({ name: '_lcb_sizeof_record', args: [record({ name }).id] }) });
   return {
-    module, api: api as unknown as LowLevelFunctions, pointerBytes: pointerBytes as 4 | 8, assertIdle, bytes, alloc, recordSize, fieldLayout,
+    module, api: api as unknown as LowLevelFunctions, pointerBytes: pointerBytes as 4 | 8, assertIdle, bytes, alloc, tryAlloc, recordSize, fieldLayout,
     enumValues({ prefix }: { prefix: string }): { name: string, value: number }[] {
       assertIdle();
       return schema.constants.flatMap((name, id) => name.startsWith(prefix) ? [{ name, value: Number(scalar({ name: '_lcb_constant', args: [id] })) }] : []);

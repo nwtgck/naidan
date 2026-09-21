@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { generate } from './generation';
 import { createInputSensitiveGguf, createSyntheticGguf } from './test-utils/synthetic-gguf';
+import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf';
 import type { WorkerGenerateInput } from './types';
 import { profileSchema } from '@/features/llama-cpp-browser/types';
 import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
@@ -109,7 +110,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     try {
       const first = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
       expect(first.sequenceRemoval).toBe('partial');
-      expect(first.cache).toEqual({ tokens: [], validity: 'invalid' });
+      expect(first.slidingWindow).toBe(0);
+      expect(first.cache).toEqual({ tokens: [], validity: 'invalid', checkpoint: undefined });
       const memory = await core.api.llama_get_memory(first.context);
       expect(await core.api.llama_memory_seq_pos_min(memory, 0)).toBe(-1);
       expect(await core.api.llama_memory_seq_pos_max(memory, 0)).toBe(-1);
@@ -119,7 +121,13 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(second.context).toBe(first.context); expect(second.cache).toBe(first.cache);
       expect(decode).toHaveBeenCalledOnce();
       batches.length = 0; decode.mockClear();
-      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const capture = vi.spyOn(core.api, 'llama_state_seq_get_size_ext');
+      try {
+        await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+        expect(capture).not.toHaveBeenCalled(); expect(first.cache.checkpoint).toBeUndefined();
+      } finally {
+        capture.mockRestore();
+      }
       expect(batches).toEqual([[1, ...Array.from(new TextEncoder().encode('aaaaaaaaXX'), byte => byte + 3)]]);
       expect(decode).toHaveBeenCalledOnce();
       expect(first.cache.validity).toBe('valid');
@@ -977,6 +985,255 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       expect(events.every(e => e.type === 'reasoning' || e.type === 'text')).toBe(true);
     } finally {
       sample.mockRestore();
+    }
+  }, 30000);
+});
+
+describe('generic checkpoint reuse through the real hybrid generation runtime', () => {
+  const template = "{% for message in messages %}{{ message.content }}{% endfor %}{% if add_generation_prompt %}GG{% endif %}";
+  function byteTokens({ text }: { text: string }): number[] {
+    return Array.from(new TextEncoder().encode(text), byte => byte + 3);
+  }
+  function observeBatches({ core }: { core: Core }) {
+    const batches: number[][] = [];
+    const nativeBatch = core.api.llama_batch_get_one;
+    const spy = vi.spyOn(core.api, 'llama_batch_get_one').mockImplementation(async (destination, pointer, count) => {
+      const bytes = core.bytes({ pointer, length: count * 4 });
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      batches.push(Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true)));
+      return nativeBatch(destination, pointer, count);
+    });
+    return { batches, spy };
+  }
+  function expectLogits({ actual, expected }: { actual: number[], expected: number[] }): void {
+    expect(actual).toHaveLength(259); expect(expected).toHaveLength(259);
+    actual.forEach((logit, index) => expect(logit).toBeCloseTo(expected[index]!, 5));
+  }
+
+  it('does not capture an empty prefix for a one-token prompt', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: '{{ "" }}' }));
+    const req = request({ messages: [{ role: 'user', content: 'ignored by authored template' }] });
+    const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    const capture = vi.spyOn(session.core.api, 'llama_state_seq_get_size_ext');
+    try {
+      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(session.cache.tokens[0]).toBe(1);
+      expect(session.cache.checkpoint).toBeUndefined(); expect(capture).not.toHaveBeenCalled();
+    } finally {
+      capture.mockRestore();
+    }
+  }, 30000);
+
+  it('fully reevaluates a prompt ending at the saved checkpoint because logits need another decode', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
+    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] });
+    const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(session.cache.checkpoint?.tokens).toHaveLength(8);
+    const next = request({ messages: [{ role: 'user', content: 'aaaaaaa' }] }); next.stop = ['A', 'B'];
+    const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
+    const { batches, spy } = observeBatches({ core: session.core });
+    try {
+      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(restore).not.toHaveBeenCalled();
+      expect(batches.flat()).toEqual([1, ...byteTokens({ text: 'aaaaaaa' })]);
+      const warmLogits = await readNativeLogits();
+      await releaseSession({ releaseRuntime: false });
+      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
+    } finally {
+      restore.mockRestore(); spy.mockRestore();
+    }
+  }, 30000);
+
+  it.each(['reasoning-omission', 'shortened-header', 'earlier-mismatch'] as const)('matches cold logits and native positions after %s', async scenario => {
+    await releaseSession({ releaseRuntime: false });
+    const chatTemplate = scenario === 'shortened-header' ? '{% for message in messages %}{{ message.content }}{% endfor %}' : template;
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate }));
+    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] });
+    const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    expect(session.sequenceRemoval).toBe('full-only');
+    const core = session.core;
+    const old = await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(old.content.length).toBe(5);
+    const checkpoint = session.cache.checkpoint;
+    if (!checkpoint) throw new Error('Expected a real host checkpoint');
+    const boundary = scenario === 'shortened-header' ? 8 : 9;
+    expect(checkpoint.tokens).toEqual([1, ...byteTokens({ text: scenario === 'shortened-header' ? 'aaaaaaa' : 'aaaaaaaa' })]);
+    const next = request({ messages: scenario === 'reasoning-omission'
+      ? [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: '', reasoning_content: old.content }, { role: 'user', content: 'bbbb' }]
+      : [{ role: 'user', content: scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaa' }] });
+    next.stop = ['A', 'B'];
+    const expectedText = scenario === 'reasoning-omission' ? 'aaaaaaaabbbbGG' : scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaaGG';
+    const expectedTokens = [1, ...byteTokens({ text: expectedText })];
+    const originalRequest = structuredClone(next);
+    const { batches, spy } = observeBatches({ core });
+    const restore = vi.spyOn(core.api, 'llama_state_seq_set_data_ext');
+    const clear = vi.spyOn(core.api, 'llama_memory_clear');
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const free = vi.spyOn(core, 'free');
+    try {
+      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const warmLogits = await readNativeLogits();
+      expect(next).toEqual(originalRequest);
+      expect(await sequencePosition()).toBe(expectedTokens.length - 1);
+      if (scenario === 'earlier-mismatch') {
+        expect(restore).not.toHaveBeenCalled(); expect(clear).toHaveBeenCalledOnce();
+        expect(batches.flat()).toEqual(expectedTokens);
+      } else {
+        expect(restore).toHaveBeenCalledExactlyOnceWith(session.context, checkpoint.pointer, BigInt(checkpoint.bytes), 0, 1);
+        expect(clear).not.toHaveBeenCalled();
+        expect(batches.flat()).toEqual(expectedTokens.slice(boundary));
+        expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reason: 'checkpoint-match', reusedTokens: boundary }));
+      }
+      expect(free.mock.calls.filter(([args]) => args.pointer === checkpoint.pointer)).toHaveLength(1);
+      await releaseSession({ releaseRuntime: false });
+      await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
+      batches.length = 0;
+      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(cold).toEqual(warm);
+      expect(batches.flat()).toEqual(expectedTokens);
+      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
+    } finally {
+      spy.mockRestore(); restore.mockRestore(); clear.mockRestore(); debug.mockRestore(); free.mockRestore();
+    }
+  }, 30000);
+
+  it('keeps the original checkpoint across full-prefix tool-like continuations', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: template }));
+    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] });
+    const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    const old = await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const checkpoint = session.cache.checkpoint;
+    if (!checkpoint) throw new Error('Expected initial checkpoint');
+    const capture = vi.spyOn(session.core.api, 'llama_state_seq_get_data_ext');
+    const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
+    try {
+      const continuation = request({ messages: [{ role: 'user', content: 'aaaaaaaaGG' + old.content + 'tool-result' }] });
+      const continued = await generate({ request: continuation, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(continued.content.length).toBe(5);
+      expect(session.cache.checkpoint).toBe(checkpoint);
+      expect(capture).not.toHaveBeenCalled(); expect(restore).not.toHaveBeenCalled();
+      const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
+      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const warmLogits = await readNativeLogits();
+      expect(restore).toHaveBeenCalledExactlyOnceWith(session.context, checkpoint.pointer, BigInt(checkpoint.bytes), 0, 1);
+      await releaseSession({ releaseRuntime: false });
+      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(cold).toEqual(warm); expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
+    } finally {
+      capture.mockRestore(); restore.mockRestore();
+    }
+  }, 30000);
+
+  it('restores a checkpoint directly when the required rollback exceeds the native bound', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: template }));
+    const core = host.core!;
+    const nativeDefaults = core.api.llama_context_default_params;
+    const defaults = vi.spyOn(core.api, 'llama_context_default_params').mockImplementationOnce(async pointer => {
+      await nativeDefaults(pointer);
+      core.setField({ name: 'llama_context_params', pointer, field: 'n_rs_seq', value: 2 });
+    });
+    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] });
+    const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    defaults.mockRestore();
+    expect(session.sequenceRemoval).toBe('bounded');
+    await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const checkpoint = session.cache.checkpoint;
+    if (!checkpoint) throw new Error('Expected initial checkpoint');
+    expect(session.cache.tokens.length - checkpoint.tokens.length).toBeGreaterThan(2);
+    // Override only the initial minimum to enter direct-trim selection. Real
+    // recurrent evaluation and checkpoint capture/restore remain native below.
+    const minimum = vi.spyOn(core.api, 'llama_memory_seq_pos_min').mockResolvedValueOnce(0);
+    const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
+    const restore = vi.spyOn(core.api, 'llama_state_seq_set_data_ext');
+    const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
+    try {
+      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(restore).toHaveBeenCalledOnce(); expect(remove).toHaveBeenCalledOnce();
+      expect(restore.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0]!);
+      const warmLogits = await readNativeLogits();
+      await releaseSession({ releaseRuntime: false });
+      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
+    } finally {
+      defaults.mockRestore(); minimum.mockRestore(); remove.mockRestore(); restore.mockRestore();
+    }
+  }, 30000);
+
+  it.each(['short-read', 'wrong-frontier', 'restore-trap'] as const)('clears or rejects a failed checkpoint restore without trusting partial state: %s', async failure => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: template }));
+    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] });
+    const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const core = session.core;
+    const checkpoint = session.cache.checkpoint;
+    if (!checkpoint) throw new Error('Expected initial checkpoint');
+    const nativeRestore = core.api.llama_state_seq_set_data_ext;
+    const nativePosition = core.api.llama_memory_seq_pos_max;
+    const position = vi.spyOn(core.api, 'llama_memory_seq_pos_max');
+    const restore = vi.spyOn(core.api, 'llama_state_seq_set_data_ext').mockImplementationOnce(async (...args) => {
+      if (failure === 'restore-trap') throw new WebAssembly.RuntimeError('fixture restore trap');
+      const size = await nativeRestore(...args);
+      if (failure === 'wrong-frontier') position.mockImplementationOnce(async (...args) => await nativePosition(...args) + 1);
+      return failure === 'short-read' ? size - 1n : size;
+    });
+    const { batches, spy } = observeBatches({ core });
+    const clear = vi.spyOn(core.api, 'llama_memory_clear');
+    const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
+    try {
+      if (failure === 'restore-trap') {
+        await expect(generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('fixture restore trap');
+        expect(session.cache.validity).toBe('invalid'); expect(session.cache.checkpoint).toBeUndefined();
+      } else {
+        await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+        const warmLogits = await readNativeLogits();
+        expect(clear).toHaveBeenCalledOnce();
+        expect(batches.flat()).toEqual([1, ...byteTokens({ text: 'aaaaaaaabbbbGG' })]);
+        await releaseSession({ releaseRuntime: false });
+        await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+        expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
+      }
+    } finally {
+      restore.mockRestore(); position.mockRestore(); spy.mockRestore(); clear.mockRestore();
+    }
+  }, 30000);
+
+  it('waits for capture to settle before freeing a cancelled checkpoint', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: template }));
+    const req = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] });
+    const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    const controller = new AbortController();
+    const core = session.core;
+    const nativeCapture = core.api.llama_state_seq_get_data_ext;
+    const writer = Promise.withResolvers<void>();
+    let capturedPointer: bigint | undefined;
+    const capture = vi.spyOn(core.api, 'llama_state_seq_get_data_ext').mockImplementationOnce(async (...args) => {
+      capturedPointer = args[1];
+      await writer.promise;
+      return nativeCapture(...args);
+    });
+    const free = vi.spyOn(core, 'free');
+    try {
+      const pending = generate({ request: req, signal: controller.signal, onEvent: () => {}, onProgress: () => {} });
+      const rejected = expect(pending).rejects.toThrow('aborted');
+      await vi.waitFor(() => expect(capturedPointer).toBeDefined());
+      controller.abort();
+      expect(session.cache.checkpoint).toBeUndefined();
+      expect(free.mock.calls.some(([args]) => args.pointer === capturedPointer)).toBe(false);
+      writer.resolve(); await rejected;
+      expect(free.mock.calls.filter(([args]) => args.pointer === capturedPointer)).toHaveLength(1);
+      expect(session.cache.checkpoint).toBeUndefined(); expect(session.cache.validity).toBe('invalid');
+      const retry = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(retry.content.length).toBe(5); expect(session.cache.checkpoint).toBeDefined();
+    } finally {
+      writer.resolve(); capture.mockRestore(); free.mockRestore();
     }
   }, 30000);
 });
