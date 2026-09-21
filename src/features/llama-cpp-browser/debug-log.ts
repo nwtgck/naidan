@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { errorCode, errorCodeSchema, profileSchema } from './types';
 
-const stageSchema = z.enum(['media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
+const stageSchema = z.enum(['media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-probe', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
   'reasoning-state', 'grammar-switch', 'native-sample', 'reasoning-accept', 'reasoning-replay',
   'token-render', 'partial-parse', 'stream-emit', 'generation-decode', 'final-parse', 'cleanup',
   'worker-operation', 'worker-callback', 'worker-rpc', 'worker-error', 'worker-messageerror']);
@@ -34,6 +34,7 @@ export const diagnosticSchema = z.object({
   nativePositionMin: z.number().int().min(-1).optional(),
   nativePositionMax: z.number().int().min(-1).optional(),
   nativeRollbackTokens: z.number().int().nonnegative().optional(),
+  cacheRemoval: z.enum(['none', 'full-only', 'bounded', 'partial']).optional(),
   mediaType: z.enum(['image', 'audio']).optional(),
   batchIndex: z.number().int().positive().max(2147483647).optional(),
   batchCount: z.number().int().positive().max(2147483647).optional(),
@@ -82,6 +83,7 @@ const stageDescriptions = {
   'image-tokenize': 'preparing image and text chunks with native mtmd',
   'image-evaluate': 'evaluating image and text chunks with native mtmd',
   session: 'preparing the resident model and context',
+  'cache-probe': 'checking native sequence removal on a new context',
   prefill: 'preparing the prompt evaluation',
   template: 'applying the native chat template',
   tokenize: 'tokenizing the prompt',

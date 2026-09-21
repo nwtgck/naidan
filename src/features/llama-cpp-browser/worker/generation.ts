@@ -22,7 +22,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  const { core, model, context, cache, projector } = await prepareSession({ request, onProgress, signal });
+  const { core, model, context, sequenceRemoval, cache, projector } = await prepareSession({ request, onProgress, signal });
   const api = core.api;
   let chat: ReturnType<typeof prepareChat> | undefined;
   let multimodal: Awaited<ReturnType<typeof prepareMultimodal>> | undefined;
@@ -131,11 +131,18 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     // copies them into candidates; no evaluation runs between resident requests.
     const cachePositionMatches = nativePositionMax === cachedTokens - 1;
     const reuse = !multimodal && memory !== 0n && prefixMatches && cachePositionMatches;
+    const canRemoveSuffix = (() => {
+      switch (sequenceRemoval) {
+      case 'partial': case 'bounded': return true;
+      case 'none': case 'full-only': return false;
+      default: { const exhaustive: never = sequenceRemoval; throw new Error(`Unknown sequence removal capability: ${exhaustive}`); }
+      }
+    })();
     let reusedTokens = reuse ? cachedTokens : 0;
     let reason: Diagnostic['reason'] = reuse ? 'prefix-match' : !cacheValid ? 'cache-invalid'
       : !cachePositionMatches ? 'cache-position' : 'prefix-mismatch';
     cache.validity = 'invalid';
-    if (!reuse && !multimodal && memory !== 0n && cacheValid && cachePositionMatches && commonPrefixTokens > 0) {
+    if (!reuse && canRemoveSuffix && !multimodal && memory !== 0n && cacheValid && cachePositionMatches && commonPrefixTokens > 0) {
       // Require the entire original prefix to remain resident. llama.cpp's
       // attention cache keeps every position between min/max; composite memory
       // reports its narrowest retained range. Let native seq_rm decide whether

@@ -90,6 +90,49 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     expect(JSON.stringify(debug.mock.calls)).not.toContain('AAAAA');
     debug.mockRestore();
   }, 30000);
+  it('probes a new native context once and never reuses its temporary tokens or logits', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
+    const core = host.core!;
+    const nativeBatch = core.api.llama_batch_get_one;
+    const batches: number[][] = [];
+    const batch = vi.spyOn(core.api, 'llama_batch_get_one').mockImplementation(async (destination, tokens, count) => {
+      const bytes = core.bytes({ pointer: tokens, length: count * 4 });
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      batches.push(Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true)));
+      return nativeBatch(destination, tokens, count);
+    });
+    const decode = vi.spyOn(core.api, 'llama_decode');
+    const synchronize = vi.spyOn(core.api, 'llama_synchronize');
+    const req = request({ messages: [{ role: 'user', content: 'aaaaaaaaXX' }] }); req.stop = ['A', 'B'];
+    const original = structuredClone(req);
+    try {
+      const first = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+      expect(first.sequenceRemoval).toBe('partial');
+      expect(first.cache).toEqual({ tokens: [], validity: 'invalid' });
+      const memory = await core.api.llama_get_memory(first.context);
+      expect(await core.api.llama_memory_seq_pos_min(memory, 0)).toBe(-1);
+      expect(await core.api.llama_memory_seq_pos_max(memory, 0)).toBe(-1);
+      expect(batches).toEqual([[0, 0]]);
+      expect(decode).toHaveBeenCalledOnce(); expect(synchronize).toHaveBeenCalledOnce();
+      const second = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+      expect(second.context).toBe(first.context); expect(second.cache).toBe(first.cache);
+      expect(decode).toHaveBeenCalledOnce();
+      batches.length = 0; decode.mockClear();
+      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(batches).toEqual([[1, ...Array.from(new TextEncoder().encode('aaaaaaaaXX'), byte => byte + 3)]]);
+      expect(decode).toHaveBeenCalledOnce();
+      expect(first.cache.validity).toBe('valid');
+      expect(first.cache.tokens).toEqual(batches[0]);
+      expect(await sequencePosition()).toBe(10);
+      expect(req).toEqual(original);
+    } finally {
+      batch.mockRestore(); decode.mockRestore(); synchronize.mockRestore();
+      await releaseSession({ releaseRuntime: false });
+      host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+      await prepareSession({ request: request({ messages: [{ role: 'user', content: 'reset fixture' }] }), signal: undefined, onProgress: () => {} });
+    }
+  }, 30000);
   it('diagnoses a sampling failure without logging the exception and releases the sampler for retry', async () => {
     const core = host.core; if (!core) throw new Error('Expected resident native runtime');
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockRejectedValueOnce(new TypeError('private tool schema and prompt'));
@@ -258,6 +301,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 6, reason: 'prefix-match' }));
       const warmPosition = await sequencePosition();
       await releaseSession({ releaseRuntime: false });
+      await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
       batch.mockClear(); accept.mockClear();
       const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(cold).toEqual(warm);
@@ -323,6 +367,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(Math.abs(warmLogits[68]! - firstLogits[68]!)).toBeGreaterThan(0.01);
 
       await releaseSession({ releaseRuntime: false });
+      await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
       batch.mockClear();
       const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       const coldLogits = await readNativeLogits();
@@ -345,6 +390,38 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(differentLogits[69]).toBeGreaterThan(differentLogits[68]!);
     } finally {
       clear.mockRestore(); batch.mockRestore();
+    }
+  }, 30000);
+  it('continues native generation after a declined probe and avoids advanced reuse', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
+    const core = host.core!;
+    const decode = vi.spyOn(core.api, 'llama_decode').mockResolvedValueOnce(2);
+    const batch = vi.spyOn(core.api, 'llama_batch_get_one');
+    const clear = vi.spyOn(core.api, 'llama_memory_clear');
+    const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
+    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] }); first.stop = ['A', 'B'];
+    try {
+      await expect(generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} })).resolves.toEqual({
+        content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop_sequence',
+      });
+      const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+      expect(session.sequenceRemoval).toBe('none');
+      expect(session.cache.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('aaaaaaaa'), byte => byte + 3)]);
+      expect(session.cache.validity).toBe('valid');
+      expect(batch.mock.calls.map(call => call[2])).toEqual([2, 9]);
+      expect(await sequencePosition()).toBe(8);
+      expect(decode).toHaveBeenCalledTimes(2);
+
+      batch.mockClear(); clear.mockClear();
+      const changed = request({ messages: [{ role: 'user', content: 'aaaaaabb' }] }); changed.stop = ['A', 'B'];
+      await generate({ request: changed, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(batch.mock.calls.map(call => call[2])).toEqual([9]);
+      expect(clear).toHaveBeenCalledOnce();
+      expect(remove).not.toHaveBeenCalled();
+      expect(await sequencePosition()).toBe(8);
+    } finally {
+      decode.mockRestore(); batch.mockRestore(); clear.mockRestore(); remove.mockRestore();
     }
   }, 30000);
   it.each([
@@ -412,6 +489,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(await readNativeLogits()).toEqual(warmLogits);
 
       await releaseSession({ releaseRuntime: false });
+      await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
+      batches.length = 0;
       const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       const coldLogits = await readNativeLogits();
       expect(cold).toEqual(warm);
@@ -594,6 +673,7 @@ user:Q ;assistant: R
       const warmPosition = await sequencePosition();
       expect(warmPosition).toBe(expectedTokens.length + suffix.length + 4);
       await releaseSession({ releaseRuntime: false });
+      await prepareSession({ request: extension, signal: undefined, onProgress: () => {} });
       batches.length = 0;
       const cold = await generate({ request: extension, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(cold).toEqual(warm);

@@ -21,9 +21,13 @@ beforeEach(() => {
     api: { llama_model_default_params: vi.fn(async () => {}), llama_model_load_from_file: vi.fn(async () => 10n),
       llama_context_default_params: vi.fn(async () => {}), llama_model_n_ctx_train: vi.fn(async () => 64),
       llama_init_from_model: vi.fn(async () => 20n), llama_n_ctx: vi.fn(async () => 64),
+      llama_get_memory: vi.fn(async () => 21n), llama_memory_clear: vi.fn(async () => {}),
+      llama_batch_get_one: vi.fn(async () => {}), llama_decode: vi.fn(async () => 0), llama_n_rs_seq: vi.fn(async () => 0),
+      llama_memory_seq_rm: vi.fn(async () => 1), llama_synchronize: vi.fn(async () => {}),
       llama_free: vi.fn(async () => {}), llama_model_free: vi.fn(async () => {}), llama_backend_free: vi.fn(async () => {}),
     },
     pointerBytes: 4, module: { addFunction: vi.fn(() => 1), removeFunction: vi.fn() },
+    alloc: () => ++pointer, bytes: () => new Uint8Array(8),
     allocRecord: () => ++pointer, utf8: () => ++pointer, setField: () => {}, free: () => {}, constant: () => 0,
   } as unknown as Core;
   host.directory = { id: 'Model', name: 'Model', modelPath: 'model.gguf', projectorPath: 'mmproj.gguf', files: ['model.gguf', 'mmproj.gguf'].map(path => ({ path, file: new File(['x'], path, { lastModified: 1 }),
@@ -50,6 +54,8 @@ describe('resident projector debug changes', () => {
     await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(releases[1]).toHaveBeenCalledOnce(); expect(host.load.mock.calls.map(([args]) => args.debug)).toEqual(['off', 'on', 'off']);
     expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce(); expect(host.core?.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(first.sequenceRemoval).toBe('partial'); expect(next.sequenceRemoval).toBe('partial');
+    expect(host.core?.api.llama_decode).toHaveBeenCalledOnce();
     expect(host.core?.api.llama_free).not.toHaveBeenCalled(); expect(host.core?.api.llama_model_free).not.toHaveBeenCalled();
   });
   it('can retry a failed projector replacement without discarding the resident LM or KV', async () => {
@@ -68,5 +74,30 @@ describe('resident projector debug changes', () => {
     expect(host.load).toHaveBeenCalledOnce(); expect(releases[0]).not.toHaveBeenCalled();
     const next = await prepareSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} });
     expect(next.projector).toBe(first.projector);
+  });
+  it('keeps a cleaned context available after a declined capability probe', async () => {
+    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    vi.mocked(core.api.llama_decode).mockResolvedValueOnce(2);
+    const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    const next = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    expect(first.sequenceRemoval).toBe('none'); expect(next.sequenceRemoval).toBe('none');
+    expect(first.context).toBe(next.context); expect(first.cache).toEqual({ tokens: [], validity: 'invalid' });
+    expect(core.api.llama_decode).toHaveBeenCalledOnce();
+    expect(core.api.llama_memory_clear).toHaveBeenCalledTimes(2);
+    expect(core.api.llama_synchronize).toHaveBeenCalledOnce();
+    expect(core.api.llama_free).not.toHaveBeenCalled(); expect(core.api.llama_model_free).not.toHaveBeenCalled();
+  });
+  it('releases a new context whose native capability probe traps and can retry', async () => {
+    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    vi.mocked(core.api.llama_decode).mockRejectedValueOnce(new WebAssembly.RuntimeError('fixture trap'));
+    await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow();
+    expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(20n);
+    expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
+    expect(core.api.llama_backend_free).toHaveBeenCalledOnce();
+    expect(releases[0]).toHaveBeenCalledOnce();
+    const retried = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    expect(retried.sequenceRemoval).toBe('partial');
+    expect(retried.cache).toEqual({ tokens: [], validity: 'invalid' });
+    expect(core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
   });
 });
