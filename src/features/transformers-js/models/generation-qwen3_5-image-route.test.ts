@@ -1,9 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
+import { toMessageId } from '@/01-models/ids';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createProviderReplayTestImagePlatform } from '@/features/transformers-js/replay-models/support/provider-replay-test-image-platform';
 import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { downloadRuntimeAcceptanceIdentity } from '@/features/transformers-js/download-verification/evidence/runtime-acceptance-identity';
+import { createReplayImageAttachment, runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
 
 const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
 const revision = 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb';
@@ -106,14 +108,21 @@ describe('Qwen image generation session ownership', () => {
       },
     });
     try {
-      await expect(harness.provider.chat({
-        model: modelId, messages: [{ role: 'user', content: [
-          { type: 'text', text: 'Describe the single synthetic image in one short phrase.' },
-          { type: 'image_url', image_url: { url: imageUrl } },
-        ] }], tools: [],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk: vi.fn(), onToolCall: vi.fn(), onToolEvent: vi.fn(), onToolResult: vi.fn(),
-      }), JSON.stringify({ stages, nativeFailure })).rejects.toThrow(visionBoundary);
+      const turn = await runProviderReplayTurn({
+        provider: harness.provider,
+        tools: [],
+        abortController: new AbortController(),
+        onChange: undefined,
+        request: {
+          model: modelId, debug: undefined, readBinaryObject: undefined,
+          messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
+            { id: 'text', type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+            { id: 'image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+          ] }],
+          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+        },
+      });
+      expect(turn.outcome, JSON.stringify({ stages, nativeFailure })).toMatchObject({ status: 'rejected', error: { message: visionBoundary } });
       expect(stages).toEqual(['native-generate', 'embedding-inference', 'vision-inference', 'image-encoder-called']);
       expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
       expect(harness.observations.ortCalls).toHaveLength(3);
@@ -134,19 +143,42 @@ describe('Qwen image generation session ownership', () => {
     });
     const harness = await createRouteRuntime({ paths: textArtifacts, generate });
     try {
-      const onChunk = vi.fn();
+      const onChange = vi.fn<NonNullable<Parameters<typeof runProviderReplayTurn>[0]['onChange']>>();
       const request = {
-        model: modelId, tools: [],
+        model: modelId, debug: undefined, readBinaryObject: undefined,
         parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        onChunk, onToolCall: vi.fn(), onToolEvent: vi.fn(), onToolResult: vi.fn(),
       };
-      await harness.provider.chat({ ...request, messages: [{ role: 'user', content: 'Hello.' }] });
+      const text = await runProviderReplayTurn({
+        provider: harness.provider,
+        tools: [],
+        abortController: new AbortController(),
+        onChange,
+        request: {
+          ...request, messages: [{ id: toMessageId({ raw: 'text-user' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Hello.', completeness: 'complete' }] }],
+        },
+      });
       expect(generate).toHaveBeenCalledTimes(1);
-      expect(onChunk).toHaveBeenCalled();
+      // The synthetic token has no model-native terminator, so it proves text
+      // delivery and the usable session without claiming a completed answer.
+      expect(text.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
+      expect(onChange.mock.calls.some(([{ messages }]) => messages.some(message =>
+        message.parts.some(part => part.type === 'text' && part.text.length > 0),
+      ))).toBe(true);
+      expect(text.generated[0]?.parts).toMatchObject([{ type: 'text', completeness: 'partial' }]);
       expect(harness.observations.ortCalls).toHaveLength(2);
-      await expect(harness.provider.chat({ ...request, messages: [{ role: 'user', content: [
-        { type: 'text', text: 'Describe this image.' }, { type: 'image_url', image_url: { url: imageUrl } },
-      ] }] })).rejects.toThrow('text-only local candidate');
+      const image = await runProviderReplayTurn({
+        provider: harness.provider,
+        tools: [],
+        abortController: new AbortController(),
+        onChange: undefined,
+        request: {
+          ...request, messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
+            { id: 'text', type: 'text', text: 'Describe this image.', completeness: 'complete' },
+            { id: 'image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+          ] }],
+        },
+      });
+      expect(image.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringContaining('text-only local candidate') } });
       expect(generate).toHaveBeenCalledTimes(1);
       expect(harness.observations.ortCalls).toHaveLength(2);
       expect(harness.observations.localImageFetchCalls).toEqual([]);

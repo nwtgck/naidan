@@ -5,6 +5,7 @@ import type { ToolCall } from '@/01-models/types';
 import type { InferenceMessage } from '@/features/transformers-js/types';
 import type { InferenceGenerationEvent } from '@/features/transformers-js/generation-events';
 import { HarmonyStreamParser } from './gpt-oss-harmony';
+import { exactObject } from '@/utils/exact-object';
 
 /** Native Harmony framing, not a parser for tags in ordinary assistant text. */
 export function createGptOssGeneration({ emit }: {
@@ -142,22 +143,37 @@ export function createGptOssGeneration({ emit }: {
       let phase: 'reasoning' | 'text' | 'tool_call' = 'reasoning';
       for (const part of parts) {
         switch (part.type) {
-        case 'reasoning':
-          if (reasoning !== undefined || phase !== 'reasoning' || part.completeness !== 'complete') return undefined;
-          reasoning = { text: part.text, completeness: 'complete' }; break;
-        case 'text':
-          if (hasText || phase === 'tool_call' || part.completeness !== 'complete') return undefined;
+        case 'reasoning': {
+          const { type: _type, text, completeness, ...unhandled } = part;
+          unhandled satisfies Record<PropertyKey, never>;
+          if (reasoning !== undefined || phase !== 'reasoning' || completeness !== 'complete') return undefined;
+          reasoning = exactObject<NonNullable<InferenceMessage['reasoning']>>()({ text, completeness });
+          break;
+        }
+        case 'text': {
+          const { type: _type, text, completeness, ...unhandled } = part;
+          unhandled satisfies Record<PropertyKey, never>;
+          if (hasText || phase === 'tool_call' || completeness !== 'complete') return undefined;
           hasText = true;
-          phase = 'text'; content += part.text; break;
-        case 'tool_call': phase = 'tool_call'; calls.push(part.toolCall); break;
+          phase = 'text'; content += text;
+          break;
+        }
+        case 'tool_call': {
+          const { type: _type, toolCall, ...unhandled } = part;
+          unhandled satisfies Record<PropertyKey, never>;
+          phase = 'tool_call'; calls.push(toolCall);
+          break;
+        }
         default: { const exhaustive: never = part; throw new Error(`Unhandled generated part: ${exhaustive}`); }
         }
       }
       if (reasoning !== undefined && hasText && calls.length > 0) return undefined;
-      return { role: 'assistant', content,
-        ...(reasoning === undefined ? {} : { reasoning }),
+      // Match the delivered-parts projection, including absent vs. empty text.
+      // Cache history currently uses JSON identity, so property order also agrees.
+      return exactObject<Omit<InferenceMessage, 'tool_call_id'>>()({ role: 'assistant', content: hasText ? content : [],
         ...(calls.length ? { tool_calls: calls } : {}),
-      };
+        ...(reasoning === undefined ? {} : { reasoning }),
+      });
     },
   };
 }

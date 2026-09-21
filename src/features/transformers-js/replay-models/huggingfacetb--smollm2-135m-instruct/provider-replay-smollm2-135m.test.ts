@@ -1571,7 +1571,13 @@ describe('SmolLM2 135M Provider / tools', () => {
       ], parameters, debug: undefined, readBinaryObject: undefined };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
-      turn = await runProviderReplayTurn({ provider: replay.provider, tools, abortController: new AbortController(), request });
+      turn = await runProviderReplayTurn({
+        onChange: undefined,
+        provider: replay.provider,
+        tools,
+        abortController: new AbortController(),
+        request,
+      });
       settled = true;
       replay.endRejectedRequest({ outcome: turn.outcome });
       expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'This standard tool protocol has no structured generation adapter.' } });
@@ -1626,7 +1632,13 @@ describe('SmolLM2 135M Provider / tools', () => {
       ], parameters, debug: undefined, readBinaryObject: undefined };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
-      turn = await runProviderReplayTurn({ provider: replay.provider, tools, abortController: new AbortController(), request });
+      turn = await runProviderReplayTurn({
+        onChange: undefined,
+        provider: replay.provider,
+        tools,
+        abortController: new AbortController(),
+        request,
+      });
       settled = true;
       replay.endRejectedRequest({ outcome: turn.outcome });
       expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'This standard tool protocol has no structured generation adapter.' } });
@@ -1691,7 +1703,13 @@ describe('SmolLM2 135M Provider / tools', () => {
       ], parameters, debug: undefined, readBinaryObject: undefined };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
-      turn = await runProviderReplayTurn({ provider: replay.provider, tools, abortController: new AbortController(), request });
+      turn = await runProviderReplayTurn({
+        onChange: undefined,
+        provider: replay.provider,
+        tools,
+        abortController: new AbortController(),
+        request,
+      });
       settled = true;
       replay.endRejectedRequest({ outcome: turn.outcome });
       expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'This standard tool history has no reviewed structured input adapter.' } });
@@ -1795,7 +1813,13 @@ describe('SmolLM2 135M Provider / sequences', () => {
       };
       const toolInput = structuredClone(toolRequest);
       replay.beginNativeRequest({ caseId: 'natural-tool-minimal', parameters: toolRequest.parameters! });
-      const rejectedTool = await runProviderReplayTurn({ provider: replay.provider, request: toolRequest, tools, abortController: new AbortController() });
+      const rejectedTool = await runProviderReplayTurn({
+        onChange: undefined,
+        provider: replay.provider,
+        request: toolRequest,
+        tools,
+        abortController: new AbortController(),
+      });
       observedTurns.push(rejectedTool);
       expect(rejectedTool.outcome).toMatchObject({ status: 'rejected', error: { message: 'This standard tool protocol has no structured generation adapter.' } });
       replay.endRejectedRequest({ outcome: rejectedTool.outcome });
@@ -1816,7 +1840,13 @@ describe('SmolLM2 135M Provider / sequences', () => {
       };
       const imageInput = structuredClone(imageRequest);
       replay.beginNativeRequest({ caseId: 'image', parameters: imageRequest.parameters! });
-      const rejectedImage = await runProviderReplayTurn({ provider: replay.provider, request: imageRequest, tools: [], abortController: new AbortController() });
+      const rejectedImage = await runProviderReplayTurn({
+        onChange: undefined,
+        provider: replay.provider,
+        request: imageRequest,
+        tools: [],
+        abortController: new AbortController(),
+      });
       observedTurns.push(rejectedImage);
       expect(rejectedImage.outcome).toMatchObject({ status: 'rejected', error: { message: 'The standard text strategy cannot preserve an image input.' } });
       replay.endRejectedRequest({ outcome: rejectedImage.outcome });
@@ -1829,7 +1859,10 @@ describe('SmolLM2 135M Provider / sequences', () => {
       // both failed operations release their lane. No fresh runtime repairs it.
       replay.beginNativeRequest({ caseId: 'first-turn', parameters });
       const recovered = await runProviderReplayTurn({
-        provider: replay.provider, tools: [], abortController: new AbortController(),
+        onChange: undefined,
+        provider: replay.provider,
+        tools: [],
+        abortController: new AbortController(),
         request: { model: 'HuggingFaceTB/SmolLM2-135M-Instruct', parameters,
           messages: [{ id: toMessageId({ raw: 'plain-user' }), role: 'user', parts: [
             { id: 'text', type: 'text', text: 'Template probe user message.', completeness: 'complete' },

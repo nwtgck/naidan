@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createGptOssGeneration } from './gpt-oss-generation';
 import { inferenceGenerationEventSchema, type InferenceGenerationEvent } from '@/features/transformers-js/generation-events';
+import type { AssistantMessageNode } from '@/01-models/types';
+import { toMessageId } from '@/01-models/ids';
+import { createChatMessageSnapshot } from '@/01-models/chat-message';
+import { consumeChatGeneration } from '@/logic/consume-chat-generation';
+import { createInferenceGeneration } from '@/features/transformers-js/create-inference-generation';
+import { prepareInferenceRequest } from '@/features/transformers-js/message-projection';
 
 function setup() {
   const events: InferenceGenerationEvent[] = [];
@@ -19,6 +25,43 @@ function message({ decoder, channel, recipient, text, ending }: {
 }
 
 describe('native Harmony generation parts', () => {
+  it.each([
+    { kind: 'tool only', reasoning: undefined, text: undefined },
+    { kind: 'leading reasoning and tool', reasoning: '  R\n', text: undefined },
+    { kind: 'explicit empty text and tool', reasoning: undefined, text: '' },
+  ])('cache identity matches the delivered parts projection for $kind', async ({ reasoning, text }) => {
+    const { decoder, events } = setup();
+    const args = ' { "x": 1.00, "escaped": "\\u0041" } ';
+    if (reasoning !== undefined) message({ decoder, channel: 'analysis', recipient: undefined, text: reasoning, ending: '<|end|>' });
+    if (text !== undefined) message({ decoder, channel: 'commentary', recipient: undefined, text, ending: '<|end|>' });
+    message({ decoder, channel: 'commentary', recipient: 'functions.calculator', text: args, ending: '<|call|>' });
+    decoder.finish({ reason: 'unknown' });
+    const node: AssistantMessageNode = {
+      id: toMessageId({ raw: 'cache-history' }), role: 'assistant', createdAt: 1,
+      modelId: undefined, lmParameters: undefined, interruption: undefined, parts: [], replies: { items: [] },
+    };
+    const controller = new AbortController();
+    const result = await consumeChatGeneration({ node, abortController: controller, onChange: () => {},
+      items: createInferenceGeneration({ signal: controller.signal, generate: async ({ onEvent }) => {
+        for (const event of events) await onEvent({ event });
+      } }),
+    });
+    expect(result).toEqual({ type: 'finished', next: 'tool_results' });
+    const call = node.parts.find(part => part.type === 'tool_call');
+    if (call?.type !== 'tool_call') throw new Error('Missing delivered call.');
+    const projected = await prepareInferenceRequest({
+      messages: [createChatMessageSnapshot({ node })], parameters: undefined, tools: undefined,
+      readBinaryObject: undefined, signal: undefined,
+    });
+    expect(projected.messages).toEqual([{
+      role: 'assistant', content: text ?? [],
+      tool_calls: [{ id: call.toolCall.id, type: 'function', function: { name: 'calculator', arguments: args } }],
+      ...(reasoning === undefined ? {} : { reasoning: { text: reasoning, completeness: 'complete' } }),
+    }]);
+    expect(decoder.assistant()).toStrictEqual(projected.messages[0]);
+    expect(JSON.stringify(decoder.assistant())).toBe(JSON.stringify(projected.messages[0]));
+  });
+
   it('preserves separate reasoning intervals, commentary, final content and exact whitespace', () => {
     const { events, decoder } = setup();
     for (const [channel, text, ending] of [['analysis', '  R\n', '<|end|>'], ['analysis', '', '<|end|>'], ['commentary', 'Searching. ', '<|end|>'], ['final', 'Answer  ', '<|return|>']] as const) {
@@ -66,7 +109,7 @@ describe('native Harmony generation parts', () => {
     decoder.finish({ reason: 'unknown' });
     expect(events.filter(e => e.type === 'tool_start')).toEqual([{ type: 'tool_start', index: 1 }]);
     expect(events.filter(e => e.type === 'tool_call')).toEqual([expect.objectContaining({ index: 1, toolCall: expect.objectContaining({ function: { name: 'calculator', arguments: args } }) })]);
-    expect(decoder.assistant()).toEqual({ role: 'assistant', content: '', reasoning: { text: 'R', completeness: 'complete' }, tool_calls: [expect.objectContaining({ function: { name: 'calculator', arguments: args } })] });
+    expect(decoder.assistant()).toEqual({ role: 'assistant', content: [], reasoning: { text: 'R', completeness: 'complete' }, tool_calls: [expect.objectContaining({ function: { name: 'calculator', arguments: args } })] });
   });
   it.each(['{}', '{"unfinished":'])('never publishes a call draft at EOF: %s', args => {
     const { decoder, events } = setup();

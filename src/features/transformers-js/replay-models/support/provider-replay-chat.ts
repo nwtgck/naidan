@@ -1,6 +1,6 @@
 import { expect } from 'vitest';
 import type { LmProvider } from '@/01-models/lm';
-import type { AssistantMessageNode, Attachment, ToolMessageNode } from '@/01-models/types';
+import type { AssistantMessageNode, Attachment, ChatMessage, ToolMessageNode } from '@/01-models/types';
 import type { Tool, ToolExecutionEvent } from '@/01-models/tool';
 import { toAttachmentId, toBinaryObjectId, toMessageId, type ToolCallId } from '@/01-models/ids';
 import { createChatMessageSnapshot } from '@/01-models/chat-message';
@@ -8,11 +8,12 @@ import { generateChatTurn } from '@/logic/generate-chat-turn';
 import type { CapturedChatRequest, ProviderChatCapture } from './capture-provider-chat';
 
 /** Caller-owned history and tools around the ordinary production turn runner. */
-export async function runProviderReplayTurn({ provider, request, tools, abortController }: {
+export async function runProviderReplayTurn({ provider, request, tools, abortController, onChange }: {
   provider: LmProvider;
   request: Omit<CapturedChatRequest, 'tools' | 'signal'>;
   tools: readonly Tool[];
   abortController: AbortController;
+  onChange: (({ messages }: { messages: readonly ChatMessage[] }) => void) | undefined;
 }) {
   const generated: (AssistantMessageNode | ToolMessageNode)[] = [];
   const toolEvents: { toolCallId: ToolCallId; event: ToolExecutionEvent }[] = [];
@@ -40,7 +41,7 @@ export async function runProviderReplayTurn({ provider, request, tools, abortCon
       ...messages,
       ...generated.filter(node => node.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node })),
     ],
-    onChange: () => {},
+    onChange: () => onChange?.({ messages: generated.map(node => createChatMessageSnapshot({ node })) }),
     onToolEvent: ({ toolCallId, event }) => {
       toolEvents.push({ toolCallId, event: structuredClone(event) });
     },
