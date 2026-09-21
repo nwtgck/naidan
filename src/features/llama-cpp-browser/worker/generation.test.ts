@@ -8,7 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { generate } from './generation';
-import { createSyntheticGguf } from './test-utils/synthetic-gguf';
+import { createInputSensitiveGguf, createSyntheticGguf } from './test-utils/synthetic-gguf';
 import type { WorkerGenerateInput } from './types';
 import { profileSchema } from '@/features/llama-cpp-browser/types';
 import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
@@ -56,6 +56,18 @@ async function sequencePosition(): Promise<number> {
   if (!core || context === undefined) throw new Error('Expected a resident native context');
   const memory = await core.api.llama_get_memory(context);
   return core.api.llama_memory_seq_pos_max(memory, 0);
+}
+async function readNativeLogits(): Promise<number[]> {
+  const core = host.core; const context = sessionTesting.residentContext();
+  if (!core || context === undefined) throw new Error('Expected a resident native context');
+  const model = await core.api.llama_get_model(context);
+  const vocab = await core.api.llama_model_get_vocab(model);
+  const count = await core.api.llama_vocab_n_tokens(vocab);
+  const pointer = await core.api.llama_get_logits_ith(context, -1);
+  if (pointer === 0n) throw new Error('Expected native logits after decoding');
+  const bytes = core.bytes({ pointer, length: count * 4 });
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return Array.from({ length: count }, (_, index) => view.getFloat32(index * 4, true));
 }
 describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
   it('loads a chat-template GGUF, prefills, generates and closes the reader without logging content', async () => {
@@ -287,6 +299,52 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(JSON.stringify(debug.mock.calls)).not.toContain('private-local-name');
     } finally {
       debug.mockRestore();
+    }
+  }, 30000);
+  it('matches cold logits after full-prefix reuse with a history-sensitive native model', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
+    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaaX' }] });
+    first.stop = ['A', 'B'];
+    await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const firstLogits = await readNativeLogits();
+    const core = host.core!;
+    const clear = vi.spyOn(core.api, 'llama_memory_clear');
+    const batch = vi.spyOn(core.api, 'llama_batch_get_one');
+    const next = request({ messages: [{ role: 'user', content: 'aaaaaaaaXX' }] });
+    next.stop = ['A', 'B'];
+    try {
+      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const warmLogits = await readNativeLogits();
+      const warmPosition = await sequencePosition();
+      expect(clear).not.toHaveBeenCalled();
+      expect(batch.mock.calls.map(call => call[2])).toEqual([1]);
+      expect(warmPosition).toBe(10);
+      expect(Math.abs(warmLogits[68]! - firstLogits[68]!)).toBeGreaterThan(0.01);
+
+      await releaseSession({ releaseRuntime: false });
+      batch.mockClear();
+      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const coldLogits = await readNativeLogits();
+      expect(cold).toEqual(warm);
+      expect(await sequencePosition()).toBe(warmPosition);
+      expect(batch.mock.calls.map(call => call[2])).toEqual([11]);
+      expect(warmLogits).toHaveLength(259);
+      warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
+
+      // Same final byte and token count, but different earlier history. This
+      // control would catch stale KV that a constant-output fixture cannot.
+      await releaseSession({ releaseRuntime: false });
+      const different = request({ messages: [{ role: 'user', content: 'bbbbbbbbXX' }] });
+      different.stop = ['A', 'B'];
+      await generate({ request: different, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const differentLogits = await readNativeLogits();
+      expect(await sequencePosition()).toBe(warmPosition);
+      expect(Math.abs(coldLogits[68]! - differentLogits[68]!)).toBeGreaterThan(1);
+      expect(coldLogits[68]).toBeGreaterThan(coldLogits[69]!);
+      expect(differentLogits[69]).toBeGreaterThan(differentLogits[68]!);
+    } finally {
+      clear.mockRestore(); batch.mockRestore();
     }
   }, 30000);
   it('preserves saved ordered parts through native Jinja, byte tokens and warm cache reuse', async () => {
