@@ -132,6 +132,12 @@ describe('native operation diagnostics', () => {
     }
   });
   it.each([
+    { message: 'lcb_clip: bf16-f32 tensors=81 source_bytes=3000000 destination_bytes=6000000', expected: { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32', nativeEntries: 81, nativeSourceBytes: 3000000, nativeDestinationBytes: 6000000, nativeBackend: 'WebGPU' } },
+    { message: 'lcb_clip: bf16-f32 tensors=0 source_bytes=0 destination_bytes=0', expected: { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32', nativeEntries: 0, nativeSourceBytes: 0, nativeDestinationBytes: 0, nativeBackend: 'WebGPU' } },
+    { message: 'lcb_clip: matmul placement cpu=2 webgpu=190 other=1 cpu_bf16=1', expected: { event: 'native-info', stage: 'media-encode', nativeOperation: 'matmul-placement', nativeCpuNodes: 2, nativeWebGpuNodes: 190, nativeOtherNodes: 1, nativeCpuBf16Nodes: 1 } },
+    { message: 'warmup: WARNING: the CLIP graph uses unsupported operators by the backend', expected: { event: 'native-info', stage: 'media-encode', nativeOperation: 'unsupported-image-ops' } },
+    { message: 'reserve_compute_meta: graph splits = 99, nodes = 1000', expected: { event: 'native-info', stage: 'media-encode', nativeOperation: 'image-graph', nativeGraphSplits: 99, nativeGraphNodes: 1000 } },
+    { message: 'reserve_compute_meta:     WebGPU compute buffer size =     8.50 MiB', expected: { event: 'native-info', stage: 'media-encode', nativeMetric: 'compute_buffer_mib', nativeValue: 8.5, nativeBackend: 'WebGPU' } },
     { message: 'encoding image slice...', expected: { event: 'operation-start', stage: 'media-encode', mediaType: 'image' } },
     { message: 'image slice encoded in 234 ms\n', expected: { event: 'operation-complete', stage: 'media-encode', mediaType: 'image', elapsedMs: 234 } },
     { message: 'decoding image batch 1/2, n_tokens_batch = 512', expected: { event: 'operation-start', stage: 'media-decode', mediaType: 'image', batchIndex: 1, batchCount: 2, batchTokens: 512 } },
@@ -232,5 +238,36 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     logNativeDiagnostic({ message: 'ggml_webgpu: Device lost! Reason: 1, Message: private metadata' });
     expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toEqual({ event: 'native-error', failureKind: 'webgpu-device-lost' });
     expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
+  });
+});
+
+
+describe('projector diagnostic boundaries', () => {
+  it.each([
+    'lcb_clip: bf16-f32 tensors=1 source_bytes=3 destination_bytes=5',
+    'lcb_clip: bf16-f32 tensors=1 source_bytes=9007199254740992 destination_bytes=18014398509481984',
+    'lcb_clip: matmul placement cpu=1 webgpu=2 other=0 cpu_bf16=2',
+    'lcb_clip: matmul placement cpu=-1 webgpu=2 other=0 cpu_bf16=0',
+    'lcb_clip: matmul placement cpu=9007199254740992 webgpu=0 other=0 cpu_bf16=0',
+    'lcb_clip: bf16-f32 tensors=1 source_bytes=2 destination_bytes=4 private.gguf',
+    'reserve_compute_meta: graph splits = 9007199254740992, nodes = 1',
+    'reserve_compute_meta: private-file compute buffer size =     8.50 MiB',
+    'warmup: private-tensor: type = bf16, ne = [1 2 3 4]',
+  ])('does not accept malformed or private projector messages: %s', message => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
+    try {
+      logNativeDiagnostic({ message });
+      expect(debug).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('rejects private fields inside input tensor metadata', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const input = { index: 0 as const, type: 30, shape: [1152, 4304, 1, 1], name: 'private-tensor', data: [42] };
+    logDiagnostic({ diagnostic: { event: 'native-node-start', nativeTensorInputs: [input] } });
+    expect(debug).not.toHaveBeenCalled();
   });
 });

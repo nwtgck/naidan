@@ -62,16 +62,34 @@ export const diagnosticSchema = z.object({
   // Values originate only from generated GGML_OP constants, never tensor names.
   nativeOpName: z.string().regex(/^GGML_OP_[A-Z0-9_]{1,48}$/).optional(),
   nativeTensorType: z.number().int().nonnegative().optional(),
+  nativeTensorTypeName: z.string().regex(/^GGML_TYPE_[A-Z0-9_]{1,48}$/).optional(),
+  // Only the first two source tensors' metadata, never pointers, names or data.
+  // Keep this nested object strict too: adding native trace fields must not
+  // accidentally turn diagnostics into a channel for model/user content.
+  nativeTensorInputs: z.array(z.object({
+    index: z.union([z.literal(0), z.literal(1)]),
+    type: z.number().int().nonnegative(),
+    typeName: z.string().regex(/^GGML_TYPE_[A-Z0-9_]{1,48}$/).optional(),
+    shape: z.array(z.number().int().positive().max(Number.MAX_SAFE_INTEGER)).length(4),
+  }).strict()).max(2).optional(),
+  nativeSourceBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  nativeDestinationBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  nativeCpuNodes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  nativeWebGpuNodes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  nativeOtherNodes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  nativeCpuBf16Nodes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeTensorShape: z.array(z.number().int().positive().max(Number.MAX_SAFE_INTEGER)).length(4).optional(),
   nativeMetric: nativeMetricSchema.optional(),
   nativeValue: z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeSingleTokenValue: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).optional(),
-  nativeOperation: z.enum(['encode-batch', 'copy-image', 'output-embedding', 'preprocess-image']).optional(),
+  nativeOperation: z.enum(['encode-batch', 'copy-image', 'output-embedding', 'preprocess-image', 'bf16-f32', 'matmul-placement', 'unsupported-image-ops', 'image-graph']).optional(),
   nativeEntries: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeGridX: z.number().int().min(-2147483648).max(2147483647).optional(),
   nativeGridY: z.number().int().min(-2147483648).max(2147483647).optional(),
   nativeOverview: z.boolean().optional(),
+  nativeGraphNodes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  nativeGraphSplits: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeShape: z.tuple([z.number().int().positive(), z.number().int().positive(), z.number().int().positive()]).optional(),
 }).strict();
 const stageDescriptions = {
@@ -306,6 +324,61 @@ function nativeImageDiagnostic({ message }: { message: unknown }): Diagnostic | 
   if (preproc) return { event: 'native-info', stage: 'image-tokenize', nativeOperation: 'preprocess-image', nativeEntries: Number(preproc[1]), nativeGridX: Number(preproc[2]), nativeGridY: Number(preproc[3]), nativeOverview: preproc[4] === '1' };
   return undefined;
 }
+/**
+ * Fixed projector diagnostics; accepting arbitrary stderr would leak file or tensor names.
+ * lcb_clip records are emitted by lcore's local mtmd overlay, not stock llama.cpp.
+ * Update this allowlist/schema/tests together if that contract changes; retain
+ * whole-line matches so unrelated suffixes cannot sneak private content through.
+ */
+function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
+  if (typeof message !== 'string' || message.length > 256) return undefined;
+  const line = message.replace(/\r?\n$/, '');
+  const conversion = /^lcb_clip: bf16-f32 tensors=(\d+) source_bytes=(\d+) destination_bytes=(\d+)$/.exec(line);
+  if (conversion) {
+    // The producer emits this only after a successful WebGPU vision load. It
+    // reports 2-byte BF16 to 4-byte F32 storage, not full-F32 arithmetic or proof
+    // of GPU execution. Missing records (e.g. an older core) are not zero counts.
+    const nativeEntries = Number(conversion[1]);
+    const nativeSourceBytes = Number(conversion[2]);
+    const nativeDestinationBytes = Number(conversion[3]);
+    if (![nativeEntries, nativeSourceBytes, nativeDestinationBytes].every(Number.isSafeInteger)
+        || nativeDestinationBytes !== nativeSourceBytes * 2) return undefined;
+    return { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32',
+      nativeEntries, nativeSourceBytes, nativeDestinationBytes, nativeBackend: 'WebGPU' };
+  }
+  const placement = /^lcb_clip: matmul placement cpu=(\d+) webgpu=(\d+) other=(\d+) cpu_bf16=(\d+)$/.exec(line);
+  if (placement) {
+    // These are post-allocation assignments of MUL_MAT only, not all nodes or
+    // completed/timed kernels. In particular, cpu_bf16 is a subset of cpu.
+    const nativeCpuNodes = Number(placement[1]);
+    const nativeWebGpuNodes = Number(placement[2]);
+    const nativeOtherNodes = Number(placement[3]);
+    const nativeCpuBf16Nodes = Number(placement[4]);
+    if (![nativeCpuNodes, nativeWebGpuNodes, nativeOtherNodes, nativeCpuBf16Nodes].every(Number.isSafeInteger)
+        || nativeCpuBf16Nodes > nativeCpuNodes) return undefined;
+    return { event: 'native-info', stage: 'media-encode', nativeOperation: 'matmul-placement',
+      nativeCpuNodes, nativeWebGpuNodes, nativeOtherNodes, nativeCpuBf16Nodes };
+  }
+  if (line === 'warmup: WARNING: the CLIP graph uses unsupported operators by the backend') {
+    // Eligibility warning only: it does not identify the selected execution backend.
+    return { event: 'native-info', stage: 'media-encode', nativeOperation: 'unsupported-image-ops' };
+  }
+  // These are image-graph reservation metadata. Keep them separate from the
+  // language model's context metrics; this stage does not prove encoding began.
+  const graph = /^reserve_compute_meta: graph splits = (\d+), nodes = (\d+)$/.exec(line);
+  if (graph) {
+    const nativeGraphSplits = Number(graph[1]);
+    const nativeGraphNodes = Number(graph[2]);
+    if (![nativeGraphSplits, nativeGraphNodes].every(Number.isSafeInteger)) return undefined;
+    return { event: 'native-info', stage: 'media-encode', nativeOperation: 'image-graph', nativeGraphSplits, nativeGraphNodes };
+  }
+  const buffer = /^reserve_compute_meta:[ \t]+(CPU|CPU_Mapped|WebGPU) compute buffer size =[ \t]+(\d+\.\d{2}) MiB$/.exec(line);
+  if (!buffer) return undefined;
+  const nativeValue = Number(buffer[2]);
+  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
+  return { event: 'native-info', stage: 'media-encode', nativeMetric: 'compute_buffer_mib', nativeValue,
+    nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1]) };
+}
 /** Keep structured progress/metrics and known failures; never forward raw stderr. */
 export function logNativeDiagnostic({ message }: { message: unknown }): void {
   if (typeof message === 'string' && message.length <= 256) {
@@ -319,7 +392,7 @@ export function logNativeDiagnostic({ message }: { message: unknown }): void {
       logDiagnostic({ diagnostic: { event: 'native-error', stage: 'media-encode', failureKind: 'native-output-mismatch', expectedTokens: Number(output[1]), tokens: Number(output[2]) } }); return;
     }
   }
-  const progress = nativeMediaDiagnostic({ message }) ?? nativeInfoDiagnostic({ message }) ?? nativeImageDiagnostic({ message });
+  const progress = nativeMediaDiagnostic({ message }) ?? nativeInfoDiagnostic({ message }) ?? nativeImageDiagnostic({ message }) ?? nativeProjectorDiagnostic({ message });
   if (progress) {
     logNativeCheckpoint({ diagnostic: progress }); return;
   }
