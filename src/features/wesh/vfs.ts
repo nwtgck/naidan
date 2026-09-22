@@ -1,3 +1,6 @@
+import { writeReadableStreamToFileHandle } from '@/utils/file-system-stream';
+import type { BlobContext } from '@/utils/blob-view';
+import { BLOB_VIEW_CHUNK_SIZE } from '@/utils/blob-view-io';
 import { ReadonlyDirectoryHandle } from './readonly-directory-handle';
 import type {
   WeshDirEntry,
@@ -166,9 +169,19 @@ interface WeshSyncAccessCapableFileHandle extends FileSystemFileHandle {
   createSyncAccessHandle?: () => Promise<WeshSyncAccessHandle>,
 }
 
+/** An unavailable registry snapshot is not an absent/malformed symlink entry. */
+class WeshRegistryBlobReadError extends Error {
+  constructor({ cause }: { cause: unknown }) {
+    super('Unable to read Wesh registry bytes', { cause });
+    this.name = 'WeshRegistryBlobReadError';
+  }
+}
+
 class StandardFileHandle implements WeshFileHandle {
   private readonly handle: FileSystemFileHandle;
   private readonly access: WeshOpenFlags['access'];
+  private readonly blobs: BlobContext | undefined;
+  private readonly reads = new AbortController();
   private cursor = 0;
   private logicalSize = 0;
   private lastModified = 0;
@@ -181,23 +194,30 @@ class StandardFileHandle implements WeshFileHandle {
   private writable: FileSystemWritableFileStream | undefined;
   private syncAccessHandle: WeshSyncAccessHandle | undefined;
   private closePromise: Promise<void> | undefined;
+  private operationTail = Promise.resolve();
+  private writableFailure: { error: unknown } | undefined;
 
   constructor({
     handle,
     access,
     append,
+    blobs,
   }: {
     handle: FileSystemFileHandle,
     access: WeshOpenFlags['access'],
     append: boolean,
+    blobs: BlobContext | undefined,
   }) {
     this.handle = handle;
+    this.blobs = blobs;
     this.access = access;
     this.ready = this.initialize({ append });
   }
 
   private async initialize({ append }: { append: boolean }): Promise<void> {
     const file = await this.handle.getFile();
+    // close may win before initialization acquires any writer or sync handle.
+    if (this.closed) return;
     this.logicalSize = file.size;
     this.lastModified = file.lastModified;
     this.cursor = append ? file.size : 0;
@@ -205,7 +225,9 @@ class StandardFileHandle implements WeshFileHandle {
     switch (this.access) {
     case 'read':
       this.fileSnapshot = file;
-      this.sequentialReader = file.stream().getReader();
+      this.sequentialReader = (this.blobs === undefined
+        ? file.stream()
+        : this.blobs.fromNative({ blob: file }).stream({ signal: this.reads.signal })).getReader();
       return;
     case 'write':
       this.writable = await this.handle.createWritable({ keepExistingData: true });
@@ -237,11 +259,26 @@ class StandardFileHandle implements WeshFileHandle {
     }
   }
 
+  /** Serialize cursor/snapshot/writer state for this handle, not the whole VFS. */
+  private runOperation<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
+    if (this.closed) return Promise.reject(new Error('File handle is closed'));
+    const pending = this.operationTail.then(async () => {
+      await this.ready;
+      this.assertOpen();
+      return operation();
+    });
+    // Rejection is returned to its caller, but must not poison later operations.
+    // Keep the physical operation here: close must wait for an acquired writer.
+    this.operationTail = pending.then(() => undefined, () => undefined);
+    return pending;
+  }
+
   private async getFileSnapshot(): Promise<File> {
     if (this.fileSnapshot !== undefined) {
       return this.fileSnapshot;
     }
     const file = await this.handle.getFile();
+    this.assertOpen();
     this.fileSnapshot = file;
     return file;
   }
@@ -260,33 +297,25 @@ class StandardFileHandle implements WeshFileHandle {
       throw new Error('Sequential reader is unavailable');
     }
 
-    let bytesRead = 0;
-    while (bytesRead < length) {
-      if (this.pendingReadChunk === undefined) {
-        const result = await reader.read();
-        if (result.done) {
-          break;
-        }
-        this.pendingReadChunk = result.value;
-        this.pendingReadOffset = 0;
-      }
-
-      const chunk = this.pendingReadChunk;
-      const available = chunk.length - this.pendingReadOffset;
-      const copyLength = Math.min(available, length - bytesRead);
-      buffer.set(
-        chunk.subarray(this.pendingReadOffset, this.pendingReadOffset + copyLength),
-        offset + bytesRead,
-      );
-      bytesRead += copyLength;
-      this.pendingReadOffset += copyLength;
-
-      if (this.pendingReadOffset >= chunk.length) {
-        this.pendingReadChunk = undefined;
-        this.pendingReadOffset = 0;
-      }
+    while (this.pendingReadChunk === undefined) {
+      const result = await reader.read();
+      this.assertOpen();
+      if (result.done) return { bytesRead: 0 };
+      if (result.value.byteLength === 0) continue;
+      this.pendingReadChunk = result.value;
+      this.pendingReadOffset = 0;
     }
 
+    // A short read is valid. Do not consume a second async chunk after already
+    // modifying the destination: a later failure must not lose unreported bytes.
+    const chunk = this.pendingReadChunk;
+    const bytesRead = Math.min(chunk.length - this.pendingReadOffset, length);
+    buffer.set(chunk.subarray(this.pendingReadOffset, this.pendingReadOffset + bytesRead), offset);
+    this.pendingReadOffset += bytesRead;
+    if (this.pendingReadOffset === chunk.length) {
+      this.pendingReadChunk = undefined;
+      this.pendingReadOffset = 0;
+    }
     this.cursor += bytesRead;
     return { bytesRead };
   }
@@ -303,12 +332,18 @@ class StandardFileHandle implements WeshFileHandle {
     position: number,
   }): Promise<WeshIOResult> {
     const file = await this.getFileSnapshot();
+    this.assertOpen();
     if (position >= file.size) {
       return { bytesRead: 0 };
     }
 
-    const end = Math.min(position + length, file.size);
-    const data = new Uint8Array(await file.slice(position, end).arrayBuffer());
+    this.assertOpen();
+    const readLength = Math.min(length, file.size - position, BLOB_VIEW_CHUNK_SIZE);
+    const end = position + readLength;
+    const data = this.blobs === undefined
+      ? new Uint8Array(await file.slice(position, end).arrayBuffer())
+      : await this.blobs.fromNative({ blob: file }).slice({ start: position, end }).bytes({ signal: this.reads.signal });
+    this.assertOpen();
     buffer.set(data, offset);
     return { bytesRead: data.length };
   }
@@ -319,7 +354,10 @@ class StandardFileHandle implements WeshFileHandle {
     length?: number,
     position?: number,
   }): Promise<WeshIOResult> {
-    await this.ready;
+    return this.runOperation({ operation: () => this.readOpen({ buffer, offset, length, position }) });
+  }
+
+  private async readOpen({ buffer, offset, length, position }: { buffer: Uint8Array, offset: number | undefined, length: number | undefined, position: number | undefined }): Promise<WeshIOResult> {
     this.assertOpen();
     switch (this.access) {
     case 'read':
@@ -334,8 +372,14 @@ class StandardFileHandle implements WeshFileHandle {
     }
 
     const bufferOffset = offset ?? 0;
-    const maximumLength = length ?? (buffer.length - bufferOffset);
-    if (maximumLength <= 0) {
+    const requestedLength = length ?? (buffer.length - bufferOffset);
+    if (!Number.isSafeInteger(bufferOffset) || bufferOffset < 0 || bufferOffset > buffer.length
+      || !Number.isSafeInteger(requestedLength) || requestedLength < 0
+      || (position !== undefined && (!Number.isSafeInteger(position) || position < 0))) {
+      throw new RangeError('Invalid native file read range');
+    }
+    const maximumLength = Math.min(requestedLength, buffer.length - bufferOffset, BLOB_VIEW_CHUNK_SIZE);
+    if (maximumLength === 0) {
       return { bytesRead: 0 };
     }
 
@@ -362,27 +406,40 @@ class StandardFileHandle implements WeshFileHandle {
           { at: readPosition },
         ),
       };
-    if (position === undefined) {
-      this.cursor += result.bytesRead;
+    if (!Number.isSafeInteger(result.bytesRead) || result.bytesRead < 0 || result.bytesRead > maximumLength) {
+      throw new Error('Invalid native file read count');
     }
+    if (position === undefined) this.cursor = readPosition + result.bytesRead;
     return result;
   }
 
-  private async writeWithFallback({
-    data,
-    position,
-  }: {
-    data: Uint8Array,
-    position: number,
+  /** Commit a private fallback writer only after its mutation completes. */
+  private async mutateWithFallback({ mutate }: {
+    mutate: ({ writable }: { writable: FileSystemWritableFileStream }) => Promise<void>,
   }): Promise<void> {
     const writable = await this.handle.createWritable({ keepExistingData: true });
+    let committed = false;
     try {
-      await writable.seek(position);
-      await writable.write(data as BufferSource);
-    } finally {
+      this.assertOpen();
+      await mutate({ writable });
+      this.assertOpen();
       await writable.close();
+      committed = true;
+      this.assertOpen();
+    } catch (error) {
+      if (!committed) {
+        try {
+          await writable.abort(error);
+        } catch (abortError) {
+          throw new AggregateError([error, abortError], 'File mutation and abort failed');
+        }
+      }
+      throw error;
+    } finally {
+      // Even a failed commit can change external storage. Never reuse the old
+      // snapshot for a later read after any write attempt.
+      this.fileSnapshot = undefined;
     }
-    this.fileSnapshot = undefined;
   }
 
   async write({ buffer, offset, length: requestedLength, position }: {
@@ -391,7 +448,10 @@ class StandardFileHandle implements WeshFileHandle {
     length?: number,
     position?: number,
   }): Promise<WeshWriteResult> {
-    await this.ready;
+    return this.runOperation({ operation: () => this.writeOpen({ buffer, offset, requestedLength, position }) });
+  }
+
+  private async writeOpen({ buffer, offset, requestedLength, position }: { buffer: Uint8Array, offset: number | undefined, requestedLength: number | undefined, position: number | undefined }): Promise<WeshWriteResult> {
     this.assertOpen();
     switch (this.access) {
     case 'write':
@@ -405,10 +465,19 @@ class StandardFileHandle implements WeshFileHandle {
     }
     }
 
+    if (this.writableFailure !== undefined) throw this.writableFailure.error;
     const bufferOffset = offset ?? 0;
-    const length = requestedLength ?? (buffer.length - bufferOffset);
-    const data = buffer.subarray(bufferOffset, bufferOffset + length);
+    const requested = requestedLength ?? (buffer.length - bufferOffset);
+    if (!Number.isSafeInteger(bufferOffset) || bufferOffset < 0 || bufferOffset > buffer.length
+      || !Number.isSafeInteger(requested) || requested < 0
+      || (position !== undefined && (!Number.isSafeInteger(position) || position < 0))) {
+      throw new RangeError('Invalid native file write range');
+    }
+    const length = Math.min(requested, buffer.length - bufferOffset);
     const writePosition = position ?? this.cursor;
+    if (length > Number.MAX_SAFE_INTEGER - writePosition) throw new RangeError('File write exceeds the safe integer range');
+    if (length === 0) return { bytesWritten: 0 };
+    const data = buffer.subarray(bufferOffset, bufferOffset + length);
 
     const bytesWritten = await (async (): Promise<number> => {
       switch (this.access) {
@@ -417,18 +486,33 @@ class StandardFileHandle implements WeshFileHandle {
         if (writable === undefined) {
           throw new Error('Sequential writer is unavailable');
         }
-        await writable.seek(writePosition);
-        await writable.write(data as BufferSource);
-        return length;
+        try {
+          await writable.seek(writePosition);
+          this.assertOpen();
+          await writable.write(data as BufferSource);
+          this.assertOpen();
+          return length;
+        } catch (error) {
+          // A failed stream cannot safely be committed later by close().
+          this.writableFailure = { error };
+          throw error;
+        }
       }
       case 'read-write': {
         const syncAccessHandle = this.syncAccessHandle;
         if (syncAccessHandle !== undefined) {
           const written = syncAccessHandle.write(data, { at: writePosition });
+          if (!Number.isSafeInteger(written) || written < 0 || written > length) {
+            throw new Error('Invalid native file write count');
+          }
           syncAccessHandle.flush();
           return written;
         }
-        await this.writeWithFallback({ data, position: writePosition });
+        await this.mutateWithFallback({ mutate: async ({ writable }) => {
+          await writable.seek(writePosition);
+          this.assertOpen();
+          await writable.write(data as BufferSource);
+        } });
         return length;
       }
       case 'read':
@@ -453,36 +537,70 @@ class StandardFileHandle implements WeshFileHandle {
       return this.closePromise;
     }
     this.closed = true;
-    this.closePromise = this.closeInitializedResources();
+    this.reads.abort(new DOMException('Native file handle closed', 'AbortError'));
+    // Raw native streams do not know our AbortSignal. Cancel before joining
+    // the queue so a stalled sequential read cannot deadlock close.
+    const cancellation = this.sequentialReader?.cancel(this.reads.signal.reason).catch(() => undefined);
+    this.closePromise = this.closeInitializedResources({ cancellation });
     return this.closePromise;
   }
 
-  private async closeInitializedResources(): Promise<void> {
-    await this.ready;
-
+  private async closeInitializedResources({ cancellation }: { cancellation: Promise<void> | undefined }): Promise<void> {
+    let initializationFailure: { error: unknown } | undefined;
+    try {
+      await this.ready;
+    } catch (error) {
+      initializationFailure = { error };
+    }
+    await this.operationTail;
+    await cancellation;
+    const errors: unknown[] = initializationFailure === undefined ? [] : [initializationFailure.error];
     const reader = this.sequentialReader;
     this.sequentialReader = undefined;
     this.pendingReadChunk = undefined;
+    this.fileSnapshot = undefined;
     if (reader !== undefined) {
-      await reader.cancel();
+      try {
+        await reader.cancel();
+      } catch { /* A reader may already be errored by disposal. */ } finally {
+        reader.releaseLock();
+      }
     }
 
     const writable = this.writable;
     this.writable = undefined;
     if (writable !== undefined) {
-      await writable.close();
+      try {
+        if (this.writableFailure === undefined) await writable.close();
+        else await writable.abort(this.writableFailure.error);
+      } catch (error) {
+        errors.push(error);
+      }
     }
-
+    this.writableFailure = undefined;
     const syncAccessHandle = this.syncAccessHandle;
     this.syncAccessHandle = undefined;
     if (syncAccessHandle !== undefined) {
-      syncAccessHandle.flush();
-      syncAccessHandle.close();
+      try {
+        syncAccessHandle.flush();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        syncAccessHandle.close();
+      } catch (error) {
+        errors.push(error);
+      }
     }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'File handle cleanup failed');
   }
 
   async stat(): Promise<WeshStat> {
-    await this.ready;
+    return this.runOperation({ operation: () => this.statOpen() });
+  }
+
+  private async statOpen(): Promise<WeshStat> {
     this.assertOpen();
     switch (this.access) {
     case 'read':
@@ -494,6 +612,7 @@ class StandardFileHandle implements WeshFileHandle {
         this.logicalSize = syncAccessHandle.getSize();
       } else {
         const file = await this.handle.getFile();
+        this.assertOpen();
         this.logicalSize = file.size;
         this.lastModified = file.lastModified;
       }
@@ -516,7 +635,10 @@ class StandardFileHandle implements WeshFileHandle {
   }
 
   async truncate({ size }: { size: number }): Promise<void> {
-    await this.ready;
+    return this.runOperation({ operation: () => this.truncateOpen({ size }) });
+  }
+
+  private async truncateOpen({ size }: { size: number }): Promise<void> {
     this.assertOpen();
     switch (this.access) {
     case 'read':
@@ -530,13 +652,22 @@ class StandardFileHandle implements WeshFileHandle {
     }
     }
 
+    if (!Number.isSafeInteger(size) || size < 0) throw new RangeError('Invalid native file size');
+    if (this.writableFailure !== undefined) throw this.writableFailure.error;
+
     switch (this.access) {
     case 'write': {
       const writable = this.writable;
       if (writable === undefined) {
         throw new Error('Sequential writer is unavailable');
       }
-      await writable.truncate(size);
+      try {
+        await writable.truncate(size);
+        this.assertOpen();
+      } catch (error) {
+        this.writableFailure = { error };
+        throw error;
+      }
       break;
     }
     case 'read-write': {
@@ -545,13 +676,7 @@ class StandardFileHandle implements WeshFileHandle {
         syncAccessHandle.truncate(size);
         syncAccessHandle.flush();
       } else {
-        const writable = await this.handle.createWritable({ keepExistingData: true });
-        try {
-          await writable.truncate(size);
-        } finally {
-          await writable.close();
-        }
-        this.fileSnapshot = undefined;
+        await this.mutateWithFallback({ mutate: ({ writable }) => writable.truncate(size) });
       }
       break;
     }
@@ -876,7 +1001,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private openFifos: Map<string, FifoRuntimeState> = new Map();
   private readonly entryRefBackends = new WeakMap<WeshEntryRef, WeshEntryRefBackend>();
 
-  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle | undefined }) {
+  private readonly blobs: BlobContext | undefined;
+
+  constructor({ rootHandle, blobs }: {
+    rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle | undefined,
+    blobs?: BlobContext,
+  }) {
+    this.blobs = blobs;
     if (rootHandle !== undefined) {
       const rootReadOnly = rootHandle instanceof ReadonlyDirectoryHandle;
       this.mount({ path: '/', handle: rootHandle as FileSystemDirectoryHandle, readOnly: rootReadOnly });
@@ -1141,6 +1272,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       handle: resolved.handle as FileSystemFileHandle,
       access: flags.access,
       append: flags.append === 'append',
+      blobs: this.blobs,
     });
 
     if (truncate) {
@@ -1252,6 +1384,11 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       switch (resolved.handle.kind) {
       case 'file': {
         const file = await (resolved.handle as FileSystemFileHandle).getFile();
+        // Capture once at the acquisition boundary. A view keeps direct/host
+        // reads safe without reopening a handle or materializing the whole file.
+        if (this.blobs !== undefined) {
+          return { kind: 'blob_view', blob: this.blobs.fromNative({ blob: file }) };
+        }
         if (file instanceof Blob) {
           return {
             kind: 'blob',
@@ -1300,7 +1437,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         finalSymlinkTreatment: 'follow',
         depth: 0,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof WeshRegistryBlobReadError) throw error;
       const normalized = this.normalizePath({ path: path });
       const parts = normalized.split('/');
       const name = parts.pop();
@@ -1344,18 +1482,29 @@ export class WeshVFS implements WeshIVirtualFileSystem {
             }
           })(),
         });
-        switch (mode) {
-        case 'append': {
-          const file = await fileHandle.getFile();
-          await writable.seek(file.size);
-          break;
-        }
-        case 'truncate':
-          break;
-        default: {
-          const _ex: never = mode;
-          throw new Error(`Unhandled writer mode: ${_ex}`);
-        }
+        try {
+          switch (mode) {
+          case 'append': {
+            const file = await fileHandle.getFile();
+            await writable.seek(file.size);
+            break;
+          }
+          case 'truncate':
+            break;
+          default: {
+            const _ex: never = mode;
+            throw new Error(`Unhandled writer mode: ${_ex}`);
+          }
+          }
+        } catch (error) {
+          // The writer has not been handed to its consumer yet. In append mode,
+          // snapshot/seek failure must still abort the already-acquired writer.
+          try {
+            await writable.abort(error);
+          } catch (abortError) {
+            throw new AggregateError([error, abortError], 'File writer preparation and abort failed');
+          }
+          throw error;
         }
 
         return {
@@ -1706,6 +1855,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       handle: resolved.handle as FileSystemFileHandle,
       access: flags.access,
       append: flags.append === 'append',
+      blobs: this.blobs,
     });
     switch (flags.truncate) {
     case 'truncate':
@@ -1846,7 +1996,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
           throw new Error(`Unhandled resolved node: ${_ex}`);
         }
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof WeshRegistryBlobReadError) throw error;
         if (!recursive && i < parts.length - 1) throw new Error(`No such file or directory: ${currentPath}`);
         const parent = await this.resolveExistingDirectory({
           path: currentPath || '/',
@@ -2159,12 +2310,26 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         // @ts-expect-error - move() is relatively new
         await oldFileHandle.move(newParentDir, newName);
       } else {
-        const newFileHandle = await newParentDir.getFileHandle(newName, { create: true });
-        const writable = await newFileHandle.createWritable();
         const file = await oldFileHandle.getFile();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await writable.write(file as any);
-        await writable.close();
+        const newFileHandle = await newParentDir.getFileHandle(newName, { create: true });
+        if (this.blobs !== undefined) {
+          // A native writer can consume Blob bytes internally too. Keep the
+          // rename fallback (including patch backup/commit) on the safe stream.
+          await writeReadableStreamToFileHandle({
+            source: this.blobs.fromNative({ blob: file }).stream(),
+            targetHandle: newFileHandle,
+            signal: undefined,
+          });
+        } else {
+          const writable = await newFileHandle.createWritable();
+          try {
+            await writable.write(file);
+            await writable.close();
+          } catch (error) {
+            await writable.abort(error).catch(() => undefined);
+            throw error;
+          }
+        }
 
         const oldParts = oldNormalized.split('/');
         const oldName = oldParts.pop();
@@ -2255,10 +2420,18 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     relPath: string,
   }): Promise<RegistryEntry | undefined> {
     try {
-      const file = await fileHandle.getFile();
-      const dto = WeshRegistryEntrySchemaDto.parse(JSON.parse(await file.text()));
+      const text = await (async () => {
+        if (this.blobs === undefined) return (await fileHandle.getFile()).text();
+        try {
+          return await this.blobs.fromNative({ blob: await fileHandle.getFile() }).text();
+        } catch (cause) {
+          throw new WeshRegistryBlobReadError({ cause });
+        }
+      })();
+      const dto = WeshRegistryEntrySchemaDto.parse(JSON.parse(text));
       return mapDtoToDomain({ dto });
     } catch (error: unknown) {
+      if (error instanceof WeshRegistryBlobReadError) throw error;
       console.warn(`Failed to parse registry entry ${relPath}:`, error);
       return undefined;
     }
@@ -2291,7 +2464,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     try {
       const fileHandle = await directory.getFileHandle(fileName);
       return await this.parseRegistryEntryFile({ fileHandle, relPath });
-    } catch {
+    } catch (error) {
+      if (error instanceof WeshRegistryBlobReadError) throw error;
       return undefined;
     }
   }
@@ -2413,7 +2587,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         throw new Error(`Unhandled resolved node: ${JSON.stringify(_ex)}`);
       }
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof WeshRegistryBlobReadError) throw error;
       return null;
     }
   }
@@ -2793,7 +2968,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         finalSymlinkTreatment,
         depth: 0,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof WeshRegistryBlobReadError) throw error;
       return undefined;
     }
   }

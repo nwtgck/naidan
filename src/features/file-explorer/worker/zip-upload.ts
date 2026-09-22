@@ -1,12 +1,13 @@
+import type { BlobView } from '@/utils/blob-view';
+import { createBlobViewZipSource } from '@/utils/blob-view-zip-source';
+import type { createNativeFileCopy } from './native-file-writes';
 import {
   StreamingZipReader,
-  createBlobZipSource,
   createWebZipCompressionCodec,
   type ZipArchiveEntry,
 } from '@/utils/zip-stream';
 import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logic/utils';
 import {
-  copyFileSystemFileHandle,
   isFileSystemEntryLookupMiss,
   writeReadableStreamToFileHandle,
 } from '@/utils/file-system-stream';
@@ -28,7 +29,7 @@ export interface ParsedZipUploadEntry {
 }
 
 export interface ParsedZipUpload {
-  readonly blob: Blob,
+  readonly blob: BlobView,
   readonly fileName: string,
   readonly entries: readonly ParsedZipUploadEntry[],
   readonly singleRootDirectoryName: string | undefined,
@@ -142,20 +143,23 @@ function validateInternalPathKinds({
 export async function parseZipUpload({
   blob,
   fileName,
+  signal,
 }: {
-  blob: Blob,
+  blob: BlobView,
   fileName: string,
+  signal: AbortSignal | undefined,
 }): Promise<ParsedZipUpload> {
-  const source = createBlobZipSource({ blob });
-  const reader = new StreamingZipReader({
-    source,
-    compressionCodec: createWebZipCompressionCodec(),
-  });
+  const source = createBlobViewZipSource({ blob, signal });
   const entries: ParsedZipUploadEntry[] = [];
   let totalUncompressedSize = 0;
 
   try {
+    const reader = new StreamingZipReader({
+      source,
+      compressionCodec: createWebZipCompressionCodec(),
+    });
     for await (const archiveEntry of reader.entries()) {
+      signal?.throwIfAborted();
       if (entries.length >= ZIP_UPLOAD_MAX_ENTRY_COUNT) {
         throw new Error('ZIP contains too many entries');
       }
@@ -180,6 +184,7 @@ export async function parseZipUpload({
     await source.close();
   }
 
+  signal?.throwIfAborted();
   validateInternalPathKinds({ entries });
   return {
     blob,
@@ -684,6 +689,7 @@ type JournalEntry =
   | { readonly kind: 'replaced-file', readonly path: string, readonly backupPath: string };
 
 async function copyDirectoryContentsWithJournal({
+  copyFile,
   source,
   target,
   backupRoot,
@@ -691,6 +697,7 @@ async function copyDirectoryContentsWithJournal({
   journal,
   signal,
 }: {
+  copyFile: ReturnType<typeof createNativeFileCopy>,
   source: FileSystemDirectoryHandle,
   target: FileSystemDirectoryHandle,
   backupRoot: FileSystemDirectoryHandle,
@@ -720,6 +727,7 @@ async function copyDirectoryContentsWithJournal({
         journal.push({ kind: 'created-directory', path: childPath });
       }
       await copyDirectoryContentsWithJournal({
+        copyFile,
         source: child as FileSystemDirectoryHandle,
         target: targetChild,
         backupRoot,
@@ -742,7 +750,7 @@ async function copyDirectoryContentsWithJournal({
           relativePath: childPath,
           create: true,
         });
-        await copyFileSystemFileHandle({
+        await copyFile({
           sourceHandle: targetFile,
           targetHandle: backupFile,
           signal,
@@ -759,7 +767,7 @@ async function copyDirectoryContentsWithJournal({
         throw new Error(`Unhandled current file entry kind: ${String(_exhaustiveCheck)}`);
       }
       }
-      await copyFileSystemFileHandle({
+      await copyFile({
         sourceHandle: child as FileSystemFileHandle,
         targetHandle: targetFile,
         signal,
@@ -775,10 +783,12 @@ async function copyDirectoryContentsWithJournal({
 }
 
 async function rollbackJournal({
+  copyFile,
   targetRoot,
   backupRoot,
   journal,
 }: {
+  copyFile: ReturnType<typeof createNativeFileCopy>,
   targetRoot: FileSystemDirectoryHandle,
   backupRoot: FileSystemDirectoryHandle,
   journal: readonly JournalEntry[],
@@ -824,7 +834,7 @@ async function rollbackJournal({
           relativePath: entry.path,
           create: true,
         });
-        await copyFileSystemFileHandle({
+        await copyFile({
           sourceHandle: backup,
           targetHandle: target,
           signal: undefined,
@@ -871,7 +881,16 @@ async function createTemporaryUploadDirectory({
   throw new DOMException('Could not reserve a temporary ZIP upload directory', 'InvalidStateError');
 }
 
+/** Cancellation must not hide a failed rollback or cleanup. */
+export class ZipUploadRecoveryError extends AggregateError {
+  constructor({ errors, temporaryName }: { errors: unknown[], temporaryName: string }) {
+    super(errors, `ZIP upload failed and cleanup or restoration was incomplete (${temporaryName})`);
+    this.name = 'ZipUploadRecoveryError';
+  }
+}
+
 export async function executeParsedZipUpload({
+  copyFile,
   analysis,
   placement,
   targetDirectory,
@@ -879,6 +898,7 @@ export async function executeParsedZipUpload({
   expectedFingerprint,
   signal,
 }: {
+  copyFile: ReturnType<typeof createNativeFileCopy>,
   analysis: ParsedZipUpload,
   placement: FileExplorerZipUploadPlacement,
   targetDirectory: FileSystemDirectoryHandle,
@@ -886,7 +906,9 @@ export async function executeParsedZipUpload({
   expectedFingerprint: string,
   signal: AbortSignal,
 }): Promise<'completed' | 'preview-outdated'> {
+  signal.throwIfAborted();
   const inspection = await inspectZipUploadTarget({ analysis, placement, targetDirectory });
+  signal.throwIfAborted();
   if (
     inspection.blockedPaths.size > 0
     || inspection.fingerprint !== expectedFingerprint
@@ -899,9 +921,10 @@ export async function executeParsedZipUpload({
   const temporaryRoot = temporaryDirectory.handle;
   const journal: JournalEntry[] = [];
   let backupRoot: FileSystemDirectoryHandle | undefined;
-  let source: ReturnType<typeof createBlobZipSource> | undefined;
+  let source: ReturnType<typeof createBlobViewZipSource> | undefined;
 
   try {
+    signal.throwIfAborted();
     const stagedRoot = await temporaryRoot.getDirectoryHandle('staged', { create: true });
     backupRoot = await temporaryRoot.getDirectoryHandle('backup', { create: true });
     switch (placement.kind) {
@@ -912,14 +935,14 @@ export async function executeParsedZipUpload({
         create: true,
       });
       await writeReadableStreamToFileHandle({
-        source: analysis.blob.stream(),
+        source: analysis.blob.stream({ signal }),
         targetHandle: stagedArchive,
         signal,
       });
       break;
     }
     case 'extract': {
-      source = createBlobZipSource({ blob: analysis.blob });
+      source = createBlobViewZipSource({ blob: analysis.blob, signal });
       const reader = new StreamingZipReader({
         source,
         compressionCodec: createWebZipCompressionCodec(),
@@ -969,11 +992,13 @@ export async function executeParsedZipUpload({
     }
     }
 
+    signal.throwIfAborted();
     const commitInspection = await inspectZipUploadTarget({
       analysis,
       placement,
       targetDirectory,
     });
+    signal.throwIfAborted();
     if (
       commitInspection.blockedPaths.size > 0
       || commitInspection.fingerprint !== expectedFingerprint
@@ -983,6 +1008,7 @@ export async function executeParsedZipUpload({
     }
 
     await copyDirectoryContentsWithJournal({
+      copyFile,
       source: stagedRoot,
       target: targetDirectory,
       backupRoot,
@@ -990,6 +1016,8 @@ export async function executeParsedZipUpload({
       journal,
       signal,
     });
+    signal.throwIfAborted();
+    // After this commit point, cancellation cannot promise to restore removed backups.
     await targetDirectory.removeEntry(temporaryName, { recursive: true });
     return 'completed';
   } catch (error) {
@@ -997,6 +1025,7 @@ export async function executeParsedZipUpload({
     if (backupRoot !== undefined) {
       try {
         await rollbackJournal({
+          copyFile,
           targetRoot: targetDirectory,
           backupRoot,
           journal,
@@ -1006,19 +1035,19 @@ export async function executeParsedZipUpload({
       }
     }
     let cleanupError: unknown;
-    try {
-      await targetDirectory.removeEntry(temporaryName, { recursive: true });
-    } catch (caughtCleanupError) {
-      cleanupError = caughtCleanupError;
+    // Do not delete the only remaining backup if restoration itself failed.
+    if (rollbackError === undefined) {
+      try {
+        await targetDirectory.removeEntry(temporaryName, { recursive: true });
+      } catch (caughtCleanupError) {
+        cleanupError = caughtCleanupError;
+      }
     }
     const recoveryErrors = [rollbackError, cleanupError].filter(value => value !== undefined);
     if (recoveryErrors.length > 0) {
-      throw new AggregateError(
-        [error, ...recoveryErrors],
-        'ZIP upload failed and cleanup or restoration was incomplete',
-      );
+      throw new ZipUploadRecoveryError({ errors: [error, ...recoveryErrors], temporaryName });
     }
-    if (error instanceof DOMException && error.name === 'InvalidStateError') {
+    if (!signal.aborted && error instanceof DOMException && error.name === 'InvalidStateError') {
       return 'preview-outdated';
     }
     throw error;

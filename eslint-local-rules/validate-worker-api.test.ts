@@ -70,6 +70,14 @@ function createVueEslint() {
 }
 
 describe('validate-worker-api rule', () => {
+  it('accepts the Blob host contract but rejects local BlobViews and nested host proxies', async () => {
+    const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-blob-view-probe.ts')]);
+    expect(result.messages.map(message => message.message)).toEqual([
+      expect.stringContaining('proxy-must-be-top-level'),
+      expect.stringContaining('function-must-be-proxied'),
+    ]);
+  }, 20_000);
+
   it('allows transferred native readable streams with validated chunk types', async () => {
     const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-stream-probe.ts')]);
     const messages = result.messages.map(message => message.message);

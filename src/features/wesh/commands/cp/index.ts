@@ -479,6 +479,15 @@ export const cpCommandImplementation: WeshCommandImplementation = {
           append: 'preserve',
         },
         mode,
+      }).catch(async (error: unknown) => {
+        // Until the destination opens, the stream-copy helper owns neither
+        // handle. Do not leave the source waiting on a Blob host after failure.
+        try {
+          await source.close();
+        } catch (closeError) {
+          throw new AggregateError([error, closeError], 'Copy destination open and source close failed');
+        }
+        throw error;
       });
       await writeAllStreamToHandle({
         stream: openHandleReadStream({ handle: source }),

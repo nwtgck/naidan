@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createWorkerBlobContext, type WorkerBlobReadHost } from '@/utils/worker-blob-context';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 
 const probeIdSchema = z.uuid();
@@ -7,12 +8,23 @@ function probeName({ probeId }: { probeId: string }): string {
 }
 
 /** Worker endpoint: never accepts an arbitrary model path or reads model data. */
-export async function verifyStorage({ probeId }: { probeId: string }): Promise<boolean> {
-  const name = probeName({ probeId });
-  const root = await navigator.storage.getDirectory();
-  const handle = await root.getFileHandle(name);
-  const file = await handle.getFile();
-  return file.size === probeId.length && await file.text() === probeId;
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink reverse proxies must be independent top-level arguments.
+export async function verifyStorage({ probeId }: { probeId: string }, blobReadHost?: WorkerBlobReadHost): Promise<boolean> {
+  // Only this startup RPC owns the reader. Resident model operations do not
+  // borrow its context, and every exit releases its reverse proxy.
+  const blobs = createWorkerBlobContext({ host: blobReadHost });
+  try {
+    const name = probeName({ probeId });
+    const root = await navigator.storage.getDirectory();
+    const handle = await root.getFileHandle(name);
+    const file = await handle.getFile();
+    // Resolve the nonce in this Worker's OPFS before delegating byte reads. Asking
+    // the host to open the path would test the host against itself, not storage sharing.
+    if (file.size !== probeId.length) return false;
+    return await blobs.fromNative({ blob: file }).text() === probeId;
+  } finally {
+    blobs.dispose();
+  }
 }
 
 /** A Blob Worker's file:// storage key must actually agree with the window's.

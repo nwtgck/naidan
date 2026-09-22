@@ -1,3 +1,4 @@
+import type { BlobImageDecoder } from '@/utils/blob-image';
 import { logOperation, logFailure, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { decodeImage } from '@/features/llama-cpp-browser/runtime/image-input';
@@ -16,9 +17,11 @@ export function splitImagePrompt({ prompt, images }: { prompt: string, images: {
   return parts;
 }
 /** Native mtmd owns image preprocessing, embedding and model-specific positions. */
-export async function prepareMultimodal({ core, projector, prompt, images }: {
+export async function prepareMultimodal({ core, projector, prompt, images, decoder, signal }: {
   core: Core, projector: bigint, prompt: string, images: { marker: string, blob: Blob }[],
+  decoder?: BlobImageDecoder, signal?: AbortSignal,
 }): Promise<{ positions: number, tokenCount: number, textTokens: number[], evaluate: ({ context, capacity }: { context: bigint, capacity: number }) => Promise<number>, dispose: () => Promise<void> }> {
+  signal?.throwIfAborted();
   if (projector === 0n) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
   let stage: DiagnosticStage = 'image-decode';
   const allocations: bigint[] = []; const bitmaps: bigint[] = []; let chunks = 0n;
@@ -36,6 +39,7 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
   try {
     const parts: bigint[] = [];
     for (const part of splitImagePrompt({ prompt, images })) {
+      signal?.throwIfAborted();
       const input = record({ name: 'mtmd_input_part' }); parts.push(input);
       switch (part.type) {
       case 'text': {
@@ -45,7 +49,8 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
       }
       case 'image': {
         await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-decode', imageCount: images.length, imageIndex: bitmaps.length } });
-        const { width, height, rgb } = await decodeImage({ blob: part.blob });
+        const { width, height, rgb } = await decodeImage({ blob: part.blob, decoder, signal });
+        signal?.throwIfAborted();
         const data = core.alloc({ bytes: rgb.byteLength }); core.bytes({ pointer: data, length: rgb.byteLength }).set(rgb);
         let bitmap: bigint;
         try {
@@ -54,12 +59,16 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
           core.free({ pointer: data });
         }
         if (bitmap === 0n) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-        await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-decode', imageCount: images.length, imageIndex: bitmaps.length, imageWidth: width, imageHeight: height } });
-        bitmaps.push(bitmap); core.setField({ name: 'mtmd_input_part', pointer: input, field: 'bitmap', value: bitmap }); break;
+        bitmaps.push(bitmap);
+        signal?.throwIfAborted();
+        await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-decode', imageCount: images.length, imageIndex: bitmaps.length - 1, imageWidth: width, imageHeight: height } });
+        signal?.throwIfAborted();
+        core.setField({ name: 'mtmd_input_part', pointer: input, field: 'bitmap', value: bitmap }); break;
       }
       default: { const exhaustive: never = part; throw new Error(`Unknown part: ${exhaustive}`); }
       }
     }
+    signal?.throwIfAborted();
     const pointers = allocate({ bytes: parts.length * core.pointerBytes });
     const bytes = core.bytes({ pointer: pointers, length: parts.length * core.pointerBytes });
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -68,9 +77,12 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
     });
     stage = 'image-tokenize';
     await logOperation({ diagnostic: { event: 'operation-start', stage, imageCount: images.length } });
+    signal?.throwIfAborted();
     chunks = await core.api.mtmd_input_chunks_init();
     if (chunks === 0n) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+    signal?.throwIfAborted();
     const statusCode = await core.api.mtmd_tokenize_from_parts(projector, chunks, pointers, BigInt(parts.length), 1);
+    signal?.throwIfAborted();
     if (statusCode !== 0) {
       await logOperation({ diagnostic: { event: 'operation-complete', stage, imageCount: images.length, statusCode } });
       throw new LlamaCppBrowserError({ code: 'unsupported-input' });
@@ -94,12 +106,16 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
     }
     if (!Number.isSafeInteger(positions) || positions < 1) throw new LlamaCppBrowserError({ code: 'runtime-error' });
     await logOperation({ diagnostic: { event: 'operation-complete', stage, imageCount: images.length, chunkCount: Number(count), positions, tokens: tokenCount, statusCode } });
+    signal?.throwIfAborted();
     return { positions, tokenCount, textTokens, dispose, async evaluate({ context, capacity }) {
+      signal?.throwIfAborted();
       const nextPosition = core.alloc({ bytes: 4 });
       try {
         core.bytes({ pointer: nextPosition, length: 4 }).fill(0);
         await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', imageCount: images.length, chunkCount: Number(count), positions, tokens: tokenCount } });
+        signal?.throwIfAborted();
         const status = await core.api.mtmd_helper_eval_chunks(projector, context, chunks, 0, 0, 128, 1, nextPosition);
+        signal?.throwIfAborted();
         if (status !== 0) {
           await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-evaluate', statusCode: status } });
           throw new LlamaCppBrowserError({ code: 'runtime-error' });

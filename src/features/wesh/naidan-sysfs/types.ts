@@ -1,3 +1,4 @@
+import type { BlobContext } from '@/utils/blob-view';
 import type { Chat, ChatContent, ChatGroup, ChatMeta, ChatSummary, Hierarchy, SidebarItem } from '@/01-models/types';
 import type { BinaryObjectId, ChatGroupId, ChatId } from '@/01-models/ids';
 import type {
@@ -73,6 +74,7 @@ export interface NaidanSysfsRemoteReader {
 }
 
 export interface NaidanSysfsContext {
+  blobs: BlobContext,
   reader: NaidanSysfsStorageReader,
   visibility: NaidanSysfsVisibility,
   binaryObjectAccess: NaidanSysfsBinaryObjectAccess,

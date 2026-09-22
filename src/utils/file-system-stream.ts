@@ -18,25 +18,36 @@ export async function writeReadableStreamToFileHandle({
   targetHandle: FileSystemFileHandle,
   signal: AbortSignal | undefined,
 }): Promise<void> {
-  signal?.throwIfAborted();
   const reader = source.getReader();
   let writable: FileSystemWritableFileStream | undefined;
   let sourceCompleted = false;
+  const cancelSource = () => {
+    // End a blocked consumer wait, not the shared BlobContext or the browser's
+    // physical read. In particular, cancelled EOF must never commit the target.
+    void reader.cancel(signal?.reason).catch(() => undefined);
+  };
+  signal?.addEventListener('abort', cancelSource, { once: true });
 
   try {
+    signal?.throwIfAborted();
     writable = await (targetHandle as unknown as {
       createWritable: () => Promise<FileSystemWritableFileStream>,
     }).createWritable();
     while (true) {
       signal?.throwIfAborted();
       const result = await reader.read();
+      signal?.throwIfAborted();
       if (result.done) {
         sourceCompleted = true;
         break;
       }
       await writable.write(Uint8Array.from(result.value).buffer);
     }
+    signal?.throwIfAborted();
     await writable.close();
+    // A close already started cannot be undone, but a cancelled move must not
+    // go on to delete its source after that late close completes.
+    signal?.throwIfAborted();
   } catch (error) {
     try {
       await reader.cancel(error);
@@ -52,6 +63,7 @@ export async function writeReadableStreamToFileHandle({
     }
     throw error;
   } finally {
+    signal?.removeEventListener('abort', cancelSource);
     if (!sourceCompleted) {
       try {
         await reader.cancel();

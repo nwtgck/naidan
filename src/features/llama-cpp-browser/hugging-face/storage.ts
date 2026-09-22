@@ -1,3 +1,4 @@
+import type { BlobContext } from '@/utils/blob-view';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from './presentation';
 import { modelGroups, variantLabel, isProjector } from './model-variants';
@@ -20,10 +21,37 @@ export async function selectedFile({ folder, path, create }: { folder: FileSyste
   for (const part of parts) folder = await folder.getDirectoryHandle(part, { create });
   return folder.getFileHandle(name, { create });
 }
-export async function readJournal({ folder }: { folder: FileSystemDirectoryHandle }): Promise<DownloadJournal> {
-  const file = await (await folder.getFileHandle(pendingName)).getFile();
-  if (file.size > 4 * 1024 * 1024) throw new Error('Download journal exceeds the size limit');
-  return journalSchema.parse(JSON.parse(await file.text()));
+/** Missing journal handles are normal; unreadable existing journals are not. */
+export class DownloadJournalReadError extends Error {
+  constructor({ cause }: { cause: unknown }) {
+    super('Unable to read the existing download journal', { cause });
+    this.name = 'DownloadJournalReadError';
+  }
+}
+export async function readJournal({ folder, blobs, signal }: {
+  folder: FileSystemDirectoryHandle,
+  blobs?: BlobContext,
+  signal?: AbortSignal,
+}): Promise<DownloadJournal> {
+  signal?.throwIfAborted();
+  // Keep lookup outside the byte-read catch. Only a missing handle means there
+  // was no journal; a later getFile/read failure must never start a new download.
+  const handle = await folder.getFileHandle(pendingName);
+  signal?.throwIfAborted();
+  let file: File;
+  let text: string;
+  try {
+    file = await handle.getFile();
+    signal?.throwIfAborted();
+    if (file.size > 4 * 1024 * 1024) throw new Error('Download journal exceeds the size limit');
+    text = blobs === undefined ? await file.text() : await blobs.fromNative({ blob: file }).text({ signal });
+    signal?.throwIfAborted();
+  } catch (cause) {
+    signal?.throwIfAborted();
+    if (blobs !== undefined) throw new DownloadJournalReadError({ cause });
+    throw cause;
+  }
+  return journalSchema.parse(JSON.parse(text));
 }
 export async function writeJournal({ folder, journal }: { folder: FileSystemDirectoryHandle, journal: DownloadJournal }): Promise<void> {
   const writer = await (await folder.getFileHandle(pendingName, { create: true })).createWritable();
@@ -57,27 +85,29 @@ export async function visitRepositories({ visit }: { visit: ({ repository, folde
     }
   }
 }
-async function repositoryFiles({ repository }: { repository: string }): Promise<ModelDirectory['files']> {
+async function repositoryFiles({ repository, blobs, signal }: { repository: string, blobs?: BlobContext, signal?: AbortSignal }): Promise<ModelDirectory['files']> {
+  signal?.throwIfAborted();
   const folder = await repositoryFolder({ repository, create: false });
   let pending: DownloadJournal | undefined;
   try {
-    pending = await readJournal({ folder });
+    pending = await readJournal({ folder, blobs, signal });
   } catch (error) {
     if (!isMissing({ error })) throw error;
   }
   const hidden = new Set(pending?.selection.files.filter((_file, index) => !pending?.reused?.[index]).map(file => file.path));
-  return (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path));
+  return (await readModelFiles({ folder, prefix: '', blobs, signal })).filter(file => !hidden.has(file.path));
 }
-export async function repositoryDirectories({ repository }: { repository: string }): Promise<ModelDirectory[]> {
-  return describeRepositoryDirectories({ repository, actual: await repositoryFiles({ repository }) });
+export async function repositoryDirectories({ repository, blobs, signal }: { repository: string, blobs?: BlobContext, signal?: AbortSignal }): Promise<ModelDirectory[]> {
+  return describeRepositoryDirectories({ repository, actual: await repositoryFiles({ repository, blobs, signal }), blobs, signal });
 }
-async function describeRepositoryDirectories({ repository, actual }: { repository: string, actual: ModelDirectory['files'] }): Promise<ModelDirectory[]> {
+async function describeRepositoryDirectories({ repository, actual, blobs, signal }: { repository: string, actual: ModelDirectory['files'], blobs?: BlobContext, signal?: AbortSignal }): Promise<ModelDirectory[]> {
+  signal?.throwIfAborted();
   const { models, projectors } = modelGroups({ files: actual }); const result: ModelDirectory[] = [];
   for (const group of models) {
     const files = [...group, ...rankedProjectors({ files: projectors }).slice(0, 1)];
     try {
       const resolved = resolveModelFiles({ files });
-      if (!await allValid({ files })) continue;
+      if (!await allValid({ files, blobs, signal })) continue;
       const id = `${modelName({ repository })}:${encodeURIComponent(resolved.modelPath)}`;
       const split = /-\d{5}-of-(\d{5})\.gguf$/i.exec(resolved.modelPath);
       const label = variantLabel({ repository, path: resolved.modelPath });
@@ -85,15 +115,16 @@ async function describeRepositoryDirectories({ repository, actual }: { repositor
       const name = `${modelName({ repository })}:${label}${split ? ` (split-${split[1]})` : ''}`;
       result.push({ id, name, files, ...resolved });
     } catch (error) {
+      signal?.throwIfAborted();
       if (!(error instanceof LlamaCppBrowserError)) throw error;
     }
   }
   return result;
 }
-export async function installedSelection({ selection }: { selection: DownloadSelection }): Promise<LocalModel | undefined> {
+export async function installedSelection({ selection, blobs, signal }: { selection: DownloadSelection, blobs?: BlobContext, signal?: AbortSignal }): Promise<LocalModel | undefined> {
   let actual: ModelDirectory['files'];
   try {
-    actual = await repositoryFiles({ repository: selection.repository });
+    actual = await repositoryFiles({ repository: selection.repository, blobs, signal });
   } catch (error) {
     if (isMissing({ error })) return undefined; throw error;
   }
@@ -104,13 +135,13 @@ export async function installedSelection({ selection }: { selection: DownloadSel
     selectedFiles.push(found);
   }
   // Availability uses local metadata and small headers, not a remote revision or checksum guarantee.
-  if (!await allValid({ files: selectedFiles })) return undefined;
+  if (!await allValid({ files: selectedFiles, blobs, signal })) return undefined;
   const requested = resolveModelFiles({ files: selection.files });
-  const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual })).find(model => model.modelPath === requested.modelPath);
+  const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual, blobs, signal })).find(model => model.modelPath === requested.modelPath);
   return directory ? describeDirectory({ directory }) : undefined;
 }
-async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {
-  for (const entry of files) if (!await validGguf({ file: entry.file })) return false;
+async function allValid({ files, blobs, signal }: { files: ModelDirectory['files'], blobs?: BlobContext, signal?: AbortSignal }): Promise<boolean> {
+  for (const entry of files) if (!await validGguf({ file: entry.file, blobs, signal })) return false;
   return true;
 }
 export function parseModelReference({ name }: { name: string }): { repository: string, variant: string | undefined } {
@@ -118,26 +149,30 @@ export function parseModelReference({ name }: { name: string }): { repository: s
   const value = name.slice('hf.co/'.length); const colon = value.indexOf(':');
   return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
 }
-export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
-  const { repository, variant } = parseModelReference({ name }); const models = await repositoryDirectories({ repository });
+export async function resolveRepositoryModel({ name, blobs, signal }: { name: string, blobs?: BlobContext, signal?: AbortSignal }): Promise<ModelDirectory> {
+  const { repository, variant } = parseModelReference({ name }); const models = await repositoryDirectories({ repository, blobs, signal });
   const matching = variant === undefined ? models : models.filter(model => model.id === name || model.name === name);
   if (matching.length !== 1) throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
   return matching[0]!;
 }
-export async function listHuggingFaceModels(): Promise<LocalModel[]> {
+export async function listHuggingFaceModels({ blobs, signal }: { blobs?: BlobContext, signal?: AbortSignal } = {}): Promise<LocalModel[]> {
+  signal?.throwIfAborted();
   const result: LocalModel[] = [];
   await visitRepositories({ visit: async ({ repository }) => {
-    result.push(...(await repositoryDirectories({ repository })).map(directory => describeDirectory({ directory })));
+    result.push(...(await repositoryDirectories({ repository, blobs, signal })).map(directory => describeDirectory({ directory })));
   } });
+  signal?.throwIfAborted();
   return result;
 }
-export async function listPendingDownloads(): Promise<DownloadJournal[]> {
+export async function listPendingDownloads({ blobs, signal }: { blobs?: BlobContext, signal?: AbortSignal } = {}): Promise<DownloadJournal[]> {
+  signal?.throwIfAborted();
   const result: DownloadJournal[] = [];
   await visitRepositories({ visit: async ({ repository, folder }) => {
-    const journal = await readJournal({ folder });
+    const journal = await readJournal({ folder, blobs, signal });
     if (journal.selection.repository !== repository) throw new Error('Download journal repository mismatch');
     result.push(journal);
   } });
+  signal?.throwIfAborted();
   return result;
 }
 export async function withRepositoryLock<T>({ repository, operation }: { repository: string, operation: () => Promise<T> }): Promise<T> {

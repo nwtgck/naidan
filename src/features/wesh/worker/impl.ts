@@ -1,6 +1,7 @@
+import { createWorkerBlobContext } from '@/utils/worker-blob-context';
 import { z } from 'zod';
 import type { WorkerServerApi } from '@/utils/worker-transport';
-import { workerTransfer } from '@/utils/worker-transport';
+import { releaseWorkerProxyArgument, workerTransfer } from '@/utils/worker-transport';
 import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
 
 import { Wesh } from '@/features/wesh';
@@ -160,82 +161,124 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
   let wesh: Wesh | undefined;
   let nextExecutionId = 1;
   let activeExecutionCount = 0;
+  let initializing: object | undefined;
+  let disposed = false;
+  let releaseResources: (() => void) | undefined;
   const executions = new Map<string, {
     completion: Promise<WeshWorkerExecutionSummary>,
   }>();
 
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-    async init(requestOrOptions, naidanSysfsRemoteReader) {
-      const normalizedRequest = (() => {
-        if (
-          typeof requestOrOptions === 'object'
+    async init(requestOrOptions, naidanSysfsRemoteReader, blobReadHost) {
+      const blobs = createWorkerBlobContext({ host: blobReadHost });
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        try {
+          blobs.dispose();
+        } finally {
+          if (naidanSysfsRemoteReader !== undefined) releaseWorkerProxyArgument({ value: naidanSysfsRemoteReader });
+        }
+      };
+      const attempt = {};
+      const assertCurrentAttempt = () => {
+        if (disposed || released || initializing !== attempt) throw new DOMException('Wesh initialization disposed', 'AbortError');
+      };
+      try {
+        if (disposed || initializing !== undefined || activeExecutionCount !== 0) {
+          throw new Error('Wesh worker cannot initialize while busy or disposed');
+        }
+        initializing = attempt;
+        wesh = undefined;
+        releaseResources?.();
+        releaseResources = release;
+        const normalizedRequest = (() => {
+          if (
+            typeof requestOrOptions === 'object'
           && requestOrOptions !== null
           && 'request' in requestOrOptions
-        ) {
-          return requestOrOptions.request;
-        }
-        return requestOrOptions;
-      })();
-      const validated = weshWorkerInitRequestSchema.parse(normalizedRequest);
-      const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
-      const rootHandle = validated.rootHandle === 'readonly'
-        ? new ReadonlyDirectoryHandle()
-        : await directoryHandleResolver.resolve({ reference: validated.rootHandle });
+          ) {
+            return requestOrOptions.request;
+          }
+          return requestOrOptions;
+        })();
+        const validated = weshWorkerInitRequestSchema.parse(normalizedRequest);
+        const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
+        const rootHandle = validated.rootHandle === 'readonly'
+          ? new ReadonlyDirectoryHandle()
+          : await directoryHandleResolver.resolve({ reference: validated.rootHandle });
 
-      wesh = new Wesh({
-        rootHandle,
-        user: validated.user,
-        initialEnv: validated.initialEnv,
-        initialCwd: validated.initialCwd,
-      });
+        assertCurrentAttempt();
+        const shell = new Wesh({
+          rootHandle,
+          blobs,
+          user: validated.user,
+          initialEnv: validated.initialEnv,
+          initialCwd: validated.initialCwd,
+        });
 
-      for (const mount of validated.mounts) {
-        switch (mount.type) {
-        case 'directory':
-          await wesh.vfs.mount({
-            path: mount.path,
-            handle: await directoryHandleResolver.resolve({ reference: mount.handle }),
-            readOnly: mount.readOnly,
-          });
-          break;
-        case 'naidan_sysfs': {
-          const reader = await (() => {
-            switch (mount.storageType) {
-            case 'opfs':
-              return createOpfsNaidanSysfsStorageReader();
-            case 'local':
-            case 'memory':
-              if (naidanSysfsRemoteReader === undefined) {
-                throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`);
+        for (const mount of validated.mounts) {
+          assertCurrentAttempt();
+          switch (mount.type) {
+          case 'directory':
+            await shell.vfs.mount({
+              path: mount.path,
+              handle: await directoryHandleResolver.resolve({ reference: mount.handle }),
+              readOnly: mount.readOnly,
+            });
+            break;
+          case 'naidan_sysfs': {
+            const reader = await (() => {
+              switch (mount.storageType) {
+              case 'opfs':
+                return createOpfsNaidanSysfsStorageReader({ blobs });
+              case 'local':
+              case 'memory':
+                if (naidanSysfsRemoteReader === undefined) {
+                  throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`);
+                }
+                return createRemoteNaidanSysfsStorageReader({
+                  remoteReader: naidanSysfsRemoteReader,
+                });
+              default: {
+                const _ex: never = mount.storageType;
+                throw new Error(`Unsupported naidan sysfs storage type: ${String(_ex)}`);
               }
-              return createRemoteNaidanSysfsStorageReader({
-                remoteReader: naidanSysfsRemoteReader,
-              });
-            default: {
-              const _ex: never = mount.storageType;
-              throw new Error(`Unsupported naidan sysfs storage type: ${String(_ex)}`);
-            }
-            }
-          })();
-          wesh.vfs.mountVirtual({
-            path: mount.path,
-            readOnly: mount.readOnly,
-            provider: new NaidanSysfsProvider({
-              reader,
-              visibility: mount.visibility,
-              binaryObjectAccess: mount.binaryObjectAccess,
-              currentChatId: mount.currentChatId,
-              currentChatGroupId: mount.currentChatGroupId,
-            }),
-          });
-          break;
+              }
+            })();
+            assertCurrentAttempt();
+            shell.vfs.mountVirtual({
+              path: mount.path,
+              readOnly: mount.readOnly,
+              provider: new NaidanSysfsProvider({
+                reader,
+                blobs,
+                visibility: mount.visibility,
+                binaryObjectAccess: mount.binaryObjectAccess,
+                currentChatId: mount.currentChatId,
+                currentChatGroupId: mount.currentChatGroupId,
+              }),
+            });
+            break;
+          }
+          default: {
+            const _ex: never = mount;
+            throw new Error(`Unhandled Wesh worker mount type: ${String(_ex)}`);
+          }
+          }
         }
-        default: {
-          const _ex: never = mount;
-          throw new Error(`Unhandled Wesh worker mount type: ${String(_ex)}`);
-        }
-        }
+        // Do not publish a half-mounted shell or resurrect an attempt disposed
+        // while a handle / OPFS initialization was awaiting its result.
+        assertCurrentAttempt();
+        wesh = shell;
+      } catch (error) {
+        release();
+        if (releaseResources === release) releaseResources = undefined;
+        throw error;
+      } finally {
+        if (initializing === attempt) initializing = undefined;
       }
     },
 
@@ -245,6 +288,7 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
         throw new Error('Wesh worker is not initialized');
       }
 
+      const shell = wesh;
       const validated = weshWorkerExecuteRequestSchema.parse(request);
       const executionId = `wesh-exec-${nextExecutionId}`;
       nextExecutionId += 1;
@@ -264,7 +308,8 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
       const completion = (async () => {
         try {
           await emit({ event: { type: 'started' } });
-          const result = await wesh.execute({
+          if (disposed || wesh !== shell) throw new DOMException('Wesh execution disposed', 'AbortError');
+          const result = await shell.execute({
             source: createTextShellSource({ text: validated.script }),
             stdin,
             stdout: stdoutCapture.handle,
@@ -322,9 +367,13 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
             stderrCapture.handle.close(),
             stdin.close(),
           ]);
+          if (onEvent !== undefined) releaseWorkerProxyArgument({ value: onEvent });
         }
       })();
 
+      // The client may release an execution or terminate the runtime without
+      // awaiting this promise. Observe rejection without changing awaitExecution.
+      void completion.catch(() => undefined);
       executions.set(executionId, { completion });
       return weshWorkerStartExecutionResponseSchema.parse({ executionId });
     },
@@ -409,7 +458,18 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
     },
 
     async dispose() {
+      if (disposed) return;
+      disposed = true;
+      const shell = wesh;
       wesh = undefined;
+      // Termination remains the client's responsibility. Stop byte waits now;
+      // do not keep the host alive waiting for arbitrary shell code to finish.
+      try {
+        releaseResources?.();
+      } finally {
+        releaseResources = undefined;
+        if (shell !== undefined) void shell.signalForegroundProcessGroup({ signal: 2 }).catch(() => undefined);
+      }
     },
   };
 }

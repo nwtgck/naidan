@@ -1,3 +1,4 @@
+import { createBlobURLScope, type BlobObjectURL } from '@/utils/blob-view';
 import { ref } from 'vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
 import { acquireSharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
@@ -28,11 +29,12 @@ export function useFileExplorerPreview({
   let latestHighlightRequestId = 0;
   let highlightWorkerClientLeasePromise: Promise<SharedHighlightWorkerClientLease> | undefined;
   let disposed = false;
+  const previewURLs = createBlobURLScope();
+  let activeObjectURL: BlobObjectURL | undefined;
 
   function revokeObjectUrl(): void {
-    if (previewState.value.objectUrl) {
-      URL.revokeObjectURL(previewState.value.objectUrl);
-    }
+    activeObjectURL?.revoke();
+    activeObjectURL = undefined;
   }
 
   async function getHighlightWorkerClientLease(): Promise<SharedHighlightWorkerClientLease | undefined> {
@@ -162,9 +164,10 @@ export function useFileExplorerPreview({
           };
           return;
         }
+        activeObjectURL = previewURLs.createObjectURL({ blob: response.blob });
         previewState.value = {
           ...previewState.value,
-          objectUrl: URL.createObjectURL(response.blob),
+          objectUrl: activeObjectURL.url,
           loadingState: 'loaded',
           oversized: false,
         };
@@ -306,6 +309,7 @@ export function useFileExplorerPreview({
       latestPreviewRequestId += 1;
       latestHighlightRequestId += 1;
       revokeObjectUrl();
+      previewURLs.dispose();
 
       const leasePromise = highlightWorkerClientLeasePromise;
       highlightWorkerClientLeasePromise = undefined;

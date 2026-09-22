@@ -1,3 +1,5 @@
+import { createWorkerBlobReadHost } from '@/utils/worker-blob-context';
+import { workerProxy } from '@/utils/worker-transport';
 import { verifySharedStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/llama-cpp-browser';
 import { createStandaloneWorkerSession, disposeStandaloneWorkerSession, STANDALONE_WORKER_CLEANUP_TIMEOUT_MS } from '@/features/file-protocol-standalone/worker/standalone-worker-session';
@@ -48,7 +50,22 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     }
     client = ready;
     ready.subscribeDisposed({ listener: dispose });
-    await verifySharedStorage({ verify: ({ probeId }) => session.remote.verifyStorage({ probeId }), signal: lifetime.signal });
+    const probeLifetime = new AbortController();
+    const stopProbe = () => probeLifetime.abort(lifetime.signal.reason);
+    lifetime.signal.addEventListener('abort', stopProbe, { once: true });
+    try {
+      if (lifetime.signal.aborted) stopProbe();
+      const host = createWorkerBlobReadHost({ signal: probeLifetime.signal });
+      await verifySharedStorage({
+        verify: ({ probeId }) => session.remote.verifyStorage({ probeId }, workerProxy({ value: host })),
+        signal: lifetime.signal,
+      });
+    } finally {
+      lifetime.signal.removeEventListener('abort', stopProbe);
+      // Even a successful probe must not leave a host reader available to late
+      // calls. Model operations do not borrow this short-lived probe context.
+      probeLifetime.abort(new DOMException('Storage probe finished', 'AbortError'));
+    }
     return ready;
   };
   const getClient = async ({ signal }: { signal: AbortSignal | undefined }): Promise<LlamaCppWorkerClient> => {

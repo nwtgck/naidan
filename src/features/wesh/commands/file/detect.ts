@@ -442,6 +442,8 @@ async function readFileSample({
   if (context.files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await context.files.tryReadBlobEfficiently({ path });
     switch (blobResult.kind) {
+    case 'blob_view':
+      return blobResult.blob.slice({ start: 0, end: sampleLength }).bytes();
     case 'blob':
       return new Uint8Array(
         await blobResult.blob.slice(0, sampleLength).arrayBuffer(),

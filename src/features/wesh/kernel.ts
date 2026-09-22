@@ -91,13 +91,14 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
   }): Promise<void> {
     let offset = 0;
     while (offset < chunk.bytes.byteLength) {
-      const result = await this.write({
-        buffer: chunk.bytes,
-        offset,
-        length: chunk.bytes.byteLength - offset,
-      });
-      if (result.bytesWritten === 0) {
-        return;
+      const length = chunk.bytes.byteLength - offset;
+      const result = await this.write({ buffer: chunk.bytes, offset, length });
+      // A kernel-handled SIGPIPE/close can deliberately return zero after closing
+      // this descriptor. An open descriptor, however, must not acknowledge a
+      // whole owned chunk after an invalid/zero-progress borrowed write.
+      if (result.bytesWritten === 0 && this.closed) return;
+      if (!Number.isSafeInteger(result.bytesWritten) || result.bytesWritten <= 0 || result.bytesWritten > length) {
+        throw new Error('File handle did not make valid write progress');
       }
       offset += result.bytesWritten;
     }

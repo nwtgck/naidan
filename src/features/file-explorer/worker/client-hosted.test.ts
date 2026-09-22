@@ -344,4 +344,32 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     await client.dispose();
     expect(createdWorkers.at(-1)?.terminated).toBe(true);
   });
+  it('shares concurrent disposal and keeps the Worker alive until late handle acquisition is cleaned up', async () => {
+    const { createFileExplorerWorkerClient } = await import('./client-hosted');
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const source = await root.getFileHandle('input', { create: true });
+    const snapshot = await source.getFile();
+    const target = await root.getDirectoryHandle('target', { create: true });
+    const acquisition = Promise.withResolvers<typeof snapshot>();
+    const read = vi.spyOn(source, 'getFile').mockReturnValue(acquisition.promise);
+    const client = await createFileExplorerWorkerClient({ root: {
+      kind: 'native-directory', rootName: 'Files', handle: root, readOnly: false,
+    } });
+    const copying = client.copyEntries({ sourcePaths: ['/input'], targetDirectoryPath: '/target' });
+    const rejected = expect(copying).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    const terminate = vi.spyOn(createdWorkers[0]!, 'terminate');
+    const first = client.dispose();
+    const second = client.dispose();
+    expect(first).toBe(second);
+    await Promise.resolve();
+    expect(terminate).not.toHaveBeenCalled();
+    acquisition.resolve(snapshot);
+    await first;
+    await rejected;
+    await client.dispose();
+    expect(terminate).toHaveBeenCalledOnce();
+    await expect(target.getFileHandle('input')).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+
 });

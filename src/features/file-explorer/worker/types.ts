@@ -1,3 +1,4 @@
+import type { WorkerBlobReadHost } from '@/utils/worker-blob-context';
 import { z } from 'zod';
 
 import type { WorkerCapability, WorkerProxy } from '@/utils/worker-transport';
@@ -378,6 +379,7 @@ export interface IFileExplorerWorker {
       'file-system-handle-clone'
     >,
     naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
+    blobReadHost?: WorkerProxy<WorkerBlobReadHost>,
   ): Promise<FileExplorerPrepareSessionResponse>,
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,

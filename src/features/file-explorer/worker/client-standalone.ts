@@ -1,3 +1,4 @@
+import { createWorkerBlobReadHost } from '@/utils/worker-blob-context';
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { workerCapability, workerProxy } from '@/utils/worker-transport';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/file-explorer';
@@ -65,6 +66,8 @@ export async function createFileExplorerWorkerClient({
   }) => {
     const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
     const { remote } = session;
+    const blobReadHostLifetime = new AbortController();
+    const blobReadHost = createWorkerBlobReadHost({ signal: blobReadHostLifetime.signal });
     try {
       const prepareResponse = await remote.prepareSession(
         workerCapability({
@@ -74,13 +77,16 @@ export async function createFileExplorerWorkerClient({
         naidanSysfsRemoteReader
           ? workerProxy({ value: naidanSysfsRemoteReader })
           : undefined,
+        workerProxy({ value: blobReadHost }),
       );
       return {
         session,
         remote,
         sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
+        blobReadHostLifetime,
       };
     } catch (error) {
+      blobReadHostLifetime.abort(error);
       await disposeStandaloneWorkerSession({
         session,
         beforeRelease: undefined,
@@ -98,7 +104,7 @@ export async function createFileExplorerWorkerClient({
       }),
     })
     : await createRuntime({ requestRoot: root });
-  const { session, remote, sessionId } = runtime;
+  const { session, remote, sessionId, blobReadHostLifetime } = runtime;
 
   return {
     async readDirectory({ path }) {
@@ -186,11 +192,15 @@ export async function createFileExplorerWorkerClient({
       await remote.uploadFiles({ request: { sessionId, targetDirectoryPath, files } });
     },
     async dispose() {
-      await disposeStandaloneWorkerSession({
-        session,
-        beforeRelease: () => remote.disposeSession({ request: { sessionId } }),
-        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-      });
+      try {
+        await disposeStandaloneWorkerSession({
+          session,
+          beforeRelease: () => remote.disposeSession({ request: { sessionId } }),
+          cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+        });
+      } finally {
+        blobReadHostLifetime.abort(new DOMException('File explorer disposed', 'AbortError'));
+      }
     },
   };
 }

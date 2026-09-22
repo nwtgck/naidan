@@ -1,3 +1,4 @@
+import { createBlobViewZipSource } from '@/utils/blob-view-zip-source';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { createTextInputLineReader } from '@/features/wesh/commands/_shared/confirmation';
@@ -11,6 +12,7 @@ import {
   createWebZipCompressionCodec,
   StreamingZipReader,
   type ZipArchiveEntry,
+  type ZipRandomAccessSource,
 } from '@/utils/zip-stream';
 import { createWeshZipRandomAccessSource } from '@/features/wesh/zip-stream';
 import { decodeWeshZipEntryName } from '@/features/wesh/commands/_shared/zip-entry-name';
@@ -455,43 +457,41 @@ async function openPathZipArchive({
   path: string,
 }): Promise<OpenedZipArchive> {
   const blobResult = await context.files.tryReadBlobEfficiently({ path });
-  switch (blobResult.kind) {
-  case 'blob': {
-    const reader = new StreamingZipReader({
-      source: createBlobZipSource({ blob: blobResult.blob }),
-      compressionCodec: createWebZipCompressionCodec(),
-      decodeEntryName: decodeWeshZipEntryName,
-    });
-    return {
-      reader,
-      close: () => reader.close(),
-    };
-  }
-  case 'fallback_required': {
-    const handle = await context.files.open({
-      path,
-      flags: {
-        access: 'read',
-        creation: 'never',
-        truncate: 'preserve',
-        append: 'preserve',
-      },
-    });
-    const source = await createWeshZipRandomAccessSource({ handle });
+  const source = await (async (): Promise<ZipRandomAccessSource> => {
+    switch (blobResult.kind) {
+    case 'blob_view':
+      return createBlobViewZipSource({ blob: blobResult.blob, signal: undefined });
+    case 'blob':
+      return createBlobZipSource({ blob: blobResult.blob });
+    case 'fallback_required': {
+      const handle = await context.files.open({
+        path,
+        flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+      });
+      try {
+        return await createWeshZipRandomAccessSource({ handle });
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        throw error;
+      }
+    }
+    default: {
+      const _exhaustiveCheck: never = blobResult;
+      throw new Error(`Unhandled blob result: ${JSON.stringify(_exhaustiveCheck)}`);
+    }
+    }
+  })();
+  try {
     const reader = new StreamingZipReader({
       source,
       compressionCodec: createWebZipCompressionCodec(),
       decodeEntryName: decodeWeshZipEntryName,
     });
-    return {
-      reader,
-      close: () => reader.close(),
-    };
-  }
-  default: {
-    const _exhaustiveCheck: never = blobResult;
-    throw new Error(`Unhandled blob result: ${JSON.stringify(_exhaustiveCheck)}`);
-  }
+    return { reader, close: () => reader.close() };
+  } catch (error) {
+    // A codec/reader construction failure still has to release its source.
+    await source.close().catch(() => undefined);
+    throw error;
   }
 }
 

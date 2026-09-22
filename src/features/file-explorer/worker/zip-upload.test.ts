@@ -1,14 +1,31 @@
 import JSZip from 'jszip';
 import { Blob as NodeBlob } from 'node:buffer';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createBlobContext, createNativeBlobContext, type BlobContext } from '@/utils/blob-view';
+import { readNativeBlobRange } from '@/utils/blob-view-io';
+import { createNativeFileCopy } from './native-file-writes';
 
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   buildZipUploadPreview,
   executeParsedZipUpload,
   inspectZipUploadTarget,
-  parseZipUpload,
+  parseZipUpload as parseZipView,
 } from './zip-upload';
+
+let blobs: BlobContext;
+const contexts: BlobContext[] = [];
+beforeEach(() => {
+  blobs = createNativeBlobContext();
+  contexts.push(blobs);
+});
+afterEach(() => {
+  for (const context of contexts.splice(0)) context.dispose();
+});
+
+function parseNativeZip({ blob, fileName }: { blob: Blob, fileName: string }) {
+  return parseZipView({ blob: blobs.fromNative({ blob }), fileName, signal: undefined });
+}
 
 async function createProjectZip(): Promise<Blob> {
   const zip = new JSZip();
@@ -41,13 +58,14 @@ async function executeWithCurrentPreview({
   targetDirectory,
   jobId,
   signal,
-}: Omit<Parameters<typeof executeParsedZipUpload>[0], 'expectedFingerprint'>) {
+}: Omit<Parameters<typeof executeParsedZipUpload>[0], 'expectedFingerprint' | 'copyFile'>) {
   const inspection = await inspectZipUploadTarget({
     analysis,
     placement,
     targetDirectory,
   });
   return executeParsedZipUpload({
+    copyFile: createNativeFileCopy({ blobs }),
     analysis,
     placement,
     targetDirectory,
@@ -66,7 +84,7 @@ describe('ZIP upload worker logic', () => {
       },
     });
 
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob,
       fileName: 'backup.zip',
     });
@@ -88,14 +106,14 @@ describe('ZIP upload worker logic', () => {
       Uint8Array.from(await zip.generateAsync({ type: 'uint8array' })).buffer,
     ]);
 
-    await expect(parseZipUpload({
+    await expect(parseNativeZip({
       blob,
       fileName: 'conflict.zip',
     })).rejects.toThrow('case-conflicting paths');
   });
 
   it('previews strip placement against existing target entries', async () => {
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob: await createProjectZip(),
       fileName: 'backup.zip',
     });
@@ -127,7 +145,7 @@ describe('ZIP upload worker logic', () => {
   it('marks an ancestor preview row blocked when a descendant has a type conflict', async () => {
     const zip = new JSZip();
     zip.file('workspace/src/nested/main.ts', 'export {};');
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob: new Blob([
         Uint8Array.from(await zip.generateAsync({ type: 'uint8array' })).buffer,
       ]),
@@ -160,7 +178,7 @@ describe('ZIP upload worker logic', () => {
   });
 
   it('changes the target fingerprint when a planned file appears after preview', async () => {
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob: await createProjectZip(),
       fileName: 'backup.zip',
     });
@@ -184,7 +202,7 @@ describe('ZIP upload worker logic', () => {
   });
 
   it('extracts through streams, strips the single root, and removes staging data', async () => {
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob: await createProjectZip(),
       fileName: 'backup.zip',
     });
@@ -211,7 +229,7 @@ describe('ZIP upload worker logic', () => {
   });
 
   it('does not remove an existing entry that matches the preferred staging name', async () => {
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob: await createProjectZip(),
       fileName: 'backup.zip',
     });
@@ -243,7 +261,7 @@ describe('ZIP upload worker logic', () => {
 
   it('does not overwrite target changes made while the ZIP is being staged', async () => {
     const originalBlob = await createProjectZip();
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob: originalBlob,
       fileName: 'backup.zip',
     });
@@ -254,23 +272,18 @@ describe('ZIP upload worker logic', () => {
       placement: { kind: 'keep_archive' },
       targetDirectory: target as unknown as FileSystemDirectoryHandle,
     });
-    const bytes = new Uint8Array(await originalBlob.arrayBuffer());
-    const changingBlob = {
-      size: originalBlob.size,
-      stream: () => new ReadableStream<Uint8Array>({
-        async start(controller) {
-          await writeText({
-            directory: target,
-            name: 'backup.zip',
-            text: 'external change during staging',
-          });
-          controller.enqueue(bytes);
-          controller.close();
-        },
-      }),
-    } as Blob;
+    const changingContext = createBlobContext({
+      release: undefined,
+      reader: { async read(request) {
+        await writeText({ directory: target, name: 'backup.zip', text: 'external change during staging' });
+        return readNativeBlobRange(request);
+      } },
+    });
+    contexts.push(changingContext);
+    const changingBlob = changingContext.fromNative({ blob: originalBlob });
 
     const result = await executeParsedZipUpload({
+      copyFile: createNativeFileCopy({ blobs }),
       analysis: { ...analysis, blob: changingBlob },
       placement: { kind: 'keep_archive' },
       targetDirectory: target as unknown as FileSystemDirectoryHandle,
@@ -290,7 +303,7 @@ describe('ZIP upload worker logic', () => {
 
   it('restores an existing archive when keep-as-is placement fails during commit', async () => {
     const blob = await createProjectZip();
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob,
       fileName: 'backup.zip',
     });
@@ -325,7 +338,7 @@ describe('ZIP upload worker logic', () => {
   });
 
   it('preserves the single root directory when requested', async () => {
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob: await createProjectZip(),
       fileName: 'backup.zip',
     });
@@ -344,7 +357,7 @@ describe('ZIP upload worker logic', () => {
   });
 
   it('reports a target file-directory type conflict as preview outdated', async () => {
-    const analysis = await parseZipUpload({
+    const analysis = await parseNativeZip({
       blob: await createProjectZip(),
       fileName: 'backup.zip',
     });

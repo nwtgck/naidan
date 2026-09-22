@@ -98,6 +98,12 @@ export function releaseWorkerRemote<Api>({
   return remote[Comlink.releaseProxy]();
 }
 
+/** Release a reverse-direction proxy owned by a session; direct local targets have no hook. */
+export function releaseWorkerProxyArgument({ value }: { value: object }): void {
+  const release: unknown = Reflect.get(value, Comlink.releaseProxy);
+  if (typeof release === 'function') release.call(value);
+}
+
 let readableStreamTransferSupport: Promise<'supported' | 'unsupported'> | undefined;
 
 async function detectReadableStreamTransferSupport(): Promise<'supported' | 'unsupported'> {

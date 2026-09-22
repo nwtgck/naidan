@@ -1,3 +1,4 @@
+import type { BlobContext } from '@/utils/blob-view';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { Core } from "@/features/llama-cpp-browser/runtime/core";
 import { mountReadOnlyFile } from "@/features/llama-cpp-browser/runtime/read-only-file";
@@ -47,7 +48,8 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
 export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
   if (resident && resident.id === id) await releaseSession({ releaseRuntime: false });
 }
-export async function prepareSession({ request, onProgress, signal }: {
+export async function prepareSession({ blobs, request, onProgress, signal }: {
+  blobs?: BlobContext,
   request: WorkerGenerateInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
 }): Promise<{ core: Core, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval, slidingWindow: number, cache: PromptCache, projector: bigint }> {
   const checkCancelled = (): void => {
@@ -71,7 +73,7 @@ export async function prepareSession({ request, onProgress, signal }: {
   }
   runtime.requestedProfile = request.options.profile;
   const core = runtime.core; const api = core.api;
-  const directory = await storedModelDirectory({ name: request.model });
+  const directory = await storedModelDirectory({ name: request.model, blobs, signal });
   let unchanged = resident?.id === directory.id && resident.files.length === directory.files.length;
   if (unchanged && resident) {
     for (let index = 0; index < directory.files.length; index++) {

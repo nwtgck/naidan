@@ -1,3 +1,4 @@
+import type { BlobContext } from '@/utils/blob-view';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import {
   chatContentToDomain,
@@ -77,8 +78,10 @@ function assertStorageTypeMatches({
   }
 }
 
-export async function createOpfsNaidanSysfsStorageReader(): Promise<NaidanSysfsStorageReader> {
-  const provider = new OPFSStorageProvider();
+export async function createOpfsNaidanSysfsStorageReader({ blobs }: { blobs?: BlobContext } = {}): Promise<NaidanSysfsStorageReader> {
+  // Opening a sysfs mount must not initialize or migrate storage. The main
+  // storage owner remains responsible for explicit persistence and legacy moves.
+  const provider = new OPFSStorageProvider({ blobs, access: 'read-only' });
   await provider.init();
 
   return {

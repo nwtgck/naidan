@@ -1,3 +1,5 @@
+import { createWorkerBlobReadHost } from '@/utils/worker-blob-context';
+import { workerProxy } from '@/utils/worker-transport';
 import { logFailure } from '@/features/llama-cpp-browser/debug-log';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { verifySharedStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
@@ -11,7 +13,17 @@ export async function createDownloadWriterClient({ signal }: { signal: AbortSign
   const start = async (): Promise<DownloadWriterClient> => {
     const session = await createStandaloneWorkerSession<DownloadWriterApi>({ createWorker: createStandaloneWorker });
     try {
-      await verifySharedStorage({ verify: ({ probeId }) => session.remote.verifyStorage({ probeId }), signal });
+      const probeLifetime = new AbortController();
+      const abortProbe = () => probeLifetime.abort(signal.reason);
+      signal.addEventListener('abort', abortProbe, { once: true });
+      try {
+        if (signal.aborted) abortProbe();
+        const host = createWorkerBlobReadHost({ signal: probeLifetime.signal });
+        await verifySharedStorage({ verify: ({ probeId }) => session.remote.verifyStorage({ probeId }, workerProxy({ value: host })), signal });
+      } finally {
+        signal.removeEventListener('abort', abortProbe);
+        probeLifetime.abort(new DOMException('Download storage probe finished', 'AbortError'));
+      }
     } catch (error) {
       await disposeStandaloneWorkerSession({ session, beforeRelease: undefined, cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS })
         .catch(cleanupError => logFailure({ stage: 'cleanup', error: cleanupError }));

@@ -1,3 +1,5 @@
+import type { BlobImageDecoder } from '@/utils/blob-image';
+import type { BlobContext } from '@/utils/blob-view';
 import { prepareMultimodal } from './multimodal';
 import { LlamaCppBrowserError, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
 import { logDiagnostic, logFailure, type Diagnostic, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
@@ -9,7 +11,9 @@ import { createChatSampler } from './chat-sampler';
 import { capturePromptCheckpoint, disposePromptCheckpoint, promptCheckpointBoundary, restorePromptCheckpoint } from './prompt-checkpoint';
 
 /** Reuse only a verified decoded prefix; sampling and parsing stay request-local. */
-export async function generate({ request, onEvent, onProgress, signal }: {
+export async function generate({ blobs, imageDecoder, request, onEvent, onProgress, signal }: {
+  blobs?: BlobContext,
+  imageDecoder?: BlobImageDecoder,
   request: WorkerGenerateInput,
   signal: AbortSignal | undefined,
   onEvent: GenerationCallback,
@@ -23,7 +27,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  const { core, model, context, sequenceRemoval, slidingWindow, cache, projector } = await prepareSession({ request, onProgress, signal });
+  const { core, model, context, sequenceRemoval, slidingWindow, cache, projector } = await prepareSession({ request, onProgress, signal, blobs });
   const api = core.api;
   const discardCheckpoint = (): void => {
     const checkpoint = cache.checkpoint; cache.checkpoint = undefined;
@@ -93,7 +97,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       // Image identity and native positions are not represented by a token prefix.
       cache.validity = 'invalid'; cache.tokens = [];
       discardCheckpoint();
-      multimodal = await prepareMultimodal({ core, projector, prompt: promptText, images: chat.images });
+      multimodal = await prepareMultimodal({ core, projector, prompt: promptText, images: chat.images, decoder: imageDecoder, signal });
       promptTokens = multimodal.textTokens;
       tokens = alloc({ bytes: Math.max(4, promptTokens.length * 4) });
       const bytes = core.bytes({ pointer: tokens, length: promptTokens.length * 4 }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

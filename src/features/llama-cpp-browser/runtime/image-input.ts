@@ -1,3 +1,4 @@
+import { blobImageInput, decodeNativeBlobImage, parseBlobImagePixels, type BlobImageDecoder } from '@/utils/blob-image';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 
 /** Current providers receive local attachments as data URLs; never fetch remote URLs here. */
@@ -11,27 +12,37 @@ export function imageFromDataUrl({ url }: { url: string }): Blob {
     throw new LlamaCppBrowserError({ code: 'unsupported-input' });
   }
 }
-export async function decodeImage({ blob }: { blob: Blob }): Promise<{ width: number, height: number, rgb: Uint8Array }> {
-  if (!blob.type.startsWith('image/') || typeof createImageBitmap !== 'function' || typeof OffscreenCanvas !== 'function') throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-  const bitmap = await createImageBitmap(blob);
+/** Also bound raw Blob inputs to 72 MiB; keep the existing decoded-pixel ceiling. */
+export const IMAGE_DECODE_LIMITS = Object.freeze({ maxBytes: 72 * 1024 * 1024, maxPixels: 64 * 1024 * 1024 });
+
+export async function decodeImage({ blob, decoder, signal }: {
+  blob: Blob,
+  decoder?: BlobImageDecoder,
+  signal?: AbortSignal,
+}): Promise<{ width: number, height: number, rgb: Uint8Array<ArrayBuffer> }> {
+  signal?.throwIfAborted();
   try {
-    const { width, height } = bitmap;
-    if (!width || !height || width * height > 64 * 1024 * 1024) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-    const canvas = new OffscreenCanvas(width, height);
-    const context = canvas.getContext('2d');
-    if (!context) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-    context.drawImage(bitmap, 0, 0);
-    const { data } = context.getImageData(0, 0, width, height);
+    blobImageInput({ blob, limits: IMAGE_DECODE_LIMITS });
+    const pixels = parseBlobImagePixels({
+      value: decoder === undefined
+        ? await decodeNativeBlobImage({ blob, limits: IMAGE_DECODE_LIMITS, signal: signal ?? new AbortController().signal })
+        : await decoder.decode({ blob, signal }),
+      limits: IMAGE_DECODE_LIMITS,
+    });
+    signal?.throwIfAborted();
+    const { width, height, rgba } = pixels;
     const rgb = new Uint8Array(width * height * 3);
     for (let pixel = 0; pixel < width * height; pixel++) {
-      // Composite transparent pixels onto white, consistently across decoders.
-      const alpha = data[pixel * 4 + 3]! / 255;
-      for (let channel = 0; channel < 3; channel++) rgb[pixel * 3 + channel] = Math.round(data[pixel * 4 + channel]! * alpha + 255 * (1 - alpha));
+      // Preserve the existing white-background alpha composition for mtmd.
+      const alpha = rgba[pixel * 4 + 3]! / 255;
+      for (let channel = 0; channel < 3; channel++) rgb[pixel * 3 + channel] = Math.round(rgba[pixel * 4 + channel]! * alpha + 255 * (1 - alpha));
     }
-    canvas.width = 0; canvas.height = 0;
+    signal?.throwIfAborted();
     return { width, height, rgb };
-  } finally {
-    bitmap.close();
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    throw new LlamaCppBrowserError({ code: 'unsupported-input' });
   }
 }
 export const TEST_ONLY = {

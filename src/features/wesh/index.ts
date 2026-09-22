@@ -1,3 +1,4 @@
+import type { BlobContext } from '@/utils/blob-view';
 import { ReadonlyDirectoryHandle } from './readonly-directory-handle';
 import type {
   WeshCommandDefinition,
@@ -152,6 +153,9 @@ interface WeshExecutionEnvironment {
   cwd: string,
   fds: Map<number, WeshFileHandle>,
   traps: Map<string, WeshTrapDisposition>,
+  // Inherited declarations remain printable by trap -p, but are not handlers
+  // until the child explicitly installs them again.
+  inactiveSignalTraps: Set<string>,
   shellOptions: Map<WeshShellOption, boolean>,
   executionOptions: WeshExecutionOptions,
   positionalArgs: string[],
@@ -474,21 +478,26 @@ export class Wesh {
     pgid: number,
   }> = [];
   private nextForegroundProcessGroupScopeId = 1;
+  // Only explicit foreground-group notifications belong to the waiting shell.
+  // A child exiting from SIGPIPE must not synthesize a signal for its parent.
+  private readonly foregroundPipelineSignals = new Map<number, Set<number>>();
 
   private shellPid: number = 0;
 
   constructor({
     rootHandle,
+    blobs,
     user = 'user',
     initialEnv = {},
     initialCwd,
   }: {
     rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle,
+    blobs?: BlobContext,
     user?: string,
     initialEnv?: Record<string, string>,
     initialCwd?: string,
   }) {
-    this.vfs = new WeshVFS({ rootHandle });
+    this.vfs = new WeshVFS({ rootHandle, blobs });
     this.kernel = new WeshKernel({ vfs: this.vfs });
 
     const resolvedCwd = initialCwd ?? '/';
@@ -629,6 +638,9 @@ export class Wesh {
       return false;
     }
 
+    // Record before awaiting descriptor cleanup: the pipeline can finish while
+    // killProcessGroup is yielding. Its owner dispatches each signal once.
+    this.foregroundPipelineSignals.get(foregroundProcessGroupId)?.add(signal);
     await this.kernel.killProcessGroup({
       pgid: foregroundProcessGroupId,
       signal: signal,
@@ -4997,69 +5009,107 @@ usage: ${name} [-c command] [file [argument...]]
 
     const promises: Promise<WeshCommandResult>[] = [];
     let pipelinePgid: number | undefined;
+    const foregroundSignals = new Set<number>();
 
-    for (let i = 0; i < commands.length; i++) {
-      const cmd = commands[i]!;
-      const myStdin = i === 0
-        ? stdin
-        : this.cloneFileHandleReference({ handle: pipes[i - 1]!.read });
-      const myStdout = i === commands.length - 1
-        ? stdout
-        : this.cloneFileHandleReference({ handle: pipes[i]!.write });
+    try {
+      for (let i = 0; i < commands.length; i++) {
+        const cmd = commands[i]!;
+        const myStdin = i === 0
+          ? stdin
+          : this.cloneFileHandleReference({ handle: pipes[i - 1]!.read });
+        const myStdout = i === commands.length - 1
+          ? stdout
+          : this.cloneFileHandleReference({ handle: pipes[i]!.write });
 
-      const pipelineEnvironment = await this.spawnChildExecutionEnvironment({
-        parentEnvironment: environment,
-        pgid: pipelinePgid,
-      });
-      pipelinePgid = pipelineEnvironment.pgid;
+        const pipelineEnvironment = await this.spawnChildExecutionEnvironment({
+          parentEnvironment: environment,
+          pgid: pipelinePgid,
+        });
+        pipelinePgid = pipelineEnvironment.pgid;
+        this.foregroundPipelineSignals.set(pipelinePgid, foregroundSignals);
 
-      promises.push(
-        this.runChildExecutionEnvironment({
-          environment: pipelineEnvironment,
-          execute: () => this.executeNode({
-            node: cmd,
+        // Pipeline commands run in child shell environments. Reset inherited
+        // caught signal actions while keeping declarations available to trap -p.
+        // Ignored dispositions and the existing pseudo-trap policy are unchanged.
+        // Explicit setTrap below reactivates even an identical child-local action.
+        for (const [condition, disposition] of pipelineEnvironment.traps) {
+          switch (disposition.kind) {
+          case 'ignore':
+            break;
+          case 'run':
+            switch (condition) {
+            case 'EXIT':
+            case 'ERR':
+            case 'DEBUG':
+            case 'RETURN':
+              break;
+            default:
+              pipelineEnvironment.inactiveSignalTraps.add(condition);
+            }
+            break;
+          default: {
+            const _ex: never = disposition;
+            throw new Error(`Unhandled pipeline trap disposition: ${JSON.stringify(_ex)}`);
+          }
+          }
+        }
+
+        promises.push(
+          this.runChildExecutionEnvironment({
             environment: pipelineEnvironment,
-            stdin: myStdin,
-            stdout: myStdout,
-            stderr: stderr,
-            loopDepth,
-            functionDepth,
-            stdinReferenceOwnership: i > 0 && cmd.kind === 'command'
-              ? 'command-local'
-              : stdinReferenceOwnership,
+            execute: () => this.executeNode({
+              node: cmd,
+              environment: pipelineEnvironment,
+              stdin: myStdin,
+              stdout: myStdout,
+              stderr: stderr,
+              loopDepth,
+              functionDepth,
+              stdinReferenceOwnership: i > 0 && cmd.kind === 'command'
+                ? 'command-local'
+                : stdinReferenceOwnership,
+            }),
+          }).then(async res => {
+            if (i < commands.length - 1) {
+              await myStdout.close();
+            }
+            if (i > 0) {
+              await myStdin.close();
+            }
+            return res;
           }),
-        }).then(async res => {
-          if (i < commands.length - 1) {
-            await myStdout.close();
-          }
-          if (i > 0) {
-            await myStdin.close();
-          }
-          return res;
-        }),
-      );
+        );
 
-      if (i < commands.length - 1) {
-        await pipes[i]!.write.close();
-      }
-      if (i > 0) {
-        await pipes[i - 1]!.read.close();
-      }
-    }
-
-    const results = await this.runWithForegroundProcessGroup({
-      pgid: pipelinePgid ?? environment.pgid,
-      fn: async () => Promise.all(promises),
-    });
-    if (environment.executionOptions.pipefail) {
-      for (let index = results.length - 1; index >= 0; index -= 1) {
-        const result = results[index];
-        if (result !== undefined && result.exitCode !== 0) {
-          return result;
+        if (i < commands.length - 1) {
+          await pipes[i]!.write.close();
+        }
+        if (i > 0) {
+          await pipes[i - 1]!.read.close();
         }
       }
+
+      const results = await this.runWithForegroundProcessGroup({
+        pgid: pipelinePgid ?? environment.pgid,
+        fn: async () => Promise.all(promises),
+      });
+      // Preserve the shell's foreground-interrupt contract without inheriting its
+      // handler into every child. Ordinary signaled child results (including a
+      // pipefail status of 141) do not enter this set.
+      for (const signal of foregroundSignals) {
+        await this.runSignalTrapIfNeeded({ signal, environment, stdin, stdout, stderr });
+      }
+      if (environment.executionOptions.pipefail) {
+        for (let index = results.length - 1; index >= 0; index -= 1) {
+          const result = results[index];
+          if (result !== undefined && result.exitCode !== 0) {
+            return result;
+          }
+        }
+      }
+      return results[results.length - 1]!;
+    } finally {
+      if (pipelinePgid !== undefined) this.foregroundPipelineSignals.delete(pipelinePgid);
     }
-    return results[results.length - 1]!;
   }
 
   private async executeCommand({
@@ -5711,6 +5761,7 @@ usage: ${name} [-c command] [file [argument...]]
         }
       },
       setTrap: ({ condition, disposition }) => {
+        environment.inactiveSignalTraps.delete(condition);
         if (disposition === undefined) {
           environment.traps.delete(condition);
           return;
@@ -7083,6 +7134,7 @@ usage: ${name} [-c command] [file [argument...]]
       cwd,
       fds,
       traps,
+      inactiveSignalTraps: new Set(),
       shellOptions,
       executionOptions,
       positionalArgs,
@@ -7134,6 +7186,7 @@ usage: ${name} [-c command] [file [argument...]]
       cwd: environment.cwd,
       fds: new Map(environment.fds),
       traps: cloneMap({ source: environment.traps }),
+      inactiveSignalTraps: new Set(environment.inactiveSignalTraps),
       shellOptions: cloneMap({ source: environment.shellOptions }),
       executionOptions: { ...environment.executionOptions },
       positionalArgs: [...environment.positionalArgs],
@@ -7331,7 +7384,7 @@ usage: ${name} [-c command] [file [argument...]]
   }): Promise<void> {
     for (const condition of weshSignalConditionNames({ signal: signal })) {
       const trapDisposition = environment.traps.get(condition);
-      if (trapDisposition === undefined) {
+      if (trapDisposition === undefined || environment.inactiveSignalTraps.has(condition)) {
         continue;
       }
 

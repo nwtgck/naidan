@@ -14,6 +14,7 @@ import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 vi.mock('comlink', () => ({
   expose: vi.fn(),
+  releaseProxy: Symbol('releaseProxy'),
   transfer: <T>(value: T) => value,
 }));
 

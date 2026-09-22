@@ -151,7 +151,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       user: 'user',
       initialEnv: {},
       initialCwd: undefined,
-    }, undefined);
+    }, undefined, expect.objectContaining({ read: expect.any(Function) }));
 
     await client.dispose();
     expect(secondRelease).toHaveBeenCalledOnce();
@@ -394,6 +394,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       expect.objectContaining({
         storageType: 'local',
       }),
+      expect.objectContaining({ read: expect.any(Function) }),
     );
     expect(init.mock.calls[0]?.[0]).not.toHaveProperty('naidanSysfsRemoteReader');
 

@@ -6,7 +6,7 @@ import { createDownloadWriter } from './writer';
 import { listHuggingFaceModels, listPendingDownloads, readJournal, repositoryFolder, selectedFile, writeJournal, withRepositoryLock } from './storage';
 import { ggufBytes, memoryDirectory } from './test-opfs';
 import type { DownloadSelection } from './types';
-vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
+vi.mock('@/utils/worker-transport', async importOriginal => ({ ...await importOriginal<typeof import('@/utils/worker-transport')>(), releaseWorkerProxyArgument: vi.fn() }));
 const selection: DownloadSelection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'nested/model.gguf', size: 128 }] };
 beforeEach(() => {
   const root = memoryDirectory({ name: '' }); vi.stubGlobal('navigator', { storage: { getDirectory: async () => root } });

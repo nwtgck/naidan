@@ -374,7 +374,10 @@ export interface WeshVirtualMountProvider {
 export const WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED = Symbol('WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED');
 export const WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED = Symbol('WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED');
 
+// Local VFS capability, not a Worker wire DTO. A BlobView must stay bound to
+// its owning context; consumers must never unwrap it to call native read APIs.
 export type WeshEfficientBlobReadResult =
+  | { kind: 'blob_view', blob: import('@/utils/blob-view').BlobView }
   | { kind: 'blob', blob: Blob }
   | { kind: 'fallback_required', reason: typeof WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED };
 

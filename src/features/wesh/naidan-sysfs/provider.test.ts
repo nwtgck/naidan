@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import type { BinaryObject, ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 import { idToRaw } from '@/01-models/ids';
@@ -394,23 +395,7 @@ const sampleBinaryObject: BinaryObject = {
 };
 
 const sampleBinaryObjectBytes = new Uint8Array([0x41, 0x42, 0x43, 0x44]);
-const sampleBinaryObjectBlob = createBlobStub({ bytes: sampleBinaryObjectBytes }) as unknown as Blob;
-
-function createBlobStub({
-  bytes,
-}: {
-  bytes: Uint8Array,
-}) {
-  return {
-    size: bytes.length,
-    slice(start?: number, end?: number) {
-      const sliced = bytes.slice(start ?? 0, end ?? bytes.length);
-      return {
-        arrayBuffer: async () => sliced.buffer.slice(sliced.byteOffset, sliced.byteOffset + sliced.byteLength),
-      };
-    },
-  };
-}
+const sampleBinaryObjectBlob = new Blob([sampleBinaryObjectBytes]);
 
 describe('NaidanSysfsProvider', () => {
   it('lists version at the sysfs root', async () => {

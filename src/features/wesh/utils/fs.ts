@@ -3,8 +3,77 @@ import type {
   WeshOpenFlags,
   WeshFileHandle,
   WeshEfficientFileWriteResult,
+  WeshEfficientFileWriter,
   WeshEfficientBlobReadResult,
 } from '@/features/wesh/types';
+
+type FileOperationFailure = { error: unknown };
+
+/** Each cleanup owns a distinct resource. Start them all, even if one rejects. */
+async function withFileCleanup<T>({ operation, cleanup }: {
+  operation: () => Promise<T>,
+  cleanup: readonly (({ failure }: { failure: FileOperationFailure | undefined }) => Promise<void>)[],
+}): Promise<T> {
+  const outcome = await Promise.resolve().then(operation).then(
+    value => ({ status: 'fulfilled' as const, value }),
+    (error: unknown) => ({ status: 'rejected' as const, error }),
+  );
+  const failure = (() => {
+    switch (outcome.status) {
+    case 'fulfilled': return undefined;
+    case 'rejected': return { error: outcome.error };
+    default: { const _ex: never = outcome; throw new Error(`Unhandled file outcome: ${String(_ex)}`); }
+    }
+  })();
+  const errors = failure === undefined ? [] : [failure.error];
+  const results = await Promise.allSettled(cleanup.map(run => Promise.resolve().then(() => run({ failure }))));
+  for (const result of results) {
+    switch (result.status) {
+    case 'fulfilled': break;
+    case 'rejected':
+      // Cancelling an already-errored stream can reject with the original error.
+      if (!errors.includes(result.reason)) errors.push(result.reason);
+      break;
+    default: { const _ex: never = result; throw new Error(`Unhandled cleanup outcome: ${String(_ex)}`); }
+    }
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'File operation and cleanup failed');
+  switch (outcome.status) {
+  case 'fulfilled': return outcome.value;
+  case 'rejected': throw outcome.error;
+  default: { const _ex: never = outcome; throw new Error(`Unhandled file outcome: ${String(_ex)}`); }
+  }
+}
+
+function assertReadCount({ bytesRead, length }: { bytesRead: number, length: number }): void {
+  if (!Number.isSafeInteger(bytesRead) || bytesRead < 0 || bytesRead > length) {
+    throw new Error('File handle returned an invalid read count');
+  }
+}
+
+async function releaseInputReader({ reader, completed, failure }: {
+  reader: ReadableStreamDefaultReader<Uint8Array> | undefined,
+  completed: boolean,
+  failure: FileOperationFailure | undefined,
+}): Promise<void> {
+  if (reader === undefined) return;
+  try {
+    if (!completed) await reader.cancel(failure?.error);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/** writeOwned consumes the whole chunk by contract; ordinary writes may be short. */
+async function writeHandleChunk({ handle, bytes }: { handle: WeshFileHandle, bytes: Uint8Array }): Promise<void> {
+  if (bytes.byteLength === 0) return;
+  if (handle.writeOwned !== undefined) {
+    await handle.writeOwned({ chunk: createWeshOwnedBytes({ bytes }) });
+  } else {
+    await writeAllBytesToHandle({ handle, data: bytes });
+  }
+}
 
 /**
  * Read all remaining bytes from a sequential file handle without closing it.
@@ -23,7 +92,9 @@ export async function readAllHandleBytes({
   while (true) {
     const buffer = new Uint8Array(64 * 1024);
     const { bytesRead } = await handle.read({ buffer });
+    assertReadCount({ bytesRead, length: buffer.byteLength });
     if (bytesRead === 0) break;
+    if (bytesRead > Number.MAX_SAFE_INTEGER - totalLength) throw new RangeError('File content is too large');
 
     const chunk = bytesRead === buffer.byteLength ? buffer : buffer.slice(0, bytesRead);
     chunks.push(chunk);
@@ -58,6 +129,8 @@ export async function readAllFileBytes({ files, path }: { files: WeshFileCapabil
   if (files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await files.tryReadBlobEfficiently({ path });
     switch (blobResult.kind) {
+    case 'blob_view':
+      return blobResult.blob.bytes();
     case 'blob':
       return new Uint8Array(await blobResult.blob.arrayBuffer());
     case 'fallback_required':
@@ -76,23 +149,11 @@ export async function readAllFileBytes({ files, path }: { files: WeshFileCapabil
     append: 'preserve',
   };
   const handle = await files.open({ path, flags });
-  try {
-    const stat = await handle.stat();
-    const buffer = new Uint8Array(stat.size);
-    let totalRead = 0;
-    while (totalRead < stat.size) {
-      const { bytesRead } = await handle.read({
-        buffer,
-        offset: totalRead,
-        length: stat.size - totalRead,
-      });
-      if (bytesRead === 0) break;
-      totalRead += bytesRead;
-    }
-    return buffer.subarray(0, totalRead);
-  } finally {
-    await handle.close();
-  }
+  return withFileCleanup({
+    // stat.size may be an estimate. Only actual EOF completes an all-bytes read.
+    operation: () => readAllHandleBytes({ handle }),
+    cleanup: [() => handle.close()],
+  });
 }
 
 /**
@@ -102,6 +163,7 @@ export async function readAllFileText({ files, path }: { files: WeshFileCapabili
   if (files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await files.tryReadBlobEfficiently({ path });
     switch (blobResult.kind) {
+    case 'blob_view':
     case 'blob':
       return blobResult.blob.text();
     case 'fallback_required':
@@ -128,6 +190,8 @@ export async function openFileReadStream({
   if (files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await files.tryReadBlobEfficiently({ path });
     switch (blobResult.kind) {
+    case 'blob_view':
+      return blobResult.blob.stream();
     case 'blob':
       return blobResult.blob.stream() as ReadableStream<Uint8Array>;
     case 'fallback_required':
@@ -158,13 +222,12 @@ export async function writeAllBytesToHandle({
 }): Promise<void> {
   let totalWritten = 0;
   while (totalWritten < data.byteLength) {
-    const { bytesWritten } = await handle.write({
-      buffer: data,
-      offset: totalWritten,
-      length: data.byteLength - totalWritten,
-    });
-    if (bytesWritten === 0) {
-      return;
+    const length = data.byteLength - totalWritten;
+    const { bytesWritten } = await handle.write({ buffer: data, offset: totalWritten, length });
+    // Zero progress is not success for a write-all operation. Negative/fractional
+    // or overlong counts must not skip data or move the loop backwards either.
+    if (!Number.isSafeInteger(bytesWritten) || bytesWritten <= 0 || bytesWritten > length) {
+      throw new Error('File handle did not make valid write progress');
     }
     totalWritten += bytesWritten;
   }
@@ -189,22 +252,10 @@ export async function writeAllFileBytes({
     append: 'preserve',
   };
   const handle = await files.open({ path, flags });
-  try {
-    let totalWritten = 0;
-    while (totalWritten < data.length) {
-      const { bytesWritten } = await handle.write({
-        buffer: data,
-        offset: totalWritten,
-        length: data.length - totalWritten,
-      });
-      if (bytesWritten === 0) {
-        break;
-      }
-      totalWritten += bytesWritten;
-    }
-  } finally {
-    await handle.close();
-  }
+  await withFileCleanup({
+    operation: () => writeAllBytesToHandle({ handle, data }),
+    cleanup: [() => handle.close()],
+  });
 }
 
 /**
@@ -224,31 +275,59 @@ export async function checkFileExists({ files, path }: { files: WeshFileCapabili
  */
 export function openHandleReadStream({
   handle,
-  chunkSize = 64 * 1024,
+  chunkSize,
 }: {
   handle: WeshFileHandle,
   chunkSize?: number,
 }): ReadableStream<Uint8Array> {
+  const length = chunkSize ?? 64 * 1024;
+  // Validation precedes ownership transfer. Invalid options must not consume or
+  // close a handle that the caller can still use for another operation.
+  if (!Number.isSafeInteger(length) || length <= 0) throw new RangeError('Invalid file stream chunk size');
+  let stopped = false;
+  const isStopped = () => stopped;
+  let closing: Promise<void> | undefined;
+  function closeOnce(): Promise<void> {
+    closing ??= Promise.resolve().then(() => handle.close());
+    return closing;
+  }
   return new ReadableStream({
     async pull(controller) {
-      const buffer = new Uint8Array(chunkSize);
+      if (isStopped()) return;
       try {
+        const buffer = new Uint8Array(length);
         const { bytesRead } = await handle.read({ buffer });
+        if (isStopped()) return;
+        assertReadCount({ bytesRead, length });
         if (bytesRead === 0) {
-          await handle.close();
+          await closeOnce();
+          if (isStopped()) return;
+          stopped = true;
           controller.close();
           return;
         }
-        controller.enqueue(bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead));
-      } catch (e) {
-        await handle.close();
-        controller.error(e);
+        controller.enqueue(bytesRead === buffer.length ? buffer : buffer.slice(0, bytesRead));
+      } catch (error) {
+        // cancel() already owns cleanup. A late read result/rejection must not
+        // enqueue into the closed stream or close a non-idempotent handle twice.
+        if (isStopped()) return;
+        let failure = error;
+        try {
+          await closeOnce();
+        } catch (closeError) {
+          if (closeError !== error) failure = new AggregateError([error, closeError], 'File read and close failed');
+        }
+        if (!isStopped()) {
+          stopped = true;
+          controller.error(failure);
+        }
       }
     },
-    async cancel() {
-      await handle.close();
+    cancel() {
+      stopped = true;
+      return closeOnce();
     },
-  });
+  }, { highWaterMark: 0 });
 }
 
 /**
@@ -263,38 +342,28 @@ export async function writeAllStreamToHandle({
   handle: WeshFileHandle,
   closeHandle: boolean,
 }): Promise<void> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      if (handle.writeOwned !== undefined) {
-        await handle.writeOwned({
-          chunk: createWeshOwnedBytes({ bytes: value }),
-        });
-        continue;
-      }
-
-      let written = 0;
-      while (written < value.length) {
-        const { bytesWritten } = await handle.write({
-          buffer: value,
-          offset: written,
-          length: value.length - written,
-        });
-        if (bytesWritten === 0) {
-          return;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let completed = false;
+  await withFileCleanup({
+    async operation() {
+      reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          completed = true; return;
         }
-        written += bytesWritten;
+        await writeHandleChunk({ handle, bytes: value });
       }
-    }
-  } finally {
-    reader.releaseLock();
-    if (closeHandle) {
-      await handle.close();
-    }
-  }
+    },
+    cleanup: [
+      ({ failure }) => releaseInputReader({ reader, completed, failure }),
+      async () => {
+        // A generic handle has no abort API: closing it can publish a partial
+        // prefix. Reject the copy, but do not pretend to roll back that prefix.
+        if (closeHandle) await handle.close();
+      },
+    ],
+  });
 }
 
 export async function writeAllStreamToFile({
@@ -308,78 +377,64 @@ export async function writeAllStreamToFile({
   stream: ReadableStream<Uint8Array>,
   mode: 'truncate' | 'append',
 }): Promise<void> {
-  const efficientWriterResult = files.tryCreateFileWriterEfficiently === undefined
-    ? undefined
-    : await files.tryCreateFileWriterEfficiently({
-      path,
-      mode,
-    });
-
-  switch (efficientWriterResult?.kind) {
-  case 'writer': {
-    const reader = stream.getReader();
-    try {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let completed = false;
+  let writer: WeshEfficientFileWriter | undefined;
+  let committed = false;
+  let handle: WeshFileHandle | undefined;
+  await withFileCleanup({
+    async operation() {
+      // Acquire the input before creating/truncating a destination. A stream
+      // already locked by somebody else must not leak a writer or destroy data.
+      reader = stream.getReader();
+      const efficientWriterResult = files.tryCreateFileWriterEfficiently === undefined
+        ? undefined
+        : await files.tryCreateFileWriterEfficiently({ path, mode });
+      switch (efficientWriterResult?.kind) {
+      case 'writer':
+        writer = efficientWriterResult.writer;
+        break;
+      case 'fallback_required':
+      case undefined: {
+        const flags = (() => {
+          switch (mode) {
+          case 'truncate':
+            return { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' } satisfies WeshOpenFlags;
+          case 'append':
+            return { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' } satisfies WeshOpenFlags;
+          default: { const _ex: never = mode; throw new Error(`Unhandled stream-to-path mode: ${_ex}`); }
+          }
+        })();
+        handle = await files.open({ path, flags });
+        break;
+      }
+      default: {
+        const _ex: never = efficientWriterResult;
+        throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
+      }
+      }
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          break;
+          completed = true; break;
         }
-
-        await efficientWriterResult.writer.write({
-          chunk: value,
-        });
+        if (value.byteLength === 0) continue;
+        if (writer !== undefined) await writer.write({ chunk: value });
+        else if (handle !== undefined) await writeHandleChunk({ handle, bytes: value });
+        else throw new Error('File writer is unavailable');
       }
-      await efficientWriterResult.writer.close();
-      return;
-    } catch (error: unknown) {
-      await efficientWriterResult.writer.abort({
-        reason: error,
-      });
-      throw error;
-    } finally {
-      reader.releaseLock();
-    }
-  }
-  case 'fallback_required':
-  case undefined:
-    break;
-  default: {
-    const _ex: never = efficientWriterResult;
-    throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
-  }
-  }
-
-  const fallbackFlags = (() => {
-    switch (mode) {
-    case 'truncate':
-      return {
-        access: 'write',
-        creation: 'if-needed',
-        truncate: 'truncate',
-        append: 'preserve',
-      } satisfies WeshOpenFlags;
-    case 'append':
-      return {
-        access: 'write',
-        creation: 'if-needed',
-        truncate: 'preserve',
-        append: 'append',
-      } satisfies WeshOpenFlags;
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unhandled stream-to-path mode: ${_ex}`);
-    }
-    }
-  })();
-
-  const handle = await files.open({
-    path,
-    flags: fallbackFlags,
-  });
-  await writeAllStreamToHandle({
-    stream,
-    handle,
-    closeHandle: true,
+      if (writer !== undefined) {
+        await writer.close();
+        committed = true;
+      }
+    },
+    cleanup: [
+      ({ failure }) => releaseInputReader({ reader, completed, failure }),
+      async ({ failure }) => {
+        if (writer !== undefined && !committed) await writer.abort({ reason: failure?.error });
+        if (handle !== undefined) await handle.close();
+      },
+    ],
   });
 }
 

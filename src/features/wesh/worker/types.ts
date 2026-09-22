@@ -1,3 +1,4 @@
+import type { WorkerBlobReadHost } from '@/utils/worker-blob-context';
 import { z } from 'zod';
 
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
@@ -143,6 +144,7 @@ export interface IWeshWorker {
   init(
     request: WorkerCapability<WeshWorkerInitRequest, 'file-system-handle-clone'>,
     naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
+    blobReadHost?: WorkerProxy<WorkerBlobReadHost>,
   ): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   startExecution(

@@ -1,3 +1,4 @@
+import { createWorkerBlobReadHost } from '@/utils/worker-blob-context';
 import { z } from 'zod';
 import { backgroundWorkCoordinator, type ForegroundWorkLease } from '@/logic/background-work-coordinator';
 import { workerCapability, workerProxy } from '@/utils/worker-transport';
@@ -46,10 +47,11 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   initialEnv: Record<string, string>,
   initialCwd?: string | undefined,
 }): Promise<WeshWorkerClient> {
+  type Runtime = StandaloneWorkerSession<IWeshWorker> & { blobReadHostLifetime: AbortController };
   const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts });
   const createRuntime = async ({ transport }: {
     transport: WeshFileSystemHandleTransport,
-  }): Promise<StandaloneWorkerSession<IWeshWorker>> => {
+  }): Promise<Runtime> => {
     const initRequest = await createWeshWorkerInitRequest({
       rootHandle,
       mounts,
@@ -60,6 +62,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     });
     const session = await createStandaloneWorkerSession<IWeshWorker>({ createWorker: createStandaloneWorker });
     const { remote } = session;
+    const blobReadHostLifetime = new AbortController();
     try {
       // Keep the proxied reader as a separate top-level argument.
       // Putting it inside the init request object can fail structured clone in browsers.
@@ -71,9 +74,11 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
         naidanSysfsRemoteReader
           ? workerProxy({ value: naidanSysfsRemoteReader })
           : undefined,
+        workerProxy({ value: createWorkerBlobReadHost({ signal: blobReadHostLifetime.signal }) }),
       );
-      return session;
+      return { ...session, blobReadHostLifetime };
     } catch (error) {
+      blobReadHostLifetime.abort(error);
       await disposeStandaloneWorkerSession({
         session,
         beforeRelease: undefined,
@@ -83,7 +88,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     }
   };
 
-  const createCompatibleRuntime = async (): Promise<StandaloneWorkerSession<IWeshWorker>> => {
+  const createCompatibleRuntime = async (): Promise<Runtime> => {
     if (!hasWeshFileSystemHandles({ rootHandle, mounts })) {
       return createRuntime({ transport: 'direct' });
     }
@@ -93,17 +98,19 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     });
   };
 
-  const destroyRuntime = async ({ runtime }: {
-    runtime: StandaloneWorkerSession<IWeshWorker>,
-  }) => {
-    await disposeStandaloneWorkerSession({
+  const destroyRuntime = ({ runtime }: { runtime: Runtime }): Promise<void> => {
+    runtime.blobReadHostLifetime.abort(new DOMException('Wesh runtime disposed', 'AbortError'));
+    return disposeStandaloneWorkerSession({
       session: runtime,
-      beforeRelease: undefined,
+      beforeRelease: () => runtime.remote.dispose(),
       cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
     });
   };
 
   let runtime = await createCompatibleRuntime();
+  let disposed = false;
+  let disposal: Promise<void> | undefined;
+  let replacement: Promise<void> | undefined;
   const foregroundExecutionLeases = new Map<string, {
     runtime: typeof runtime,
     lease: ForegroundWorkLease,
@@ -158,11 +165,44 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     backgroundPreloadRegistration = registerBackgroundPreload();
   };
 
+  const replaceRuntime = async ({ activeRuntime }: { activeRuntime: Runtime }): Promise<void> => {
+    if (disposed || runtime !== activeRuntime) return;
+    replacement ??= (async () => {
+      try {
+        const nextRuntime = await createCompatibleRuntime();
+        if (disposed || runtime !== activeRuntime) {
+          await destroyRuntime({ runtime: nextRuntime });
+          return;
+        }
+        runtime = nextRuntime;
+        releaseAllForegroundExecutionLeases();
+        refreshBackgroundPreloadRegistration();
+      } catch (error) {
+        disposed = true;
+        backgroundPreloadRegistration.dispose();
+        releaseAllForegroundExecutionLeases();
+        throw error;
+      } finally {
+        // Do not retain the old host until an unresponsive execution finishes.
+        await destroyRuntime({ runtime: activeRuntime }).catch(error => {
+          console.error('Failed to destroy replaced Wesh worker runtime', error);
+        });
+      }
+    })();
+    const pending = replacement;
+    try {
+      await pending;
+    } finally {
+      if (replacement === pending) replacement = undefined;
+    }
+  };
+
   return {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest,
       onEvent?: WeshWorkerExecutionEventCallback,
     }) {
+      if (disposed) throw new Error('Wesh client is disposed');
       const foregroundLease = backgroundWorkCoordinator.beginForegroundWork();
       const activeRuntime = runtime;
       try {
@@ -176,7 +216,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
           }) : undefined,
         );
         const validated = weshWorkerStartExecutionResponseSchema.parse(response);
-        if (runtime !== activeRuntime) {
+        if (disposed || runtime !== activeRuntime) {
           foregroundLease.dispose();
           return validated;
         }
@@ -223,20 +263,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
         return true;
       }
 
-      try {
-        runtime = await createCompatibleRuntime();
-      } catch (error) {
-        await destroyRuntime({ runtime: activeRuntime }).catch(cleanupError => {
-          console.error('Failed to destroy cancelled standalone Wesh worker runtime after replacement failure', cleanupError);
-        });
-        releaseAllForegroundExecutionLeases();
-        throw error;
-      }
-      releaseAllForegroundExecutionLeases();
-      refreshBackgroundPreloadRegistration();
-      void destroyRuntime({ runtime: activeRuntime }).catch(error => {
-        console.error('Failed to destroy cancelled standalone Wesh worker runtime', error);
-      });
+      await replaceRuntime({ activeRuntime });
       return true;
     },
     async disposeExecution({ request }) {
@@ -251,6 +278,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       }
     },
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
+      if (disposed) throw new Error('Wesh client is disposed');
       const foregroundLease = backgroundWorkCoordinator.beginForegroundWork();
       try {
         const response = await runtime.remote.execute({ request });
@@ -275,15 +303,21 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     async interrupt() {
       return runtime.remote.interrupt();
     },
-    async dispose() {
+    dispose() {
+      if (disposal !== undefined) return disposal;
+      disposed = true;
       backgroundPreloadRegistration.dispose();
       releaseAllForegroundExecutionLeases();
-      const activeRuntime = runtime;
-      await disposeStandaloneWorkerSession({
-        session: activeRuntime,
-        beforeRelease: () => activeRuntime.remote.dispose(),
-        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-      });
+      const destruction = destroyRuntime({ runtime });
+      disposal = (async () => {
+        try {
+          await destruction;
+        } finally {
+          // A replacement whose init finishes late must be destroyed, not published.
+          await replacement?.catch(() => undefined);
+        }
+      })();
+      return disposal;
     },
   };
 }

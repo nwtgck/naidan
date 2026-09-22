@@ -1,3 +1,4 @@
+import { utf8ByteLength } from '@/utils/utf8-text-source';
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/features/wesh/types';
 import type { NaidanSysfsBinaryObjectAccess } from '@/features/wesh/types';
 import {
@@ -46,7 +47,7 @@ function createMetadataFileEntry({
   const text = fileName === NAIDAN_SYSFS_METADATA_JSON_FILE_NAME
     ? renderBinaryObjectMetadataJson({ object })
     : renderBinaryObjectMetadataMarkdown({ object });
-  const size = new TextEncoder().encode(text).length;
+  const size = utf8ByteLength({ text });
 
   return {
     kind: 'file',
@@ -115,7 +116,7 @@ function createBinaryObjectDataFileEntry({
       }
 
       return new BlobFileHandle({
-        blob,
+        blob: context.blobs.fromNative({ blob }),
         metadata: object,
       });
     },

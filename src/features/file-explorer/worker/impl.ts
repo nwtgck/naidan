@@ -1,5 +1,10 @@
+import { readVirtualFileBlob, readVirtualFileText } from './virtual-file-content';
+import { BlobViewZipReadError } from '@/utils/blob-view-zip-source';
+import { createNativeFileCopy, createNativeFileWriteScope } from './native-file-writes';
+import { createWorkerBlobContext } from '@/utils/worker-blob-context';
+import type { BlobContext } from '@/utils/blob-view';
 
-import type { WorkerServerApi } from '@/utils/worker-transport';
+import { releaseWorkerProxyArgument, type WorkerServerApi } from '@/utils/worker-transport';
 import { WeshVFS } from '@/features/wesh/vfs';
 import { openFileReadStream } from '@/features/wesh/utils/fs';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
@@ -22,15 +27,12 @@ import {
 import {
   buildZipUploadPreview,
   executeParsedZipUpload,
+  ZipUploadRecoveryError,
   inspectZipUploadTarget,
   parseZipUpload,
   type ParsedZipUpload,
 } from './zip-upload';
-import {
-  copyFileSystemFileHandle,
-  isFileSystemEntryLookupMiss,
-  writeReadableStreamToFileHandle,
-} from '@/utils/file-system-stream';
+import { isFileSystemEntryLookupMiss } from '@/utils/file-system-stream';
 import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import {
@@ -70,7 +72,14 @@ import {
   type IFileExplorerWorker,
 } from './types';
 
-type FileExplorerSession =
+type FileExplorerSession = {
+  naidanSysfsRemoteReader: NaidanSysfsRemoteReader | undefined,
+  blobs: BlobContext,
+  reads: AbortController,
+  zipTasks: Set<Promise<void>>,
+  copyFile: ReturnType<typeof createNativeFileCopy>,
+  writes: ReturnType<typeof createNativeFileWriteScope>,
+} & (
   | {
     kind: 'native-directory',
     rootName: string,
@@ -81,7 +90,8 @@ type FileExplorerSession =
     kind: 'wesh-mounts',
     rootName: string,
     vfs: WeshVFS,
-  };
+  }
+);
 
 type ResolvedDirectory =
   | {
@@ -115,13 +125,28 @@ type ResolvedVirtualFile = {
 };
 
 const sessions = new Map<string, FileExplorerSession>();
+const sessionDisposals = new Map<string, Promise<void>>();
 const directoryArchiveJobs = new Map<string, AbortController>();
 const zipUploadJobs = new Map<string, AbortController>();
+const zipAnalysisJobs = new Map<string, AbortController>();
 const zipUploadAnalyses = new Map<string, {
   readonly targetDirectoryPath: string,
   readonly analysis: ParsedZipUpload,
   readonly previewFingerprints: Map<string, string>,
 }>();
+
+/** Track cleanup, not success: rollback must finish before releasing the shared host. */
+function trackZipTask({ session }: { session: FileExplorerSession }): () => void {
+  let finish: () => void = () => undefined;
+  const settled = new Promise<void>(resolve => {
+    finish = resolve;
+  });
+  session.zipTasks.add(settled);
+  return () => {
+    session.zipTasks.delete(settled);
+    finish();
+  };
+}
 
 function createZipUploadKey({ sessionId, id }: { sessionId: string, id: string }): string {
   return `${sessionId}\0${id}`;
@@ -212,15 +237,27 @@ function getSession({ sessionId }: { sessionId: string }): FileExplorerSession {
 async function createSessionFromRoot({
   root,
   naidanSysfsRemoteReader,
+  blobs,
 }: {
   root: FileExplorerRootDescriptor,
+  blobs: BlobContext,
   naidanSysfsRemoteReader: NaidanSysfsRemoteReader | undefined,
 }): Promise<FileExplorerSession> {
   const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
+  const writes = createNativeFileWriteScope({ blobs });
+  const reads = new AbortController();
+  const zipTasks = new Set<Promise<void>>();
+  const copyFile = createNativeFileCopy({ blobs });
   switch (root.kind) {
   case 'opfs-root':
     return {
       kind: 'native-directory',
+      blobs,
+      naidanSysfsRemoteReader,
+      reads,
+      zipTasks,
+      copyFile,
+      writes,
       rootName: root.rootName,
       rootHandle: await navigator.storage.getDirectory(),
       readOnly: false,
@@ -228,12 +265,18 @@ async function createSessionFromRoot({
   case 'native-directory':
     return {
       kind: 'native-directory',
+      blobs,
+      naidanSysfsRemoteReader,
+      reads,
+      zipTasks,
+      copyFile,
+      writes,
       rootName: root.rootName,
       rootHandle: await directoryHandleResolver.resolve({ reference: root.handle }),
       readOnly: root.readOnly,
     };
   case 'wesh-mounts': {
-    const vfs = new WeshVFS({ rootHandle: undefined });
+    const vfs = new WeshVFS({ rootHandle: undefined, blobs });
     for (const mount of root.mounts) {
       switch (mount.type) {
       case 'directory':
@@ -247,7 +290,7 @@ async function createSessionFromRoot({
         const reader = await (() => {
           switch (mount.storageType) {
           case 'opfs':
-            return createOpfsNaidanSysfsStorageReader();
+            return createOpfsNaidanSysfsStorageReader({ blobs });
           case 'local':
           case 'memory':
             if (naidanSysfsRemoteReader === undefined) {
@@ -268,6 +311,7 @@ async function createSessionFromRoot({
           readOnly: mount.readOnly,
           provider: new NaidanSysfsProvider({
             reader,
+            blobs,
             visibility: mount.visibility,
             binaryObjectAccess: mount.binaryObjectAccess,
             currentChatId: mount.currentChatId,
@@ -284,6 +328,12 @@ async function createSessionFromRoot({
     }
     return {
       kind: 'wesh-mounts',
+      blobs,
+      naidanSysfsRemoteReader,
+      reads,
+      zipTasks,
+      copyFile,
+      writes,
       rootName: root.rootName,
       vfs,
     };
@@ -341,14 +391,19 @@ async function resolveWeshDirectory({
   path: string,
 }): Promise<ResolvedDirectory> {
   const normalizedPath = normalizeExplorerPath({ path });
-  const stat = await vfs.stat({ path: normalizedPath }).catch(() => {
-    if (normalizedPath === '/') {
-      return { type: 'directory' as const };
-    }
-    return null;
-  });
-  if (stat === null || stat.type !== 'directory') {
-    throw new Error(`Directory not found: ${normalizedPath}`);
+  const stat = await vfs.stat({ path: normalizedPath });
+  switch (stat.type) {
+  case 'directory':
+    break;
+  case 'file':
+  case 'fifo':
+  case 'chardev':
+  case 'symlink':
+    throw new DOMException(`Expected a directory: ${normalizedPath}`, 'TypeMismatchError');
+  default: {
+    const _ex: never = stat.type;
+    throw new Error(`Unhandled virtual file type: ${String(_ex)}`);
+  }
   }
 
   const nativeHandle = await vfs.getNativeHandle({ path: normalizedPath });
@@ -438,9 +493,19 @@ async function resolveFile({
       };
     }
 
-    const stat = await session.vfs.stat({ path: normalizedPath }).catch(() => null);
-    if (stat === null || stat.type !== 'file') {
-      throw new Error(`File not found: ${normalizedPath}`);
+    const stat = await session.vfs.stat({ path: normalizedPath });
+    switch (stat.type) {
+    case 'file':
+      break;
+    case 'directory':
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
+      throw new DOMException(`Expected a file: ${normalizedPath}`, 'TypeMismatchError');
+    default: {
+      const _ex: never = stat.type;
+      throw new Error(`Unhandled virtual file type: ${String(_ex)}`);
+    }
     }
 
     return {
@@ -456,63 +521,6 @@ async function resolveFile({
     throw new Error(`Unhandled file explorer session: ${String(_exhaustiveCheck)}`);
   }
   }
-}
-
-async function readAllBytesFromVirtualFile({
-  vfs,
-  path,
-}: {
-  vfs: WeshVFS,
-  path: string,
-}): Promise<Uint8Array> {
-  const handle = await vfs.open({
-    path,
-    flags: {
-      access: 'read',
-      creation: 'never',
-      truncate: 'preserve',
-      append: 'preserve',
-    },
-    mode: undefined,
-  });
-
-  try {
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const buffer = new Uint8Array(64 * 1024);
-      const { bytesRead } = await handle.read({ buffer });
-      if (bytesRead === 0) {
-        break;
-      }
-      chunks.push(buffer.subarray(0, bytesRead));
-    }
-
-    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    const merged = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return merged;
-  } finally {
-    await handle.close();
-  }
-}
-
-async function readBlobText({ blob }: { blob: Blob }): Promise<string> {
-  if (typeof blob.text === 'function') {
-    return blob.text();
-  }
-  if (typeof blob.arrayBuffer !== 'function') {
-    throw new Error('Blob text reading is not supported in this environment');
-  }
-  const buffer = await blob.arrayBuffer();
-  return new TextDecoder().decode(buffer);
-}
-
-function uint8ArrayToBlobPart({ bytes }: { bytes: Uint8Array }): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 function assertDirectoryIsWritable({ directory }: {
@@ -751,8 +759,10 @@ async function listWeshVirtualDirectoryEntries({
 
 function createDirectoryArchiveAccess({
   session,
+  signal,
 }: {
   session: FileExplorerSession,
+  signal: AbortSignal,
 }): FileExplorerDirectoryArchiveAccess {
   return {
     async listDirectory({ path }) {
@@ -844,7 +854,7 @@ function createDirectoryArchiveAccess({
       const file = await resolveFile({ session, path });
       switch (file.kind) {
       case 'native-file':
-        return (await file.handle.getFile()).stream() as ReadableStream<Uint8Array>;
+        return session.blobs.fromNative({ blob: await file.handle.getFile() }).stream({ signal });
       case 'virtual-file':
         return openFileReadStream({ files: file.vfs, path: file.path });
       default: {
@@ -1016,57 +1026,53 @@ function buildPathSegments({
   return pathSegments;
 }
 
-async function copyFileHandleToDirectory({
-  sourceHandle,
-  targetDirectoryHandle,
-}: {
-  sourceHandle: FileSystemFileHandle,
-  targetDirectoryHandle: FileSystemDirectoryHandle,
-}): Promise<void> {
-  const targetFileHandle = await targetDirectoryHandle.getFileHandle(sourceHandle.name, { create: true });
-  await copyFileSystemFileHandle({
-    sourceHandle,
-    targetHandle: targetFileHandle,
-    signal: undefined,
-  });
-}
-
-async function copyDirectoryHandleToDirectory({
-  sourceHandle,
-  targetDirectoryHandle,
-}: {
-  sourceHandle: FileSystemDirectoryHandle,
-  targetDirectoryHandle: FileSystemDirectoryHandle,
-}): Promise<void> {
-  const nextDirectoryHandle = await targetDirectoryHandle.getDirectoryHandle(sourceHandle.name, { create: true });
-  for await (const childHandle of sourceHandle.values()) {
-    switch (childHandle.kind) {
+/** Resolve the source kind only. Read/write failures must never trigger a directory retry. */
+async function resolveNativeCopySource({ session, path }: {
+  session: FileExplorerSession,
+  path: string,
+}): Promise<FileSystemFileHandle | FileSystemDirectoryHandle> {
+  switch (session.kind) {
+  case 'native-directory': {
+    const parent = await resolveNativeDirectoryHandle({ rootHandle: session.rootHandle, path: getParentPath({ path }) });
+    const name = getBaseNameFromPath({ path, rootName: session.rootName });
+    try {
+      return await parent.getFileHandle(name);
+    } catch (error) {
+      if (!isFileSystemEntryLookupMiss({ error })) throw error;
+      return parent.getDirectoryHandle(name);
+    }
+  }
+  case 'wesh-mounts': {
+    const handle = await session.vfs.getNativeHandle({ path });
+    if (handle === null) throw new Error(`Cannot copy virtual entry: ${path}`);
+    switch (handle.kind) {
     case 'file':
-      await copyFileHandleToDirectory({
-        sourceHandle: childHandle as FileSystemFileHandle,
-        targetDirectoryHandle: nextDirectoryHandle,
-      });
-      break;
+      return handle as FileSystemFileHandle;
     case 'directory':
-      await copyDirectoryHandleToDirectory({
-        sourceHandle: childHandle as FileSystemDirectoryHandle,
-        targetDirectoryHandle: nextDirectoryHandle,
-      });
-      break;
+      return handle as FileSystemDirectoryHandle;
     default: {
-      throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`);
+      const _ex: never = handle.kind;
+      throw new Error(`Unhandled native copy source: ${String(_ex)}`);
     }
     }
+  }
+  default: {
+    const _ex: never = session;
+    throw new Error(`Unhandled copy session: ${String(_ex)}`);
+  }
   }
 }
 
 async function deleteEntryPath({
   session,
   path,
+  signal,
 }: {
   session: FileExplorerSession,
   path: string,
+  signal: AbortSignal | undefined,
 }): Promise<void> {
+  signal?.throwIfAborted();
   const normalizedPath = normalizeExplorerPath({ path });
   const name = getBaseNameFromPath({
     path: normalizedPath,
@@ -1077,6 +1083,7 @@ async function deleteEntryPath({
     path: getParentPath({ path: normalizedPath }),
   });
   const writableParentDirectory = getWritableNativeDirectory({ directory: parentDirectory });
+  signal?.throwIfAborted();
   await writableParentDirectory.removeEntry(name, { recursive: true });
 }
 
@@ -1147,14 +1154,23 @@ async function listZipUploadExistingEntries({
 export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker> {
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
-    async prepareSession({ request }, naidanSysfsRemoteReader) {
-      const validated = fileExplorerPrepareSessionRequestSchema.parse(request);
-      const sessionId = createSessionId();
-      sessions.set(sessionId, await createSessionFromRoot({
-        root: validated.root,
-        naidanSysfsRemoteReader,
-      }));
-      return fileExplorerPrepareSessionResponseSchema.parse({ sessionId });
+    async prepareSession({ request }, naidanSysfsRemoteReader, blobReadHost) {
+      const blobs = createWorkerBlobContext({ host: blobReadHost });
+      try {
+        const validated = fileExplorerPrepareSessionRequestSchema.parse(request);
+        const sessionId = createSessionId();
+        const response = fileExplorerPrepareSessionResponseSchema.parse({ sessionId });
+        const session = await createSessionFromRoot({ root: validated.root, naidanSysfsRemoteReader, blobs });
+        sessions.set(sessionId, session);
+        return response;
+      } catch (error) {
+        try {
+          blobs.dispose();
+        } finally {
+          if (naidanSysfsRemoteReader !== undefined) releaseWorkerProxyArgument({ value: naidanSysfsRemoteReader });
+        }
+        throw error;
+      }
     },
 
     async readDirectory({ request }) {
@@ -1181,64 +1197,93 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
     async readPreview({ request }) {
       const validated = fileExplorerReadPreviewRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
+      const signal = session.reads.signal;
+      signal.throwIfAborted();
       const normalizedPath = normalizeExplorerPath({ path: validated.path });
 
       try {
         await resolveDirectory({ session, path: normalizedPath });
-        return fileExplorerReadPreviewResponseSchema.parse({
-          kind: 'directory',
-        });
-      } catch {
-        // The path is not a directory; continue as file.
+        signal.throwIfAborted();
+        return fileExplorerReadPreviewResponseSchema.parse({ kind: 'directory' });
+      } catch (error) {
+        signal.throwIfAborted();
+        if (!isFileSystemEntryLookupMiss({ error })) throw error;
+        // Only an entry-kind lookup miss can fall through. Storage failures
+        // must not trigger another lookup or become an empty/missing preview.
       }
 
       const resolvedFile = await resolveFile({ session, path: normalizedPath });
-      const nativeFile = await (() => {
-        switch (resolvedFile.kind) {
-        case 'native-file':
-          return resolvedFile.handle.getFile();
-        case 'virtual-file':
-          return Promise.resolve(undefined);
-        default: {
-          const _exhaustiveCheck: never = resolvedFile;
-          throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
-        }
-        }
-      })();
-      const virtualBytes = await (() => {
-        switch (resolvedFile.kind) {
-        case 'native-file':
-          return Promise.resolve(undefined);
-        case 'virtual-file':
-          return readAllBytesFromVirtualFile({
-            vfs: resolvedFile.vfs,
-            path: resolvedFile.path,
-          });
-        default: {
-          const _exhaustiveCheck: never = resolvedFile;
-          throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
-        }
-        }
-      })();
+      signal.throwIfAborted();
       const extension = getFileExtension({ name: resolvedFile.name });
       const mimeCategory = getMimeCategory({ extension });
-      const fileSize = nativeFile?.size ?? virtualBytes?.byteLength ?? 0;
-
+      // Resolve existence and permissions, but do not acquire the binary body
+      // just to return its placeholder (notably sysfs attachment `data`).
+      switch (mimeCategory) {
+      case 'binary': return fileExplorerReadPreviewResponseSchema.parse({ kind: 'binary', oversized: false });
+      case 'text': case 'image': case 'video': case 'audio': break;
+      default: {
+        const _ex: never = mimeCategory;
+        throw new Error(`Unhandled mime category: ${String(_ex)}`);
+      }
+      }
+      const byteLimit = (() => {
+        switch (validated.mode) {
+        case 'force': return undefined;
+        case 'bounded':
+          switch (mimeCategory) {
+          case 'text': return TEXT_PREVIEW_SIZE_LIMIT;
+          case 'image': case 'video': case 'audio': return MEDIA_PREVIEW_SIZE_LIMIT;
+          default: {
+            const _ex: never = mimeCategory;
+            throw new Error(`Unhandled preview category: ${String(_ex)}`);
+          }
+          }
+        default: {
+          const _ex: never = validated.mode;
+          throw new Error(`Unhandled preview mode: ${String(_ex)}`);
+        }
+        }
+      })();
+      const source = await (() => {
+        switch (resolvedFile.kind) {
+        case 'native-file': return resolvedFile.handle.getFile().then(blob => ({ kind: 'blob' as const, blob }));
+        case 'virtual-file': return Promise.resolve({ kind: 'virtual' as const, files: resolvedFile.vfs });
+        default: {
+          const _ex: never = resolvedFile;
+          throw new Error(`Unhandled resolved file: ${String(_ex)}`);
+        }
+        }
+      })();
+      signal.throwIfAborted();
       switch (mimeCategory) {
       case 'text': {
-        if (validated.mode === 'bounded' && fileSize > TEXT_PREVIEW_SIZE_LIMIT) {
+        const content = await (() => {
+          switch (source.kind) {
+          case 'blob':
+            if (byteLimit !== undefined && source.blob.size > byteLimit) return { status: 'oversized' as const };
+            return session.blobs.fromNative({ blob: source.blob }).text({ signal })
+              .then(value => ({ status: 'complete' as const, value }));
+          case 'virtual':
+            return readVirtualFileText({ files: source.files, path: resolvedFile.path, byteLimit, signal });
+          default: {
+            const _ex: never = source;
+            throw new Error(`Unhandled preview source: ${String(_ex)}`);
+          }
+          }
+        })();
+        signal.throwIfAborted();
+        switch (content.status) {
+        case 'oversized':
           return fileExplorerReadPreviewResponseSchema.parse({
-            kind: 'text',
-            rawText: '',
-            displayText: '',
-            languageHint: EXTENSION_LANGUAGE_MAP[extension],
-            oversized: true,
+            kind: 'text', rawText: '', displayText: '', languageHint: EXTENSION_LANGUAGE_MAP[extension], oversized: true,
           });
+        case 'complete': break;
+        default: {
+          const _ex: never = content;
+          throw new Error(`Unhandled text result: ${String(_ex)}`);
         }
-
-        const rawText = nativeFile !== undefined
-          ? await readBlobText({ blob: nativeFile })
-          : new TextDecoder().decode(virtualBytes ?? new Uint8Array());
+        }
+        const rawText = content.value;
         let displayText = rawText;
         if (extension === '.json' || extension === '.jsonl') {
           try {
@@ -1248,40 +1293,49 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           }
         }
         return fileExplorerReadPreviewResponseSchema.parse({
-          kind: 'text',
-          rawText,
-          displayText,
-          languageHint: EXTENSION_LANGUAGE_MAP[extension],
-          oversized: false,
+          kind: 'text', rawText, displayText, languageHint: EXTENSION_LANGUAGE_MAP[extension], oversized: false,
         });
       }
-      case 'image':
-      case 'video':
-      case 'audio':
-        if (validated.mode === 'bounded' && fileSize > MEDIA_PREVIEW_SIZE_LIMIT) {
-          return fileExplorerReadPreviewResponseSchema.parse({
-            kind: 'media',
-            mediaKind: mimeCategory,
-            blob: new Blob([]),
-            mimeType: nativeFile?.type ?? '',
-            oversized: true,
-          });
+      case 'image': case 'video': case 'audio': {
+        const content = await (() => {
+          switch (source.kind) {
+          case 'blob':
+            return byteLimit !== undefined && source.blob.size > byteLimit
+              ? { status: 'oversized' as const }
+              : { status: 'complete' as const, value: source.blob };
+          case 'virtual':
+            return readVirtualFileBlob({ files: source.files, path: resolvedFile.path, byteLimit, signal });
+          default: {
+            const _ex: never = source;
+            throw new Error(`Unhandled preview source: ${String(_ex)}`);
+          }
+          }
+        })();
+        signal.throwIfAborted();
+        const mimeType = (() => {
+          switch (source.kind) {
+          case 'blob': return source.blob.type;
+          case 'virtual': return '';
+          default: {
+            const _ex: never = source;
+            throw new Error(`Unhandled preview source: ${String(_ex)}`);
+          }
+          }
+        })();
+        switch (content.status) {
+        case 'oversized':
+          return fileExplorerReadPreviewResponseSchema.parse({ kind: 'media', mediaKind: mimeCategory, blob: new Blob([]), mimeType, oversized: true });
+        case 'complete':
+          return fileExplorerReadPreviewResponseSchema.parse({ kind: 'media', mediaKind: mimeCategory, blob: content.value, mimeType, oversized: false });
+        default: {
+          const _ex: never = content;
+          throw new Error(`Unhandled media result: ${String(_ex)}`);
         }
-        return fileExplorerReadPreviewResponseSchema.parse({
-          kind: 'media',
-          mediaKind: mimeCategory,
-          blob: nativeFile ?? new Blob(virtualBytes === undefined ? [] : [uint8ArrayToBlobPart({ bytes: virtualBytes })]),
-          mimeType: nativeFile?.type ?? '',
-          oversized: false,
-        });
-      case 'binary':
-        return fileExplorerReadPreviewResponseSchema.parse({
-          kind: 'binary',
-          oversized: false,
-        });
+        }
+      }
       default: {
-        const _exhaustiveCheck: never = mimeCategory;
-        throw new Error(`Unhandled mime category: ${String(_exhaustiveCheck)}`);
+        const _ex: never = mimeCategory;
+        throw new Error(`Unhandled mime category: ${String(_ex)}`);
       }
       }
     },
@@ -1289,27 +1343,31 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
     async readFile({ request }) {
       const validated = fileExplorerReadFileRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
-      const resolvedFile = await resolveFile({
-        session,
-        path: validated.path,
-      });
+      const signal = session.reads.signal;
+      signal.throwIfAborted();
+      const resolvedFile = await resolveFile({ session, path: validated.path });
+      signal.throwIfAborted();
       switch (resolvedFile.kind) {
-      case 'native-file':
-        return fileExplorerReadFileResponseSchema.parse({
-          blob: await resolvedFile.handle.getFile(),
-        });
-      case 'virtual-file':
-        return fileExplorerReadFileResponseSchema.parse({
-          blob: new Blob([uint8ArrayToBlobPart({
-            bytes: await readAllBytesFromVirtualFile({
-              vfs: resolvedFile.vfs,
-              path: resolvedFile.path,
-            }),
-          })]),
-        });
+      case 'native-file': {
+        const blob = await resolvedFile.handle.getFile();
+        signal.throwIfAborted();
+        return fileExplorerReadFileResponseSchema.parse({ blob });
+      }
+      case 'virtual-file': {
+        const content = await readVirtualFileBlob({ files: resolvedFile.vfs, path: resolvedFile.path, byteLimit: undefined, signal });
+        signal.throwIfAborted();
+        switch (content.status) {
+        case 'complete': return fileExplorerReadFileResponseSchema.parse({ blob: content.value });
+        case 'oversized': throw new Error('Unbounded virtual file read unexpectedly exceeded a limit');
+        default: {
+          const _ex: never = content;
+          throw new Error(`Unhandled file result: ${String(_ex)}`);
+        }
+        }
+      }
       default: {
-        const _exhaustiveCheck: never = resolvedFile;
-        throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
+        const _ex: never = resolvedFile;
+        throw new Error(`Unhandled resolved file: ${String(_ex)}`);
       }
       }
     },
@@ -1385,6 +1443,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       }
       const abortController = new AbortController();
       directoryArchiveJobs.set(jobKey, abortController);
+      const finish = trackZipTask({ session });
       try {
         const normalizedPath = normalizeExplorerPath({ path: validated.directoryPath });
         const archiveRootName = getBaseNameFromPath({
@@ -1392,7 +1451,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           rootName: session.rootName,
         });
         const result = await createFileExplorerDirectoryArchive({
-          access: createDirectoryArchiveAccess({ session }),
+          access: createDirectoryArchiveAccess({ session, signal: abortController.signal }),
           sourceRootPath: normalizedPath,
           archiveRootName,
           excludedRelativePaths: normalizeArchiveExcludedRelativePaths({
@@ -1400,6 +1459,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           }),
           signal: abortController.signal,
         });
+        abortController.signal.throwIfAborted();
         return fileExplorerCreateDirectoryArchiveResponseSchema.parse({
           status: 'completed',
           blob: result.blob,
@@ -1412,6 +1472,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         throw error;
       } finally {
         directoryArchiveJobs.delete(jobKey);
+        finish();
       }
     },
 
@@ -1458,161 +1519,95 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       const validated = fileExplorerDeleteEntriesRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
       for (const path of validated.paths) {
-        await deleteEntryPath({ session, path });
+        await deleteEntryPath({ session, path, signal: undefined });
       }
     },
 
     async renameEntry({ request }) {
       const validated = fileExplorerRenameEntryRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
-      const normalizedSourcePath = normalizeExplorerPath({ path: validated.path });
-      const sourceName = getBaseNameFromPath({
-        path: normalizedSourcePath,
-        rootName: session.rootName,
-      });
-      const parentDirectory = await resolveDirectory({
-        session,
-        path: getParentPath({ path: normalizedSourcePath }),
-      });
-      const writableParentDirectory = getWritableNativeDirectory({ directory: parentDirectory });
-
-      try {
-        const sourceFile = await writableParentDirectory.getFileHandle(sourceName);
-        const targetFile = await writableParentDirectory.getFileHandle(validated.newName, { create: true });
-        await copyFileSystemFileHandle({
-          sourceHandle: sourceFile,
-          targetHandle: targetFile,
-          signal: undefined,
-        });
-      } catch {
-        const sourceDirectory = await writableParentDirectory.getDirectoryHandle(sourceName);
-        const targetDirectoryHandle = await writableParentDirectory.getDirectoryHandle(validated.newName, { create: true });
-        for await (const childHandle of sourceDirectory.values()) {
-          switch (childHandle.kind) {
-          case 'file':
-            await copyFileHandleToDirectory({
-              sourceHandle: childHandle as FileSystemFileHandle,
-              targetDirectoryHandle,
-            });
-            break;
-          case 'directory':
-            await copyDirectoryHandleToDirectory({
-              sourceHandle: childHandle as FileSystemDirectoryHandle,
-              targetDirectoryHandle,
-            });
-            break;
-          default: {
-            throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`);
-          }
-          }
-        }
-      }
-
-      await writableParentDirectory.removeEntry(sourceName, { recursive: true });
+      await session.writes.run({ operation: async ({ writer }) => {
+        const normalizedSourcePath = normalizeExplorerPath({ path: validated.path });
+        const sourceName = getBaseNameFromPath({ path: normalizedSourcePath, rootName: session.rootName });
+        const parentDirectory = await resolveDirectory({ session, path: getParentPath({ path: normalizedSourcePath }) });
+        const writableParentDirectory = getWritableNativeDirectory({ directory: parentDirectory });
+        const source = await resolveNativeCopySource({ session, path: normalizedSourcePath });
+        writer.signal.throwIfAborted();
+        if (sourceName === validated.newName) return;
+        await writer.copyEntry({ source, targetDirectory: writableParentDirectory, name: validated.newName });
+        writer.signal.throwIfAborted();
+        await writableParentDirectory.removeEntry(sourceName, { recursive: true });
+      } });
     },
 
     async copyEntries({ request }) {
       const validated = fileExplorerTransferEntriesRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
-      const targetDirectory = await resolveDirectory({
-        session,
-        path: validated.targetDirectoryPath,
-      });
-      const writableTargetDirectory = getWritableNativeDirectory({ directory: targetDirectory });
-
-      for (const sourcePath of validated.sourcePaths) {
-        const normalizedSourcePath = normalizeExplorerPath({ path: sourcePath });
-        try {
-          const sourceFile = await resolveFile({ session, path: normalizedSourcePath });
-          switch (sourceFile.kind) {
-          case 'native-file':
-            await copyFileHandleToDirectory({
-              sourceHandle: sourceFile.handle,
-              targetDirectoryHandle: writableTargetDirectory,
-            });
-            break;
-          case 'virtual-file':
-            throw new Error(`Cannot copy virtual file: ${normalizedSourcePath}`);
-          default: {
-            const _exhaustiveCheck: never = sourceFile;
-            throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
-          }
-          }
-          continue;
-        } catch {
-          const sourceDirectory = await resolveDirectory({
-            session,
-            path: normalizedSourcePath,
-          });
-          switch (sourceDirectory.kind) {
-          case 'native-directory':
-            await copyDirectoryHandleToDirectory({
-              sourceHandle: sourceDirectory.handle,
-              targetDirectoryHandle: writableTargetDirectory,
-            });
-            break;
-          case 'virtual-directory':
-            throw new Error(`Cannot copy virtual directory: ${normalizedSourcePath}`);
-          default: {
-            const _exhaustiveCheck: never = sourceDirectory;
-            throw new Error(`Unhandled resolved directory: ${String(_exhaustiveCheck)}`);
-          }
-          }
+      await session.writes.run({ operation: async ({ writer }) => {
+        const targetDirectory = await resolveDirectory({ session, path: validated.targetDirectoryPath });
+        const writableTargetDirectory = getWritableNativeDirectory({ directory: targetDirectory });
+        for (const sourcePath of validated.sourcePaths) {
+          writer.signal.throwIfAborted();
+          const normalizedSourcePath = normalizeExplorerPath({ path: sourcePath });
+          const source = await resolveNativeCopySource({ session, path: normalizedSourcePath });
+          await writer.copyEntry({ source, targetDirectory: writableTargetDirectory, name: source.name });
         }
-      }
+      } });
     },
 
     async moveEntries({ request }) {
       const validated = fileExplorerTransferEntriesRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
-      await this.copyEntries({
-        request: {
-          sessionId: validated.sessionId,
-          sourcePaths: validated.sourcePaths,
-          targetDirectoryPath: validated.targetDirectoryPath,
-        },
-      });
-      for (const sourcePath of validated.sourcePaths) {
-        await deleteEntryPath({ session, path: sourcePath });
-      }
+      await session.writes.run({ operation: async ({ writer }) => {
+        await this.copyEntries({ request: validated });
+        for (const sourcePath of validated.sourcePaths) {
+          await deleteEntryPath({ session, path: sourcePath, signal: writer.signal });
+        }
+      } });
     },
 
     async analyzeZipUpload({ request }) {
       const validated = fileExplorerAnalyzeZipUploadRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
-      const targetDirectory = await resolveDirectory({
-        session,
-        path: validated.targetDirectoryPath,
-      });
-      getWritableNativeDirectory({ directory: targetDirectory });
-      const analysisKey = createZipUploadKey({
-        sessionId: validated.sessionId,
-        id: validated.analysisId,
-      });
+      const analysisKey = createZipUploadKey({ sessionId: validated.sessionId, id: validated.analysisId });
+      const abortController = new AbortController();
+      zipAnalysisJobs.get(analysisKey)?.abort(new DOMException('ZIP analysis replaced', 'AbortError'));
+      zipAnalysisJobs.set(analysisKey, abortController);
+      zipUploadAnalyses.delete(analysisKey);
+      const finish = trackZipTask({ session });
       try {
-        const analysis = await parseZipUpload({
-          blob: validated.blob,
-          fileName: validated.fileName,
-        });
+        const targetDirectory = await resolveDirectory({ session, path: validated.targetDirectoryPath });
+        getWritableNativeDirectory({ directory: targetDirectory });
+        abortController.signal.throwIfAborted();
+        let analysis: ParsedZipUpload;
+        try {
+          analysis = await parseZipUpload({
+            blob: session.blobs.fromNative({ blob: validated.blob }),
+            fileName: validated.fileName,
+            signal: abortController.signal,
+          });
+        } catch (error) {
+          // Cancellation or byte transport failure is not an invalid archive.
+          abortController.signal.throwIfAborted();
+          if (error instanceof BlobViewZipReadError) throw error;
+          return fileExplorerAnalyzeZipUploadResponseSchema.parse({
+            status: 'not_extractable', analysisId: validated.analysisId, reason: 'invalid_or_unsupported_archive',
+          });
+        }
+        abortController.signal.throwIfAborted();
         zipUploadAnalyses.set(analysisKey, {
           targetDirectoryPath: validated.targetDirectoryPath,
           analysis,
           previewFingerprints: new Map(),
         });
         return fileExplorerAnalyzeZipUploadResponseSchema.parse({
-          status: 'extractable',
-          analysisId: validated.analysisId,
-          entryCount: analysis.entries.length,
-          totalUncompressedSize: analysis.totalUncompressedSize,
+          status: 'extractable', analysisId: validated.analysisId,
+          entryCount: analysis.entries.length, totalUncompressedSize: analysis.totalUncompressedSize,
           singleRootDirectoryName: analysis.singleRootDirectoryName,
         });
-      } catch {
-        zipUploadAnalyses.delete(analysisKey);
-        return fileExplorerAnalyzeZipUploadResponseSchema.parse({
-          status: 'not_extractable',
-          analysisId: validated.analysisId,
-          reason: 'invalid_or_unsupported_archive',
-        });
+      } finally {
+        if (zipAnalysisJobs.get(analysisKey) === abortController) zipAnalysisJobs.delete(analysisKey);
+        finish();
       }
     },
 
@@ -1685,6 +1680,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       }
       const abortController = new AbortController();
       zipUploadJobs.set(jobKey, abortController);
+      const finish = trackZipTask({ session });
       try {
         const targetDirectory = getWritableNativeDirectory({
           directory: await resolveDirectory({
@@ -1697,6 +1693,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           placement: validated.placement,
           targetDirectory,
         });
+        abortController.signal.throwIfAborted();
         const previewFingerprint = analysisState.previewFingerprints.get(
           createZipUploadPlacementKey({ placement: validated.placement }),
         );
@@ -1708,6 +1705,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           return fileExplorerExecuteZipUploadResponseSchema.parse({ status: 'preview_outdated' });
         }
         const result = await executeParsedZipUpload({
+          copyFile: session.copyFile,
           analysis: analysisState.analysis,
           placement: validated.placement,
           targetDirectory,
@@ -1726,12 +1724,13 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         }
         }
       } catch (error) {
-        if (abortController.signal.aborted) {
+        if (abortController.signal.aborted && !(error instanceof ZipUploadRecoveryError)) {
           return fileExplorerExecuteZipUploadResponseSchema.parse({ status: 'cancelled' });
         }
         throw error;
       } finally {
         zipUploadJobs.delete(jobKey);
+        finish();
       }
     },
 
@@ -1745,50 +1744,61 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
 
     async disposeZipUploadAnalysis({ request }) {
       const validated = fileExplorerDisposeZipUploadAnalysisRequestSchema.parse(request);
-      zipUploadAnalyses.delete(createZipUploadKey({
-        sessionId: validated.sessionId,
-        id: validated.analysisId,
-      }));
+      const key = createZipUploadKey({ sessionId: validated.sessionId, id: validated.analysisId });
+      zipAnalysisJobs.get(key)?.abort(new DOMException('ZIP analysis disposed', 'AbortError'));
+      zipAnalysisJobs.delete(key);
+      zipUploadAnalyses.delete(key);
     },
 
     async uploadFiles({ request }) {
       const validated = fileExplorerUploadFilesRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
-      const targetDirectory = await resolveDirectory({
-        session,
-        path: validated.targetDirectoryPath,
-      });
-      const writableTargetDirectory = getWritableNativeDirectory({ directory: targetDirectory });
-
-      for (const file of validated.files) {
-        const targetFileHandle = await writableTargetDirectory.getFileHandle(file.name, { create: true });
-        await writeReadableStreamToFileHandle({
-          source: file.blob.stream(),
-          targetHandle: targetFileHandle,
-          signal: undefined,
-        });
-      }
+      await session.writes.run({ operation: async ({ writer }) => {
+        const targetDirectory = await resolveDirectory({ session, path: validated.targetDirectoryPath });
+        const writableTargetDirectory = getWritableNativeDirectory({ directory: targetDirectory });
+        for (const file of validated.files) {
+          const source = session.blobs.fromNative({ blob: file.blob });
+          await writer.writeFile({ source, targetDirectory: writableTargetDirectory, name: file.name });
+        }
+      } });
     },
 
     async disposeSession({ request }) {
       const validated = fileExplorerDisposeSessionRequestSchema.parse(request);
+      const pendingDisposal = sessionDisposals.get(validated.sessionId);
+      if (pendingDisposal !== undefined) return pendingDisposal;
+      const session = sessions.get(validated.sessionId);
       sessions.delete(validated.sessionId);
-      for (const [jobKey, abortController] of directoryArchiveJobs) {
-        if (jobKey.startsWith(`${validated.sessionId}\0`)) {
-          abortController.abort(new DOMException('File explorer session disposed', 'AbortError'));
-          directoryArchiveJobs.delete(jobKey);
+      const disposal = (async () => {
+        const writesStopped = session?.writes.dispose();
+        try {
+          session?.reads.abort(new DOMException('File explorer reads disposed', 'AbortError'));
+          for (const jobs of [directoryArchiveJobs, zipUploadJobs, zipAnalysisJobs]) {
+            for (const [jobKey, abortController] of jobs) {
+              if (jobKey.startsWith(`${validated.sessionId}\0`)) {
+                abortController.abort(new DOMException('File explorer session disposed', 'AbortError'));
+              }
+            }
+          }
+          for (const analysisKey of zipUploadAnalyses.keys()) {
+            if (analysisKey.startsWith(`${validated.sessionId}\0`)) zipUploadAnalyses.delete(analysisKey);
+          }
+          // Cancel the operations, not their shared reader: ZIP rollback may
+          // still need to read backup files after its operation was aborted.
+          await Promise.all([writesStopped, ...session?.zipTasks ?? []]);
+        } finally {
+          try {
+            session?.blobs.dispose();
+          } finally {
+            if (session?.naidanSysfsRemoteReader !== undefined) releaseWorkerProxyArgument({ value: session.naidanSysfsRemoteReader });
+          }
         }
-      }
-      for (const [jobKey, abortController] of zipUploadJobs) {
-        if (jobKey.startsWith(`${validated.sessionId}\0`)) {
-          abortController.abort(new DOMException('File explorer session disposed', 'AbortError'));
-          zipUploadJobs.delete(jobKey);
-        }
-      }
-      for (const analysisKey of zipUploadAnalyses.keys()) {
-        if (analysisKey.startsWith(`${validated.sessionId}\0`)) {
-          zipUploadAnalyses.delete(analysisKey);
-        }
+      })();
+      sessionDisposals.set(validated.sessionId, disposal);
+      try {
+        await disposal;
+      } finally {
+        sessionDisposals.delete(validated.sessionId);
       }
     },
   };

@@ -14,7 +14,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   };
   const tokenPointer = allocate({ bytes: 8 }); new DataView(memory.buffer).setInt32(Number(tokenPointer), 7, true); new DataView(memory.buffer).setInt32(Number(tokenPointer) + 4, 8, true);
   const api = {
-    mtmd_bitmap_init: vi.fn(async () => allocate({ bytes: 16 })),
+    mtmd_bitmap_init: vi.fn(async (_width: number, _height: number, _data: bigint) => allocate({ bytes: 16 })),
     mtmd_bitmap_free: vi.fn(async (pointer: bigint) => {
       allocated.delete(pointer);
     }),
@@ -90,4 +90,64 @@ describe('native multimodal orchestration', () => {
   it('rejects templates that omit, duplicate or reorder image markers', () => {
     for (const prompt of ['none', '<a><a>', '<b><a>']) expect(() => splitImagePrompt({ prompt, images: [{ marker: '<a>', blob }, { marker: '<b>', blob }] })).toThrow('template-unsupported');
   });
+  it.each([4, 8] as const)('passes decoder-produced RGB into native bitmap initialization using %i-byte pointers', async pointerBytes => {
+    const input = await vi.importActual<typeof import('@/features/llama-cpp-browser/runtime/image-input')>('../runtime/image-input');
+    vi.mocked(decodeImage).mockImplementationOnce(input.decodeImage);
+    const host = fixture({ pointerBytes });
+    const decoder = { decode: vi.fn(async () => ({ width: 1, height: 1, rgba: new Uint8Array([200, 100, 0, 128]) })), dispose: vi.fn() };
+    const original = host.api.mtmd_bitmap_init.getMockImplementation()!;
+    const observed: number[][] = [];
+    host.api.mtmd_bitmap_init.mockImplementationOnce(async (width, height, data) => {
+      observed.push([...host.core.bytes({ pointer: data, length: width * height * 3 })]);
+      return original(width, height, data);
+    });
+    const signal = new AbortController().signal;
+    const prepared = await prepareMultimodal({ core: host.core, projector: 1n, prompt: '<marker>after', images: [{ marker: '<marker>', blob }], decoder, signal });
+    expect(decoder.decode).toHaveBeenCalledWith({ blob, signal });
+    expect(observed).toEqual([[227, 177, 127]]);
+    expect(decoder.dispose).not.toHaveBeenCalled();
+    await prepared.dispose();
+    expect([...host.allocated]).toEqual([host.tokenPointer]);
+  });
+
+  it('does not allocate an image bitmap when cancellation arrives during decoding', async () => {
+    const host = fixture({ pointerBytes: 8 });
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof decodeImage>>>();
+    vi.mocked(decodeImage).mockReturnValueOnce(pending.promise);
+    const controller = new AbortController();
+    const prepared = prepareMultimodal({ core: host.core, projector: 1n, prompt: 'before<marker>after', images: [{ marker: '<marker>', blob }], signal: controller.signal });
+    const rejected = expect(prepared).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(decodeImage).toHaveBeenCalledOnce());
+    controller.abort();
+    pending.resolve({ width: 1, height: 1, rgb: new Uint8Array([10, 20, 30]) });
+    await rejected;
+    expect(host.api.mtmd_bitmap_init).not.toHaveBeenCalled();
+    expect(host.api.mtmd_tokenize_from_parts).not.toHaveBeenCalled();
+    expect([...host.allocated]).toEqual([host.tokenPointer]);
+  });
+
+  it('owns and frees a native bitmap returned after cancellation during native initialization', async () => {
+    const host = fixture({ pointerBytes: 4 });
+    const controller = new AbortController();
+    const original = host.api.mtmd_bitmap_init.getMockImplementation()!;
+    host.api.mtmd_bitmap_init.mockImplementationOnce(async (...args) => {
+      const pointer = await original(...args); controller.abort(); return pointer;
+    });
+    await expect(prepareMultimodal({ core: host.core, projector: 1n, prompt: '<marker>after', images: [{ marker: '<marker>', blob }], signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(host.api.mtmd_bitmap_free).toHaveBeenCalledOnce();
+    expect(host.api.mtmd_tokenize_from_parts).not.toHaveBeenCalled();
+    expect([...host.allocated]).toEqual([host.tokenPointer]);
+  });
+
+  it('does not begin evaluation after cancellation and keeps native chunks disposable', async () => {
+    const host = fixture({ pointerBytes: 8 });
+    const controller = new AbortController();
+    const prepared = await prepareMultimodal({ core: host.core, projector: 1n, prompt: '<marker>after', images: [{ marker: '<marker>', blob }], signal: controller.signal });
+    controller.abort();
+    await expect(prepared.evaluate({ context: 2n, capacity: 100 })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(host.api.mtmd_helper_eval_chunks).not.toHaveBeenCalled();
+    await prepared.dispose();
+    expect([...host.allocated]).toEqual([host.tokenPointer]);
+  });
+
 });

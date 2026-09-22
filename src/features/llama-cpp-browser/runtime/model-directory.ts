@@ -1,3 +1,4 @@
+import type { BlobContext, BlobView } from '@/utils/blob-view';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
 import { rankedProjectors } from '@/features/llama-cpp-browser/hugging-face/presentation';
@@ -33,24 +34,67 @@ export async function hasPendingImport({ folder }: { folder: FileSystemDirectory
     if (missing({ error })) return false; throw error;
   }
 }
-export async function validGguf({ file }: { file: File }): Promise<boolean> {
-  if (file.size < 24 || !Number.isSafeInteger(file.size)) return false;
-  const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
-  return bytes.length === 8 && bytes[0] === 71 && bytes[1] === 71 && bytes[2] === 85 && bytes[3] === 70 && [2, 3].includes(new DataView(bytes.buffer).getUint32(4, true));
+/** An unreadable snapshot/header is not an absent or structurally invalid model. */
+export class ModelBlobReadError extends Error {
+  constructor({ cause }: { cause: unknown }) {
+    super('Unable to read stored model bytes', { cause });
+    this.name = 'ModelBlobReadError';
+  }
 }
-export async function readModelFiles({ folder, prefix }: { folder: FileSystemDirectoryHandle, prefix: string }): Promise<ModelFile[]> {
+export async function readModelSnapshot({ handle, blobs, signal }: {
+  handle: FileSystemFileHandle, blobs: BlobContext | undefined, signal: AbortSignal | undefined,
+}): Promise<File> {
+  signal?.throwIfAborted();
+  try {
+    const file = await handle.getFile();
+    signal?.throwIfAborted();
+    return file;
+  } catch (cause) {
+    signal?.throwIfAborted();
+    if (blobs !== undefined) throw new ModelBlobReadError({ cause });
+    throw cause;
+  }
+}
+export async function validGguf({ file, blobs, signal }: { file: File, blobs?: BlobContext, signal?: AbortSignal }): Promise<boolean> {
+  signal?.throwIfAborted();
+  if (file.size < 24 || !Number.isSafeInteger(file.size)) return false;
+  try {
+    const bytes = blobs === undefined ? new Uint8Array(await file.slice(0, 8).arrayBuffer())
+      : await blobs.fromNative({ blob: file }).slice({ start: 0, end: 8 }).bytes({ signal });
+    signal?.throwIfAborted();
+    return hasGgufHeader({ bytes });
+  } catch (cause) {
+    signal?.throwIfAborted();
+    if (blobs !== undefined) throw new ModelBlobReadError({ cause });
+    throw cause;
+  }
+}
+/** Validate only the existing eight-byte header, never the model's full payload. */
+export async function validGgufView({ blob, signal }: { blob: BlobView, signal: AbortSignal }): Promise<boolean> {
+  signal.throwIfAborted();
+  if (blob.size < 24 || !Number.isSafeInteger(blob.size)) return false;
+  return hasGgufHeader({ bytes: await blob.slice({ start: 0, end: 8 }).bytes({ signal }) });
+}
+function hasGgufHeader({ bytes }: { bytes: Uint8Array<ArrayBuffer> }): boolean {
+  return bytes.length === 8 && bytes[0] === 71 && bytes[1] === 71 && bytes[2] === 85 && bytes[3] === 70
+    && [2, 3].includes(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4, true));
+}
+export async function readModelFiles({ folder, prefix, blobs, signal }: { folder: FileSystemDirectoryHandle, prefix: string, blobs?: BlobContext, signal?: AbortSignal }): Promise<ModelFile[]> {
   const result: ModelFile[] = [];
+  signal?.throwIfAborted();
   for await (const [name, entry] of folder.entries()) {
+    signal?.throwIfAborted();
     if (!validSegment({ name })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
     const path = prefix + name;
     switch (entry.kind) {
-    case 'directory': result.push(...await readModelFiles({ folder: entry, prefix: `${path}/` })); break;
+    case 'directory': result.push(...await readModelFiles({ folder: entry, prefix: `${path}/`, blobs, signal })); break;
     case 'file':
-      if (/\.gguf$/i.test(name)) result.push({ path, handle: entry, file: await entry.getFile() });
+      if (/\.gguf$/i.test(name)) result.push({ path, handle: entry, file: await readModelSnapshot({ handle: entry, blobs, signal }) });
       break;
     default: { const exhaustive: never = entry; throw new Error(`Unexpected entry: ${exhaustive}`); }
     }
   }
+  signal?.throwIfAborted();
   return result.sort((a, b) => a.path.localeCompare(b.path));
 }
 export function resolveModelFiles({ files }: { files: { path: string }[] }): { modelPath: string, projectorPath: string | undefined } {
@@ -72,10 +116,16 @@ export function resolveModelFiles({ files }: { files: { path: string }[] }): { m
   }
   return { modelPath: first.path, projectorPath: projectors[0]?.path };
 }
-export async function resolveDirectory({ folder, id, name }: { folder: FileSystemDirectoryHandle, id: string, name: string }): Promise<ModelDirectory> {
+export async function resolveDirectory({ folder, id, name, blobs, signal }: { folder: FileSystemDirectoryHandle, id: string, name: string, blobs?: BlobContext, signal?: AbortSignal }): Promise<ModelDirectory> {
+  signal?.throwIfAborted();
   if (await hasPendingImport({ folder })) throw new LlamaCppBrowserError({ code: 'missing-model' });
-  const files = await readModelFiles({ folder, prefix: '' });
-  for (const entry of files) if (!await validGguf({ file: entry.file })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+  return validateDirectory({ folder, id, name, blobs, signal });
+}
+async function validateDirectory({ folder, id, name, blobs, signal }: {
+  folder: FileSystemDirectoryHandle, id: string, name: string, blobs: BlobContext | undefined, signal: AbortSignal | undefined,
+}): Promise<ModelDirectory> {
+  const files = await readModelFiles({ folder, prefix: '', blobs, signal });
+  for (const entry of files) if (!await validGguf({ file: entry.file, blobs, signal })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   const resolved = resolveModelFiles({ files });
   return { id, name, files: files.filter(file => !isProjector({ path: file.path }) || file.path === resolved.projectorPath), ...resolved };
 }
@@ -112,7 +162,7 @@ async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal
   }
 }
 /** A source-neutral import boundary shared by dropped folders and future downloads. */
-export async function importModelDirectory({ directory, onProgress, signal }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
+export async function importModelDirectory({ directory, onProgress, signal, blobs }: { blobs?: BlobContext, signal: AbortSignal | undefined, directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
@@ -137,7 +187,7 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     logDiagnostic({ diagnostic: { event: 'failed', stage: 'model-resolve', reason: 'model-directory-layout', code: errorCode({ error }) } });
     throw error;
   }
-  for (const { file } of ggufs) if (!await validGguf({ file })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+  for (const { file } of ggufs) if (!await validGguf({ file, blobs, signal })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   checkCancelled();
   const parent = await userModelDirectory();
   for await (const [name, entry] of parent.entries()) {
@@ -149,49 +199,74 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
   checkCancelled();
   let completed = 0; const total = directory.files.reduce((sum, entry) => sum + entry.file.size, 0);
   if (!Number.isSafeInteger(total)) throw new LlamaCppBrowserError({ code: 'storage-error' });
+  checkCancelled();
   const folder = await parent.getDirectoryHandle(rootName, { create: true });
   try {
+    checkCancelled();
     await folder.getFileHandle(pendingName, { create: true });
     for (const { path, file } of directory.files) {
       checkCancelled();
       const parts = path.split('/'); const name = parts.pop()!; let parent = folder;
       for (const segment of parts) parent = await parent.getDirectoryHandle(segment, { create: true });
       const destination = await parent.getFileHandle(name, { create: true });
-      const writer = await destination.createWritable(); const reader = file.stream().getReader(); let written = 0;
-      // A chunk read can be pending when Cancel arrives. Wake that await so the
-      // worker reaches rollback instead of waiting for another chunk forever.
-      const cancelRead = (): void => {
-        void reader.cancel().catch(() => {});
+      checkCancelled();
+      const source = blobs === undefined ? file.stream() : blobs.fromNative({ blob: file }).stream({ signal });
+      const reader = source.getReader();
+      let writer: FileSystemWritableFileStream | undefined;
+      let closed = false;
+      let written = 0;
+      const cancelInput = () => {
+        void reader.cancel(signal?.reason).catch(() => {});
       };
-      signal?.addEventListener('abort', cancelRead, { once: true });
+      signal?.addEventListener('abort', cancelInput, { once: true });
       try {
+        checkCancelled();
+        writer = await destination.createWritable();
+        checkCancelled();
         while (true) {
+          const { done, value } = await reader.read();
           checkCancelled();
-          const { done, value } = await reader.read(); checkCancelled(); if (done) break;
+          if (done) break;
           written += value.byteLength;
           if (written > file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
-          await writer.write(value); checkCancelled(); completed += value.byteLength;
+          await writer.write(value);
+          checkCancelled();
+          completed += value.byteLength;
           onProgress({ progress: { phase: 'importing', completed, total } });
+          checkCancelled();
         }
-        checkCancelled();
         if (written !== file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
+        checkCancelled();
         await writer.close();
-        if ((await destination.getFile()).size !== file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
+        closed = true;
+        checkCancelled();
+        if ((await readModelSnapshot({ handle: destination, blobs, signal })).size !== file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
       } catch (error) {
-        await reader.cancel().catch(() => {}); await writer.abort().catch(() => {}); throw error;
+        if (!closed) await writer?.abort().catch(() => {});
+        throw error;
       } finally {
-        signal?.removeEventListener('abort', cancelRead);
-        reader.releaseLock();
+        signal?.removeEventListener('abort', cancelInput);
+        try {
+          await reader.cancel().catch(() => {});
+        } finally {
+          reader.releaseLock();
+        }
       }
     }
-    // Only the transient pending marker guards publication; each load resolves the files anew.
+    // Validate every committed file while the pending marker still hides the
+    // directory. Publication happens only when removing that marker succeeds.
+    const model = describeDirectory({ directory: await validateDirectory({ folder, id: `user/${rootName}`, name: rootName, blobs, signal }) });
     checkCancelled();
     await folder.removeEntry(pendingName);
-    const model = describeDirectory({ directory: await resolveDirectory({ folder, id: `user/${rootName}`, name: rootName }) });
-    checkCancelled();
+    // A cancellation after successful publication does not delete a published model.
     return model;
   } catch (error) {
-    await parent.removeEntry(rootName, { recursive: true }).catch(() => {});
+    try {
+      await parent.removeEntry(rootName, { recursive: true });
+    } catch (cleanupError) {
+      // Keep the pending marker on failed cleanup; do not report full rollback.
+      throw new AggregateError([error, cleanupError], `Model import cleanup failed: user/${rootName}`);
+    }
     throw error;
   }
 }

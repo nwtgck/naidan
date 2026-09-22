@@ -1,4 +1,4 @@
-import { File as NodeFile } from 'node:buffer';
+import { File as NodeFile, Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { memoryDirectory, ggufBytes } from '@/features/llama-cpp-browser/hugging-face/test-opfs';
@@ -10,7 +10,7 @@ import type { LlamaCppWorkerApi } from './types';
 // Worker transport and storage are in-memory: this catches cancellation wiring
 // regressions that a manager test with a mocked importModel() cannot observe.
 const transport = vi.hoisted(() => ({ remote: undefined as WorkerServerApi<LlamaCppWorkerApi> | undefined, release: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
+vi.mock('@/utils/worker-transport', async importOriginal => ({ ...await importOriginal<typeof import('@/utils/worker-transport')>(), wrapWorkerRemote: () => transport.remote,
   releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
 vi.mock('@/features/llama-cpp-browser/runtime/detect-profile', () => ({ probeRuntimeProfiles: vi.fn() }));
 vi.mock('./session', () => ({ invalidateStoredModel: vi.fn(), releaseSession: vi.fn() }));
@@ -24,13 +24,15 @@ class TestWorker extends EventTarget {
 }
 let root: ReturnType<typeof memoryDirectory>;
 function modelFile({ name }: { name: string }): File {
-  // Preserve jsdom's File identity for the real wire schemas, while supplying
-  // the Blob streaming methods that jsdom does not implement.
-  const file = new File([ggufBytes()], name); const source = new NodeFile([ggufBytes()], name);
+  // The directory schema captured JSDOM's File constructor at module load.
+  // Keep that identity; only the byte/stream operations use real native Blob data.
+  const file = new File([ggufBytes()], name);
+  const source = new NodeFile([ggufBytes()], name);
   Object.defineProperties(file, {
     stream: { value: () => source.stream() },
     slice: { value: source.slice.bind(source) },
     arrayBuffer: { value: () => source.arrayBuffer() },
+    text: { value: () => source.text() },
   });
   return file;
 }
@@ -40,6 +42,7 @@ async function userFolder() {
 beforeEach(() => {
   vi.clearAllMocks(); TestWorker.instances = []; root = memoryDirectory({ name: '' });
   vi.stubGlobal('Worker', TestWorker);
+  vi.stubGlobal('Blob', NodeBlob);
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, operation: () => Promise<unknown>) => operation() } });
   vi.spyOn(console, 'log').mockImplementation(() => {});
   transport.remote = createWorkerApi();

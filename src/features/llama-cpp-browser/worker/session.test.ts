@@ -1,3 +1,5 @@
+import { createNativeBlobContext } from '@/utils/blob-view';
+import type { storedModelDirectory } from '@/features/llama-cpp-browser/runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
@@ -5,10 +7,10 @@ import type { loadProjector } from './projector';
 import type { WorkerGenerateInput } from './types';
 import { prepareSession, releaseSession } from './session';
 
-const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as ModelDirectory | undefined, load: vi.fn<typeof loadProjector>() }));
+const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as ModelDirectory | undefined, load: vi.fn<typeof loadProjector>(), resolve: vi.fn<typeof storedModelDirectory>() }));
 vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => host.core }));
 vi.mock('../runtime/detect-profile', () => ({ resolveRuntimeProfile: async () => 'cpu-wasm32' }));
-vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => host.directory }));
+vi.mock('../runtime/model-store', () => ({ storedModelDirectory: host.resolve }));
 vi.mock('../runtime/read-only-file', () => ({ mountReadOnlyFile: () => ({ remove: () => {} }) }));
 vi.mock('./projector', () => ({ loadProjector: host.load }));
 function request({ debug }: { debug: 'off' | 'on' }): WorkerGenerateInput {
@@ -35,6 +37,7 @@ beforeEach(() => {
   host.directory = { id: 'Model', name: 'Model', modelPath: 'model.gguf', projectorPath: 'mmproj.gguf', files: ['model.gguf', 'mmproj.gguf'].map(path => ({ path, file: new File(['x'], path, { lastModified: 1 }),
     handle: { isSameEntry: async () => true, createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close: () => {} }) } as unknown as FileSystemFileHandle,
   })) };
+  host.resolve.mockReset().mockResolvedValue(host.directory);
   host.load.mockImplementation(async ({ debug }) => {
     const release = vi.fn(async () => {}); releases.push(release);
     return { pointer: BigInt(30 + releases.length), debug, release };
@@ -63,6 +66,57 @@ describe('resident projector debug changes', () => {
     expect(free.mock.calls.filter(([args]) => args.pointer === 999n)).toHaveLength(1);
     await releaseSession({ releaseRuntime: true });
     expect(free.mock.calls.filter(([args]) => args.pointer === 999n)).toHaveLength(1);
+  });
+  it.each([
+    { expected: 'partial', rollback: 0, removal: 1, decode: 0 },
+    { expected: 'full-only', rollback: 0, removal: 0, decode: 0 },
+    { expected: 'bounded', rollback: 4, removal: 1, decode: 0 },
+    { expected: 'none', rollback: 0, removal: 1, decode: 2 },
+  ] as const)('borrows only the current call context and retains $expected sequence removal across owners', async ({ expected, rollback, removal, decode }) => {
+    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    vi.mocked(core.api.llama_n_rs_seq).mockResolvedValue(rollback);
+    vi.mocked(core.api.llama_memory_seq_rm).mockResolvedValue(removal);
+    vi.mocked(core.api.llama_decode).mockResolvedValue(decode);
+    const firstContext = createNativeBlobContext(); const secondContext = createNativeBlobContext();
+    const signal = new AbortController();
+    try {
+      const first = await prepareSession({ request: request({ debug: 'off' }), blobs: firstContext, signal: signal.signal, onProgress: () => {} });
+      expect(host.resolve).toHaveBeenLastCalledWith({ name: 'Model', blobs: firstContext, signal: signal.signal });
+      first.cache.tokens.push(7); first.cache.validity = 'valid'; firstContext.dispose();
+      const second = await prepareSession({ request: request({ debug: 'off' }), blobs: secondContext, signal: undefined, onProgress: () => {} });
+      expect(host.resolve).toHaveBeenLastCalledWith({ name: 'Model', blobs: secondContext, signal: undefined });
+      expect(second.model).toBe(first.model); expect(second.context).toBe(first.context); expect(second.cache).toBe(first.cache);
+      expect(second.cache.tokens).toEqual([7]);
+      expect(first.sequenceRemoval).toBe(expected); expect(second.sequenceRemoval).toBe(expected);
+      expect(core.api.llama_decode).toHaveBeenCalledOnce();
+      expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+      expect(host.core?.api.llama_model_free).not.toHaveBeenCalled();
+    } finally {
+      firstContext.dispose(); secondContext.dispose();
+    }
+  });
+  it.each([true, false])('keeps the checkpoint and sliding window across Blob owners with swa_full=%s', async fullRetention => {
+    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    vi.spyOn(core, 'bytes').mockReturnValue(new Uint8Array(8).fill(fullRetention ? 1 : 0));
+    vi.mocked(core.api.llama_model_n_swa).mockResolvedValue(128);
+    const free = vi.spyOn(core, 'free');
+    const firstContext = createNativeBlobContext(); const secondContext = createNativeBlobContext();
+    try {
+      const first = await prepareSession({ request: request({ debug: 'off' }), blobs: firstContext, signal: undefined, onProgress: () => {} });
+      const checkpoint = { pointer: 999n, bytes: 64, tokens: [7], positionMin: 0, positionMax: 0 };
+      first.cache.tokens = [7, 8]; first.cache.validity = 'valid'; first.cache.checkpoint = checkpoint;
+      firstContext.dispose();
+      const second = await prepareSession({ request: request({ debug: 'off' }), blobs: secondContext, signal: undefined, onProgress: () => {} });
+      expect(second.context).toBe(first.context); expect(second.cache).toBe(first.cache);
+      expect(second.cache.checkpoint).toBe(checkpoint); expect(second.slidingWindow).toBe(fullRetention ? 0 : 128);
+      secondContext.dispose();
+      expect(free.mock.calls.filter(([args]) => args.pointer === checkpoint.pointer)).toHaveLength(0);
+      await releaseSession({ releaseRuntime: true });
+      expect(second.cache.checkpoint).toBeUndefined();
+      expect(free.mock.calls.filter(([args]) => args.pointer === checkpoint.pointer)).toHaveLength(1);
+    } finally {
+      firstContext.dispose(); secondContext.dispose();
+    }
   });
   it('recreates only the projector and preserves the LM context and text KV state', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });

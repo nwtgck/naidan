@@ -1,3 +1,4 @@
+import { createNativeBlobContext, type BlobContext } from '@/utils/blob-view';
 import type { WeshDirEntry, WeshFileHandle, WeshFinalSymlinkTreatment, WeshOpenFlags, WeshStat, WeshVirtualEntryRef, WeshVirtualMountProvider } from '@/features/wesh/types';
 import { NAIDAN_SYSFS_ROOT_PATH } from './constants';
 import { createRootEntry } from './entries/root';
@@ -10,12 +11,14 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
 
   constructor({
     reader,
+    blobs,
     visibility,
     binaryObjectAccess,
     currentChatId,
     currentChatGroupId,
   }: {
     reader: NaidanSysfsStorageReader,
+    blobs?: BlobContext,
     visibility: import('@/features/wesh/types').NaidanSysfsVisibility,
     binaryObjectAccess: import('@/features/wesh/types').NaidanSysfsBinaryObjectAccess,
     currentChatId: string,
@@ -23,6 +26,7 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
   }) {
     this.context = {
       reader,
+      blobs: blobs ?? createNativeBlobContext(),
       visibility,
       binaryObjectAccess,
       currentChatId: toChatId({ raw: currentChatId }),

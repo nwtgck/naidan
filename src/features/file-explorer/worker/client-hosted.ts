@@ -1,3 +1,4 @@
+import { createWorkerBlobReadHost } from '@/utils/worker-blob-context';
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { releaseWorkerRemote, workerCapability, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
@@ -65,6 +66,8 @@ export async function createFileExplorerWorkerClient({
       },
     );
     const remote = wrapWorkerRemote<IFileExplorerWorker>({ endpoint: worker });
+    const blobReadHostLifetime = new AbortController();
+    const blobReadHost = createWorkerBlobReadHost({ signal: blobReadHostLifetime.signal });
     try {
       const prepareResponse = await remote.prepareSession(
         workerCapability({
@@ -74,13 +77,16 @@ export async function createFileExplorerWorkerClient({
         naidanSysfsRemoteReader
           ? workerProxy({ value: naidanSysfsRemoteReader })
           : undefined,
+        workerProxy({ value: blobReadHost }),
       );
       return {
         worker,
         remote,
         sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
+        blobReadHostLifetime,
       };
     } catch (error) {
+      blobReadHostLifetime.abort(error);
       worker.terminate();
       throw error;
     }
@@ -94,7 +100,8 @@ export async function createFileExplorerWorkerClient({
       }),
     })
     : await createRuntime({ requestRoot: root });
-  const { worker, remote, sessionId } = runtime;
+  const { worker, remote, sessionId, blobReadHostLifetime } = runtime;
+  let disposal: Promise<void> | undefined;
 
   return {
     async readDirectory({ path }) {
@@ -181,13 +188,19 @@ export async function createFileExplorerWorkerClient({
     async uploadFiles({ targetDirectoryPath, files }) {
       await remote.uploadFiles({ request: { sessionId, targetDirectoryPath, files } });
     },
-    async dispose() {
-      try {
-        await remote.disposeSession({ request: { sessionId } });
-        await releaseWorkerRemote({ remote });
-      } finally {
-        worker.terminate();
-      }
+    dispose() {
+      // Concurrent owners must share cleanup; neither may release the remote
+      // endpoint or terminate the Worker while writes are still being aborted.
+      disposal ??= (async () => {
+        try {
+          await remote.disposeSession({ request: { sessionId } });
+          await releaseWorkerRemote({ remote });
+        } finally {
+          blobReadHostLifetime.abort(new DOMException('File explorer disposed', 'AbortError'));
+          worker.terminate();
+        }
+      })();
+      return disposal;
     },
   };
 }

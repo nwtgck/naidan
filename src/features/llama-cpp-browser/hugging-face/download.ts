@@ -1,3 +1,4 @@
+import { createWorkerBlobReadHost } from '@/utils/worker-blob-context';
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { privacyFetchStream } from '@/features/privacy-fetch';
 import { getReadableStreamTransferSupport, workerProxy, workerCapability, workerTransfer } from '@/utils/worker-transport';
@@ -22,6 +23,10 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
     const session = await createDownloadWriterClient({ signal });
     const { worker, remote: writer } = session;
     const network = new AbortController();
+    // This reader belongs to this download, not the short-lived storage probe.
+    // Keep it available until pause has checkpointed and closed writer handles.
+    const blobHostLifetime = new AbortController();
+    const blobReadHost = createWorkerBlobReadHost({ signal: blobHostLifetime.signal });
     let abortTimer: ReturnType<typeof setTimeout> | undefined;
     const forwardAbort = (): void => {
       network.abort(); void writer.stop().catch(() => {});
@@ -56,7 +61,7 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
     };
     let body: ReadableStream<Uint8Array<ArrayBuffer>> | undefined;
     try {
-      check(); const streamTransfer = await getReadableStreamTransferSupport(); check(); const started = beginDownloadResultSchema.parse(await call<BeginDownloadResult>({ promise: writer.begin({ selection }) }));
+      check(); const streamTransfer = await getReadableStreamTransferSupport(); check(); const started = beginDownloadResultSchema.parse(await call<BeginDownloadResult>({ promise: writer.begin({ selection }, workerProxy({ value: blobReadHost })) }));
       switch (started.status) {
       case 'conflict': throw new DownloadConflictError({ reason: started.reason });
       case 'ready': break;
@@ -132,6 +137,7 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
         // Keep transport errors observable while pause acknowledges pending writes.
         await session.dispose({ beforeRelease: fatal ? undefined : () => call({ promise: writer.pause() }) });
       } finally {
+        blobHostLifetime.abort(new DOMException('Download writer disposed', 'AbortError'));
         if (abortTimer !== undefined) clearTimeout(abortTimer);
         signal.removeEventListener('abort', forwardAbort); network.abort();
         worker.removeEventListener('error', onError); worker.removeEventListener('messageerror', onError);

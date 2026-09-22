@@ -79,7 +79,7 @@ describe('hosted Worker lifetime', () => {
     const plan = { id: 'hf.co/owner/repo', files: [{ path: 'nested/model.gguf', size: 128, lastModified: 1 }] };
     transport.remote.removeModel.mockResolvedValueOnce('changed');
     expect(await client.removeModel({ plan, signal: undefined })).toBe('changed');
-    expect(transport.remote.removeModel).toHaveBeenCalledWith({ plan });
+    expect(transport.remote.removeModel).toHaveBeenCalledWith({ plan }, expect.objectContaining({ read: expect.any(Function) }));
     transport.remote.removeModel.mockResolvedValueOnce({ private: 'invalid reply' });
     await expect(client.removeModel({ plan, signal: undefined })).rejects.toThrow();
     client.dispose();

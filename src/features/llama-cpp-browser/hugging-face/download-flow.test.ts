@@ -12,7 +12,7 @@ vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => {
   const original = await importOriginal<typeof import('@/utils/worker-transport')>();
   return { ...original, wrapWorkerRemote: () => {
-    const writer = createDownloadWriter(); const begin = writer.begin; writer.begin = async ({ selection }) => structuredClone(await begin({ selection })); const append = writer.append; writer.append = async ({ bytes }) => {
+    const writer = createDownloadWriter(); const begin = writer.begin; writer.begin = async (...args) => structuredClone(await begin(...args)); const append = writer.append; writer.append = async ({ bytes }) => {
       await state.appendGate; return append({ bytes });
     }; return writer;
   }, releaseWorkerRemote: () => {}, workerTransfer: ({ value }: { value: object }) => value,

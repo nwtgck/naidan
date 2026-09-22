@@ -178,6 +178,11 @@ function bytesEqualIgnoringWhitespaceChanges({
   return leftIndex === leftEnd && rightIndex === rightEnd;
 }
 
+interface PatchByteSource {
+  readonly size: number,
+  read({ start, end }: { start: number, end: number }): Promise<Uint8Array>,
+}
+
 interface LineIndexData {
   starts: ChunkedFloat64Index,
   exactHashes: ChunkedUint32Index,
@@ -186,7 +191,7 @@ interface LineIndexData {
   lineCount: number,
 }
 
-async function buildLineIndex({ blob }: { blob: Blob }): Promise<LineIndexData> {
+async function buildLineIndex({ source }: { source: PatchByteSource }): Promise<LineIndexData> {
   const starts = new ChunkedFloat64Index();
   const exactHashes = new ChunkedUint32Index();
   const whitespaceHashes = new ChunkedUint32Index();
@@ -199,9 +204,9 @@ async function buildLineIndex({ blob }: { blob: Blob }): Promise<LineIndexData> 
   let currentLineStart = 0;
   let lineCount = 0;
 
-  for (let chunkStart = 0; chunkStart < blob.size; chunkStart += COPY_CHUNK_SIZE) {
-    const chunkEnd = Math.min(blob.size, chunkStart + COPY_CHUNK_SIZE);
-    const value = new Uint8Array(await blob.slice(chunkStart, chunkEnd).arrayBuffer());
+  for (let chunkStart = 0; chunkStart < source.size; chunkStart += COPY_CHUNK_SIZE) {
+    const chunkEnd = Math.min(source.size, chunkStart + COPY_CHUNK_SIZE);
+    const value = await source.read({ start: chunkStart, end: chunkEnd });
 
     for (let index = 0; index < value.byteLength; index++) {
       const byte = value[index]!;
@@ -229,14 +234,14 @@ async function buildLineIndex({ blob }: { blob: Blob }): Promise<LineIndexData> 
     }
   }
 
-  if (currentLineStart < blob.size) {
+  if (currentLineStart < source.size) {
     exactHashes.push({ value: exactHash });
     whitespaceHashes.push({ value: whitespaceHash });
     terminators.push({ value: 0 });
     lineCount += 1;
-    starts.push({ value: blob.size });
-  } else if (starts.get({ index: starts.length - 1 }) !== blob.size) {
-    starts.push({ value: blob.size });
+    starts.push({ value: source.size });
+  } else if (starts.get({ index: starts.length - 1 }) !== source.size) {
+    starts.push({ value: source.size });
   }
 
   return {
@@ -248,10 +253,10 @@ async function buildLineIndex({ blob }: { blob: Blob }): Promise<LineIndexData> 
   };
 }
 
-class BlobPatchLineSource implements PatchLineSource {
+class IndexedPatchLineSource implements PatchLineSource {
   readonly byteLength: number;
   readonly lineCount: number;
-  private readonly blob: Blob;
+  private readonly source: PatchByteSource;
   private readonly starts: ChunkedFloat64Index;
   private readonly exactHashes: ChunkedUint32Index;
   private readonly whitespaceHashes: ChunkedUint32Index;
@@ -261,14 +266,14 @@ class BlobPatchLineSource implements PatchLineSource {
   private lineCacheBytes = 0;
 
   constructor({
-    blob,
+    source,
     index,
   }: {
-    blob: Blob,
+    source: PatchByteSource,
     index: LineIndexData,
   }) {
-    this.blob = blob;
-    this.byteLength = blob.size;
+    this.source = source;
+    this.byteLength = source.size;
     this.lineCount = index.lineCount;
     this.starts = index.starts;
     this.exactHashes = index.exactHashes;
@@ -306,7 +311,7 @@ class BlobPatchLineSource implements PatchLineSource {
     const boundaryEnd = this.boundaryOffset({ lineIndex: lineIndex + 1 });
     const terminatorLength = this.terminators.get({ index: lineIndex }) === 1 ? 1 : 0;
     const contentEnd = boundaryEnd - terminatorLength;
-    const bytes = new Uint8Array(await this.blob.slice(start, contentEnd).arrayBuffer());
+    const bytes = await this.source.read({ start, end: contentEnd });
 
     if (bytes.byteLength <= LINE_CACHE_BYTE_LIMIT) {
       this.lineCache.set(lineIndex, bytes);
@@ -373,23 +378,32 @@ class BlobPatchLineSource implements PatchLineSource {
     for (let chunkStart = start; chunkStart < end; chunkStart += COPY_CHUNK_SIZE) {
       const chunkEnd = Math.min(end, chunkStart + COPY_CHUNK_SIZE);
       await consume({
-        chunk: new Uint8Array(await this.blob.slice(chunkStart, chunkEnd).arrayBuffer()),
+        chunk: await this.source.read({ start: chunkStart, end: chunkEnd }),
       });
     }
   }
 }
 
+async function createPatchLineSource({ source }: { source: PatchByteSource }): Promise<PatchLineSource> {
+  return new IndexedPatchLineSource({ source, index: await buildLineIndex({ source }) });
+}
+
 export async function createPatchLineSourceFromBlob({ blob }: { blob: Blob }): Promise<PatchLineSource> {
-  return new BlobPatchLineSource({
-    blob,
-    index: await buildLineIndex({ blob }),
-  });
+  return createPatchLineSource({ source: {
+    size: blob.size,
+    read: async ({ start, end }) => new Uint8Array(await blob.slice(start, end).arrayBuffer()),
+  } });
 }
 
 export async function createPatchLineSourceFromBytes({ bytes }: { bytes: Uint8Array }): Promise<PatchLineSource> {
   const ownedBytes = new Uint8Array(bytes.byteLength);
   ownedBytes.set(bytes);
-  return createPatchLineSourceFromBlob({ blob: new Blob([ownedBytes.buffer]) });
+  // These bytes are already readable. Do not reconstruct a Blob and consume it
+  // natively in a Worker that may be unable to read any Blob, including its own.
+  return createPatchLineSource({ source: {
+    size: ownedBytes.byteLength,
+    read: async ({ start, end }) => ownedBytes.slice(start, end),
+  } });
 }
 
 export async function createPatchLineSourceFromPath({
@@ -401,6 +415,11 @@ export async function createPatchLineSourceFromPath({
 }): Promise<PatchLineSource> {
   const blobResult = await context.files.tryReadBlobEfficiently({ path });
   switch (blobResult.kind) {
+  case 'blob_view':
+    return createPatchLineSource({ source: {
+      size: blobResult.blob.size,
+      read: ({ start, end }) => blobResult.blob.slice({ start, end }).bytes(),
+    } });
   case 'blob':
     return createPatchLineSourceFromBlob({ blob: blobResult.blob });
   case 'fallback_required':

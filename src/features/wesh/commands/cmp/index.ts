@@ -72,6 +72,17 @@ async function openCmpInput({
   const path = resolvePath({ cwd: context.cwd, path: operand });
   const efficientResult = await context.files.tryReadBlobEfficiently({ path });
   switch (efficientResult.kind) {
+  case 'blob_view': {
+    const start = skip >= BigInt(efficientResult.blob.size)
+      ? efficientResult.blob.size
+      : Number(skip);
+    const blob = efficientResult.blob.slice({ start });
+    return {
+      stream: blob.stream(),
+      remainingSkip: 0n,
+      knownRemainingBytes: BigInt(blob.size),
+    };
+  }
   case 'blob': {
     const start = skip >= BigInt(efficientResult.blob.size)
       ? efficientResult.blob.size

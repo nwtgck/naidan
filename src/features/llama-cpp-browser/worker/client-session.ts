@@ -1,3 +1,6 @@
+import { createWorkerBlobImageHost, type WorkerBlobImageHost } from '@/utils/worker-blob-image';
+import { IMAGE_DECODE_LIMITS } from '@/features/llama-cpp-browser/runtime/image-input';
+import { createWorkerBlobReadHost, type WorkerBlobReadHost } from '@/utils/worker-blob-context';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
@@ -13,6 +16,31 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   getAssetBaseURL: () => string | undefined,
 }): LlamaCppWorkerClient {
   let disposed = false;
+  const operationHosts = new Set<AbortController>();
+  async function withBlobHost<T>({ call }: { call: ({ host, acceptingEvents }: { host: WorkerProxy<WorkerBlobReadHost>, acceptingEvents: () => boolean }) => Promise<T> }): Promise<T> {
+    const lifetime = new AbortController();
+    operationHosts.add(lifetime);
+    try {
+      return await call({ host: workerProxy({ value: createWorkerBlobReadHost({ signal: lifetime.signal }) }), acceptingEvents: () => !lifetime.signal.aborted && !disposed });
+    } finally {
+      operationHosts.delete(lifetime);
+      lifetime.abort(new DOMException('Model operation finished', 'AbortError'));
+    }
+  }
+  async function withImageHost<T>({ enabled, call }: {
+    enabled: boolean,
+    call: ({ host }: { host: WorkerProxy<WorkerBlobImageHost> | undefined }) => Promise<T>,
+  }): Promise<T> {
+    if (!enabled) return call({ host: undefined });
+    const lifetime = new AbortController();
+    operationHosts.add(lifetime);
+    try {
+      return await call({ host: workerProxy({ value: createWorkerBlobImageHost({ limits: IMAGE_DECODE_LIMITS, signal: lifetime.signal }) }) });
+    } finally {
+      operationHosts.delete(lifetime);
+      lifetime.abort(new DOMException('Image operation finished', 'AbortError'));
+    }
+  }
   const disposeListeners = new Set<() => void>();
   let lastOperation: Diagnostic | undefined;
   let lastNativeFailure: Diagnostic | undefined;
@@ -54,7 +82,10 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   let rejectActive: (() => void) | undefined;
   const dispose = (): void => {
     if (disposed) return;
-    disposed = true; debugEnabled = false; stopWaiting(); pendingOperations.clear();
+    disposed = true;
+    for (const lifetime of operationHosts) lifetime.abort(new DOMException('Model client disposed', 'AbortError'));
+    operationHosts.clear();
+    debugEnabled = false; stopWaiting(); pendingOperations.clear();
     const active = rejectActive !== undefined;
     rejectActive?.();
     worker.removeEventListener('error', onError);
@@ -144,15 +175,15 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       };
     },
     probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
-    listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
+    listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => withBlobHost({ call: ({ host }) => remote.listModels(host) }), signal, onAbort: undefined, abortTimeoutMs: undefined })),
     importModel: ({ file, onProgress, signal }) => importWithCancellation({ signal, onProgress,
-      call: ({ generationId, report }) => remote.importModel({ file, generationId }, report),
+      call: ({ generationId, report }) => withBlobHost({ call: ({ host }) => remote.importModel({ file, generationId }, report, host) }),
     }),
     importDirectory: ({ directory, onProgress, signal }) => importWithCancellation({ signal, onProgress,
-      call: ({ generationId, report }) => remote.importDirectory({ directory, generationId }, report),
+      call: ({ generationId, report }) => withBlobHost({ call: ({ host }) => remote.importDirectory({ directory, generationId }, report, host) }),
     }),
     removeModel: async ({ plan, signal }) => {
-      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined, abortTimeoutMs: undefined }));
+      return deletionResultSchema.parse(await invoke({ call: () => withBlobHost({ call: ({ host }) => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }, host) }), signal, onAbort: undefined, abortTimeoutMs: undefined }));
     },
     generate: async ({ request, onEvent, onProgress, signal }) => {
       const accepted = workerGenerateCallSchema.parse({ ...request, generationId: ++nextGenerationId,
@@ -160,22 +191,30 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       });
       let acceptingEvents = true;
       try {
-        const result = await invoke({ call: () => remote.generate(accepted,
-          workerProxy({ value: async ({ event }) => {
-            if (acceptingEvents && !disposed) await onEvent({ event: generationEventSchema.parse(event) });
-          } }),
-          workerProxy({ value: ({ ...event }) => {
-            if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-          } }),
-          workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
-            if (!acceptingEvents || disposed || signal?.aborted) return;
-            debugEnabled = accepted.debug === 'on';
-            const checkpoint = diagnosticSchema.parse(diagnostic);
-            if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-            if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
-            if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
-            if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-          } })), signal, onAbort: () => {
+        const result = await invoke({ call: () => withBlobHost({ call: ({ host }) => withImageHost({
+          enabled: accepted.messages.some(message => Array.isArray(message.content) && message.content.some(part => part.type === 'image')),
+          call: ({ host: imageDecodeHost }) => remote.generate(accepted,
+            workerProxy({ value: async ({ event }) => {
+              // Stop drains accepted events; do not drop content solely because
+              // the request signal is aborted. Abandonment is handled upstream.
+              if (!acceptingEvents || disposed) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+              await onEvent({ event: generationEventSchema.parse(event) });
+              // The consumer may be abandoned while its asynchronous event callback
+              // is pending. Never acknowledge delivery after ownership ends.
+              if (!acceptingEvents || disposed) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+            } }),
+            workerProxy({ value: ({ ...event }) => {
+              if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+            } }),
+            workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
+              if (!acceptingEvents || disposed || signal?.aborted) return;
+              debugEnabled = accepted.debug === 'on';
+              const checkpoint = diagnosticSchema.parse(diagnostic);
+              if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+              if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
+              if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
+              if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+            } }), host, imageDecodeHost) }) }), signal, onAbort: () => {
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
         }, abortTimeoutMs: 5000 });
         return generationResultSchema.parse(result);

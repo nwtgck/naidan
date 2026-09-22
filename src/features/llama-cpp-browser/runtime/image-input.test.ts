@@ -27,4 +27,35 @@ describe('local image input', () => {
     await expect(decodeImage({ blob: new Blob(['image'], { type: 'image/png' }) })).rejects.toThrow('unsupported-input');
     expect(close).toHaveBeenCalledOnce();
   });
+  it('keeps the existing alpha composition when pixels come from a decoder dependency', async () => {
+    const dispose = vi.fn();
+    const decoder = { decode: vi.fn(async () => ({ width: 3, height: 1, rgba: new Uint8Array([10, 20, 30, 255, 200, 100, 0, 128, 90, 80, 70, 0]) })), dispose };
+    const signal = new AbortController().signal;
+    const blob = new Blob(['image'], { type: 'image/png' });
+    expect(await decodeImage({ blob, decoder, signal })).toEqual({ width: 3, height: 1, rgb: new Uint8Array([10, 20, 30, 227, 177, 127, 255, 255, 255]) });
+    expect(decoder.decode).toHaveBeenCalledWith({ blob, signal });
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid image input before asking a supplied decoder', async () => {
+    const decoder = { decode: vi.fn(), dispose: vi.fn() };
+    await expect(decodeImage({ blob: new Blob(['text'], { type: 'text/plain' }), decoder })).rejects.toThrow('unsupported-input');
+    expect(decoder.decode).not.toHaveBeenCalled();
+  });
+
+  it('validates pixels from an injected decoder instead of reading beyond its buffer', async () => {
+    const decoder = { decode: vi.fn(async () => ({ width: 2, height: 1, rgba: new Uint8Array(4) })), dispose: vi.fn() };
+    await expect(decodeImage({ blob: new Blob(['image'], { type: 'image/png' }), decoder })).rejects.toThrow('unsupported-input');
+    expect(decoder.dispose).not.toHaveBeenCalled();
+  });
+
+  it('preserves cancellation rather than misreporting unsupported image input', async () => {
+    const controller = new AbortController();
+    const reason = new DOMException('Cancelled', 'AbortError');
+    const decoder = { decode: vi.fn(async () => {
+      controller.abort(reason); return { width: 1, height: 1, rgba: new Uint8Array(4) };
+    }), dispose: vi.fn() };
+    await expect(decodeImage({ blob: new Blob(['image'], { type: 'image/png' }), decoder, signal: controller.signal })).rejects.toBe(reason);
+  });
+
 });
