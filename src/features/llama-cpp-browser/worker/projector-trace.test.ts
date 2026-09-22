@@ -42,7 +42,7 @@ describe('synchronous projector tensor tracing', () => {
 
 describe('projector input tensor metadata', () => {
   it.each([4, 8] as const)('distinguishes BF16 inputs from F32 outputs with %i-byte pointers', pointerBytes => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const base = pointerBytes === 4 ? 0x80000000n : 0x100000000n;
     const memory = new Uint8Array(384);
     const view = new DataView(memory.buffer);
