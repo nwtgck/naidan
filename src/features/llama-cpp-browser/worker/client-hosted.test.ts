@@ -19,6 +19,7 @@ beforeEach(() => {
   transport.remote.listModels.mockResolvedValue([]);
   transport.remote.cancelGeneration.mockResolvedValue(undefined);
   transport.remote.generate.mockReset();
+  transport.remote.importModel.mockReset(); transport.remote.importDirectory.mockReset();
 });
 afterEach(() => {
   vi.unstubAllGlobals(); vi.useRealTimers();
@@ -255,5 +256,58 @@ describe('host snapshots of native operations', () => {
     await expect(pending).rejects.toThrow('worker-failed');
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ failureKind: 'webgpu-dispatch-limit', dispatchAxis: 'x', dispatchCount: 95760, dispatchLimit: 65535 }));
     expect(JSON.stringify(debug.mock.calls)).not.toContain('private'); debug.mockRestore();
+  });
+});
+
+
+describe('single-file import cancellation', () => {
+  it('keeps the worker and import lane alive until slow rollback completes, then accepts a retry', async () => {
+    vi.useFakeTimers();
+    const rollback = Promise.withResolvers<never>();
+    transport.remote.importModel.mockReturnValueOnce(rollback.promise);
+    const file = new File(['fixture'], 'same.gguf');
+    const client = createLlamaCppWorkerClient(); const controller = new AbortController(); const progress = vi.fn();
+    const pending = client.importModel({ file, onProgress: progress, signal: controller.signal });
+    let settled = false;
+    const rejected = expect(pending.finally(() => {
+      settled = true;
+    })).rejects.toThrow('aborted');
+    const call = transport.remote.importModel.mock.calls[0]!;
+    const report = call[1] as ({ phase, completed, total }: { phase: 'importing', completed: number, total: number }) => void;
+    report({ phase: 'importing', completed: 1, total: 2 }); expect(progress).toHaveBeenCalledOnce();
+    controller.abort();
+    expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: call[0].generationId });
+    report({ phase: 'importing', completed: 2, total: 2 }); expect(progress).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(settled).toBe(false); expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
+    await expect(client.importModel({ file, onProgress: () => {}, signal: undefined })).rejects.toThrow('busy');
+    expect(transport.remote.importModel).toHaveBeenCalledOnce();
+    rollback.reject(new LlamaCppBrowserError({ code: 'aborted' })); await rejected;
+    expect(client.canReuse()).toBe(true); expect(transport.release).not.toHaveBeenCalled();
+    const model = { id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 };
+    transport.remote.importModel.mockResolvedValueOnce(model);
+    await expect(client.importModel({ file, onProgress: () => {}, signal: undefined })).resolves.toEqual(model);
+    expect(transport.remote.importModel.mock.calls[1]?.[0].generationId).toBeGreaterThan(call[0].generationId);
+    report({ phase: 'importing', completed: 2, total: 2 }); expect(progress).toHaveBeenCalledOnce();
+    expect(TestWorker.instances).toHaveLength(1); client.dispose();
+  });
+  it('does not send a cancelled request or accept progress callbacks after successful completion', async () => {
+    const client = createLlamaCppWorkerClient(); const controller = new AbortController(); controller.abort();
+    const file = new File(['fixture'], 'same.gguf'); const progress = vi.fn();
+    await expect(client.importModel({ file, signal: controller.signal, onProgress: progress })).rejects.toThrow('aborted');
+    expect(transport.remote.importModel).not.toHaveBeenCalled();
+    transport.remote.importModel.mockResolvedValueOnce({ id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 });
+    await client.importModel({ file, signal: undefined, onProgress: progress });
+    transport.remote.importModel.mock.calls[0]?.[1]({ phase: 'importing', completed: 7, total: 7 });
+    expect(progress).not.toHaveBeenCalled(); expect(client.canReuse()).toBe(true); client.dispose();
+  });
+  it('still rejects cancellation if the worker actually crashes during rollback', async () => {
+    transport.remote.importModel.mockImplementationOnce(() => new Promise(() => {}));
+    const client = createLlamaCppWorkerClient(); const controller = new AbortController();
+    const pending = client.importModel({ file: new File(['fixture'], 'same.gguf'), signal: controller.signal, onProgress: () => {} });
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    controller.abort();
+    TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private path', cancelable: true }));
+    await rejected; expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce(); expect(client.canReuse()).toBe(false);
   });
 });

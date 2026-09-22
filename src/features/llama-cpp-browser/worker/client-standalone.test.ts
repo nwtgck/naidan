@@ -117,3 +117,26 @@ describe('standalone llama Worker lifetime', () => {
     expect(calls.remote.release).not.toHaveBeenCalled();
   });
 });
+
+describe('standalone single-file import cancellation', () => {
+  it('uses cooperative rollback after startup and reuses the worker for the next import', async () => {
+    const rollback = Promise.withResolvers<never>(); const file = new File(['fixture'], 'same.gguf');
+    calls.remote.importModel.mockReturnValueOnce(rollback.promise);
+    calls.remote.cancelGeneration.mockResolvedValue(undefined);
+    const client = createLlamaCppWorkerClient(); const controller = new AbortController();
+    const pending = client.importModel({ file, signal: controller.signal, onProgress: () => {} });
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    await vi.waitFor(() => expect(calls.remote.importModel).toHaveBeenCalledOnce());
+    const generationId = calls.remote.importModel.mock.calls[0]?.[0].generationId;
+    controller.abort();
+    expect(calls.remote.cancelGeneration).toHaveBeenCalledWith({ generationId });
+    expect(worker.terminate).not.toHaveBeenCalled(); expect(calls.remote.release).not.toHaveBeenCalled();
+    rollback.reject(new LlamaCppBrowserError({ code: 'aborted' })); await rejected;
+    expect(client.canReuse()).toBe(true);
+    const model = { id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 };
+    calls.remote.importModel.mockResolvedValueOnce(model);
+    await expect(client.importModel({ file, signal: undefined, onProgress: () => {} })).resolves.toEqual(model);
+    expect(calls.factory).toHaveBeenCalledOnce(); client.dispose();
+    await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
+  });
+});

@@ -1,8 +1,8 @@
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
-import { workerProxy, type WorkerRemote } from '@/utils/worker-transport';
-import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema } from '@/features/llama-cpp-browser/types';
+import { workerProxy, type WorkerProxy, type WorkerRemote } from '@/utils/worker-transport';
+import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
 import { workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
 // Both transports share cancellation, validation and callback lifetime rules.
@@ -79,7 +79,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   };
   worker.addEventListener('error', onError);
   worker.addEventListener('messageerror', onMessageError);
-  async function invoke<T>({ call, signal, onAbort }: { call: () => Promise<T>, signal: AbortSignal | undefined, onAbort: (() => void) | undefined }): Promise<T> {
+  async function invoke<T>({ call, signal, onAbort, abortTimeoutMs }: { call: () => Promise<T>, signal: AbortSignal | undefined, onAbort: (() => void) | undefined, abortTimeoutMs: number | undefined }): Promise<T> {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
     if (disposed) throw new LlamaCppBrowserError({ code: 'worker-failed' });
     if (rejectActive) throw new LlamaCppBrowserError({ code: 'busy' });
@@ -89,10 +89,10 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       if (!onAbort) {
         dispose(); return;
       }
-      // Cooperative generation cancellation normally preserves resident weights.
-      // A stuck native call still has a bounded escape hatch; imports always
-      // terminate because a sync OPFS operation cannot reliably service messages.
-      abortTimer = setTimeout(dispose, 5000);
+      // Native generation needs a bounded escape hatch. Local imports use async
+      // streams and must be allowed to finish rollback, even on slow storage:
+      // terminating them here leaves hidden partial directories that block retry.
+      if (abortTimeoutMs !== undefined) abortTimer = setTimeout(dispose, abortTimeoutMs);
       onAbort();
     };
     signal?.addEventListener('abort', abort, { once: true });
@@ -115,6 +115,25 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       rejectActive = undefined;
     }
   }
+  async function importWithCancellation({ call, onProgress, signal }: {
+    call: ({ generationId, report }: { generationId: number, report: WorkerProxy<({ phase, completed, total }: Progress) => void> }) => Promise<LocalModel>,
+    onProgress: ({ progress }: { progress: Progress }) => void,
+    signal: AbortSignal | undefined,
+  }): Promise<LocalModel> {
+    const generationId = ++nextGenerationId;
+    let acceptingProgress = true;
+    try {
+      return modelSchema.parse(await invoke({
+        call: () => call({ generationId, report: workerProxy({ value: ({ ...event }: Progress) => {
+          if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+        } }) }), signal, onAbort: () => {
+          void remote.cancelGeneration({ generationId }).catch(dispose);
+        }, abortTimeoutMs: undefined,
+      }));
+    } finally {
+      acceptingProgress = false;
+    }
+  }
   return {
     subscribeDisposed({ listener }) {
       if (disposed) {
@@ -124,25 +143,16 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         disposeListeners.delete(listener);
       };
     },
-    probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined })),
-    listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined })),
-    importModel: async ({ file, onProgress, signal }) => modelSchema.parse(await invoke({
-      call: () => remote.importModel({ file }, workerProxy({ value: ({ ...event }) => {
-        if (!disposed) onProgress({ progress: progressSchema.parse(event) });
-      } })), signal, onAbort: undefined,
-    })),
-    importDirectory: async ({ directory, onProgress, signal }) => {
-      const generationId = ++nextGenerationId;
-      return modelSchema.parse(await invoke({
-        call: () => remote.importDirectory({ directory, generationId }, workerProxy({ value: ({ ...event }) => {
-          if (!disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-        } })), signal, onAbort: () => {
-          void remote.cancelGeneration({ generationId }).catch(dispose);
-        },
-      }));
-    },
+    probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
+    listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
+    importModel: ({ file, onProgress, signal }) => importWithCancellation({ signal, onProgress,
+      call: ({ generationId, report }) => remote.importModel({ file, generationId }, report),
+    }),
+    importDirectory: ({ directory, onProgress, signal }) => importWithCancellation({ signal, onProgress,
+      call: ({ generationId, report }) => remote.importDirectory({ directory, generationId }, report),
+    }),
     removeModel: async ({ plan, signal }) => {
-      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined }));
+      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined, abortTimeoutMs: undefined }));
     },
     generate: async ({ request, onEvent, onProgress, signal }) => {
       const accepted = workerGenerateCallSchema.parse({ ...request, generationId: ++nextGenerationId,
@@ -167,7 +177,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
             if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
           } })), signal, onAbort: () => {
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        } });
+        }, abortTimeoutMs: 5000 });
         return generationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;

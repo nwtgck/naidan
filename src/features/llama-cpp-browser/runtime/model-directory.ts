@@ -1,4 +1,5 @@
 import { OPFS_MODELS_DIR } from '@/constants';
+import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
 import { rankedProjectors } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
@@ -81,6 +82,35 @@ export async function resolveDirectory({ folder, id, name }: { folder: FileSyste
 export function describeDirectory({ directory }: { directory: ModelDirectory }): LocalModel {
   return modelSchema.parse({ id: directory.id, name: directory.name, size: directory.files.reduce((sum, entry) => sum + entry.file.size, 0), importedAt: Math.max(...directory.files.map(entry => entry.file.lastModified)) });
 }
+async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal }: {
+  parent: FileSystemDirectoryHandle, folder: FileSystemDirectoryHandle, name: string, paths: Set<string>, signal: AbortSignal | undefined,
+}): Promise<boolean> {
+  // Older single-file cancellation terminated the Worker before rollback. Async
+  // writable streams publish on close, so those interrupted copies can leave
+  // only an empty marker and empty destination files. An explicit retry may
+  // reclaim exactly those placeholders, never real data or an unrelated tree.
+  // Nonempty/ambiguous leftovers still require explicit planned deletion.
+  if (!await hasPendingImport({ folder })) return false;
+  const { files, directories } = await scanDeletionTree({ folder });
+  if (!files.some(file => file.path === pendingName && file.size === 0)
+    || files.some(file => file.size !== 0 || (file.path !== pendingName && !paths.has(file.path)))
+    || directories.some(directory => !Array.from(paths).some(path => path.startsWith(`${directory}/`)))) return false;
+  if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+  // Recheck file metadata and delete non-recursively: an external file editor
+  // need not honor the model-store lock, and new content must not be swept away.
+  const result = await executeDeletionPlan({ folder, plan: { id: `user/${name}`, files }, selectedPaths: undefined });
+  switch (result) {
+  case 'changed': return false;
+  case 'deleted': break;
+  default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+  }
+  try {
+    await parent.removeEntry(name); return true;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'InvalidModificationError') return false;
+    throw error;
+  }
+}
 /** A source-neutral import boundary shared by dropped folders and future downloads. */
 export async function importModelDirectory({ directory, onProgress, signal }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
   const checkCancelled = (): void => {
@@ -108,8 +138,15 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     throw error;
   }
   for (const { file } of ggufs) if (!await validGguf({ file })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+  checkCancelled();
   const parent = await userModelDirectory();
-  for await (const [name] of parent.entries()) if (name === rootName) throw new LlamaCppBrowserError({ code: 'duplicate-model' });
+  for await (const [name, entry] of parent.entries()) {
+    if (name !== rootName) continue;
+    checkCancelled();
+    if (entry.kind !== 'directory' || !await clearEmptyInterruptedImport({ parent, folder: entry, name, paths, signal })) throw new LlamaCppBrowserError({ code: 'duplicate-model' });
+    break;
+  }
+  checkCancelled();
   let completed = 0; const total = directory.files.reduce((sum, entry) => sum + entry.file.size, 0);
   if (!Number.isSafeInteger(total)) throw new LlamaCppBrowserError({ code: 'storage-error' });
   const folder = await parent.getDirectoryHandle(rootName, { create: true });
@@ -121,13 +158,19 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
       for (const segment of parts) parent = await parent.getDirectoryHandle(segment, { create: true });
       const destination = await parent.getFileHandle(name, { create: true });
       const writer = await destination.createWritable(); const reader = file.stream().getReader(); let written = 0;
+      // A chunk read can be pending when Cancel arrives. Wake that await so the
+      // worker reaches rollback instead of waiting for another chunk forever.
+      const cancelRead = (): void => {
+        void reader.cancel().catch(() => {});
+      };
+      signal?.addEventListener('abort', cancelRead, { once: true });
       try {
         while (true) {
           checkCancelled();
           const { done, value } = await reader.read(); checkCancelled(); if (done) break;
           written += value.byteLength;
           if (written > file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
-          await writer.write(value); completed += value.byteLength;
+          await writer.write(value); checkCancelled(); completed += value.byteLength;
           onProgress({ progress: { phase: 'importing', completed, total } });
         }
         checkCancelled();
@@ -137,6 +180,7 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
       } catch (error) {
         await reader.cancel().catch(() => {}); await writer.abort().catch(() => {}); throw error;
       } finally {
+        signal?.removeEventListener('abort', cancelRead);
         reader.releaseLock();
       }
     }

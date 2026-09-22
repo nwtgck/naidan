@@ -562,3 +562,30 @@ describe('local GGUF manager', () => {
     expect(wrapper.find('[data-testid="llama-cpp-browser-context"]').exists()).toBe(false);
   });
 });
+
+
+describe('cancelled dropped-file retry', () => {
+  it('keeps input disabled through rollback and accepts the same drop after cancellation settles', async () => {
+    const wrapper = render(); await flushPromises();
+    const rollback = Promise.withResolvers<void>();
+    let signal: AbortSignal | undefined;
+    vi.mocked(llamaCppBrowserService.importModel).mockImplementationOnce(async input => {
+      signal = input.signal; await rollback.promise;
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    const file = new File(['fixture'], 'same.gguf');
+    const transfer = { files: [file], types: ['Files'] } as unknown as DataTransfer;
+    dispatchDrop({ wrapper, transfer }); await flushPromises();
+    await wrapper.get('[data-testid="llama-cpp-browser-cancel"]').trigger('click');
+    expect(signal?.aborted).toBe(true);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(true);
+    dispatchDrop({ wrapper, transfer }); await flushPromises();
+    expect(llamaCppBrowserService.importModel).toHaveBeenCalledOnce();
+    rollback.resolve(); await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(false);
+    dispatchDrop({ wrapper, transfer }); await flushPromises();
+    expect(vi.mocked(llamaCppBrowserService.importModel).mock.calls.map(([input]) => input.file)).toEqual([file, file]);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+});

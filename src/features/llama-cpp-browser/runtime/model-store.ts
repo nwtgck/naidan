@@ -40,11 +40,11 @@ export async function listStoredModels(): Promise<LocalModel[]> {
   result.push(...await listHuggingFaceModels());
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
-export async function importStoredModel({ file, onProgress }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
+export async function importStoredModel({ file, onProgress, signal }: { file: File, signal: AbortSignal | undefined, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
   if (!/^.+\.gguf$/i.test(file.name) || !validSegment({ name: file.name })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   const started = performance.now();
   logDiagnostic({ diagnostic: { event: 'import-start', bytes: file.size } });
-  const model = await importModelDirectory({ signal: undefined, directory: { name: `${file.name.slice(0, -5)}-GGUF`, files: [{ path: file.name, file }] }, onProgress });
+  const model = await importModelDirectory({ signal, directory: { name: `${file.name.slice(0, -5)}-GGUF`, files: [{ path: file.name, file }] }, onProgress });
   logDiagnostic({ diagnostic: { event: 'import-complete', bytes: model.size, elapsedMs: performance.now() - started } });
   return model;
 }
