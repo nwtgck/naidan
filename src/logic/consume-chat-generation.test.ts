@@ -24,7 +24,7 @@ function call(): Extract<ChatGenerationItem, { type: 'tool_call' }> {
   return { type: 'tool_call', partId: 'call', index: 3, toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: ' {"x":1} ' } } };
 }
 function consume({ node, items, onChange, abortController }: { node: AssistantMessageNode, items: AsyncIterable<ChatGenerationItem>, onChange: () => void | Promise<void>, abortController: AbortController }) {
-  return consumeChatGeneration({ node, items, onChange, abortController });
+  return consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items, onChange, abortController });
 }
 
 describe('consume nested chat generation', () => {

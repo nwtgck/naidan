@@ -194,6 +194,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const { useChatDisplayFlow } = await import('./useChatDisplayFlow');
     const { chatFlow } = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat: computed(() => chat),
       isProcessing: () => false,
     });

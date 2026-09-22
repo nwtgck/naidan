@@ -1044,6 +1044,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
     isThinkingActive,
     isWaitingResponse,
   } = useChatDisplayFlow({
+    getToolCallDrafts: undefined,
     chat: currentChat as unknown as ComputedRef<Chat | null>,
     isProcessing,
   });

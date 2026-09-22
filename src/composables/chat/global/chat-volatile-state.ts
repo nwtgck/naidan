@@ -2,8 +2,21 @@ import { reactive } from 'vue';
 import { findNodeInBranch } from '@/logic/chat-tree';
 import type { ChatId, MessageId, ToolCallId } from '@/01-models/ids';
 import type { Chat } from '@/01-models/types';
+import type { ToolCallDraft } from '@/01-models/lm';
 
 export type ChatVolatileState = {
+  setToolCallDrafts({ chatId, messageId, owner, drafts }: {
+    chatId: ChatId,
+    messageId: MessageId,
+    owner: AbortSignal,
+    drafts: readonly ToolCallDraft[],
+  }): void,
+
+  getToolCallDrafts({ chatId, messageId }: {
+    chatId: ChatId,
+    messageId: MessageId,
+  }): readonly ToolCallDraft[],
+
   setVolatileAssistantError({
     chatId,
     messageId,
@@ -69,6 +82,24 @@ export type ChatVolatileState = {
 export function createChatVolatileState(): ChatVolatileState {
   const volatileAssistantErrors = reactive(new Map<ChatId, Map<MessageId, string>>());
   const volatileToolOutputs = reactive(new Map<ToolCallId, string>());
+  const toolCallDrafts = reactive(new Map<ChatId, Map<MessageId, { owner: AbortSignal, drafts: readonly ToolCallDraft[] }>>());
+
+  function setToolCallDrafts({ chatId, messageId, owner, drafts }: { chatId: ChatId, messageId: MessageId, owner: AbortSignal, drafts: readonly ToolCallDraft[] }): void {
+    const existing = toolCallDrafts.get(chatId);
+    if (drafts.length === 0) {
+      if (existing?.get(messageId)?.owner !== owner) return;
+      existing.delete(messageId);
+      if (existing?.size === 0) toolCallDrafts.delete(chatId);
+      return;
+    }
+    const snapshot = drafts.map(draft => ({ ...draft }));
+    if (existing !== undefined) existing.set(messageId, { owner, drafts: snapshot });
+    else toolCallDrafts.set(chatId, new Map([[messageId, { owner, drafts: snapshot }]]));
+  }
+
+  function getToolCallDrafts({ chatId, messageId }: { chatId: ChatId, messageId: MessageId }): readonly ToolCallDraft[] {
+    return toolCallDrafts.get(chatId)?.get(messageId)?.drafts ?? [];
+  }
 
   function setVolatileAssistantError({
     chatId,
@@ -171,6 +202,8 @@ export function createChatVolatileState(): ChatVolatileState {
   }
 
   return {
+    setToolCallDrafts,
+    getToolCallDrafts,
     setVolatileAssistantError,
     clearVolatileAssistantError,
     getVolatileAssistantError,

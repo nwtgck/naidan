@@ -100,6 +100,7 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
   try {
     replay.beginNativeRequest({ caseId, parameters });
     const outcome = await generateChatTurn({
+      onToolCallDraftsChange: undefined,
       provider: replay.provider, model: modelId, parameters, tools: [tool],
       readBinaryObject: undefined, debug: undefined, abortController: new AbortController(), approvalContext: undefined,
       createAssistantMessage: () => {

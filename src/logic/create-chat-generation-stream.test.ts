@@ -10,7 +10,7 @@ function message(): AssistantMessageNode {
 }
 async function collect({ items, controller }: { items: ReturnType<LmProvider['chat']>, controller: AbortController }) {
   const node = message();
-  const result = await consumeChatGeneration({ node, items, abortController: controller, onChange: () => {} });
+  const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items, abortController: controller, onChange: () => {} });
   return { node, result };
 }
 describe('generation stream producer bridge', () => {

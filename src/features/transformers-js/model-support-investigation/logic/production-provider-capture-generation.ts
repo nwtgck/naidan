@@ -47,6 +47,7 @@ export async function generateProductionProviderCapture({ provider, modelId, inp
   }
   try {
     const result = await generateChatTurn({
+      onToolCallDraftsChange: undefined,
       provider, model: modelId, debug: undefined, parameters: input.parameters,
       tools: input.tools.length === 0 ? [] : [createModelSupportWeatherTool()],
       readBinaryObject: undefined, abortController, approvalContext: undefined,

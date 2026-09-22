@@ -162,8 +162,13 @@ export class OpenAIProvider implements LmProvider {
               }
               if (piece.id) draft.id = piece.id;
               // Delta text is never deduplicated because two equal fragments can be intentional.
+              const argumentsOffset = draft.arguments.length;
               draft.name += piece.function?.name ?? '';
               draft.arguments += piece.function?.arguments ?? '';
+              await writer.callDraft({ key: draft.key,
+                name: piece.function?.name === undefined ? undefined : draft.name,
+                arguments: piece.function?.arguments === undefined ? undefined : { offset: argumentsOffset, text: piece.function.arguments },
+              });
             }
           }
           if (choice.finish_reason !== undefined && choice.finish_reason !== null) {

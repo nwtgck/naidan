@@ -2984,6 +2984,28 @@ describe('ChatPane Export Functionality', () => {
     document.body.innerHTML = '';
   });
 
+  it('renders volatile tool arguments but excludes their row from Markdown export', async () => {
+    const node = createTextNode({ id: toMessageId({ raw: 'draft-owner' }), role: 'assistant', text: 'Visible answer', createdAt: 1 });
+    mockActiveMessages.value = [node];
+    mockChatFlowOverride.value = [
+      { type: 'message', key: 'body', node, mode: 'content', partContent: 'Visible answer', flow: { position: 'start', nesting: 'none' }, isFirstInNode: true, isLastInNode: false, isFirstInTurn: true },
+      { type: 'message', key: 'draft', node, mode: 'tool_calls', toolCalls: [], toolCallDrafts: [{ partId: 'pending', index: 1, beforePartIndex: 1, name: 'weather', arguments: '{"city":"Draft-only value' }], flow: { position: 'end', nesting: 'none' }, isFirstInNode: false, isLastInNode: true, isFirstInTurn: false },
+    ];
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await nextTick();
+    expect(wrapper.get('[data-testid="tool-call-draft"]').text()).toContain('Draft-only value');
+    await wrapper.get('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.get('[data-testid="export-markdown-button"]').trigger('click');
+    await flushPromises();
+    const blob = mockCreateObjectURL.mock.calls.at(-1)?.[0];
+    if (!(blob instanceof Blob)) throw new Error('Expected exported Markdown Blob.');
+    const text = await blob.text();
+    expect(text.match(/Visible answer/g)).toHaveLength(1);
+    expect(text).not.toContain('Draft-only value');
+    expect(text.match(/## AI:/g)).toHaveLength(1);
+    expect(node.parts).toEqual([{ type: 'text', text: 'Visible answer', completeness: 'complete' }]);
+  });
+
   it('should export chat as Markdown (.txt)', async () => {
     mockCurrentChat.value = {
       id: toChatId({ raw: 'test-chat-id' }),

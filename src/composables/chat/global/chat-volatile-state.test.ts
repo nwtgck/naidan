@@ -9,6 +9,20 @@ function fixture(): { chat: Chat, node: AssistantMessageNode } {
   return { chat, node };
 }
 describe('volatile assistant diagnostics', () => {
+  it('keeps drafts outside stored chat data and protects a replacement owner from old cleanup', () => {
+    const state = createChatVolatileState(); const { chat, node } = fixture();
+    const before = JSON.stringify(chat);
+    const oldOwner = new AbortController().signal;
+    const newOwner = new AbortController().signal;
+    const draft = { partId: 'part_0', index: 0, name: 'shell', arguments: '{"script":"', beforePartIndex: 0 };
+    state.setToolCallDrafts({ chatId: chat.id, messageId: node.id, owner: oldOwner, drafts: [draft] });
+    state.setToolCallDrafts({ chatId: chat.id, messageId: node.id, owner: newOwner, drafts: [{ ...draft, arguments: 'replacement' }] });
+    state.setToolCallDrafts({ chatId: chat.id, messageId: node.id, owner: oldOwner, drafts: [] });
+    expect(state.getToolCallDrafts({ chatId: chat.id, messageId: node.id })).toEqual([{ ...draft, arguments: 'replacement' }]);
+    expect(JSON.stringify(chat)).toBe(before);
+    state.setToolCallDrafts({ chatId: chat.id, messageId: node.id, owner: newOwner, drafts: [] });
+    expect(state.getToolCallDrafts({ chatId: chat.id, messageId: node.id })).toEqual([]);
+  });
   it('retains UI errors without writing them into a reloaded message or interruption', () => {
     const state = createChatVolatileState(); const { chat, node } = fixture(); const before = JSON.stringify(chat);
     state.setVolatileAssistantError({ chatId: chat.id, messageId: node.id, error: '保存できませんでした' });

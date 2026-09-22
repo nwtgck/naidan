@@ -103,7 +103,7 @@ function createPublicationFixture({ outputs, historyEncoding }: {
   const controller = new AbortController();
   return { generate, published, executions, history,
     text: () => history.flatMap(node => node.role === 'assistant' ? node.parts.flatMap(part => part.type === 'text' ? [part.text] : []) : []).join(''),
-    run: () => generateChatTurn({ provider, model: 'synthetic/content-publication', debug: undefined, parameters: undefined, readBinaryObject: undefined, abortController: controller, approvalContext: undefined,
+    run: () => generateChatTurn({ onToolCallDraftsChange: undefined, provider, model: 'synthetic/content-publication', debug: undefined, parameters: undefined, readBinaryObject: undefined, abortController: controller, approvalContext: undefined,
       tools: [{ name: 'lookup_weather', description: 'Fixed weather', parametersSchema: z.object({ city: z.string() }), execute: async ({ args }) => {
         executions.push(structuredClone(args)); return { status: 'success', content: 'Sunny' };
       } }],

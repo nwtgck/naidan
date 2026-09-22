@@ -6,6 +6,11 @@ export interface ChatGenerationWriter {
   finishTextPart({ completeness }: { completeness: 'complete' | 'partial' }): void,
   text({ type, text }: { type: 'text' | 'reasoning', text: string }): Promise<void>,
   reserveCall({ key }: { key: number }): void,
+  callDraft({ key, name, ...update }: {
+    key: number,
+    name: string | undefined,
+    arguments: { offset: number, text: string } | undefined,
+  }): Promise<void>,
   call({ key, toolCall }: { key: number, toolCall: ToolCall }): Promise<void>,
 }
 
@@ -115,6 +120,28 @@ export function createChatGenerationStream({ signal, run }: {
           closeText({ completeness: 'complete' });
           const position = index++;
           reservations.set(key, { partId: `part_${position}`, index: position, status: 'pending' });
+        },
+        async callDraft({ key, name, arguments: update }): Promise<void> {
+          writer.reserveCall({ key });
+          const position = reservations.get(key)!;
+          switch (position.status) {
+          case 'pending': break;
+          case 'complete': throw new Error('A completed tool call cannot receive draft updates.');
+          default: { const _ex: never = position.status; throw new Error(`Unhandled call phase: ${_ex}`); }
+          }
+          // Bound queued argument bytes as well as queue entries. The first chunk
+          // replaces a suffix; following chunks append to that same new suffix.
+          if (update === undefined || update.text.length === 0) {
+            await outer.send({ value: { type: 'tool_call_draft', partId: position.partId, index: position.index, name, arguments: update === undefined ? undefined : { ...update } } });
+            return;
+          }
+          const { offset, text } = update;
+          for (let start = 0; start < text.length; start += 8192) {
+            await outer.send({ value: { type: 'tool_call_draft', partId: position.partId, index: position.index,
+              name: start === 0 ? name : undefined,
+              arguments: { offset: offset + start, text: text.slice(start, start + 8192) },
+            } });
+          }
         },
         async call({ key, toolCall }): Promise<void> {
           writer.reserveCall({ key });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AssistantMessageNode } from '@/01-models/types';
-import type { ChatGenerationItem } from '@/01-models/lm';
+import type { ChatGenerationItem, ToolCallDraft } from '@/01-models/lm';
 import { toMessageId } from '@/01-models/ids';
 import { consumeChatGeneration } from '@/logic/consume-chat-generation';
 import { createLlamaCppGeneration, createScopedGeneration } from './provider-generation';
@@ -11,8 +11,12 @@ import type { LlamaCppBrowserService } from './service-contract';
 
 function observation({ items, controller }: { items: AsyncIterable<ChatGenerationItem>, controller: AbortController }) {
   const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
-  const result = consumeChatGeneration({ node, items, abortController: controller, onChange: () => {} });
-  return { node, result };
+  const drafts: ToolCallDraft[][] = [];
+  const onChange = vi.fn();
+  const result = consumeChatGeneration({ node, items, abortController: controller, onChange, onToolCallDraftsChange: ({ drafts: current }) => {
+    drafts.push(current.map(draft => ({ ...draft })));
+  } });
+  return { node, result, drafts, onChange };
 }
 function source({ generate, controller }: { generate: LlamaCppBrowserService['generate'], controller: AbortController }) {
   return createLlamaCppGeneration({ request: { ...chatRequest(), signal: controller.signal }, generate });
@@ -20,6 +24,73 @@ function source({ generate, controller }: { generate: LlamaCppBrowserService['ge
 const call = { id: 'call1', type: 'function' as const, function: { name: 'lookup', arguments: ' {"x": "\\u3042"} ' } };
 const called = (): GenerationResult => ({ ...finalText({ text: '' }), toolCalls: [call] });
 describe('native llama.cpp events into common parts', () => {
+  it('keeps parallel native previews transient and replaces them only with authoritative completed calls', async () => {
+    const controller = new AbortController();
+    const gate = Promise.withResolvers<void>();
+    let waiting = false;
+    const secondCall = { ...call, id: 'call2', function: { name: 'second', arguments: '{"b":2}' } };
+    const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
+      for (const event of [
+        { type: 'tool_call_start', index: 0 },
+        { type: 'tool_call_start', index: 1 },
+        { type: 'tool_call_draft', index: 1, name: 'second', arguments: { offset: 0, text: '{"b":' } },
+        { type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: 0, text: '{"x":"old"}' } },
+        { type: 'tool_call_draft', index: 0, name: undefined, arguments: { offset: 6, text: 'new' } },
+      ] satisfies GenerationEvent[]) await onEvent({ event });
+      waiting = true;
+      await gate.promise;
+      await onEvent({ event: { type: 'tool_call', index: 0, toolCall: call } });
+      await onEvent({ event: { type: 'tool_call', index: 1, toolCall: secondCall } });
+      return { ...called(), toolCalls: [call, secondCall] };
+    };
+    const observed = observation({ items: source({ generate, controller }), controller });
+    try {
+      await vi.waitFor(() => {
+        expect(waiting).toBe(true);
+        expect(observed.drafts.at(-1)?.map(draft => [draft.index, draft.name, draft.arguments])).toEqual([
+          [0, 'lookup', '{"x":"new'], [1, 'second', '{"b":'],
+        ]);
+      });
+      expect(observed.node.parts).toEqual([]);
+      expect(observed.onChange).not.toHaveBeenCalled();
+    } finally {
+      gate.resolve();
+    }
+    expect(await observed.result).toEqual({ type: 'finished', next: 'tool_results' });
+    expect(observed.node.parts).toEqual([{ type: 'tool_call', toolCall: call }, { type: 'tool_call', toolCall: secondCall }]);
+    expect(observed.drafts.at(-1)).toEqual([]);
+  });
+
+  it.each(['length', 'aborted', 'error'] as const)('discards an incomplete native preview on %s without writing it into history', async termination => {
+    const controller = new AbortController();
+    const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
+      await onEvent({ event: { type: 'tool_call_start', index: 0 } });
+      await onEvent({ event: { type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: 0, text: '{"x":' } } });
+      if (termination === 'aborted') controller.abort();
+      if (termination === 'error') throw new Error('Native generation failed');
+      return { ...called(), finishReason: 'length' };
+    };
+    const observed = observation({ items: source({ generate, controller }), controller });
+    expect((await observed.result).type).toBe(termination === 'error' ? 'error' : 'interrupted');
+    expect(observed.node.parts).toEqual([]);
+    expect(observed.onChange).not.toHaveBeenCalled();
+    expect(observed.drafts.at(-1)).toEqual([]);
+  });
+
+  it.each(['before reservation', 'after completion', 'invalid patch offset'] as const)('rejects a native preview %s', async defect => {
+    const controller = new AbortController();
+    const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
+      if (defect === 'after completion') await deliverNativeResult({ result: called(), onEvent });
+      if (defect === 'invalid patch offset') await onEvent({ event: { type: 'tool_call_start', index: 0 } });
+      await onEvent({ event: { type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: 5, text: 'x' } } });
+      return called();
+    };
+    const observed = observation({ items: source({ generate, controller }), controller });
+    if (defect === 'invalid patch offset') await expect(observed.result).rejects.toThrow('Invalid tool call draft argument offset');
+    else expect((await observed.result).type).toBe('error');
+    expect(observed.node.parts).toHaveLength(defect === 'after completion' ? 1 : 0);
+  });
+
   it('keeps reasoning separate, with raw text tags, whitespace, and repeated deltas unchanged', async () => {
     const controller = new AbortController();
     const generate = vi.fn<LlamaCppBrowserService['generate']>(async ({ onEvent }) => {

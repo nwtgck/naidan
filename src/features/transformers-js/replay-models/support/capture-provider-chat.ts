@@ -176,6 +176,8 @@ export function captureProviderChat({ provider, request }: {
     switch (item.type) {
     case 'text':
     case 'reasoning': return observeText({ item });
+    // Drafts are transient presentation updates, not completed replay evidence.
+    case 'tool_call_draft': return item;
     case 'tool_call': {
       const { type, partId, index, toolCall, ...unhandled } = item;
       unhandled satisfies Record<PropertyKey, never>;
@@ -210,7 +212,7 @@ export function captureProviderChat({ provider, request }: {
         parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined,
         replies: { items: [] },
       };
-      await consumeChatGeneration({ node, abortController: new AbortController(), onChange: () => {},
+      await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {},
         items: observeIterator({ source: 'outer', values: items, onValue: observeItem, onDone: () => {} }),
       });
       settlement = { status: 'fulfilled' };

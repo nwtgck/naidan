@@ -143,7 +143,7 @@ R
     };
     const node = assistant(); const abortController = new AbortController();
     const { createInferenceEventDelivery } = await import('@/features/transformers-js/worker/inference-event-delivery');
-    const operation = consumeChatGeneration({ node, abortController, onChange: () => {}, items: createInferenceGeneration({ signal: abortController.signal,
+    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController, onChange: () => {}, items: createInferenceGeneration({ signal: abortController.signal,
       generate: async ({ onEvent }) => {
         const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
         try {
@@ -215,7 +215,7 @@ Calculate.<|im_end|>
 <think>
 `;
     const node = assistant();
-    const operation = consumeChatGeneration({ node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined,
+    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined,
       generate: async ({ onEvent }) => {
         const events: InferenceGenerationEvent[] = [];
         const codec = createQwen3_5Generation({ prompt: prefix,

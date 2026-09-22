@@ -12,7 +12,7 @@ async function run({ records, messages }: { records: readonly unknown[], message
   const provider: LmProvider = new OllamaProvider({ endpoint: 'https://example.invalid', fetcher });
   const controller = new AbortController();
   const node: AssistantMessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
-  const result = await consumeChatGeneration({ node, items: provider.chat({ debug: undefined, messages, model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: controller.signal }), abortController: controller, onChange: () => {} });
+  const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items: provider.chat({ debug: undefined, messages, model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: controller.signal }), abortController: controller, onChange: () => {} });
   return { node, result, fetcher };
 }
 
@@ -64,7 +64,7 @@ describe('Ollama structured generation contract', () => {
       request = JSON.parse(String(init?.body)); return new Response('{"message":{"content":"A"},"done":true}');
     } });
     const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
-    await consumeChatGeneration({ node, items: provider.chat({ debug: undefined, messages, model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined }), abortController: new AbortController(), onChange: () => {} });
+    await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items: provider.chat({ debug: undefined, messages, model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined }), abortController: new AbortController(), onChange: () => {} });
     expect(request).toMatchObject({ messages: [{ thinking: '  R\n', tool_calls: [{ function: { arguments: { n: 1 } } }] }, { role: 'tool', content: 'result', tool_name: 'f', tool_call_id: 'c' }] });
     expect(messages).toEqual(before);
   });

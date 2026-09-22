@@ -250,7 +250,7 @@ function structuredFlow({ parts }: { parts: AssistantMessageNode['parts'] }) {
   const chat: Chat = { id: toChatId({ raw: 'parts-chat' }), title: 'Parts', createdAt: 0, updatedAt: 0,
     debugEnabled: false, root: { items: [node] }, currentLeafId: node.id,
   };
-  return { node, chat, ...useChatDisplayFlow({ chat: computed(() => chat), isProcessing: () => false }) };
+  return { node, chat, ...useChatDisplayFlow({ getToolCallDrafts: undefined, chat: computed(() => chat), isProcessing: () => false }) };
 }
 
 describe('outline navigation over message parts', () => {

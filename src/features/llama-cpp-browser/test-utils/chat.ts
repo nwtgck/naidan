@@ -48,7 +48,7 @@ export function createChatFixture({ provider, request, tools, controller, onTool
       nodes.push(node); return node;
     },
     buildMessages: ({ excludedMessageId }) => [...request.messages, ...nodes.filter(n => n.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node }))],
-    onChange: () => {}, onToolEvent,
+    onChange: () => {}, onToolEvent, onToolCallDraftsChange: undefined,
     persistToolContent: async ({ text }) => ({ type: 'text', text }), describeError: ({ error }) => error.message,
   });
   return { run, nodes };

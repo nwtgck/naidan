@@ -103,7 +103,7 @@ describe('Gemma native output with the Production streamer and original tokenize
     const events: InferenceGenerationEvent[] = [];
     const node = assistant(); const abortController = new AbortController();
     const delivery = await import('@/features/transformers-js/worker/inference-event-delivery');
-    const operation = consumeChatGeneration({ node, abortController, onChange: () => {}, items: createInferenceGeneration({ signal: abortController.signal,
+    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController, onChange: () => {}, items: createInferenceGeneration({ signal: abortController.signal,
       generate: async ({ onEvent }) => {
         const queue = delivery.createInferenceEventDelivery({ onEvent: async ({ event }) => {
           events.push(event); await onEvent({ event });
@@ -159,7 +159,7 @@ describe('Gemma native output with the Production streamer and original tokenize
     const { NativeProtocolStreamer } = await import('@/features/transformers-js/models/native-protocol-streamer');
     const native = `<|channel>thought\n  R\n\n<channel|><|tool_call>call:calculator{expression:<|"|>17 * 23<|"|>}<tool_call|><|tool_response>`;
     const node = assistant();
-    const operation = consumeChatGeneration({ node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
+    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
       const events: InferenceGenerationEvent[] = [];
       const decoder = createGemma4Generation({ toolCalls: 'enabled', emit: ({ event }) => {
         events.push(event);

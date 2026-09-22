@@ -59,6 +59,7 @@ function turn({ provider, tools, model }: { provider: LmProvider, tools: Tool[],
   const controller = new AbortController();
   const onToolEvent = vi.fn();
   return { history, controller, onToolEvent, run: () => generateChatTurn({
+    onToolCallDraftsChange: undefined,
     provider, model, parameters: undefined, tools, readBinaryObject: undefined, debug: undefined,
     abortController: controller, approvalContext: undefined,
     createAssistantMessage: () => {

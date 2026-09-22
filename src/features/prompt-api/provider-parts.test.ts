@@ -34,7 +34,7 @@ describe('Prompt API parts and ownership', () => {
     const first = messages[0]?.parts[0]; if (first?.type !== 'text') throw new Error('Expected text fixture.');
     first.text = 'mutated';
     expect(b.create).not.toHaveBeenCalled(); const n = node();
-    const result = await consumeChatGeneration({ node: n, items, abortController: controller, onChange: () => {} });
+    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items, abortController: controller, onChange: () => {} });
     expect(b.promptStreaming.mock.calls[0]?.[0]).toBe('original');
     expect(result).toEqual({ type: 'finished', next: 'user' });
     expect(n.parts).toEqual([{ type: 'text', text: '<think>literal</think>    ', completeness: 'complete' }]);
@@ -45,7 +45,7 @@ describe('Prompt API parts and ownership', () => {
       c.enqueue('途中');
     }, cancel }) });
     const controller = new AbortController(); const n = node();
-    const result = await consumeChatGeneration({ node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {
+    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {
       if (n.parts.some(p => p.type === 'text' && p.text === '途中')) controller.abort();
     } });
     expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });
@@ -58,7 +58,7 @@ describe('Prompt API parts and ownership', () => {
       if (i++ === 0) c.enqueue('kept'); else c.enqueue(42 as never);
     } }) });
     const n = node(); const controller = new AbortController();
-    const result = await consumeChatGeneration({ node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
+    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
     expect(result.type).toBe('error'); expect(n.parts).toMatchObject([{ text: 'kept', completeness: 'partial' }]); expect(b.destroy).toHaveBeenCalledOnce();
   });
   it('does not acquire a session for a signal already aborted', async () => {
@@ -66,7 +66,7 @@ describe('Prompt API parts and ownership', () => {
       c.close();
     } }) });
     const controller = new AbortController(); controller.abort(); const n = node();
-    const result = await consumeChatGeneration({ node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
+    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
     expect(result).toEqual({ type: 'interrupted', reason: 'aborted' }); expect(n.parts).toEqual([]); expect(b.create).not.toHaveBeenCalled();
   });
   it('destroys a late-created session if abort happened during creation', async () => {
@@ -74,7 +74,7 @@ describe('Prompt API parts and ownership', () => {
     const destroy = vi.fn(); const promptStreaming = vi.fn();
     const create = vi.fn(() => session.promise); vi.stubGlobal('LanguageModel', { availability: vi.fn().mockResolvedValue('available'), create });
     const controller = new AbortController(); const n = node();
-    const task = consumeChatGeneration({ node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
+    const task = consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
     await vi.waitFor(() => expect(create).toHaveBeenCalledOnce()); controller.abort(); session.resolve({ destroy, promptStreaming });
     expect(await task).toEqual({ type: 'interrupted', reason: 'aborted' }); expect(n.parts).toEqual([]);
     expect(promptStreaming).not.toHaveBeenCalled(); expect(destroy).toHaveBeenCalledOnce();
@@ -84,7 +84,7 @@ describe('Prompt API parts and ownership', () => {
       c.close();
     } }) }); const controller = new AbortController();
     const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ type: 'reasoning', text: 'R', completeness: 'partial' }] }, ...history()];
-    const n = node(); const result = await consumeChatGeneration({ node: n, items: chat({ messages, controller }), abortController: controller, onChange: () => {} });
+    const n = node(); const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages, controller }), abortController: controller, onChange: () => {} });
     expect(result).toMatchObject({ type: 'error', error: { code: 'unsupported_input' } });
     expect(n.parts).toEqual([]); expect(b.create).not.toHaveBeenCalled();
   });

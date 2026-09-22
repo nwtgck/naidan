@@ -52,6 +52,11 @@ export function createLlamaCppGeneration({ request, generate }: {
           if (value.index !== reserved) throw new Error('Native call reservations must be ordered and unique.');
           writer.reserveCall({ key: reserved++ });
           phase = 'tool_call';
+          await writer.callDraft({ key: value.index, name: undefined, arguments: undefined });
+          break;
+        case 'tool_call_draft':
+          if (value.index >= reserved || completed.has(value.index)) throw new Error('Native call preview has no active reservation.');
+          await writer.callDraft({ key: value.index, name: value.name, arguments: value.arguments });
           break;
         case 'tool_call': {
           if (value.index >= reserved || completed.has(value.index)) throw new Error('Native call completion has no unique reservation.');
@@ -163,7 +168,7 @@ export function createScopedGeneration({ scope }: { scope: LlamaCppGenerationSco
               };
               return { done: false, value: { ...item, chunks } };
             }
-            case 'tool_call': case 'result': return next;
+            case 'tool_call_draft': case 'tool_call': case 'result': return next;
             default: { const exhaustive: never = item; throw new Error(`Unknown generation item: ${exhaustive}`); }
             }
           },

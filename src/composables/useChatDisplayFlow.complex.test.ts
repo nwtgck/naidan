@@ -88,6 +88,7 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat: createChat(messages),
       isProcessing: () => false,
     });
@@ -179,6 +180,7 @@ describe('useChatDisplayFlow complex scenario', () => {
     }
 
     const repeated = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat: createChat(messages),
       isProcessing: () => false,
     });
@@ -209,6 +211,7 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat: createChat(messages),
       isProcessing: () => true,
     });
@@ -276,6 +279,7 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat: createChat(messages),
       isProcessing: () => false,
     });
@@ -304,6 +308,7 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat: createChat(messages),
       isProcessing: () => true,
     });
@@ -330,6 +335,7 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat: createChat(messages),
       isProcessing: () => false,
     });

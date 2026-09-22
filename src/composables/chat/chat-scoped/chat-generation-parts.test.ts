@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
   provider: undefined as LmProvider | undefined,
   tools: [] as Tool[],
   changed: vi.fn(), save: vi.fn(), metadata: vi.fn(), notify: vi.fn(), title: vi.fn(),
-  setError: vi.fn(), clearOutput: vi.fn(),
+  setError: vi.fn(), clearOutput: vi.fn(), drafts: vi.fn(),
   autoTitle: false,
 }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
@@ -35,6 +35,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
     startTask: vi.fn(), finishTask: vi.fn(),
   },
   chatVolatileState: {
+    setToolCallDrafts: state.drafts,
     clearVolatileAssistantError: vi.fn(), setVolatileAssistantError: state.setError,
     setVolatileToolOutput: vi.fn(), appendVolatileToolOutput: vi.fn(), deleteVolatileToolOutput: state.clearOutput,
   },
@@ -76,6 +77,35 @@ describe('chat generation flow with message parts', () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks(); state.active.clear(); state.autoTitle = false; state.tools = [];
     state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined); state.title.mockResolvedValue(undefined);
+  });
+  it('shows draft updates without history persistence and clears them after cancellation', async () => {
+    const fixture = createChat();
+    const visible = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    state.drafts.mockImplementation(({ drafts }) => {
+      if (drafts.length !== 0) visible.resolve();
+    });
+    state.provider = { listModels: async () => ['m'], chat: ({ messages, signal }) => {
+      expect(messages.map(message => message.role)).toEqual(['user']);
+      return createChatGenerationStream({ signal, run: async ({ writer }) => {
+        await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"' } });
+        await release.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      } });
+    } };
+    const pending = run(fixture);
+    await visible.promise;
+    expect(fixture.assistant.parts).toEqual([]);
+    expect(state.save).not.toHaveBeenCalled();
+    const active = state.active.get(fixture.chat.id);
+    if (!active) throw new Error('Expected an active generation');
+    active.controller.abort(new DOMException('Aborted', 'AbortError'));
+    expect(state.drafts).toHaveBeenLastCalledWith({ chatId: fixture.chat.id, messageId: fixture.assistant.id, owner: active.controller.signal, drafts: [] });
+    release.resolve();
+    await pending;
+    expect(fixture.assistant.parts).toEqual([]);
+    expect(fixture.assistant.interruption).toEqual({ type: 'cancelled' });
+    state.drafts.mockReset();
   });
   it.each([true, false])('preserves the chat debug preference through tool rounds (%s)', async enabled => {
     const fixture = createChat(); fixture.chat.debugEnabled = enabled;

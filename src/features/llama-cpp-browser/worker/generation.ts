@@ -286,6 +286,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     chatSampler = await createChatSampler({ core, vocab, chain: samplingChain, params: chat.params });
     const stream = createOutputStream({ stops: [...request.stop, ...chat.additionalStops], harmony: false, initialChannel: 'final' });
     let output = ''; let content = ''; let reasoning = ''; let pendingCalls = 0;
+    const callDrafts: { name: string, arguments: string }[] = [];
     let deliveryFailed = false;
     const send: GenerationCallback = async ({ event }) => {
       stage = 'stream-emit';
@@ -310,7 +311,27 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       if (text) await send({ event: { type: 'text', text } });
       while (pendingCalls < parsed.toolCalls.length) {
         const index = pendingCalls++;
+        callDrafts.push({ name: '', arguments: '' });
         await send({ event: { type: 'tool_call_start', index } });
+      }
+      for (const [index, call] of parsed.toolCalls.entries()) {
+        const previous = callDrafts[index]!;
+        const name = previous.name === call.function.name ? undefined : call.function.name;
+        let offset = 0;
+        while (offset < previous.arguments.length && offset < call.function.arguments.length && previous.arguments[offset] === call.function.arguments[offset]) offset++;
+        const changedArguments = offset !== previous.arguments.length || offset !== call.function.arguments.length;
+        callDrafts[index] = { name: call.function.name, arguments: call.function.arguments };
+        if (!changedArguments) {
+          if (name !== undefined) await send({ event: { type: 'tool_call_draft', index, name, arguments: undefined } });
+          continue;
+        }
+        // Native partial parsing can revise an earlier suffix. Do not append a
+        // normalized snapshot to the preview or retransmit its growing prefix.
+        const suffix = call.function.arguments.slice(offset);
+        for (let start = 0; start < suffix.length || start === 0; start += 8192) {
+          const text = suffix.slice(start, start + 8192);
+          await send({ event: { type: 'tool_call_draft', index, name: start === 0 ? name : undefined, arguments: { offset: offset + start, text } } });
+        }
       }
     };
     let finishReason: GenerationResult['finishReason'] = 'length';

@@ -28,6 +28,37 @@ function request(): WorkerGenerateCall {
   return { generationId: 1, model: 'fixture.gguf', options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/profiles/', messages: [{ role: 'user', content: 'hi' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
 describe('structured generation over the actual Comlink MessageChannel transport', () => {
+  it('acknowledges draft patches before delivering a completed call', async () => {
+    const gate = Promise.withResolvers<void>();
+    const events: GenerationEvent[] = [];
+    const call = { id: 'call', type: 'function' as const, function: { name: 'lookup', arguments: '{"city":"Tokyo"}' } };
+    let acknowledged = false;
+    native.generate.mockImplementation(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'tool_call_start', index: 0 } });
+      await onEvent({ event: { type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: 0, text: '{"city":"Tok' } } });
+      acknowledged = true;
+      await onEvent({ event: { type: 'tool_call', index: 0, toolCall: call } });
+      return { content: '', reasoningContent: '', toolCalls: [call], finishReason: 'stop' };
+    });
+    const remote = connect();
+    try {
+      const pending = remote.generate(request(), workerProxy({ value: async ({ event }: { event: GenerationEvent }) => {
+        events.push(event);
+        if (event.type === 'tool_call_draft') await gate.promise;
+      } }), workerProxy({ value: () => {} }));
+      await vi.waitFor(() => expect(events).toHaveLength(2));
+      expect(acknowledged).toBe(false);
+      expect(events[1]).toEqual({ type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: 0, text: '{"city":"Tok' } });
+      gate.resolve();
+      expect(await pending).toMatchObject({ toolCalls: [call] });
+      expect(acknowledged).toBe(true);
+      expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: call });
+    } finally {
+      gate.resolve();
+      releaseWorkerRemote({ remote });
+    }
+  });
+
   it('acknowledges cloned reasoning and text before the native producer advances', async () => {
     const gate = Promise.withResolvers<void>();let stage = 0;const events: GenerationEvent[] = [];
     native.generate.mockImplementation(async ({ onEvent }) => {

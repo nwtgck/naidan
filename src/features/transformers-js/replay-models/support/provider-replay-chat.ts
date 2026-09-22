@@ -20,6 +20,7 @@ export async function runProviderReplayTurn({ provider, request, tools, abortCon
   const { model, parameters, messages, readBinaryObject, debug, ...unhandled } = request;
   unhandled satisfies Record<PropertyKey, never>;
   const outcome = await generateChatTurn({
+    onToolCallDraftsChange: undefined,
     provider, model, parameters, tools, readBinaryObject, debug, abortController, approvalContext: undefined,
     createAssistantMessage: () => {
       const node: AssistantMessageNode = {

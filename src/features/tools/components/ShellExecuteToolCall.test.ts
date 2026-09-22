@@ -35,6 +35,59 @@ const validArgs = JSON.stringify({
 const invalidArgs = '{"not_shell": true}';
 
 describe('ShellExecuteToolCall', () => {
+  it('decodes partial shell escapes only when each escape is complete', async () => {
+    const wrapper = mount(ShellExecuteToolCall, {
+      props: { args: '{"shell_script":"echo \\', result: undefined, argumentState: 'partial' },
+    });
+    expect(wrapper.find('pre').text()).toBe('$ echo');
+    await wrapper.setProps({ args: '{"shell_script":"echo \\"hello\\"\\n\\u65' });
+    expect(wrapper.find('pre').text()).toBe('$ echo "hello"');
+    await wrapper.setProps({ args: '{"shell_script":"echo \\"hello\\"\\n\\u65e5' });
+    expect(wrapper.find('pre').text()).toBe(`\
+$ echo "hello"
+日`);
+  });
+
+  it('resets a partial preview when a native parser replaces its earlier snapshot', async () => {
+    const wrapper = mount(ShellExecuteToolCall, {
+      props: { args: '{"shell_script":"echo previous', result: undefined, argumentState: 'partial' },
+    });
+    await wrapper.setProps({ args: '{"shell_script":"printf corrected' });
+    expect(wrapper.find('pre').text()).toBe('$ printf corrected');
+    await wrapper.setProps({ args: '{"shell_script":"printf corrected\\q' });
+    expect(wrapper.find('pre').text()).toBe('{"shell_script":"printf corrected\\q');
+    await wrapper.setProps({ args: '{"shell_script":"echo recovered"}' });
+    expect(wrapper.find('pre').text()).toBe('$ echo recovered');
+  });
+
+  it('keeps a closed script visible while the remaining numeric arguments arrive', async () => {
+    const wrapper = mount(ShellExecuteToolCall, {
+      props: { args: '{"shell_script":"echo hi', result: undefined, argumentState: 'partial' },
+    });
+    for (const args of [
+      '{"shell_script":"echo hi"',
+      '{"shell_script":"echo hi", "std',
+      '{"shell_script":"echo hi", "stdout_limit":',
+      '{"shell_script":"echo hi", "stdout_limit":4096, "stderr_limit":',
+      '{"shell_script":"echo hi", "stdout_limit":4096, "stderr_limit":4096}',
+    ]) {
+      await wrapper.setProps({ args });
+      expect(wrapper.find('pre').text()).toBe('$ echo hi');
+    }
+    // Draft display does not validate the trailing fields or imply executability.
+    await wrapper.setProps({ args: '{"shell_script":"echo hi", "stdout_limit":"bad"}' });
+    expect(wrapper.find('pre').text()).toBe('$ echo hi');
+    await wrapper.setProps({ argumentState: 'complete' });
+    expect(JSON.parse(wrapper.find('pre').text())).toEqual({ shell_script: 'echo hi', stdout_limit: 'bad' });
+  });
+
+  it('does not use an incomplete or malformed script for a completed call', () => {
+    const wrapper = mount(ShellExecuteToolCall, {
+      props: { args: '{"shell_script":"echo incomplete', result: makeResult() },
+    });
+    expect(wrapper.find('pre').text()).toBe('{"shell_script":"echo incomplete');
+  });
+
   it('renders terminal block with $ prefix for valid args', () => {
     const wrapper = mount(ShellExecuteToolCall, {
       props: { args: validArgs, result: makeResult() },

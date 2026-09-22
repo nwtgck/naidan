@@ -53,7 +53,7 @@ describe("SmolLM2 135M original tokenizer and structured standard generation", (
     const onChunk = vi.fn(); const onToolCalls = vi.fn(); const controller = new AbortController(); const node = assistant();
     const input = await prepareInferenceRequest({ messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hel', completeness: 'complete' }, { type: 'text', text: 'lo', completeness: 'complete' }] }], parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined });
     const { createInferenceEventDelivery } = await import('@/features/transformers-js/worker/inference-event-delivery');
-    const operation = consumeChatGeneration({ node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal,
+    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal,
       generate: async ({ onEvent }) => {
         const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
         try {
