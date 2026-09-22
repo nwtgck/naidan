@@ -27,9 +27,13 @@ export type ModelSuggestion = {
 // Array order intentionally keeps developers adjacent; no group model is needed.
 // Source links are the repositories below (file lists reviewed 2026-09-22).
 export const modelSuggestions: readonly ModelSuggestion[] = [
-  { id: 'gemma-4-e2b', name: 'Gemma 4 E2B it', developer: 'Google', repository: 'lmstudio-community/gemma-4-E2B-it-GGUF', preferredQuantization: 'Q4_K_M', approximateModelBytes: 3_430_000_000, approximateMultimodalBytes: 987_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
-  { id: 'gemma-4-e4b', name: 'Gemma 4 E4B it', developer: 'Google', repository: 'lmstudio-community/gemma-4-E4B-it-GGUF', preferredQuantization: 'Q4_K_M', approximateModelBytes: 5_340_000_000, approximateMultimodalBytes: 992_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
-  { id: 'gemma-4-26b', name: 'Gemma 4 26B-A4B it', developer: 'Google', repository: 'lmstudio-community/gemma-4-26B-A4B-it-GGUF', preferredQuantization: 'Q4_K_M', approximateModelBytes: 16_800_000_000, approximateMultimodalBytes: 1_190_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+  // Prefer Google's Quantization-Aware Training (QAT) releases over generic
+  // post-training Q4_K_M conversions. QAT describes the checkpoint's training,
+  // not a GGUF quantization token: keep the file matcher at Q4_0 and show QAT
+  // in the display name. Memory tiers remain conservative, independent of size.
+  { id: 'gemma-4-e2b', name: 'Gemma 4 E2B it (QAT)', developer: 'Google', repository: 'google/gemma-4-E2B-it-qat-q4_0-gguf', preferredQuantization: 'Q4_0', approximateModelBytes: 3_350_000_000, approximateMultimodalBytes: 987_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
+  { id: 'gemma-4-e4b', name: 'Gemma 4 E4B it (QAT)', developer: 'Google', repository: 'google/gemma-4-E4B-it-qat-q4_0-gguf', preferredQuantization: 'Q4_0', approximateModelBytes: 5_150_000_000, approximateMultimodalBytes: 992_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
+  { id: 'gemma-4-26b', name: 'Gemma 4 26B-A4B it (QAT)', developer: 'Google', repository: 'google/gemma-4-26B-A4B-it-qat-q4_0-gguf', preferredQuantization: 'Q4_0', approximateModelBytes: 14_400_000_000, approximateMultimodalBytes: 1_190_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
   { id: 'gpt-oss-20b', name: 'gpt-oss-20b', developer: 'OpenAI', repository: 'ggml-org/gpt-oss-20b-GGUF', preferredQuantization: 'MXFP4', approximateModelBytes: 12_100_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: undefined },
   { id: 'qwen-3-5-9b', name: 'Qwen3.5 9B', developer: 'Qwen', repository: 'lmstudio-community/Qwen3.5-9B-GGUF', preferredQuantization: 'Q4_K_M', approximateModelBytes: 5_630_000_000, approximateMultimodalBytes: 922_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
   { id: 'qwen-3-6-35b', name: 'Qwen3.6 35B-A3B', developer: 'Qwen', repository: 'ggml-org/Qwen3.6-35B-A3B-GGUF', preferredQuantization: 'Q4_K_M', approximateModelBytes: 20_400_000_000, approximateMultimodalBytes: 614_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
