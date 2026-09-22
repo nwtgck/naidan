@@ -25,7 +25,6 @@ const id = useId();
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const profileState = shallowRef<ProfileState>(llamaCppBrowserService.getProfileState());
 const models = ref<LocalModel[]>([]);
-const modelsReady = ref(false);
 const nameFilter = ref('');
 const filteredModels = computed(() => {
   const query = nameFilter.value.trim().toLocaleLowerCase();
@@ -132,7 +131,7 @@ function refresh(): Promise<void> {
       try {
         const found = await llamaCppBrowserService.listModels({ signal: controller.signal });
         if (!disposed && !controller.signal.aborted && !refreshRequested) {
-          models.value = found; modelsReady.value = true; emit('modelsChanged', found);
+          models.value = found; emit('modelsChanged', found);
         }
       } catch (error) {
         if (!disposed && !controller.signal.aborted) listError.value = errorCode({ error });
@@ -302,7 +301,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <!-- Privacy: bundled suggestions render without external I/O. Only explicit
          inspect/download actions (or a model-preset URL) authorize Hugging Face. -->
-    <LlamaCppBrowserModelSuggestions :models="models" :models-ready="modelsReady" :disabled="unavailable || active !== undefined || refreshing" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" @select-default="defaultSelection = $event" />
+    <LlamaCppBrowserModelSuggestions :models="models" :disabled="unavailable || active !== undefined || refreshing" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" @select-default="defaultSelection = $event" />
     <section tw-class="space-y-4">
       <div tw-class="flex items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
         <h3 tw-class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white"><HardDriveIcon tw-class="w-4 h-4 text-purple-500" />{{ lazyStrings.llamaCppBrowser__imported_models() }}<span tw-class="text-xs text-gray-400 tabular-nums">{{ nameFilter.trim() ? `${filteredModels.length} / ${models.length}` : models.length }}</span></h3>

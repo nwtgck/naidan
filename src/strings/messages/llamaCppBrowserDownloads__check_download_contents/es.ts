@@ -1,1 +1,1 @@
-export const llamaCppBrowserDownloads__check_download_contents = (): string => "Consultar archivos de descarga";
+export const llamaCppBrowserDownloads__check_download_contents = (): string => 'Ver archivos';

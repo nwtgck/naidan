@@ -1,29 +1,24 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
-import { ChevronDownIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
+import { computed, ref, useId } from 'vue';
+import { ChevronDownIcon, LibraryBigIcon, ExternalLinkIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import type { DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { matchesMemoryHint, modelSuggestions, moreGgufModelsUrl, suggestedMemoryFilters, type ModelSuggestion, type SuggestedMemoryFilter } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
-const props = defineProps<{ models: LocalModel[], modelsReady: boolean, disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean }>();
+defineProps<{ models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean }>();
 const emit = defineEmits<{ selectDefault: [model: LocalModel] }>();
 const id = useId();
-const open = ref(false);
-let initialOpenChosen = false;
+// The catalog is an entry point for both new and returning users. Start open,
+// independently of local-storage readiness, and leave subsequent folding to the
+// user. This presentation state must never trigger repository discovery.
+const open = ref(true);
 const memory = ref<SuggestedMemoryFilter>('all');
 const queue = getDownloadQueue();
 const activeCount = computed(() => queue.jobs.value.filter(job => job.source === 'suggestion' && jobIsBusy({ job })).length);
-watch(() => props.modelsReady, ready => {
-  // The first completed LOCAL listing chooses the initial state once. Importing
-  // the first model must not suddenly close a panel the user is interacting with.
-  if (ready && !initialOpenChosen) {
-    initialOpenChosen = true; open.value = props.models.length === 0;
-  }
-}, { immediate: true });
 function toggle(): void {
-  initialOpenChosen = true; open.value = !open.value;
+  open.value = !open.value;
 }
 function visible({ suggestion }: { suggestion: ModelSuggestion }): boolean {
   // Memory chips are editorial text-model hints. Multimodal options must not
@@ -39,12 +34,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <section tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 overflow-hidden" data-testid="llama-model-suggestions">
     <h3>
       <button type="button" :aria-expanded="open" :aria-controls="`${id}-content`" data-testid="llama-suggestions-toggle" tw-class="flex w-full items-center gap-2 px-4 py-3.5 text-sm font-bold text-gray-800 dark:text-white text-left hover:bg-gray-100/50 dark:hover:bg-gray-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 transition-colors" @click="toggle">
-        <DownloadIcon tw-class="w-4 h-4 text-purple-500 shrink-0" />{{ lazyStrings.llamaCppBrowserDownloads__add_models() }}
+        <LibraryBigIcon tw-class="w-4 h-4 text-purple-500 shrink-0" />{{ lazyStrings.llamaCppBrowserDownloads__model_catalog() }}
         <span v-if="activeCount" tw-class="ml-auto text-[10px] font-medium text-purple-600 dark:text-purple-400">{{ lazyStrings.llamaCppBrowserDownloads__active_downloads({ count: activeCount }) }}</span>
         <ChevronDownIcon :tw-class="['w-4 h-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none', { 'rotate-180': open, 'ml-auto': !activeCount }]" />
       </button>
     </h3>
-    <div :id="`${id}-content`" class="suggestions-disclosure" :class="{ 'suggestions-disclosure-open': open }" :inert="!open" :aria-hidden="!open">
+    <!-- Remove inert when expanded: a serialized inert="false" is still inert. -->
+    <div :id="`${id}-content`" class="suggestions-disclosure" :class="{ 'suggestions-disclosure-open': open }" :inert="open ? undefined : true" :aria-hidden="!open">
       <div class="suggestions-disclosure-inner">
         <div tw-class="px-4 pb-4 space-y-3">
           <div role="group" :aria-label="lazyStrings.llamaCppBrowserDownloads__memory()" tw-class="flex items-center flex-wrap gap-1.5" data-testid="llama-suggestions-memory">

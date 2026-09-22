@@ -1,1 +1,1 @@
-export const llamaCppBrowserDownloads__find_more = (): string => '查找更多';
+export const llamaCppBrowserDownloads__find_more = (): string => '浏览更多模型';

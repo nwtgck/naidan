@@ -1,6 +1,30 @@
+// SHARED__ keys intentionally couple every call site to one product-wide copy decision.
+// Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
+import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/de';
+import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/de';
+import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/de';
+import { SHARED__cancel } from '@/strings/messages/SHARED__cancel/de';
+import { SHARED__choose_which_chats_are_visible_to_the_shell } from '@/strings/messages/SHARED__choose_which_chats_are_visible_to_the_shell/de';
+import { SHARED__configure_browser_based_shell_access } from '@/strings/messages/SHARED__configure_browser_based_shell_access/de';
+import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/de';
+import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/de';
+import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/de';
+import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/de';
+import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/de';
+import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/de';
+import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/de';
+import { SHARED__mount } from '@/strings/messages/SHARED__mount/de';
+import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/de';
+import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/de';
+import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/de';
+import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/de';
+import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/de';
+import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/de';
+
 import { llamaCppBrowserDownloads__find_more } from '@/strings/messages/llamaCppBrowserDownloads__find_more/de';
 import { llamaCppBrowserDownloads__active_downloads } from '@/strings/messages/llamaCppBrowserDownloads__active_downloads/de';
-import { llamaCppBrowserDownloads__add_models } from '@/strings/messages/llamaCppBrowserDownloads__add_models/de';
+import { llamaCppBrowserDownloads__model_catalog } from '@/strings/messages/llamaCppBrowserDownloads__model_catalog/de';
+import { llamaCppBrowserDownloads__download_contents } from '@/strings/messages/llamaCppBrowserDownloads__download_contents/de';
 import { llamaCppBrowserDownloads__all } from '@/strings/messages/llamaCppBrowserDownloads__all/de';
 import { llamaCppBrowserDownloads__approximately_size } from '@/strings/messages/llamaCppBrowserDownloads__approximately_size/de';
 import { llamaCppBrowserDownloads__change_default_model } from '@/strings/messages/llamaCppBrowserDownloads__change_default_model/de';
@@ -30,28 +54,6 @@ import { llamaCppBrowserDownloads__set_as_default } from '@/strings/messages/lla
 import { llamaCppBrowserDownloads__settings_changed_review_again } from '@/strings/messages/llamaCppBrowserDownloads__settings_changed_review_again/de';
 import { llamaCppBrowserDownloads__total } from '@/strings/messages/llamaCppBrowserDownloads__total/de';
 import { llamaCppBrowserDownloads__waiting } from '@/strings/messages/llamaCppBrowserDownloads__waiting/de';
-// SHARED__ keys intentionally couple every call site to one product-wide copy decision.
-// Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
-import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/de';
-import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/de';
-import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/de';
-import { SHARED__cancel } from '@/strings/messages/SHARED__cancel/de';
-import { SHARED__choose_which_chats_are_visible_to_the_shell } from '@/strings/messages/SHARED__choose_which_chats_are_visible_to_the_shell/de';
-import { SHARED__configure_browser_based_shell_access } from '@/strings/messages/SHARED__configure_browser_based_shell_access/de';
-import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/de';
-import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/de';
-import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/de';
-import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/de';
-import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/de';
-import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/de';
-import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/de';
-import { SHARED__mount } from '@/strings/messages/SHARED__mount/de';
-import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/de';
-import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/de';
-import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/de';
-import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/de';
-import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/de';
-import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/de';
 
 import { ChatPage__failed_to_load_chat } from '@/strings/messages/ChatPage__failed_to_load_chat/de';
 import { ChatPage__retry } from '@/strings/messages/ChatPage__retry/de';
@@ -3623,7 +3625,8 @@ export const catalog = {
   llamaCppBrowser__generating,
   llamaCppBrowser__import_then_select,
   llamaCppBrowserDownloads__active_downloads,
-  llamaCppBrowserDownloads__add_models,
+  llamaCppBrowserDownloads__model_catalog,
+  llamaCppBrowserDownloads__download_contents,
   llamaCppBrowserDownloads__all,
   llamaCppBrowserDownloads__approximately_size,
   llamaCppBrowserDownloads__change_default_model,

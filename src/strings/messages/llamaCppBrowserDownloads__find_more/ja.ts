@@ -1,1 +1,1 @@
-export const llamaCppBrowserDownloads__find_more = (): string => 'Find more';
+export const llamaCppBrowserDownloads__find_more = (): string => 'ほかのモデルを探す';

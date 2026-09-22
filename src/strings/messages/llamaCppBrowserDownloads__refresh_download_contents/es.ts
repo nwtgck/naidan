@@ -1,1 +1,1 @@
-export const llamaCppBrowserDownloads__refresh_download_contents = (): string => "Actualizar archivos de descarga";
+export const llamaCppBrowserDownloads__refresh_download_contents = (): string => 'Actualizar archivos';
