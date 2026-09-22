@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import type { ToolCallDraft } from '@/01-models/lm';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ToolCallDraftItem from './ToolCallDraftItem.vue';
 
 enableAutoUnmount(afterEach);
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -27,6 +30,16 @@ function mockArgumentLayout({ height, viewportHeight }: { height: number, viewpo
   return layout;
 }
 
+function mockContentResize() {
+  const observers: { notify: () => void, observe: ReturnType<typeof vi.fn>, disconnect: ReturnType<typeof vi.fn> }[] = [];
+  vi.stubGlobal('ResizeObserver', vi.fn(function (notify: () => void) {
+    const observer = { notify, observe: vi.fn(), disconnect: vi.fn() };
+    observers.push(observer);
+    return observer;
+  }));
+  return observers;
+}
+
 describe('ToolCallDraftItem', () => {
   it('shows a generating label before the name or arguments arrive', () => {
     const wrapper = mount(ToolCallDraftItem, { props: { draft: draft({ name: '', args: '' }) } });
@@ -41,6 +54,7 @@ describe('ToolCallDraftItem', () => {
     expect(wrapper.text()).not.toContain('Result');
     const element = wrapper.find('[data-testid="tool-call-draft"]').element;
     await wrapper.setProps({ draft: draft({ name: 'shell_execute', args: '{"shell_script":"echo hello\\ncat <script>' }) });
+    await flushPromises();
     expect(wrapper.find('pre').text()).toBe(`\
 $ echo hello
 cat <script>`);
@@ -144,5 +158,70 @@ cat <script>`);
     layout.height = 400;
     await wrapper.setProps({ draft: draft({ name: 'weather', args: 'first corrected' }) });
     expect(preview.element.scrollTop).toBe(300);
+  });
+
+  it('follows delayed highlighted content growth without another argument update', async () => {
+    const layout = mockArgumentLayout({ height: 400, viewportHeight: 100 });
+    const observers = mockContentResize();
+    const wrapper = mount(ToolCallDraftItem, { props: { draft: draft({ name: 'shell_execute', args: '{"shell_script":"echo first' }) } });
+    await flushPromises();
+    const preview = wrapper.get<HTMLElement>('[data-testid="tool-call-draft-arguments"]');
+    const observer = observers[0]!;
+    expect(observer.observe).toHaveBeenCalledWith(wrapper.get('[data-testid="tool-call-draft-content"]').element);
+    expect(preview.element.scrollTop).toBe(300);
+
+    await wrapper.setProps({ draft: draft({ name: 'shell_execute', args: '{"shell_script":"echo first\\necho final' }) });
+    await flushPromises();
+    expect(wrapper.find('pre').text()).toBe(`\
+$ echo first
+echo final`);
+    // The highlighted child finishes later while the capped viewport stays fixed.
+    layout.height = 650;
+    observer.notify();
+    expect(preview.element.scrollTop).toBe(550);
+  });
+
+  it('keeps delayed content resize from interrupting a paused reader', async () => {
+    const layout = mockArgumentLayout({ height: 400, viewportHeight: 100 });
+    const observers = mockContentResize();
+    const wrapper = mount(ToolCallDraftItem, { props: { draft: draft({ name: 'weather', args: 'first' }) } });
+    await nextTick();
+    const preview = wrapper.get<HTMLElement>('[data-testid="tool-call-draft-arguments"]');
+    preview.element.scrollTop = 120;
+    await preview.trigger('scroll');
+    layout.height = 650;
+    observers[0]!.notify();
+    expect(preview.element.scrollTop).toBe(120);
+
+    preview.element.scrollTop = 550;
+    await preview.trigger('scroll');
+    layout.height = 800;
+    observers[0]!.notify();
+    expect(preview.element.scrollTop).toBe(700);
+  });
+
+  it('disconnects content observers on collapse and unmount and ignores stale notifications', async () => {
+    const layout = mockArgumentLayout({ height: 400, viewportHeight: 100 });
+    const observers = mockContentResize();
+    const wrapper = mount(ToolCallDraftItem, { props: { draft: draft({ name: 'weather', args: 'first' }) } });
+    await nextTick();
+    const originalObserver = observers[0]!;
+    await wrapper.get('[data-testid="tool-call-draft-toggle"]').trigger('click');
+    expect(originalObserver.disconnect).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="tool-call-draft-toggle"]').trigger('click');
+    const reopened = wrapper.get<HTMLElement>('[data-testid="tool-call-draft-arguments"]');
+    const reopenedObserver = observers[1]!;
+    expect(reopenedObserver.observe).toHaveBeenCalledWith(wrapper.get('[data-testid="tool-call-draft-content"]').element);
+    layout.height = 650;
+    originalObserver.notify();
+    expect(reopened.element.scrollTop).toBe(300);
+    reopenedObserver.notify();
+    expect(reopened.element.scrollTop).toBe(550);
+
+    wrapper.unmount();
+    expect(reopenedObserver.disconnect).toHaveBeenCalledOnce();
+    layout.height = 800;
+    reopenedObserver.notify();
+    expect(reopened.element.scrollTop).toBe(550);
   });
 });

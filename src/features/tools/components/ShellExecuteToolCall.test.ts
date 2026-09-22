@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { h } from 'vue';
 import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
 import type { ToolExecutionResult } from '@/01-models/tool';
@@ -35,14 +35,34 @@ const validArgs = JSON.stringify({
 const invalidArgs = '{"not_shell": true}';
 
 describe('ShellExecuteToolCall', () => {
+  it('highlights partial and completed scripts while preserving raw arguments and wrapping controls', async () => {
+    const script = 'echo "$HOME"; # greeting';
+    const args = JSON.stringify({ shell_script: script });
+    const wrapper = mount(ShellExecuteToolCall, {
+      props: { args: args.slice(0, -2), result: undefined, argumentState: 'partial' },
+    });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="syntax-highlighted-code"]').element.textContent).toBe(script);
+    expect(wrapper.get('[data-syntax="command"]').text()).toBe('echo');
+    expect(wrapper.get('[data-syntax="comment"]').text()).toBe('# greeting');
+    await wrapper.setProps({ args, argumentState: 'complete', result: makeResult() });
+    expect(wrapper.get('[data-testid="syntax-highlighted-code"]').element.textContent).toBe(script);
+    await wrapper.get('[data-testid="shell-execute-wrap-toggle"]').trigger('click');
+    expect(wrapper.find('pre').classes()).toContain('whitespace-pre');
+    await wrapper.get('[data-testid="shell-execute-raw-toggle"]').trigger('click');
+    expect(wrapper.get('[data-testid="shell-execute-raw-json"]').element.textContent).toBe(JSON.stringify({ shell_script: script }, null, 2));
+  });
+
   it('decodes partial shell escapes only when each escape is complete', async () => {
     const wrapper = mount(ShellExecuteToolCall, {
       props: { args: '{"shell_script":"echo \\', result: undefined, argumentState: 'partial' },
     });
     expect(wrapper.find('pre').text()).toBe('$ echo');
     await wrapper.setProps({ args: '{"shell_script":"echo \\"hello\\"\\n\\u65' });
+    await flushPromises();
     expect(wrapper.find('pre').text()).toBe('$ echo "hello"');
     await wrapper.setProps({ args: '{"shell_script":"echo \\"hello\\"\\n\\u65e5' });
+    await flushPromises();
     expect(wrapper.find('pre').text()).toBe(`\
 $ echo "hello"
 日`);
@@ -53,6 +73,7 @@ $ echo "hello"
       props: { args: '{"shell_script":"echo previous', result: undefined, argumentState: 'partial' },
     });
     await wrapper.setProps({ args: '{"shell_script":"printf corrected' });
+    await flushPromises();
     expect(wrapper.find('pre').text()).toBe('$ printf corrected');
     await wrapper.setProps({ args: '{"shell_script":"printf corrected\\q' });
     expect(wrapper.find('pre').text()).toBe('{"shell_script":"printf corrected\\q');

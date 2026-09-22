@@ -9,6 +9,7 @@ const props = defineProps<{ draft: ToolCallDraft }>();
 
 const expanded = ref(true);
 const argumentsContainer = ref<HTMLDivElement>();
+const argumentsContent = ref<HTMLDivElement>();
 let followState: 'following' | 'paused' = 'following';
 let lastScrollTop = 0;
 let lastContainer: HTMLDivElement | undefined;
@@ -28,36 +29,53 @@ function onArgumentsScroll(): void {
   lastScrollTop = scrollTop;
 }
 
+function followArgumentsTail(): void {
+  const container = argumentsContainer.value;
+  if (!container) return;
+  const maximum = Math.max(0, container.scrollHeight - container.clientHeight);
+  if (container !== lastContainer) {
+    // Reopening a collapsed preview preserves the reader's paused position.
+    container.scrollTop = Math.min(lastScrollTop, maximum);
+    lastContainer = container;
+  } else if (container.scrollTop < Math.min(lastScrollTop, maximum)) {
+    // A user scroll may precede its scroll event. Do not undo it when a new
+    // argument chunk arrives; browser clamping after shorter text is harmless.
+    followState = 'paused';
+  }
+  switch (followState) {
+  case 'following':
+    container.scrollTop = maximum;
+    break;
+  case 'paused':
+    break;
+  default: {
+    const _ex: never = followState;
+    throw new Error(`Unhandled scroll follow state: ${_ex}`);
+  }
+  }
+  lastScrollTop = Math.max(0, container.scrollTop);
+}
+
 watch(
   [() => props.draft.arguments, () => props.draft.name, argumentsContainer],
-  () => {
-    const container = argumentsContainer.value;
-    if (!container) return;
-    const maximum = Math.max(0, container.scrollHeight - container.clientHeight);
-    if (container !== lastContainer) {
-      // Reopening a collapsed preview preserves the reader's paused position.
-      container.scrollTop = Math.min(lastScrollTop, maximum);
-      lastContainer = container;
-    } else if (container.scrollTop < Math.min(lastScrollTop, maximum)) {
-      // A user scroll may precede its scroll event. Do not undo it when a new
-      // argument chunk arrives; browser clamping after shorter text is harmless.
-      followState = 'paused';
-    }
-    switch (followState) {
-    case 'following':
-      container.scrollTop = maximum;
-      break;
-    case 'paused':
-      break;
-    default: {
-      const _ex: never = followState;
-      throw new Error(`Unhandled scroll follow state: ${_ex}`);
-    }
-    }
-    lastScrollTop = Math.max(0, container.scrollTop);
-  },
+  followArgumentsTail,
   { flush: 'post' },
 );
+
+watch(argumentsContent, (content, _previous, onCleanup) => {
+  if (!content || typeof ResizeObserver === 'undefined') return;
+  // Highlighted text may render asynchronously after the draft prop update.
+  // Observe the content, since the capped scroll viewport no longer grows.
+  let observing = true;
+  const observer = new ResizeObserver(() => {
+    if (observing && argumentsContent.value === content) followArgumentsTail();
+  });
+  observer.observe(content);
+  onCleanup(() => {
+    observing = false;
+    observer.disconnect();
+  });
+}, { flush: 'post' });
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
@@ -79,9 +97,11 @@ defineExpose({
       </span>
       <component :is="expanded ? ChevronDownIcon : ChevronRightIcon" tw-class="h-3 w-3 shrink-0" />
     </button>
-    <div v-if="expanded && draft.arguments" ref="argumentsContainer" tw-class="space-y-2 px-3 pb-3 max-h-60 overflow-y-auto" data-testid="tool-call-draft-arguments" @scroll="onArgumentsScroll">
-      <ShellExecuteToolCall v-if="draft.name === 'shell_execute'" :args="draft.arguments" :result="undefined" argument-state="partial" />
-      <pre v-else tw-class="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-black/5 dark:bg-black/20 p-2 font-mono text-[10px] text-gray-700 dark:text-gray-300">{{ draft.arguments }}</pre>
+    <div v-if="expanded && draft.arguments" ref="argumentsContainer" tw-class="px-3 pb-3 max-h-60 overflow-y-auto" data-testid="tool-call-draft-arguments" @scroll="onArgumentsScroll">
+      <div ref="argumentsContent" tw-class="space-y-2" data-testid="tool-call-draft-content">
+        <ShellExecuteToolCall v-if="draft.name === 'shell_execute'" :args="draft.arguments" :result="undefined" argument-state="partial" />
+        <pre v-else tw-class="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-black/5 dark:bg-black/20 p-2 font-mono text-[10px] text-gray-700 dark:text-gray-300">{{ draft.arguments }}</pre>
+      </div>
     </div>
   </div>
 </template>

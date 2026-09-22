@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import { z } from 'zod';
 import { ChevronDownIcon, ChevronRightIcon, WrapTextIcon } from 'lucide-vue-next';
 import type { ToolExecutionResult } from '@/01-models/tool';
+import SyntaxHighlightedCode from '@/features/syntax-highlight/components/SyntaxHighlightedCode.vue';
 
 const props = defineProps<{
   args: string,
@@ -186,7 +187,7 @@ defineExpose({
       <pre
         class="custom-scrollbar"
         :tw-class="['text-[10px] font-mono p-2 rounded-lg bg-black/5 dark:bg-black/20 text-gray-700 dark:text-gray-300 overflow-x-auto', wrapCommand ? 'whitespace-pre-wrap' : 'whitespace-pre']"
-      ><span tw-class="text-blue-500/50 dark:text-blue-400/50 select-none">$ </span>{{ parsedArgs.shell_script }}</pre>
+      ><span tw-class="text-blue-500/50 dark:text-blue-400/50 select-none">$ </span><SyntaxHighlightedCode :code="parsedArgs.shell_script" language="shell" /></pre>
       <button
         :tw-class="['absolute top-1 right-1 opacity-0 group-hover/cmd:opacity-100 transition-opacity p-0.5 rounded bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors', wrapCommand ? 'text-blue-500/70 dark:text-blue-400/70' : 'text-gray-400 dark:text-gray-500']"
         :title="wrapCommand ? lazyStrings.toolCall__disable_wrap() : lazyStrings.toolCall__enable_wrap()"
