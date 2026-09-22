@@ -51,13 +51,21 @@ function memoryFile({ name }: { name: string }) {
       return new NodeFile([bytes], name, { lastModified: 123 });
     },
     async createWritable() {
-      let pending = new Uint8Array();
+      // Local imports stream binary chunks; journals write strings. In both
+      // cases the destination stays unchanged until close, just like OPFS.
+      const parts: Uint8Array[] = [];
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Test implementation of the native OPFS API.
-      return { async write(value: string) {
-        pending = new TextEncoder().encode(value);
+      return { async write(value: string | Uint8Array) {
+        parts.push(typeof value === 'string' ? new TextEncoder().encode(value) : value.slice());
       }, async close() {
-        bytes = pending;
-      }, async abort() {} };
+        bytes = new Uint8Array(parts.reduce((size, part) => size + part.byteLength, 0));
+        let offset = 0;
+        for (const part of parts) {
+          bytes.set(part, offset); offset += part.byteLength;
+        }
+      }, async abort() {
+        parts.length = 0;
+      } };
     },
     async createSyncAccessHandle() {
       if (opened) throw new Error('locked'); opened = true;

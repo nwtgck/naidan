@@ -112,7 +112,7 @@ describe("local GGUF model store", () => {
     const file = fixture({ name: "local.gguf" });
     const wholeFile = vi.spyOn(file, "arrayBuffer").mockRejectedValue(new Error("Do not buffer the full model"));
     const progress = vi.fn();
-    const model = await withModelStoreLock({ operation: () => importStoredModel({ file, onProgress: progress }) });
+    const model = await withModelStoreLock({ operation: () => importStoredModel({ signal: undefined, file, onProgress: progress }) });
     expect(wholeFile).not.toHaveBeenCalled();
     expect(committed).toEqual(["local.gguf"]);
     expect(model.id).toBe("user/local-GGUF");
@@ -126,7 +126,7 @@ describe("local GGUF model store", () => {
     expect(progress).toHaveBeenLastCalledWith({ progress: { phase: "importing", completed: 256, total: 256 } });
   });
   it("rejects an ambiguous directory rather than selecting an arbitrary base file", async () => {
-    await importStoredModel({ file: fixture({ name: "local.gguf" }), onProgress: () => {} });
+    await importStoredModel({ signal: undefined, file: fixture({ name: "local.gguf" }), onProgress: () => {} });
     const folder = await modelFolder({ name: "local.gguf" });
     (await folder.getFileHandle("local.GGUF", { create: true })).content = new Uint8Array(await fixture({ name: "local.GGUF" }).arrayBuffer());
     await expect(selectedFile({ name: "user/local-GGUF" })).rejects.toThrow("unsupported-input");
@@ -134,20 +134,20 @@ describe("local GGUF model store", () => {
   });
   it("rejects invalid GGUF magic or version without publishing", async () => {
     for (const bytes of [new Uint8Array(40), new Uint8Array([71, 71, 85, 70, 9, 0, 0, 0, ...Array<number>(40).fill(0)])]) {
-      await expect(importStoredModel({ file: new NodeFile([bytes], "invalid.gguf") as unknown as File, onProgress: () => {} })).rejects.toThrow("invalid-gguf");
+      await expect(importStoredModel({ signal: undefined, file: new NodeFile([bytes], "invalid.gguf") as unknown as File, onProgress: () => {} })).rejects.toThrow("invalid-gguf");
     }
     expect(await listStoredModels()).toEqual([]);
   });
   it("rejects completed duplicate names without replacing the file", async () => {
-    await importStoredModel({ file: fixture({ name: "same.gguf" }), onProgress: () => {} });
+    await importStoredModel({ signal: undefined, file: fixture({ name: "same.gguf" }), onProgress: () => {} });
     const folder = await modelFolder({ name: "same.gguf" }); const before = folder.children.get("same.gguf");
-    await expect(importStoredModel({ file: fixture({ name: "same.gguf" }), onProgress: () => {} })).rejects.toThrow("duplicate-model");
+    await expect(importStoredModel({ signal: undefined, file: fixture({ name: "same.gguf" }), onProgress: () => {} })).rejects.toThrow("duplicate-model");
     expect(folder.children.get("same.gguf")).toBe(before);
     expect(await listStoredModels()).toHaveLength(1);
   });
   it("removes failed import data and does not log user-controlled names or errors", async () => {
     failWrite = true;
-    await expect(importStoredModel({ file: fixture({ name: "private.gguf" }), onProgress: () => {} })).rejects.toThrow();
+    await expect(importStoredModel({ signal: undefined, file: fixture({ name: "private.gguf" }), onProgress: () => {} })).rejects.toThrow();
     failWrite = false;
     expect(await listStoredModels()).toEqual([]);
     expect((await userFolder()).children.size).toBe(0);
@@ -166,17 +166,17 @@ describe("local GGUF model store", () => {
     const folder = await modelFolder({ name: "retry.gguf" });
     (await folder.getFileHandle("retry.gguf", { create: true })).content = new Uint8Array([1]);
     await folder.getFileHandle(".llama-cpp-import-pending", { create: true });
-    await expect(importStoredModel({ file: fixture({ name: "retry.gguf" }), onProgress: () => {} })).rejects.toThrow("duplicate-model");
+    await expect(importStoredModel({ signal: undefined, file: fixture({ name: "retry.gguf" }), onProgress: () => {} })).rejects.toThrow("duplicate-model");
     await removeStoredModel({ plan: await planStoredModelRemoval({ id: "user/retry-GGUF" }) });
-    const model = await importStoredModel({ file: fixture({ name: "retry.gguf" }), onProgress: () => {} });
+    const model = await importStoredModel({ signal: undefined, file: fixture({ name: "retry.gguf" }), onProgress: () => {} });
     expect(await listStoredModels()).toEqual([{ ...model, name: `user/${model.name}` }]);
     expect((await (await modelFolder({ name: "retry.gguf" })).getFileHandle("retry.gguf")).content.length).toBe(256);
   });
   it("rejects unsafe names and deletion paths without escaping the model root", async () => {
     for (const name of ["../local.gguf", "dir/local.gguf", "dir\\local.gguf", ".gguf", "local.bin", "a\u0000.gguf", "a".repeat(251) + ".gguf"]) {
-      await expect(importStoredModel({ file: fixture({ name }), onProgress: () => {} })).rejects.toThrow("invalid-gguf");
+      await expect(importStoredModel({ signal: undefined, file: fixture({ name }), onProgress: () => {} })).rejects.toThrow("invalid-gguf");
     }
-    const model = await importStoredModel({ file: fixture({ name: "local.gguf" }), onProgress: () => {} });
+    const model = await importStoredModel({ signal: undefined, file: fixture({ name: "local.gguf" }), onProgress: () => {} });
     for (const id of ["../other-feature", "other/local-GGUF/local.gguf", "user/../local.gguf", model.id + "/extra"]) {
       await expect(removeStoredModel({ plan: { id, files: [] } })).rejects.toThrow();
     }
@@ -186,7 +186,7 @@ describe("local GGUF model store", () => {
     await expect(selectedFile({ name: model.id })).rejects.toThrow("missing-model");
   });
   it("does not expose a directory with a truncated or invalid GGUF header", async () => {
-    await importStoredModel({ file: fixture({ name: "truncated.gguf" }), onProgress: () => {} });
+    await importStoredModel({ signal: undefined, file: fixture({ name: "truncated.gguf" }), onProgress: () => {} });
     const folder = await modelFolder({ name: "truncated.gguf" });
     (await folder.getFileHandle("truncated.gguf")).content = new Uint8Array(1);
     expect(await listStoredModels()).toEqual([]);
@@ -196,7 +196,7 @@ describe("local GGUF model store", () => {
   it("rediscovers plain files after module reload without touching other files in the shared models root", async () => {
     const sibling = await root.getDirectoryHandle("models", { create: true });
     const other = await sibling.getFileHandle("other-runtime.bin", { create: true }); other.content = new Uint8Array([1, 2, 3]);
-    const model = await importStoredModel({ file: fixture({ name: "persistent.gguf" }), onProgress: () => {} });
+    const model = await importStoredModel({ signal: undefined, file: fixture({ name: "persistent.gguf" }), onProgress: () => {} });
     vi.resetModules(); const reloaded = await import("./model-store");
     expect(await reloaded.listStoredModels()).toEqual([{ ...model, name: `user/${model.name}` }]);
     expect((await (await selectedFile({ name: model.id })).getFile()).size).toBe(256);
@@ -227,7 +227,7 @@ describe("local GGUF model store", () => {
     const sibling = await root.getDirectoryHandle("models", { create: true });
     const sharedFile = await sibling.getFileHandle("existing-model.bin", { create: true }); sharedFile.content = new Uint8Array([11, 22, 33]);
     expect(await listStoredModels()).toEqual([]);
-    await importStoredModel({ file: fixture({ name: "new.gguf" }), onProgress: () => {} });
+    await importStoredModel({ signal: undefined, file: fixture({ name: "new.gguf" }), onProgress: () => {} });
     expect((await listStoredModels()).map(model => model.name)).toEqual(["user/new-GGUF"]);
     expect(move).not.toHaveBeenCalled(); expect(root.children.get("llama-cpp-browser-models-v1")).toBe(legacy);
     expect(oldFile.content).toEqual(bytesBefore); expect(metadata.content).toEqual(metadataBefore);
@@ -240,13 +240,13 @@ describe("local GGUF model store", () => {
   });
   it.each(["write", "close", "size", "marker"])("never publishes a failed %s", async step => {
     failModelWrite = step === "write"; failClose = step === "close"; truncateOnClose = step === "size"; failMarker = step === "marker";
-    await expect(importStoredModel({ file: fixture({ name: "failed.gguf" }), onProgress: () => {} })).rejects.toThrow();
+    await expect(importStoredModel({ signal: undefined, file: fixture({ name: "failed.gguf" }), onProgress: () => {} })).rejects.toThrow();
     failMarker = false;
     expect(await listStoredModels()).toEqual([]);
     expect((await userFolder()).children.size).toBe(0);
   });
   it("preserves files added after a deletion plan was confirmed", async () => {
-    const model = await importStoredModel({ file: fixture({ name: "notes.gguf" }), onProgress: () => {} });
+    const model = await importStoredModel({ signal: undefined, file: fixture({ name: "notes.gguf" }), onProgress: () => {} });
     const folder = await modelFolder({ name: "notes.gguf" });
     const plan = await planStoredModelRemoval({ id: model.id });
     await folder.getFileHandle("extra.gguf", { create: true });
@@ -256,12 +256,12 @@ describe("local GGUF model store", () => {
   it("does not overwrite a different file or a marker in the target folder", async () => {
     const folder = await modelFolder({ name: "protected.gguf" });
     await folder.getFileHandle("notes.txt", { create: true });
-    await expect(importStoredModel({ file: fixture({ name: "protected.gguf" }), onProgress: () => {} })).rejects.toThrow("duplicate-model");
+    await expect(importStoredModel({ signal: undefined, file: fixture({ name: "protected.gguf" }), onProgress: () => {} })).rejects.toThrow("duplicate-model");
     expect([...folder.children.keys()]).toEqual(["notes.txt"]);
   });
   it("preserves non-ASCII filenames and uppercase GGUF extensions", async () => {
     const name = "\u30e2\u30c7\u30eb.Q4.GGUF";
-    const model = await importStoredModel({ file: fixture({ name }), onProgress: () => {} });
+    const model = await importStoredModel({ signal: undefined, file: fixture({ name }), onProgress: () => {} });
     expect(model.id).toBe(`user/${name.slice(0, -5)}-GGUF`);
     expect(model.name).toBe(`${name.slice(0, -5)}-GGUF`);
     expect((await (await selectedFile({ name: model.id })).getFile()).name).toBe(name);
@@ -269,7 +269,7 @@ describe("local GGUF model store", () => {
   });
   it('accepts a 255-byte filename without reserving space for a permanent marker', async () => {
     const name = `${'a'.repeat(250)}.gguf`;
-    const model = await importStoredModel({ file: fixture({ name }), onProgress: () => {} });
+    const model = await importStoredModel({ signal: undefined, file: fixture({ name }), onProgress: () => {} });
     expect([...((await modelFolder({ name })).children.keys())]).toEqual([name]);
     expect((await storedModelDirectory({ name: model.id })).modelPath).toBe(name);
   });
@@ -281,7 +281,7 @@ describe("local GGUF model store", () => {
     }, cancel });
     vi.spyOn(file, "stream").mockReturnValue(stream);
     failModelWrite = true;
-    await expect(importStoredModel({ file, onProgress: () => {} })).rejects.toThrow();
+    await expect(importStoredModel({ signal: undefined, file, onProgress: () => {} })).rejects.toThrow();
     expect(cancel).toHaveBeenCalledOnce();
     expect(await listStoredModels()).toEqual([]);
   });
@@ -292,7 +292,7 @@ describe('directory model imports', () => {
   it('uses the same directory identifier for folder and single-file imports', async () => {
     await importModelDirectory({ signal: undefined, directory: { name: 'Local', files: [{ path: 'model.gguf', file: fixture({ name: 'model.gguf' }) }] }, onProgress: () => {} });
     expect((await storedModelDirectory({ name: 'user/Local' })).id).toBe('user/Local');
-    const legacy = await importStoredModel({ file: fixture({ name: 'legacy.gguf' }), onProgress: () => {} });
+    const legacy = await importStoredModel({ signal: undefined, file: fixture({ name: 'legacy.gguf' }), onProgress: () => {} });
     expect(legacy.id).toBe('user/legacy-GGUF');
     expect((await storedModelDirectory({ name: legacy.id })).id).toBe(legacy.id);
   });
@@ -441,7 +441,7 @@ describe('directory model imports', () => {
     }
   });
   it('refuses importing a root name that would make a legacy selection ambiguous', async () => {
-    await importStoredModel({ file: fixture({ name: 'same.gguf' }), onProgress: () => {} });
+    await importStoredModel({ signal: undefined, file: fixture({ name: 'same.gguf' }), onProgress: () => {} });
     await expect(importModelDirectory({ signal: undefined, directory: { name: 'same-GGUF', files: [{ path: 'other.gguf', file: fixture({ name: 'other.gguf' }) }] }, onProgress: () => {} })).rejects.toThrow('duplicate-model');
     expect(root.children.has('same-GGUF')).toBe(false);
     expect((await storedModelDirectory({ name: 'user/same-GGUF' })).modelPath).toBe('same.gguf');
@@ -450,5 +450,114 @@ describe('directory model imports', () => {
     const controller = new AbortController();
     await expect(importModelDirectory({ signal: controller.signal, directory: { name: 'Cancelled', files: [{ path: 'model.gguf', file: fixture({ name: 'model.gguf' }) }] }, onProgress: () => controller.abort() })).rejects.toThrow('aborted');
     expect((await userFolder()).children.has('Cancelled')).toBe(false);
+  });
+});
+
+
+describe('cancelled local imports and explicit retries', () => {
+  it('rolls back a single-file import before accepting the same file again', async () => {
+    const file = fixture({ name: 'cancel-and-retry.gguf' }); const controller = new AbortController();
+    await expect(importStoredModel({ file, signal: controller.signal, onProgress: () => controller.abort() })).rejects.toThrow('aborted');
+    expect((await userFolder()).children.size).toBe(0);
+    expect(await listStoredModels()).toEqual([]);
+    expect(committed).toEqual([]);
+    const model = await importStoredModel({ file, signal: undefined, onProgress: () => {} });
+    expect(model.id).toBe('user/cancel-and-retry-GGUF');
+    expect((await listStoredModels()).map(entry => entry.id)).toEqual([model.id]);
+  });
+  it('wakes a pending source read on cancel and releases the reader before retry', async () => {
+    const file = fixture({ name: 'blocked.gguf' }); const controller = new AbortController();
+    const entered = Promise.withResolvers<void>(); const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({ pull() {
+      entered.resolve();
+    }, cancel }, { highWaterMark: 0 });
+    const source = vi.spyOn(file, 'stream').mockReturnValue(stream);
+    const pending = importStoredModel({ file, signal: controller.signal, onProgress: () => {} });
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    await entered.promise; controller.abort(); await rejected;
+    expect(cancel).toHaveBeenCalledOnce(); expect(stream.locked).toBe(false);
+    expect((await userFolder()).children.size).toBe(0);
+    source.mockRestore();
+    await expect(importStoredModel({ file, signal: undefined, onProgress: () => {} })).resolves.toMatchObject({ id: 'user/blocked-GGUF' });
+  });
+  it('rolls back closed files as well as the current nested file when cancelling a folder', async () => {
+    const directory = { name: 'Cancelled folder', files: [
+      { path: 'weights/model.gguf', file: fixture({ name: 'model.gguf' }) },
+      { path: 'vision/mmproj.gguf', file: fixture({ name: 'mmproj.gguf' }) },
+    ] };
+    const controller = new AbortController();
+    await expect(importModelDirectory({ directory, signal: controller.signal, onProgress: ({ progress }) => {
+      if (progress.completed > 256) controller.abort();
+    } })).rejects.toThrow('aborted');
+    expect(committed).toEqual(['model.gguf']);
+    expect((await userFolder()).children.has(directory.name)).toBe(false);
+    const model = await importModelDirectory({ directory, signal: undefined, onProgress: () => {} });
+    expect((await storedModelDirectory({ name: model.id })).files).toHaveLength(2);
+  });
+  it('does not create or recover a directory for an already cancelled request', async () => {
+    const folder = await modelFolder({ name: 'cancelled.gguf' });
+    await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
+    const controller = new AbortController(); controller.abort();
+    await expect(importStoredModel({ file: fixture({ name: 'cancelled.gguf' }), signal: controller.signal, onProgress: () => {} })).rejects.toThrow('aborted');
+    expect([...folder.children.keys()]).toEqual(['.llama-cpp-import-pending']);
+    expect((await userFolder()).children.get('cancelled-GGUF')).toBe(folder);
+  });
+  it.each(['marker-only', 'empty-destination'] as const)('reclaims a legacy %s leftover only when the same model is explicitly imported', async residue => {
+    const file = fixture({ name: 'old-cancel.gguf' }); const folder = await modelFolder({ name: file.name });
+    await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
+    switch (residue) {
+    case 'marker-only': break;
+    case 'empty-destination': await folder.getFileHandle(file.name, { create: true }); break;
+    default: { const exhaustive: never = residue; throw new Error(String(exhaustive)); }
+    }
+    const before = [...folder.children.keys()];
+    expect(await listStoredModels()).toEqual([]); expect([...folder.children.keys()]).toEqual(before);
+    const model = await importStoredModel({ file, signal: undefined, onProgress: () => {} });
+    const current = await modelFolder({ name: file.name });
+    expect([...current.children.keys()]).toEqual([file.name]);
+    expect((await current.getFileHandle(file.name)).content).toEqual(new Uint8Array(await file.arrayBuffer()));
+    expect((await listStoredModels()).map(entry => entry.id)).toEqual([model.id]);
+  });
+  it('reclaims empty interrupted nested destinations belonging to the explicit folder input', async () => {
+    const user = await userFolder(); const folder = await user.getDirectoryHandle('Nested', { create: true });
+    await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
+    const nested = await folder.getDirectoryHandle('weights', { create: true });
+    await nested.getFileHandle('model.gguf', { create: true });
+    const model = await importModelDirectory({ directory: { name: 'Nested', files: [{ path: 'weights/model.gguf', file: fixture({ name: 'model.gguf' }) }] }, signal: undefined, onProgress: () => {} });
+    expect((await storedModelDirectory({ name: model.id })).modelPath).toBe('weights/model.gguf');
+  });
+  it.each(['missing-marker', 'nonempty-marker', 'partial-file', 'complete-file', 'unrelated-file', 'unrelated-directory', 'marker-directory'] as const)('never treats %s as disposable cancellation residue', async residue => {
+    const file = fixture({ name: 'protected.gguf' }); const folder = await modelFolder({ name: file.name });
+    const marker = await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
+    const target = await folder.getFileHandle(file.name, { create: true });
+    switch (residue) {
+    case 'missing-marker': folder.children.delete('.llama-cpp-import-pending'); break;
+    case 'nonempty-marker': marker.content = new Uint8Array([1]); break;
+    case 'partial-file': target.content = new Uint8Array([1]); break;
+    case 'complete-file': target.content = new Uint8Array(await file.arrayBuffer()); break;
+    case 'unrelated-file': await folder.getFileHandle('notes.txt', { create: true }); break;
+    case 'unrelated-directory': await folder.getDirectoryHandle('unrelated', { create: true }); break;
+    case 'marker-directory': folder.children.delete('.llama-cpp-import-pending'); await folder.getDirectoryHandle('.llama-cpp-import-pending', { create: true }); break;
+    default: { const exhaustive: never = residue; throw new Error(String(exhaustive)); }
+    }
+    const entries = [...folder.children.entries()]; const bytes = target.content.slice();
+    const remove = vi.spyOn(folder, 'removeEntry');
+    await expect(importStoredModel({ file, signal: undefined, onProgress: () => {} })).rejects.toThrow('duplicate-model');
+    expect(remove).not.toHaveBeenCalled(); expect([...folder.children.entries()]).toEqual(entries);
+    expect(target.content).toEqual(bytes);
+  });
+  it('does not recursively sweep files added while reclaiming empty cancellation residue', async () => {
+    const file = fixture({ name: 'race.gguf' }); const folder = await modelFolder({ name: file.name });
+    await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
+    await folder.getFileHandle(file.name, { create: true });
+    const user = await userFolder(); const remove = user.removeEntry.bind(user);
+    const removal = vi.spyOn(user, 'removeEntry').mockImplementationOnce(async (name, options) => {
+      (await folder.getFileHandle('external.txt', { create: true })).content = new Uint8Array([1, 2, 3]);
+      return remove(name, options);
+    });
+    await expect(importStoredModel({ file, signal: undefined, onProgress: () => {} })).rejects.toThrow('duplicate-model');
+    expect(removal).toHaveBeenCalledWith('race-GGUF');
+    expect((await folder.getFileHandle('external.txt')).content).toEqual(new Uint8Array([1, 2, 3]));
+    expect(user.children.get('race-GGUF')).toBe(folder);
   });
 });

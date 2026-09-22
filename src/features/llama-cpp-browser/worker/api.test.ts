@@ -1,5 +1,7 @@
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { logNativeDiagnostic, logOperation } from '@/features/llama-cpp-browser/debug-log';
+import type { importStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
+import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import type { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorkerApi } from "./api";
@@ -204,5 +206,42 @@ describe('native diagnostic checkpoints', () => {
     expect(nativeEntered).toBe(true);
     await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-evaluate', statusCode: 0 } });
     expect(receive).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('single-file import RPC cancellation', () => {
+  it('routes the request id to the importer and waits for rollback and callback acknowledgements', async () => {
+    const rollback = deferred(); const acknowledged = deferred(); let input: Parameters<typeof importStoredModel>[0] | undefined;
+    const model = { id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 };
+    calls.import.mockImplementationOnce(async (args: Parameters<typeof importStoredModel>[0]) => {
+      input = args; args.onProgress({ progress: { phase: 'importing', completed: 1, total: 7 } });
+      await rollback.promise;
+      if (args.signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+      return model;
+    });
+    const file = new File(['fixture'], 'same.gguf'); const api = createWorkerApi(); const progress = vi.fn(() => acknowledged.promise);
+    const pending = api.importModel({ file, generationId: 4 }, progress);
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    await vi.waitFor(() => expect(input?.signal).toBeDefined());
+    expect(input?.file).toBe(file);
+    await api.cancelGeneration({ generationId: 3 }); expect(input?.signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 4 }); expect(input?.signal?.aborted).toBe(true);
+    input?.onProgress({ progress: { phase: 'importing', completed: 7, total: 7 } }); expect(progress).toHaveBeenCalledOnce();
+    await expect(api.importModel({ file, generationId: 5 }, () => {})).rejects.toThrow('busy');
+    await expect(api.importDirectory({ directory: { name: 'Folder', files: [{ path: file.name, file }] }, generationId: 5 }, () => {})).rejects.toThrow('busy');
+    await expect(api.generate(request({ generationId: 5 }), async () => {}, () => {})).rejects.toThrow('busy');
+    rollback.resolve();
+    await expect(api.release()).rejects.toThrow('busy');
+    acknowledged.resolve(); await rejected;
+    calls.import.mockImplementationOnce(async (args: Parameters<typeof importStoredModel>[0]) => {
+      input = args; return model;
+    });
+    await expect(api.importModel({ file, generationId: 6 }, () => {})).resolves.toEqual(model);
+    await api.cancelGeneration({ generationId: 4 }); expect(input?.signal?.aborted).toBe(false);
+  });
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects an invalid single-file cancellation id %s before touching storage', async generationId => {
+    await expect(createWorkerApi().importModel({ file: new File(['fixture'], 'same.gguf'), generationId }, () => {})).rejects.toThrow();
+    expect(calls.import).not.toHaveBeenCalled();
   });
 });

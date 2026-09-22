@@ -19,7 +19,7 @@ export interface LlamaCppWorkerApi {
   cancelGeneration({ generationId }: { generationId: number }): Promise<void>;
   listModels(): Promise<LocalModel[]>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  importModel(request: { file: File }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
+  importModel(request: { file: File, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level callback.
   importDirectory(request: { directory: ModelDirectoryInput, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
   removeModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult>;
