@@ -74,6 +74,7 @@ export async function runProviderConversationForTest({ provider, messages, model
   const deliveredResults = new Set<ToolCallId>();
   try {
     const result = await generateChatTurn({
+      onToolCallDraftsChange: undefined,
       debug: undefined,
       provider, model, parameters: parameters ? { ...EMPTY_LM_PARAMETERS, ...parameters } : undefined,
       tools: tools ?? [], readBinaryObject: undefined, abortController: controller, approvalContext: toolApprovalContext,
@@ -177,6 +178,7 @@ export async function consumeProviderGenerationForTest({ provider, request }: {
   if (request.signal?.aborted) relay();
   try {
     const result = await consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
       node, items: provider.chat({ ...request, signal: abortController.signal }),
       abortController, onChange: () => {},
     });

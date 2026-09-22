@@ -41,7 +41,7 @@ describe('native Harmony generation parts', () => {
       modelId: undefined, lmParameters: undefined, interruption: undefined, parts: [], replies: { items: [] },
     };
     const controller = new AbortController();
-    const result = await consumeChatGeneration({ node, abortController: controller, onChange: () => {},
+    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {},
       items: createInferenceGeneration({ signal: controller.signal, generate: async ({ onEvent }) => {
         for (const event of events) await onEvent({ event });
       } }),

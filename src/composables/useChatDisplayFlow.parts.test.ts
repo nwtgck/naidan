@@ -1,12 +1,13 @@
 import { computed, ref } from 'vue';
 import { describe, expect, it } from 'vitest';
 import type { AssistantMessageNode, Chat, MessageNode } from '@/01-models/types';
+import type { ToolCallDraft } from '@/01-models/lm';
 import { toChatId, toMessageId, toToolCallId } from '@/01-models/ids';
 import { useChatDisplayFlow, type ChatFlowItem } from './useChatDisplayFlow';
 
 function createFlow({ message, processing }: { message: AssistantMessageNode, processing: boolean }) {
   const chat = ref({ id: toChatId({ raw: 'chat' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
-  return { ...useChatDisplayFlow({ chat: computed(() => chat.value), isProcessing: () => processing }), chat };
+  return { ...useChatDisplayFlow({ getToolCallDrafts: undefined, chat: computed(() => chat.value), isProcessing: () => processing }), chat };
 }
 function assistant({ parts, interruption }: { parts: AssistantMessageNode['parts'], interruption: AssistantMessageNode['interruption'] }): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts, interruption, createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
@@ -15,6 +16,70 @@ function flatten({ items }: { items: ChatFlowItem[] }): Exclude<ChatFlowItem, { 
   return items.flatMap(item => item.type === 'process_sequence' ? flatten({ items: item.items }) : [item]);
 }
 describe('parts-based display flow', () => {
+  it('shows draft-only calls and preserves logical gaps and parallel completion order', () => {
+    const message = assistant({ parts: [{ type: 'text', text: 'Later text', completeness: 'partial' }], interruption: undefined });
+    const chat = ref({ id: toChatId({ raw: 'draft-chat' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
+    const drafts = ref<ToolCallDraft[]>([
+      { partId: 'call-7', index: 7, beforePartIndex: 0, name: 'weather', arguments: '{"city":"T' },
+      { partId: 'call-3', index: 3, beforePartIndex: 0, name: 'shell_execute', arguments: '{"shell_script":"echo' },
+    ]);
+    const { chatFlow } = useChatDisplayFlow({
+      chat: computed(() => chat.value), isProcessing: () => true,
+      getToolCallDrafts: ({ chatId, messageId }) => chatId === chat.value.id && messageId === message.id ? drafts.value : [],
+    });
+    const initial = chatFlow.value;
+    expect(initial.map(item => item.type === 'message' ? item.toolCallDrafts?.[0]?.partId ?? item.partContent : item.type)).toEqual(['call-3', 'call-7', 'Later text']);
+    const firstKey = initial[0]?.type === 'message' ? initial[0].key : undefined;
+    const bodyKey = initial[2]?.type === 'message' ? initial[2].key : undefined;
+
+    // A later call can finish first. It becomes a real part while the earlier call stays volatile.
+    const node = chat.value.root.items[0];
+    if (node?.role !== 'assistant') throw new Error('Expected assistant fixture.');
+    node.parts.unshift({ type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'complete-7' }), type: 'function', function: { name: 'weather', arguments: '{"city":"Tokyo"}' } } });
+    drafts.value = [{ partId: 'call-3', index: 3, beforePartIndex: 0, name: 'shell_execute', arguments: '{"shell_script":"echo hello' }];
+    const after = flatten({ items: chatFlow.value });
+    expect(after.filter(item => item.type === 'message' && item.toolCallDrafts?.length)).toHaveLength(1);
+    expect(after[0]?.type === 'message' && after[0].key).toBe(firstKey);
+    const bodyAfter = after.at(-1);
+    expect(bodyAfter?.type === 'message' && bodyAfter.key).toBe(bodyKey);
+    expect(node.parts).toHaveLength(2);
+    expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { id: 'complete-7' } });
+    expect(after.some(item => item.type === 'message' && item.toolCalls?.some(call => call.id === toToolCallId({ raw: 'complete-7' })))).toBe(true);
+
+    // The completed call and its result use the existing flow; no duplicate draft or fake result remains.
+    node.parts.unshift({ type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'complete-3' }), type: 'function', function: { name: 'shell_execute', arguments: '{"shell_script":"echo hello"}' } } });
+    drafts.value = [];
+    expect(flatten({ items: chatFlow.value }).every(item => item.type !== 'message' || !item.toolCallDrafts)).toBe(true);
+  });
+
+  it('does not expose drafts on an inactive branch, stopped message, or different chat', () => {
+    const message = assistant({ parts: [], interruption: undefined });
+    const chat = ref({ id: toChatId({ raw: 'owned' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
+    const processing = ref(true);
+    const draft: ToolCallDraft = { partId: 'pending', index: 0, beforePartIndex: 0, name: '', arguments: '', };
+    const { chatFlow } = useChatDisplayFlow({
+      chat: computed(() => chat.value), isProcessing: () => processing.value,
+      getToolCallDrafts: ({ chatId }) => chatId === toChatId({ raw: 'owned' }) ? [draft] : [],
+    });
+    expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'tool_calls', toolCallDrafts: [draft] });
+    expect(message.parts).toEqual([]);
+    processing.value = false;
+    expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'content' });
+    processing.value = true;
+    chat.value.id = toChatId({ raw: 'different' });
+    expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'waiting' });
+    chat.value.id = toChatId({ raw: 'owned' });
+    const node = chat.value.root.items[0];
+    if (node?.role !== 'assistant') throw new Error('Expected assistant fixture.');
+    node.interruption = { type: 'cancelled' };
+    expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'content' });
+    node.interruption = undefined;
+    const next: MessageNode = { id: toMessageId({ raw: 'next-user' }), role: 'user', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
+    node.replies.items = [next];
+    chat.value.currentLeafId = next.id;
+    expect(chatFlow.value.every(item => item.type !== 'message' || !item.toolCallDrafts)).toBe(true);
+  });
+
   it('preserves repeated text and reasoning segments with unique render keys', () => {
     const parts: AssistantMessageNode['parts'] = [
       { type: 'reasoning', text: 'R1', completeness: 'complete' },

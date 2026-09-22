@@ -15,7 +15,7 @@ function fresh(): AssistantMessageNode {
 }
 async function run({ events }: { events: InferenceGenerationEvent[] }) {
   const node = fresh(); const controller = new AbortController();
-  const result = await consumeChatGeneration({ node, abortController: controller, onChange: () => {},
+  const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {},
     items: createInferenceGeneration({ signal: controller.signal, generate: async ({ onEvent }) => {
       for (const event of events) await onEvent({ event });
     } }),
@@ -68,7 +68,7 @@ describe('native events to local nested parts', () => {
   it('waits for the underlying generation settlement after its result event', async () => {
     const release = Promise.withResolvers<void>(); const emitted = Promise.withResolvers<void>(); const node = fresh();
     const controller = new AbortController(); let settled = false;
-    const pending = consumeChatGeneration({ node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal, generate: async ({ onEvent }) => {
+    const pending = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal, generate: async ({ onEvent }) => {
       await onEvent({ event: done }); emitted.resolve(); await release.promise;
     } }) }).then(result => {
       settled = true; return result;
@@ -77,7 +77,7 @@ describe('native events to local nested parts', () => {
   });
   it('retains an RPC failure even after a native completion', async () => {
     const error = new Error('delivery failed'); const node = fresh();
-    const result = await consumeChatGeneration({ node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
+    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
       await onEvent({ event: { type: 'part_start', kind: 'text', index: 0 } });
       await onEvent({ event: { type: 'text_delta', index: 0, text: 'A' } });
       await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
@@ -87,7 +87,7 @@ describe('native events to local nested parts', () => {
   });
   it('drains accepted output when a real stop signal reaches the source', async () => {
     const controller = new AbortController(); const entered = Promise.withResolvers<void>(); const node = fresh();
-    const pending = consumeChatGeneration({ node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal, generate: async ({ onEvent, signal }) => {
+    const pending = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal, generate: async ({ onEvent, signal }) => {
       await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
       await onEvent({ event: { type: 'text_delta', index: 0, text: 'A' } });
       const stopped = new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
@@ -101,14 +101,14 @@ describe('native events to local nested parts', () => {
   });
   it('ignores callbacks after their generation returned', async () => {
     let escaped: InferenceGenerationCallback | undefined; const node = fresh();
-    await consumeChatGeneration({ node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
+    await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
       escaped = onEvent; await onEvent({ event: done });
     } }) });
     await escaped!({ event: { type: 'part_start', index: 0, kind: 'text' } }); expect(node.parts).toEqual([]);
   });
   it('connects the native Harmony decoder through bounded delivery to common parts', async () => {
     const node = fresh(); const failure = vi.fn();
-    const result = await consumeChatGeneration({ node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
+    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
       const delivery = createInferenceEventDelivery({ onEvent, onFailure: failure });
       const native = createGptOssGeneration({ emit: ({ event }) => delivery.enqueue({ event }) });
       native.control({ token: '<|channel|>' }); native.text({ text: 'analysis' }); native.control({ token: '<|message|>' }); native.text({ text: ' R\n' }); native.control({ token: '<|end|>' });

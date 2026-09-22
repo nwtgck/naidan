@@ -53,6 +53,9 @@ export function createInferenceGeneration({ signal, generate }: {
             active = undefined;
             break;
           case 'tool_start':
+            // TODO: expose transient tool-call argument progress once the TJS
+            // Worker protocol carries it. Completed-only delivery remains valid;
+            // unfinished calls must never be materialized in message history.
             requireNewPosition({ index: event.index });
             writer.reserveCall({ key: event.index }); calls.set(event.index, 'pending');
             break;

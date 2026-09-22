@@ -450,6 +450,7 @@ export async function generateResponseForAssistant({
   let ownedLeaf: MessageNode = assistantNode;
   const ownedTools: ToolMessageNode[] = [];
   const currentGenerationToolCallIds = new Set<ToolCallId>();
+  const draftMessages = new Set<MessageId>();
   let persistenceFailure: unknown;
   let lastSave = 0;
   async function saveContent(): Promise<void> {
@@ -615,6 +616,13 @@ export async function generateResponseForAssistant({
           excludedMessageId, systemPromptMessages: resolved.systemPromptMessages,
         }),
         onChange: reflectChanges,
+        onToolCallDraftsChange: ({ messageId, drafts }) => {
+          // Only the live operation may publish or clear its transient previews.
+          // No history notification or persistence is triggered by draft updates.
+          if (chatRuntimeStore.getActiveGeneration({ chatId: mutableChat.id })?.controller !== controller) return;
+          draftMessages.add(messageId);
+          chatVolatileState.setToolCallDrafts({ chatId: mutableChat.id, messageId, owner: controller.signal, drafts });
+        },
         onToolEvent: ({ toolCallId, event }) => {
           switch (event.type) {
           case 'started': chatVolatileState.setVolatileToolOutput({ toolCallId, output: '' }); break;
@@ -672,6 +680,10 @@ export async function generateResponseForAssistant({
     if (persistenceFailure === undefined) await saveContent();
   } finally {
     signalReady();
+    for (const messageId of draftMessages) {
+      // A replacement operation may already own this message's previews.
+      chatVolatileState.setToolCallDrafts({ chatId: mutableChat.id, messageId, owner: controller.signal, drafts: [] });
+    }
     for (const toolCallId of currentGenerationToolCallIds) chatVolatileState.deleteVolatileToolOutput({ toolCallId });
     if (chatRuntimeStore.getActiveGeneration({ chatId: mutableChat.id })?.controller === controller) {
       chatRuntimeStore.deleteActiveGeneration({ chatId: mutableChat.id });

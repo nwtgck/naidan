@@ -55,23 +55,25 @@ export function splitDisplayedThinking({ text }: { text: string }): {
   return result;
 }
 
-export function getAssistantDisplayParts({ message }: { message: AssistantMessageNode }): AssistantDisplayPart[] {
-  return message.parts.flatMap((part): AssistantDisplayPart[] => {
-    const partKey = getMessagePartDisplayKey({ part });
-    switch (part.type) {
-    case 'text': return splitDisplayedThinking({ text: part.text }).map(piece => {
-      const key = JSON.stringify([partKey, piece.offset]);
-      switch (piece.type) {
-      case 'text': return { type: 'text', key, text: stripNaidanSentinels({ content: piece.text }) };
-      case 'reasoning': return { type: 'reasoning', key, text: piece.text, completeness: piece.completeness };
-      default: { const _ex: never = piece.type; throw new Error(`Unhandled display segment: ${_ex}`); }
-      }
-    });
-    case 'reasoning': return [{ type: 'reasoning', key: partKey, text: part.text, completeness: part.completeness }];
-    case 'tool_call': return [{ type: 'tool_call', key: partKey, toolCall: part.toolCall }];
-    default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
+export function getAssistantPartDisplayParts({ part }: { part: AssistantMessageNode['parts'][number] }): AssistantDisplayPart[] {
+  const partKey = getMessagePartDisplayKey({ part });
+  switch (part.type) {
+  case 'text': return splitDisplayedThinking({ text: part.text }).map(piece => {
+    const key = JSON.stringify([partKey, piece.offset]);
+    switch (piece.type) {
+    case 'text': return { type: 'text', key, text: stripNaidanSentinels({ content: piece.text }) };
+    case 'reasoning': return { type: 'reasoning', key, text: piece.text, completeness: piece.completeness };
+    default: { const _ex: never = piece.type; throw new Error(`Unhandled display segment: ${_ex}`); }
     }
   });
+  case 'reasoning': return [{ type: 'reasoning', key: partKey, text: part.text, completeness: part.completeness }];
+  case 'tool_call': return [{ type: 'tool_call', key: partKey, toolCall: part.toolCall }];
+  default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
+  }
+}
+
+export function getAssistantDisplayParts({ message }: { message: AssistantMessageNode }): AssistantDisplayPart[] {
+  return message.parts.flatMap(part => getAssistantPartDisplayParts({ part }));
 }
 
 /** Aggregate visible body text only for consumers that do not show per-part flow. */

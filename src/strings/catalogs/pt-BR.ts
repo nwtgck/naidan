@@ -1599,6 +1599,7 @@ import { formatSettingsSourceLabel__value_from_chat } from '@/strings/messages/f
 import { formatSettingsSourceLabel__none } from '@/strings/messages/formatSettingsSourceLabel__none/pt-BR';
 import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/pt-BR';
 import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/pt-BR';
+import { ToolCallDraftItem__generating_tool_call } from '@/strings/messages/ToolCallDraftItem__generating_tool_call/pt-BR';
 import { toolCall__arguments } from '@/strings/messages/toolCall__arguments/pt-BR';
 import { toolCall__code } from '@/strings/messages/toolCall__code/pt-BR';
 import { toolCall__disable_wrap } from '@/strings/messages/toolCall__disable_wrap/pt-BR';
@@ -3395,6 +3396,7 @@ export const catalog = {
   formatSettingsSourceLabel__value_from_chat,
   formatSettingsSourceLabel__value_from_global,
   formatSettingsSourceLabel__value_from_group,
+  ToolCallDraftItem__generating_tool_call,
   toolCall__arguments,
   toolCall__code,
   toolCall__disable_wrap,

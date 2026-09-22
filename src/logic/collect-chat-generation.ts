@@ -14,7 +14,7 @@ export async function collectChatGeneration({ items, abortController }: {
     createdAt: 0, parts: [], modelId: undefined, lmParameters: undefined,
     interruption: undefined, replies: { items: [] },
   };
-  const result = await consumeChatGeneration({ node, items, abortController, onChange: () => {} });
+  const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items, abortController, onChange: () => {} });
   return { text: getMessageText({ message: node }), result };
 }
 

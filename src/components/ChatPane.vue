@@ -20,6 +20,7 @@ import {
   isChatProcessing,
 } from '@/composables/chat/chat-activity-queries';
 import { getDisplayedMessageText } from '@/logic/message-display';
+import { useToolCallDrafts } from '@/composables/chat/ui/useToolCallDrafts';
 import { useChatDisplayFlow, type ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import { prefetchImageGenerationRuntime, useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
@@ -160,6 +161,7 @@ const {
   isWaitingResponse,
 } = useChatDisplayFlow({
   chat,
+  getToolCallDrafts: useToolCallDrafts().getToolCallDrafts,
   isProcessing: ({ chatId }) => isChatProcessing({ chatId }),
 });
 const contextCompactProgress = computed<ContextCompactProgress>(() => getChatContextCompactProgress({ chatId: props.chatId }));
@@ -416,6 +418,8 @@ async function exportChat() {
       const itemType = item.type;
       switch (itemType) {
       case 'message': {
+        // Generating tool arguments are presentation-only and must not enter exports.
+        if (item.toolCallDrafts?.length) continue;
         const msg = item.node;
         const role = (() => {
           const r = msg.role;
@@ -1577,6 +1581,7 @@ watch(
                       :flow="subItem.flow"
                       :mode="subItem.mode"
                       :part-content="subItem.partContent"
+                      :tool-call-drafts="subItem.toolCallDrafts"
                       :is-first-in-node="subItem.isFirstInNode"
                       :is-last-in-node="subItem.isLastInNode"
                       :is-first-in-turn="subItem.isFirstInTurn"
@@ -1612,6 +1617,7 @@ watch(
                 :flow="flowItem.flow"
                 :mode="flowItem.mode"
                 :part-content="flowItem.partContent"
+                :tool-call-drafts="flowItem.toolCallDrafts"
                 :is-first-in-node="flowItem.isFirstInNode"
                 :is-last-in-node="flowItem.isLastInNode"
                 :is-first-in-turn="flowItem.isFirstInTurn"

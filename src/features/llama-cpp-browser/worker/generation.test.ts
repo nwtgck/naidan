@@ -11,7 +11,7 @@ import { generate } from './generation';
 import { createInputSensitiveGguf, createSyntheticGguf } from './test-utils/synthetic-gguf';
 import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf';
 import type { WorkerGenerateInput } from './types';
-import { profileSchema } from '@/features/llama-cpp-browser/types';
+import { profileSchema, type GenerationEvent } from '@/features/llama-cpp-browser/types';
 import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { createProjectorTrace } from './projector-trace';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
@@ -910,6 +910,115 @@ describe('native image boundaries', () => {
 });
 
 describe('structured delivery from the real CPU Wasm loop', () => {
+  it.each(['stop', 'length', 'aborted'] as const)('delivers native tool argument previews without completing a call before %s', async termination => {
+    const template = `\
+{% for tool in tools %}{{ tool.function.name + '\\n' }}{% endfor %}
+{% for message in messages %}
+{{ '<|im_start|>' + message.role + '\\n' }}
+{% if message.role == 'tool' %}{{ '<tool_response>\\n' + message.content + '\\n</tool_response>' }}
+{% elif message.tool_calls %}{% for call in message.tool_calls %}{{ '<tool_call>\\n' }}{{ {'name': call.function.name, 'arguments': call.function.arguments} | tojson }}{{ '\\n</tool_call>' }}{% endfor %}
+{% else %}{{ message.content }}{% endif %}
+{{ '<|im_end|>\\n' }}
+{% endfor %}
+{% if add_generation_prompt %}{{ '<|im_start|>assistant\\n' }}{% endif %}`;
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: template }));
+    const output = `\
+<tool_call>
+{"name":"lookup","arguments":{"city":"Tokyo"}}
+</tool_call>`;
+    const tokens = Array.from(new TextEncoder().encode(output), byte => byte + 3).concat(2);
+    const req: WorkerGenerateInput = {
+      ...request({ messages: [{ role: 'user', content: 'Find Tokyo' }] }),
+      maxTokens: tokens.length,
+      tools: [{ type: 'function', function: { name: 'lookup', description: 'Look up a city', parameters: {
+        type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false,
+      } } }],
+    };
+    // A valid JSON object still does not confirm a call without a native stop.
+    if (termination === 'length') req.maxTokens = output.indexOf('</tool_call>');
+    await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    const core = host.core!;
+    let sampled = 0;
+    const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => tokens[sampled++] ?? 2);
+    const events: GenerationEvent[] = [];
+    const previews: string[] = [];
+    const controller = new AbortController();
+    let argumentsText = '';
+    try {
+      const pending = generate({ request: req, signal: controller.signal, onProgress: () => {}, onEvent: ({ event }) => {
+        events.push(event);
+        if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
+          expect(event.arguments.offset).toBeLessThanOrEqual(argumentsText.length);
+          argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
+          previews.push(argumentsText);
+          expect(events.some(value => value.type === 'tool_call')).toBe(false);
+          if (termination === 'aborted' && argumentsText.includes('Tok')) controller.abort();
+        }
+      } });
+      if (termination === 'aborted') await expect(pending).rejects.toThrow();
+      else {
+        const result = await pending;
+        expect(result.finishReason).toBe(termination);
+        if (termination === 'stop') {
+          expect(result.toolCalls).toHaveLength(1);
+          expect(JSON.parse(result.toolCalls[0]!.function.arguments)).toEqual({ city: 'Tokyo' });
+          expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: result.toolCalls[0] });
+        } else expect(events.some(event => event.type === 'tool_call')).toBe(false);
+      }
+      expect(events).toContainEqual({ type: 'tool_call_start', index: 0 });
+      expect(events.some(event => event.type === 'tool_call_draft' && event.name === 'lookup')).toBe(true);
+      expect(previews.some(text => text.includes('Tok') && !text.includes('Tokyo'))).toBe(true);
+      if (termination === 'aborted') expect(events.some(event => event.type === 'tool_call')).toBe(false);
+    } finally {
+      sample.mockRestore();
+    }
+  }, 30000);
+
+  it('sends bounded suffix patches when a parser revises normalized arguments', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+    const req = { ...request({ messages: [{ role: 'user', content: 'patches' }] }), maxTokens: 3 };
+    await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    const core = host.core!;
+    const prepare = core.chat.prepare;
+    const prefix = '{"value":"' + 'a'.repeat(20000);
+    const firstArguments = prefix + 'old"}';
+    const finalArguments = prefix + 'new"}';
+    const prepareSpy = vi.spyOn(core.chat, 'prepare').mockImplementation(args => ({
+      ...prepare(args),
+      // Native formats may close JSON in a partial snapshot and revise it later.
+      // Inject that parser behavior while keeping the real generation/ACK loop.
+      parse: ({ text }) => ({ content: '', reasoningContent: '', toolCalls: [{
+        id: '', type: 'function', function: { name: text.length < 2 ? 'look' : 'lookup', arguments: text.length < 2 ? firstArguments : finalArguments },
+      }] }),
+    }));
+    let count = 0;
+    const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => ++count < 3 ? 3 + 65 : 2);
+    const events: GenerationEvent[] = [];
+    let argumentsText = '';
+    const snapshots: string[] = [];
+    try {
+      const result = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
+        events.push(event);
+        if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
+          expect(event.arguments.text.length).toBeLessThanOrEqual(8192);
+          argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
+          snapshots.push(argumentsText);
+        }
+      } });
+      expect(snapshots).toContain(firstArguments);
+      expect(argumentsText).toBe(finalArguments);
+      expect(events).toContainEqual({ type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: prefix.length, text: 'new"}' } });
+      expect(events.filter(event => event.type === 'tool_call_draft').reduce((size, event) => size + (event.arguments?.text.length ?? 0), 0)).toBe(firstArguments.length + 5);
+      expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: result.toolCalls[0] });
+      expect(result.toolCalls[0]?.function.arguments).toBe(finalArguments);
+    } finally {
+      prepareSpy.mockRestore();
+      sample.mockRestore();
+    }
+  }, 30000);
+
   it('waits for content acknowledgement before sampling another token', async () => {
     await releaseSession({ releaseRuntime: false });host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     const req = request({ messages: [{ role: 'user', content: 'ack' }] });req.maxTokens = 2;

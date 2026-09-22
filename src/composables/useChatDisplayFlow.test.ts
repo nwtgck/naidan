@@ -49,6 +49,7 @@ describe('useChatDisplayFlow', () => {
     } as Chat));
 
     return useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat,
       isProcessing: () => isProcessing,
     });
@@ -148,6 +149,7 @@ describe('useChatDisplayFlow', () => {
     } as Chat));
 
     const { chatFlow, isThinkingActive } = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat,
       isProcessing: () => isProcessingRef.value,
     });

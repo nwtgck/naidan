@@ -19,6 +19,22 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 describe('message parts UI boundaries', () => {
+  it('shows volatile tool arguments without adding content or a result to the message', async () => {
+    const message = assistant({ parts: [], interruption: undefined });
+    const wrapper = mount(MessageItem, { props: {
+      chatId: toChatId({ raw: 'c' }), message, mode: 'tool_calls', isGenerating: true,
+      toolCallDrafts: [{ partId: 'call-0', index: 0, beforePartIndex: 0, name: 'shell_execute', arguments: '{"shell_script":"echo hello' }],
+    } });
+    expect(wrapper.get('[data-testid="tool-call-draft"]').text()).toContain('Generating tool call…');
+    expect(wrapper.get('[data-testid="tool-call-draft-arguments"]').text()).toContain('$ echo hello');
+    expect(message.parts).toEqual([]);
+    expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(false);
+    await wrapper.setProps({ toolCallDrafts: [] });
+    expect(wrapper.find('[data-testid="tool-call-draft"]').exists()).toBe(false);
+    expect(message.parts).toEqual([]);
+    wrapper.unmount();
+  });
+
   it('renders a recorded Japanese error unchanged under an English UI', () => {
     const message = assistant({ parts: [], interruption: { type: 'error', message: '通信に失敗しました。' } });
     const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message } });
@@ -48,7 +64,7 @@ describe('message parts UI boundaries', () => {
   it('empty earlier text becoming visible does not change the later reasoning identity', () => {
     const message = assistant({ parts: [{ type: 'text', text: '', completeness: 'partial' }, { type: 'reasoning', text: 'R', completeness: 'partial' }], interruption: undefined });
     const chat = ref({ id: toChatId({ raw: 'c' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
-    const { chatFlow } = useChatDisplayFlow({ chat: computed(() => chat.value), isProcessing: () => true });
+    const { chatFlow } = useChatDisplayFlow({ getToolCallDrafts: undefined, chat: computed(() => chat.value), isProcessing: () => true });
     const first = chatFlow.value[0];
     expect(first?.type).toBe('message');
     const node = chat.value.root.items[0]; const part = node?.parts[0];

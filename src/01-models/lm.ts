@@ -59,6 +59,15 @@ export type ChatGenerationItem =
       completeness: Promise<'complete' | 'partial'>,
     }
   | {
+      type: 'tool_call_draft',
+      partId: string,
+      index: number,
+      /** Latest name when available; undefined leaves the previous name unchanged. */
+      name: string | undefined,
+      /** Replace the suffix at this UTF-16 offset; parsers may revise partial JSON. */
+      arguments: { offset: number, text: string } | undefined,
+    }
+  | {
       type: 'tool_call',
       partId: string,
       index: number,
@@ -66,6 +75,16 @@ export type ChatGenerationItem =
       toolCall: ToolCall,
     }
   | { type: 'result', result: ChatGenerationResult };
+
+/** Display-only state for one generation. Never include this in message history. */
+export type ToolCallDraft = {
+  partId: string,
+  index: number,
+  name: string,
+  arguments: string,
+  // Derived after each insertion, not an identity for asynchronous updates.
+  beforePartIndex: number,
+};
 
 /** Runtime control information; do not persist an Error or copy it into text. */
 export type ChatGenerationResult =

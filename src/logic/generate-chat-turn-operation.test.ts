@@ -16,6 +16,7 @@ function fixture({ provider, tools }: { provider: LmProvider, tools: Tool[] }) {
   return {
     history, abortController, parameters,
     run: () => generateChatTurn({
+      onToolCallDraftsChange: undefined,
       provider, debug: 'on', model: 'fixture', parameters, tools, readBinaryObject: undefined,
       abortController, approvalContext: undefined,
       createAssistantMessage: () => {

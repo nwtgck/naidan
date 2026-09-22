@@ -224,6 +224,7 @@ export async function runCompactCurrentBranchForChat({
     // compaction as a new branch. The original tree remains the source of truth.
     draft.parts = [];
     const result = await consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
       node: draft,
       items: provider.chat({ debug: undefined,
         messages: requestMessages,

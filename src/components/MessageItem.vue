@@ -5,6 +5,8 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 import { markRaw } from 'vue';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, Attachment, EndpointType, LmParameters, Reasoning } from '@/01-models/types';
+import type { ToolCallDraft } from '@/01-models/lm';
+import ToolCallDraftItem from '@/features/tools/components/ToolCallDraftItem.vue';
 import type { FlowMetadata, MessageMode } from '@/composables/useChatDisplayFlow';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { UserIcon, BirdIcon, ChevronLeftIcon, ChevronRightIcon, AlertTriangleIcon, DownloadIcon, RefreshCwIcon, Settings2Icon, XCircleIcon, SquareIcon, FileEditIcon, MoreHorizontalIcon, BrainIcon } from 'lucide-vue-next';
@@ -59,6 +61,7 @@ const props = withDefaults(defineProps<{
   flow?: FlowMetadata,
   mode?: MessageMode,
   partContent?: string,
+  toolCallDrafts?: readonly ToolCallDraft[],
   isFirstInNode?: boolean,
   isLastInNode?: boolean,
   isFirstInTurn?: boolean,
@@ -728,6 +731,12 @@ defineExpose({
             :trailing-inline="showGeneratingIndicator && !!displayContent ? markRaw(GeneratingIndicator) : undefined"
           />
         </div>
+
+        <ToolCallDraftItem
+          v-for="draft in toolCallDrafts"
+          :key="draft.partId"
+          :draft="draft"
+        />
 
         <!-- AI Image Synthesis Loader (Componentized) -->
         <!-- Show the image loader for both initial waiting and incremental content updates. -->

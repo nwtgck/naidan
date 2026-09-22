@@ -40,6 +40,7 @@ describe('generation, execution, and persisted model history', () => {
     };
     const declarations = [{ name: 'double', description: 'Double', parameters: { type: 'object', properties: { n: { type: 'number' } } } }];
     const generate = ({ node }: { node: AssistantMessageNode }) => consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
       node, abortController: controller, onChange: () => {},
       items: provider.chat({ debug: undefined, messages: buildChatGenerationMessages({ chat: content, excludedMessageId: node.id, systemPromptMessages: ['system'] }), model: 'fixture', parameters: undefined, tools: declarations, readBinaryObject: undefined, signal: controller.signal }),
     });
@@ -74,7 +75,7 @@ describe('generation, execution, and persisted model history', () => {
     const store = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'chat' });
     const stopped = assistant({ id: 'stopped' }); const other = assistant({ id: 'other' });
     const controller = new AbortController();
-    await consumeChatGeneration({ node: stopped, abortController: controller, onChange: () => {}, items: items({ values: [
+    await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: stopped, abortController: controller, onChange: () => {}, items: items({ values: [
       { type: 'text', partId: 'p', index: 0, chunks: strings({ values: ['<thi', 'nk>literal</think>', '\ud83d', '\ude42'] }), completeness: Promise.resolve('partial') },
       { type: 'result', result: { type: 'error', error: new Error('offline') } },
     ] }) });

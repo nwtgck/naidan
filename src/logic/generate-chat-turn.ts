@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { LmProvider, ChatGenerationResult } from '@/01-models/lm';
+import type { LmProvider, ChatGenerationResult, ToolCallDraft } from '@/01-models/lm';
 import type { AssistantMessageNode, ChatMessage, LmParameters, ToolMessageNode } from '@/01-models/types';
 import type { Tool, ToolExecutionEvent, TextOrBinaryObject } from '@/01-models/tool';
 import type { ToolApprovalContext } from '@/01-models/tool-approval';
@@ -11,7 +11,7 @@ import { cloneLmParameters } from '@/utils/lm-parameters';
 import { copyChatMessage } from '@/01-models/chat-message';
 
 /** Coordinates generation and tools against the caller's single owned history. */
-export async function generateChatTurn({ provider, debug, model, parameters, tools, readBinaryObject, abortController, approvalContext, createAssistantMessage, createToolMessage, buildMessages, onChange, onToolEvent, persistToolContent, describeError }: {
+export async function generateChatTurn({ provider, debug, model, parameters, tools, readBinaryObject, abortController, approvalContext, createAssistantMessage, createToolMessage, buildMessages, onChange, onToolEvent, onToolCallDraftsChange, persistToolContent, describeError }: {
   provider: LmProvider,
   debug: Parameters<LmProvider['chat']>[0]['debug'],
   model: string,
@@ -24,6 +24,7 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
   createToolMessage: ({ assistant }: { assistant: AssistantMessageNode }) => ToolMessageNode | Promise<ToolMessageNode>,
   buildMessages: ({ excludedMessageId }: { excludedMessageId: MessageId }) => readonly ChatMessage[] | Promise<readonly ChatMessage[]>,
   onChange: () => void | Promise<void>,
+  onToolCallDraftsChange: (({ messageId, drafts }: { messageId: MessageId, drafts: readonly ToolCallDraft[] }) => void) | undefined,
   onToolEvent: ({ toolCallId, event }: { toolCallId: ToolCallId, event: ToolExecutionEvent }) => void | Promise<void>,
   persistToolContent: ({ toolCallId, type, text }: { toolCallId: ToolCallId, type: 'result' | 'error', text: string }) => Promise<TextOrBinaryObject>,
   describeError: ({ error }: { error: Error }) => string,
@@ -50,6 +51,7 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
         node: assistant,
         items: chat({ messages, debug, model, parameters: acceptedParameters, tools: definitions.length ? definitions : undefined, readBinaryObject, signal }),
         abortController: controller, onChange,
+        onToolCallDraftsChange: onToolCallDraftsChange === undefined ? undefined : ({ drafts }) => onToolCallDraftsChange({ messageId: assistant.id, drafts }),
       });
       switch (result.type) {
       case 'error':
