@@ -22,14 +22,18 @@ const CursorStub = defineComponent({
 const makeMessage = (): MessageNode => ({
   id: toMessageId({ raw: 'msg-1' }),
   role: 'assistant',
-  content: 'Hello',
-  timestamp: Date.now(),
+  parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }],
+  createdAt: Date.now(),
+  modelId: undefined,
+  lmParameters: undefined,
+  interruption: undefined,
   replies: { items: [] },
 });
 
 const makeItems = (): ChatFlowItem[] => [
   {
     type: 'message',
+    key: 'msg-1:text',
     node: makeMessage(),
     flow: { position: 'standalone', nesting: 'none' },
     mode: 'content',

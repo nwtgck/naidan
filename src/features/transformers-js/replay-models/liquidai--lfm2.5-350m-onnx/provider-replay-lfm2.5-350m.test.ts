@@ -4,13 +4,18 @@ import { contentToolProviderReplayCatalog } from './provider-content-tool-eviden
 import { assembleProviderSequenceEvidence } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
 import { createProviderRequestReplay } from '@/features/transformers-js/replay-models/support/provider-replay-request';
 import { verifyCapturedFullReplay } from '@/features/transformers-js/replay-models/support/provider-replay-test-captured-full';
+import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
+import { exactObject } from '@/utils/exact-object';
+import { createChatMessageSnapshot } from '@/01-models/chat-message';
+import { zodToJsonSchema } from '@/utils/lm-tools';
 import { createHash } from 'node:crypto';
+import { runProviderReplayTurn, createReplayImageAttachment, closeProviderReplayCaptures } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
 import { captureProviderChat, type ProviderChatCapture } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { ChatMessage } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
-import { toToolCallId } from '@/01-models/ids';
+import { toMessageId, toToolCallId } from '@/01-models/ids';
 import inputJson from './provider-template-inputs.evidence.json';
 import toolInputJson from './provider-template-tool-inputs.evidence.json';
 import { createSyntheticModelBody, inspectSyntheticOrtSession } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
@@ -120,7 +125,7 @@ describe('LFM2.5 350M Provider / basic', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -133,11 +138,15 @@ describe('LFM2.5 350M Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(stop);
-      const { chunks, toolCalls, toolResults, toolEvents } = capture.snapshot();
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
+      expect(capture.snapshot().parts).toEqual([]);
       expect(nativeInputs).toHaveLength(1);
       const observed = nativeInputs[0]!;
       expect(observed.version).toBe(source.identity.transformersJsVersion);
@@ -165,10 +174,6 @@ describe('LFM2.5 350M Provider / basic', () => {
       expect(observed.returnDict).toBe(true);
       expect(observed.streamerInstance).toBe(true);
       expect(observed.stoppingType).toBe('function');
-      expect(chunks).toEqual([]);
-      expect(toolCalls).toEqual([]);
-      expect(toolEvents).toEqual([]);
-      expect(toolResults).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.workers).toHaveLength(1);
       expect(harness.observations.ortCalls).toHaveLength(1);
@@ -178,9 +183,8 @@ describe('LFM2.5 350M Provider / basic', () => {
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('delivers the recorded first-turn stream exactly before Provider settlement', async () => {
     const captures: ProviderChatCapture[] = [];
@@ -213,7 +217,7 @@ describe('LFM2.5 350M Provider / basic', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -226,34 +230,33 @@ describe('LFM2.5 350M Provider / basic', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
-      const { chunks, toolCalls, toolResults, toolEvents, responses } = capture.snapshot();
+      const observed = capture.snapshot();
       // These segment expectations are selected original Production first-turn
       // observations, not manufactured decoding steps or a completed answer.
-      const settled = {
-        assistantStarts: responses.length,
-        chunks: [...chunks],
-        toolCalls: [...toolCalls],
-        toolEvents: [...toolEvents],
-        toolResults: [...toolResults]
-      };
       expect(releasedTokenCount).toBe(16);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
-      expect(settled).toEqual({
-        assistantStarts: 1,
-        chunks: ["Sure! ","Here’s ","an ","example ","of ","a ","**template** ","for ","a ","**user"],
-        toolCalls: [], toolEvents: [], toolResults: [],
-      });
+      expect(observed.parts).toEqual([expect.objectContaining({
+        type: 'text', partId: expect.any(String), index: 0, completeness: 'partial',
+      })]);
+      // Native framing may split a chunk differently; the entire ordered text
+      // must still equal the immutable recorded callback stream.
+      expect(observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks).join('')).toBe(
+        ["Sure! ","Here’s ","an ","example ","of ","a ","**template** ","for ","a ","**user"].join(''),
+      );
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     const replay = await createProviderRequestReplay({
@@ -283,10 +286,12 @@ describe('LFM2.5 350M Provider / basic', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -294,22 +299,23 @@ describe('LFM2.5 350M Provider / basic', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["Sure! Here’s an example of a **template** for a **user"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["Sure! Here’s an example of a **template** for a **user"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -342,10 +348,12 @@ describe('LFM2.5 350M Provider / system', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -353,22 +361,23 @@ describe('LFM2.5 350M Provider / system', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["The"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["The"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -422,7 +431,7 @@ describe('LFM2.5 350M Provider / history', () => {
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -435,11 +444,15 @@ describe('LFM2.5 350M Provider / history', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
-      const { chunks } = capture.snapshot();
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
+      const chunks = capture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(nativeInputs).toHaveLength(1);
       const observedInput = nativeInputs[0]!;
       expect(observedInput.input?.type).toBe('int64');
@@ -457,9 +470,8 @@ describe('LFM2.5 350M Provider / history', () => {
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it("multi-turn-generation preserves the recorded native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
@@ -510,7 +522,7 @@ describe('LFM2.5 350M Provider / history', () => {
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -523,11 +535,15 @@ describe('LFM2.5 350M Provider / history', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
-      const { chunks } = capture.snapshot();
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
+      const chunks = capture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(nativeInputs).toHaveLength(1);
       const observedInput = nativeInputs[0]!;
       expect(observedInput.input?.type).toBe('int64');
@@ -545,9 +561,8 @@ describe('LFM2.5 350M Provider / history', () => {
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('preserves the captured follow-up prefix with explicitly supplied assistant history', async () => {
     const captures: ProviderChatCapture[] = [];
@@ -581,7 +596,7 @@ describe('LFM2.5 350M Provider / history', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: "Sure! Here’s an example of a **template** for a **user" }, { role: "user", content: "Continue with one short sentence." }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Sure! Here’s an example of a **template** for a **user", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue with one short sentence.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -594,29 +609,33 @@ describe('LFM2.5 350M Provider / history', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
       await capture.completion;
-      const { chunks } = capture.snapshot();
+      const chunks = capture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       const settledChunks = [...chunks];
       expect(releasedTokenCount).toBe(16);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // Original segmentation, not a delayed callback drain. The supplied
-      // history does not assert native KV reuse or prior callback completion.
-      expect(settledChunks).toEqual([
+      // Preserve the original recorded text across the native framing change.
+      // This supplied history does not assert KV reuse or a completed first answer.
+      expect(settledChunks.join('')).toBe([
         'Sure! ', 'Here’s ', 'a ', `\
 continuation:
 
 `, '"Thank ', 'you ', 'for ', 'your ', 'feedback."',
-      ]);
+      ].join(''));
+      expect(capture.snapshot().result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(capture.snapshot().parts.map(part => part.type === 'text' ? part.completeness : part.type)).toEqual(['partial']);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
     const replay = await createProviderRequestReplay({
@@ -646,10 +665,12 @@ continuation:
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -657,29 +678,30 @@ continuation:
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["Template"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["Template"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
 describe('LFM2.5 350M Provider / independent', () => {
   it('keeps an independent next input free of prior text in the same null-KV loaded runtime', async () => {
     const captures: ProviderChatCapture[] = [];
-    const nextMessages: ChatMessage[] = [{ role: 'user', content: 'A separate synthetic conversation.' }];
+    const nextMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: 'A separate synthetic conversation.', completeness: 'complete' }] }];
     const nextPrompt = `\
 <|startoftext|><|im_start|>user
 A separate synthetic conversation.<|im_end|>
@@ -709,7 +731,7 @@ A separate synthetic conversation.<|im_end|>
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: structuredClone(options.input_ids.data) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { type: options.attention_mask.type, location: options.attention_mask.location, dims: [...options.attention_mask.dims], data: structuredClone(options.attention_mask.data) } : undefined,
           past: options.past_key_values, templateSha: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
-          rendered: tokenizer.apply_chat_template(nextMessages, { tokenize: false, add_generation_prompt: true }),
+          rendered: tokenizer.apply_chat_template([{ role: 'user', content: 'A separate synthetic conversation.' }], { tokenize: false, add_generation_prompt: true }),
           expectedIds: tokenizer.encode(nextPrompt, { add_special_tokens: false }),
         });
         // No captured response exists for this changed input. This tests input
@@ -735,7 +757,7 @@ A separate synthetic conversation.<|im_end|>
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -748,6 +770,9 @@ A separate synthetic conversation.<|im_end|>
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(firstCapture);
@@ -772,10 +797,14 @@ A separate synthetic conversation.<|im_end|>
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(secondCapture);
-      await expect(secondCapture.completion).rejects.toThrow(stop);
+      await secondCapture.completion;
+      expect(secondCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
 
       expect(nativeInputs).toHaveLength(1);
       const observed = nativeInputs[0]!;
@@ -791,7 +820,7 @@ A separate synthetic conversation.<|im_end|>
       expect(observed.mask?.data).toEqual(new BigInt64Array(observed.expectedIds.length).fill(1n));
       expect(observed.past).toBeNull();
       expect(firstReleased).toBe(16);
-      expect(secondCapture.snapshot().chunks).toEqual([]);
+      expect(secondCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks)).toEqual([]);
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
       expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
@@ -806,9 +835,8 @@ A separate synthetic conversation.<|im_end|>
       expect(harness.observations.localImageFetchCalls).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     const replay = await createProviderRequestReplay({
@@ -818,7 +846,7 @@ A separate synthetic conversation.<|im_end|>
       imagePlatform: undefined
     });
     const captures: ProviderChatCapture[] = [];
-    let firstResponse = '';
+    let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
     try {
       // first-turn: public inputs and settled expectations are owned by this model.
       {
@@ -839,10 +867,12 @@ A separate synthetic conversation.<|im_end|>
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -850,17 +880,26 @@ A separate synthetic conversation.<|im_end|>
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["Sure! Here’s an example of a **template** for a **user"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["Sure! Here’s an example of a **template** for a **user"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        firstResponse = responses[0]!.join('');
+
+        const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
+        unhandled satisfies Record<PropertyKey, never>;
+        if (completeness === 'pending') throw new Error('Expected a drained first text part');
+        firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
+          id: toMessageId({ raw: 'message_1' }), role: 'assistant',
+          parts: [{ type, text: chunks.join(''), completeness }],
+        });
       }
       // continuity: public inputs and settled expectations are owned by this model.
       {
@@ -881,10 +920,12 @@ A separate synthetic conversation.<|im_end|>
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: firstResponse }, { role: "user", content: "Continue the synthetic conversation with a short response." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -892,21 +933,23 @@ A separate synthetic conversation.<|im_end|>
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual([`\
+        expect(textParts.map(part => part.chunks.join(''))).toEqual([`\
 Sure! Here’s a continuation of the synthetic conversation:
 
 ---
 
 User`]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       // independent-next-input: public inputs and settled expectations are owned by this model.
       {
@@ -927,10 +970,12 @@ User`]);
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "A separate synthetic capture conversation." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "A separate synthetic capture conversation.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -938,22 +983,23 @@ User`]);
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["S"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["S"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 3, nativeCalls: 3 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -986,10 +1032,12 @@ describe('LFM2.5 350M Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -997,22 +1045,23 @@ describe('LFM2.5 350M Provider / reasoning', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["S"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["S"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
@@ -1042,10 +1091,12 @@ describe('LFM2.5 350M Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -1053,22 +1104,23 @@ describe('LFM2.5 350M Provider / reasoning', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["S"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["S"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
@@ -1098,10 +1150,12 @@ describe('LFM2.5 350M Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -1109,22 +1163,23 @@ describe('LFM2.5 350M Provider / reasoning', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["S"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["S"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
@@ -1154,10 +1209,12 @@ describe('LFM2.5 350M Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -1165,22 +1222,23 @@ describe('LFM2.5 350M Provider / reasoning', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["S"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["S"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
 
@@ -1238,8 +1296,8 @@ describe('LFM2.5 350M Provider / tools', () => {
         provider: harness.provider,
         request: {
           model: toolInputEvidence.modelId,
-          messages: [{ role: "user", content: "Use the weather tool for Tokyo." }],
-          tools: [publicTool],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }],
+          tools: [{ name: publicTool.name, description: publicTool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: publicTool.parametersSchema })) }],
           parameters: {
             temperature: 0,
             topP: 1,
@@ -1251,11 +1309,15 @@ describe('LFM2.5 350M Provider / tools', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
-      const { chunks } = capture.snapshot();
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
+      const chunks = capture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(chunks).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -1342,9 +1404,8 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       templateSpy.mockRestore();
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it("tool-result-continuation preserves the call through verified content while retaining the original native-template input facts", async () => {
     const captures: ProviderChatCapture[] = [];
@@ -1371,7 +1432,7 @@ describe('LFM2.5 350M Provider / tools', () => {
         additionalProperties: false
       },
     } }];
-    const publicMessages: ChatMessage[] = [{ role: "user", content: "Use the weather tool for Tokyo." }, { role: "assistant", content: "", tool_calls: [{ id: toToolCallId({ raw: "call_template_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } }] }, { role: "tool", tool_call_id: toToolCallId({ raw: "call_template_probe_1" }), content: "{\"temperatureC\":20,\"condition\":\"clear\"}" }];
+    const publicMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }];
     const harness = await createProviderReplayTestRuntime({
       modelId: toolInputEvidence.modelId,
       expectedRevision: toolInputEvidence.revision,
@@ -1401,7 +1462,7 @@ describe('LFM2.5 350M Provider / tools', () => {
         request: {
           model: toolInputEvidence.modelId,
           messages: publicMessages,
-          tools: [publicTool],
+          tools: [{ name: publicTool.name, description: publicTool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: publicTool.parametersSchema })) }],
           parameters: {
             temperature: 0,
             topP: 1,
@@ -1413,11 +1474,15 @@ describe('LFM2.5 350M Provider / tools', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(capture);
-      await expect(capture.completion).rejects.toThrow(boundary);
-      const { chunks } = capture.snapshot();
+      await capture.completion;
+      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
+      const chunks = capture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
       expect(chunks).toEqual([]);
       expect(execute).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -1516,9 +1581,8 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
       templateSpy.mockRestore();
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('recognizes historical native tool delimiters and stops before its unrecorded continuation output', async () => {
     // This earlier source lacks the second invocation. Keep its refusal gate;
@@ -1529,71 +1593,60 @@ describe('LFM2.5 350M Provider / tools', () => {
       artifactPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
       imagePlatform: undefined,
     });
-    const captures: ProviderChatCapture[] = [];
-    const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-    const executions: unknown[] = [];
-    const executionPrefixes: Array<ReturnType<ProviderChatCapture['snapshot']> | undefined> = [];
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    let settled: typeof turn;
+    const updates: (readonly ChatMessage[])[] = [];
+    const executions: { args: unknown; prefix: readonly ChatMessage[] | undefined }[] = [];
     const templates = vi.spyOn(replay.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
     try {
       const parameters = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 128,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
+        temperature: 0, topP: 1, maxCompletionTokens: 128,
+        presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+        reasoning: { effort: undefined },
       };
+      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
+        { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+      ] }];
+      const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: 'natural-tool-minimal', parameters });
-      const capture = captureProviderChat({
+      turn = await runProviderReplayTurn({
         provider: replay.provider,
+        onChange: ({ messages }) => {
+          updates.push(messages);
+        },
+        abortController: new AbortController(),
+        tools: [{
+          name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+          parametersSchema: z.object({ city: z.string() }),
+          execute: async ({ args }) => {
+            executions.push({ args: structuredClone(args), prefix: updates.at(-1) });
+            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+          },
+        }],
         request: {
-          model: 'LiquidAI/LFM2.5-350M-ONNX',
-          messages: [{ role: 'user', content: 'Use the weather tool for Tokyo.' }],
-          parameters,
-          signal: new AbortController().signal,
-          tools: [{
-            name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-            parametersSchema: z.object({ city: z.string() }),
-            execute: async ({ args }) => {
-              executions.push(structuredClone(args));
-              executionPrefixes.push(captureRef.current?.snapshot());
-              return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-            },
-          }],
+          model: 'LiquidAI/LFM2.5-350M-ONNX', messages, parameters,
+          readBinaryObject: undefined, debug: undefined,
         },
       });
-      captureRef.current = capture;
-      captures.push(capture);
-      const outcome = await capture.completion.then(
-        () => ({ status: 'fulfilled' as const }),
-        (error: unknown) => ({ status: 'rejected' as const, message: error instanceof Error ? error.message : String(error) }),
-      );
-      const observed = capture.snapshot();
-      const { chunks, toolCalls: calls, toolResults: results, toolEvents } = observed;
-      for (const prefix of executionPrefixes) {
-        expect(prefix?.settlement).toEqual({ status: 'pending' });
-        expect(prefix?.events.at(-1)?.kind).toBe('tool-call');
-        expect(prefix?.events).toEqual(observed.events.slice(0, prefix?.events.length));
-      }
-      const order = observed.events.flatMap((event, index) => [
-        ...executionPrefixes.filter(prefix => prefix?.events.length === index).map(() => 'execute'),
-        event.kind,
-      ]).filter(kind => kind !== 'chunk' && kind !== 'settled');
-      expect(observed.preStartChunks).toEqual([]);
-      expect(observed.lateEvents).toEqual([]);
-      // Only the first native invocation was recorded. The desired call must
-      // execute, but the next invocation cannot release an invented model output.
-      expect.soft(outcome, JSON.stringify(outcome)).toEqual({ status: 'rejected', message: 'Unrecorded extra native invocation: natural-tool-minimal/2' });
-      expect.soft(executions).toEqual([{ city: 'Tokyo' }]);
-      expect.soft(calls).toEqual([{ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' }]);
-      expect.soft(results).toEqual([{ id: calls[0]?.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
-      expect.soft(chunks).toEqual([]);
-      expect.soft(toolEvents).toEqual([]);
-      expect.soft(order).toEqual(['assistant-start', 'tool-call', 'execute', 'tool-result', 'assistant-start']);
-      expect.soft(replay.observations.inferenceCalls.length).toBe(2);
+      // The first call/result are real; the inventory refuses to fabricate a second native output.
+      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'Unrecorded extra native invocation: natural-tool-minimal/2' } });
+      expect(messages).toEqual(originalMessages);
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
+      const calls = turn.generated.filter(node => node.role === 'assistant').flatMap(node => node.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall));
+      const results = turn.generated.filter(node => node.role === 'tool').flatMap(node => node.parts.map(part => part.result));
+      expect(calls).toEqual([{ id: expect.any(String), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }]);
+      expect(results).toEqual([{ toolCallId: calls[0]!.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } }]);
+      expect(executions.map(execution => execution.args)).toEqual([{ city: 'Tokyo' }]);
+      const toolNode = turn.generated[1];
+      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      expect(executions[0]?.prefix).toEqual([
+        createChatMessageSnapshot({ node: turn.generated[0]! }),
+        { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
+      ]);
+      expect(executions[0]?.prefix?.[0]?.parts.at(-1)?.type).toBe('tool_call');
+      expect(turn.generated.filter(node => node.role === 'assistant').flatMap(node => node.parts.filter(part => part.type === 'text'))).toEqual([]);
+      expect(turn.toolEvents).toEqual([]);
+      expect(replay.observations.inferenceCalls).toHaveLength(2);
       // The new continuation has no recorded output, but it must actually keep
       // the executed call and result in the native template input.
       expect(templates.mock.calls.at(-1)?.[0]).toEqual([
@@ -1608,267 +1661,247 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(continuationIds.indexOf(10)).toBeLessThan(continuationIds.indexOf(11));
       expect.soft(replay.observations.forbiddenTransport).toEqual([]);
       expect.soft(replay.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+      settled = structuredClone(turn);
     } finally {
       templates.mockRestore();
       await replay.close();
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
+    expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: contentToolProviderReplayCatalog,
-      caseIds: ["natural-tool-minimal"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      catalog: contentToolProviderReplayCatalog, caseIds: ["natural-tool-minimal"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"], imagePlatform: undefined,
     });
-    const captures: ProviderChatCapture[] = [];
-    const lateExecutions: string[] = [];
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    let settled: typeof turn;
+    const updates: (readonly ChatMessage[])[] = [];
+    const executions: { args: unknown; signal: AbortSignal | undefined; prefix: readonly ChatMessage[] | undefined }[] = [];
+    let turnSettled = false;
     try {
-      // natural-tool-minimal: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined; callbackPrefix: ReturnType<ProviderChatCapture['snapshot']> | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            const callbackPrefix = captureRef.current?.snapshot();
-            executions.push({ args: structuredClone(args), signal: receivedSignal, callbackPrefix });
-            if (callbackPrefix?.settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Use the weather tool for Tokyo." }],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureRef.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        // Record the actual callback prefix at execute; do not wrap tools or infer their position.
-        for (const execution of executions) {
-          expect(execution.callbackPrefix?.settlement).toEqual({ status: 'pending' });
-          expect(execution.callbackPrefix?.events.at(-1)?.kind).toBe('tool-call');
-          expect(execution.callbackPrefix?.events).toEqual(observed.events.slice(0, execution.callbackPrefix?.events.length));
-        }
-        const detailedEvents = observed.events.flatMap((event, index) => [
-          ...executions.filter(execution => execution.callbackPrefix?.events.length === index).map(() => ['execute']),
-          event.kind === 'chunk' ? ['chunk', event.chunk] : [event.kind],
-        ]);
-        const order = detailedEvents.filter(event => event[0] !== 'chunk').map(event => event[0]);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["", "The current weather in Tokyo is clear with a temperature of 20°C."]);
-        expect(order).toEqual(["assistant-start", "tool-call", "execute", "tool-result", "assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([{ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' }]);
-        expect(calls[0]!.id).not.toBe('');
-        expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
-        expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
-        expect(executions[0]!.signal).not.toBe(signal);
-        expect(executions[0]!.signal?.aborted).toBe(false);
-      }
+      const parameters = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const abortController = new AbortController();
+      const tools: Tool[] = [{
+        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        parametersSchema: z.object({ city: z.string() }),
+        execute: async ({ args, signal }) => {
+          expect(turnSettled).toBe(false);
+          executions.push({ args: structuredClone(args), signal, prefix: updates.at(-1) });
+          return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+        },
+      }];
+      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }];
+      const originalMessages = structuredClone(messages);
+      replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
+      turn = await runProviderReplayTurn({
+        provider: replay.provider,
+        tools,
+        abortController,
+        onChange: ({ messages }) => {
+          updates.push(messages);
+        },
+        request: {
+          model: 'LiquidAI/LFM2.5-350M-ONNX', messages, parameters,
+          readBinaryObject: undefined, debug: undefined,
+        },
+      });
+      turnSettled = true;
+      replay.endNativeRequest();
+      expect(messages).toEqual(originalMessages);
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
+      const assistants = turn.generated.filter(node => node.role === 'assistant');
+      expect(assistants.map(node => node.parts.filter(part => part.type === 'text').map(part => part.text).join(''))).toEqual(["", "The current weather in Tokyo is clear with a temperature of 20°C."]);
+      expect(assistants.flatMap(node => node.parts.filter(part => part.type === 'text').map(part => part.completeness))).toEqual(['complete']);
+      const calls = assistants.flatMap(node => node.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall));
+      const results = turn.generated.filter(node => node.role === 'tool').flatMap(node => node.parts.map(part => part.result));
+      expect(turn.toolEvents).toEqual([]);
+      expect(calls).toEqual([{ id: expect.any(String), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }]);
+      expect(calls[0]!.id).not.toBe('');
+      expect(results).toEqual([{ toolCallId: calls[0]!.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } }]);
+      expect(executions.map(execution => execution.args)).toEqual([{ city: 'Tokyo' }]);
+      const execution = executions[0]!;
+      expect(execution.signal).toBeInstanceOf(AbortSignal);
+      expect(execution.signal).not.toBe(abortController.signal);
+      expect(execution.signal?.aborted).toBe(false);
+      // The caller records an executing result after the completed call and before the follow-up.
+      const toolNode = turn.generated[1];
+      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      expect(execution.prefix).toEqual([
+        createChatMessageSnapshot({ node: turn.generated[0]! }),
+        { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
+      ]);
+      expect(execution.prefix?.[0]?.parts.at(-1)?.type).toBe('tool_call');
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
+      settled = structuredClone(turn);
     } finally {
       await replay.close();
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-    expect(lateExecutions).toEqual([]);
+    expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: contentToolProviderReplayCatalog,
-      caseIds: ["natural-tool-representative"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      catalog: contentToolProviderReplayCatalog, caseIds: ["natural-tool-representative"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"], imagePlatform: undefined,
     });
-    const captures: ProviderChatCapture[] = [];
-    const lateExecutions: string[] = [];
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    let settled: typeof turn;
+    const updates: (readonly ChatMessage[])[] = [];
+    const executions: { args: unknown; signal: AbortSignal | undefined; prefix: readonly ChatMessage[] | undefined }[] = [];
+    let turnSettled = false;
     try {
-      // natural-tool-representative: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined; callbackPrefix: ReturnType<ProviderChatCapture['snapshot']> | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            const callbackPrefix = captureRef.current?.snapshot();
-            executions.push({ args: structuredClone(args), signal: receivedSignal, callbackPrefix });
-            if (callbackPrefix?.settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Use lookup_weather for Tokyo, then give a short answer based on the tool result." }],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureRef.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        // Record the actual callback prefix at execute; do not wrap tools or infer their position.
-        for (const execution of executions) {
-          expect(execution.callbackPrefix?.settlement).toEqual({ status: 'pending' });
-          expect(execution.callbackPrefix?.events.at(-1)?.kind).toBe('tool-call');
-          expect(execution.callbackPrefix?.events).toEqual(observed.events.slice(0, execution.callbackPrefix?.events.length));
-        }
-        const detailedEvents = observed.events.flatMap((event, index) => [
-          ...executions.filter(execution => execution.callbackPrefix?.events.length === index).map(() => ['execute']),
-          event.kind === 'chunk' ? ['chunk', event.chunk] : [event.kind],
-        ]);
-        const order = detailedEvents.filter(event => event[0] !== 'chunk').map(event => event[0]);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["", "The weather in Tokyo is clear with a temperature of 20°C."]);
-        expect(order).toEqual(["assistant-start", "tool-call", "execute", "tool-result", "assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([{ id: expect.any(String), toolName: 'lookup_weather', modelVisibleArguments: '{"city":"Tokyo"}' }]);
-        expect(calls[0]!.id).not.toBe('');
-        expect(results).toEqual([{ id: calls[0]!.id, result: { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' } }]);
-        expect(executions.map(({ args }) => args)).toEqual([{ city: 'Tokyo' }]);
-        expect(executions[0]!.signal).toBeInstanceOf(AbortSignal);
-        expect(executions[0]!.signal).not.toBe(signal);
-        expect(executions[0]!.signal?.aborted).toBe(false);
-      }
+      const parameters = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const abortController = new AbortController();
+      const tools: Tool[] = [{
+        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        parametersSchema: z.object({ city: z.string() }),
+        execute: async ({ args, signal }) => {
+          expect(turnSettled).toBe(false);
+          executions.push({ args: structuredClone(args), signal, prefix: updates.at(-1) });
+          return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+        },
+      }];
+      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }];
+      const originalMessages = structuredClone(messages);
+      replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
+      turn = await runProviderReplayTurn({
+        provider: replay.provider,
+        tools,
+        abortController,
+        onChange: ({ messages }) => {
+          updates.push(messages);
+        },
+        request: {
+          model: 'LiquidAI/LFM2.5-350M-ONNX', messages, parameters,
+          readBinaryObject: undefined, debug: undefined,
+        },
+      });
+      turnSettled = true;
+      replay.endNativeRequest();
+      expect(messages).toEqual(originalMessages);
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
+      const assistants = turn.generated.filter(node => node.role === 'assistant');
+      expect(assistants.map(node => node.parts.filter(part => part.type === 'text').map(part => part.text).join(''))).toEqual(["", "The weather in Tokyo is clear with a temperature of 20°C."]);
+      expect(assistants.flatMap(node => node.parts.filter(part => part.type === 'text').map(part => part.completeness))).toEqual(['complete']);
+      const calls = assistants.flatMap(node => node.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall));
+      const results = turn.generated.filter(node => node.role === 'tool').flatMap(node => node.parts.map(part => part.result));
+      expect(turn.toolEvents).toEqual([]);
+      expect(calls).toEqual([{ id: expect.any(String), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }]);
+      expect(calls[0]!.id).not.toBe('');
+      expect(results).toEqual([{ toolCallId: calls[0]!.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } }]);
+      expect(executions.map(execution => execution.args)).toEqual([{ city: 'Tokyo' }]);
+      const execution = executions[0]!;
+      expect(execution.signal).toBeInstanceOf(AbortSignal);
+      expect(execution.signal).not.toBe(abortController.signal);
+      expect(execution.signal?.aborted).toBe(false);
+      // The caller records an executing result after the completed call and before the follow-up.
+      const toolNode = turn.generated[1];
+      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      expect(execution.prefix).toEqual([
+        createChatMessageSnapshot({ node: turn.generated[0]! }),
+        { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
+      ]);
+      expect(execution.prefix?.[0]?.parts.at(-1)?.type).toBe('tool_call');
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
+      settled = structuredClone(turn);
     } finally {
       await replay.close();
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-    expect(lateExecutions).toEqual([]);
+    expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: contentToolProviderReplayCatalog,
-      caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      catalog: contentToolProviderReplayCatalog, caseIds: ["structured-tool-history"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"], imagePlatform: undefined,
     });
-    const captures: ProviderChatCapture[] = [];
-    const lateExecutions: string[] = [];
+    let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    let settled: typeof turn;
+    const updates: (readonly ChatMessage[])[] = [];
+    const executions: { args: unknown; signal: AbortSignal | undefined; prefix: readonly ChatMessage[] | undefined }[] = [];
+    let turnSettled = false;
     try {
-      // structured-tool-history: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const captureRef: { current: ProviderChatCapture | undefined } = { current: undefined };
-        const executions: { args: unknown; signal: AbortSignal | undefined; callbackPrefix: ReturnType<ProviderChatCapture['snapshot']> | undefined }[] = [];
-        const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-          parametersSchema: z.object({ city: z.string() }),
-          execute: async ({ args, signal: receivedSignal }) => {
-            const callbackPrefix = captureRef.current?.snapshot();
-            executions.push({ args: structuredClone(args), signal: receivedSignal, callbackPrefix });
-            if (callbackPrefix?.settlement.status !== 'pending') lateExecutions.push('execute');
-            return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-          },
-        }];
-        replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Use the weather tool for Tokyo." }, { role: "assistant", content: "", tool_calls: [{ id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } }] }, { role: "tool", content: "{\"temperatureC\":20,\"condition\":\"clear\"}", tool_call_id: toToolCallId({ raw: "call_model_support_probe_1" }) }],
-            parameters,
-            tools: tools,
-            signal,
-          },
-        });
-        captureRef.current = capture;
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        // Record the actual callback prefix at execute; do not wrap tools or infer their position.
-        for (const execution of executions) {
-          expect(execution.callbackPrefix?.settlement).toEqual({ status: 'pending' });
-          expect(execution.callbackPrefix?.events.at(-1)?.kind).toBe('tool-call');
-          expect(execution.callbackPrefix?.events).toEqual(observed.events.slice(0, execution.callbackPrefix?.events.length));
-        }
-        const detailedEvents = observed.events.flatMap((event, index) => [
-          ...executions.filter(execution => execution.callbackPrefix?.events.length === index).map(() => ['execute']),
-          event.kind === 'chunk' ? ['chunk', event.chunk] : [event.kind],
-        ]);
-        const order = detailedEvents.filter(event => event[0] !== 'chunk').map(event => event[0]);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["The current weather in Tokyo is clear with a temperature of 20°C."]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        expect(executions).toEqual([]);
-      }
+      const parameters = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const abortController = new AbortController();
+      const tools: Tool[] = [{
+        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        parametersSchema: z.object({ city: z.string() }),
+        execute: async ({ args, signal }) => {
+          expect(turnSettled).toBe(false);
+          executions.push({ args: structuredClone(args), signal, prefix: updates.at(-1) });
+          return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+        },
+      }];
+      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_model_support_probe_1" }), type: 'function', function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }];
+      const originalMessages = structuredClone(messages);
+      replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
+      turn = await runProviderReplayTurn({
+        provider: replay.provider,
+        tools,
+        abortController,
+        onChange: ({ messages }) => {
+          updates.push(messages);
+        },
+        request: {
+          model: 'LiquidAI/LFM2.5-350M-ONNX', messages, parameters,
+          readBinaryObject: undefined, debug: undefined,
+        },
+      });
+      turnSettled = true;
+      replay.endNativeRequest();
+      expect(messages).toEqual(originalMessages);
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
+      const assistants = turn.generated.filter(node => node.role === 'assistant');
+      expect(assistants.map(node => node.parts.filter(part => part.type === 'text').map(part => part.text).join(''))).toEqual(["The current weather in Tokyo is clear with a temperature of 20°C."]);
+      expect(assistants.flatMap(node => node.parts.filter(part => part.type === 'text').map(part => part.completeness))).toEqual(['complete']);
+      const calls = assistants.flatMap(node => node.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall));
+      const results = turn.generated.filter(node => node.role === 'tool').flatMap(node => node.parts.map(part => part.result));
+      expect(turn.toolEvents).toEqual([]);
+      expect(calls).toEqual([]);
+      expect(results).toEqual([]);
+      expect(executions).toEqual([]);
       replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      settled = structuredClone(turn);
     } finally {
       await replay.close();
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
-    expect(lateExecutions).toEqual([]);
+    expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
 });
 
 describe('LFM2.5 350M Provider / images', () => {
-  it('images: preserves the recorded text-only native handling of an image-bearing request', async () => {
+  it('images: rejects the recorded image-bearing input before text-only native generation', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
@@ -1896,35 +1929,99 @@ describe('LFM2.5 350M Provider / images', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: [{ type: "text", text: "Describe the single synthetic image in one short phrase." }, { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" } }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' }, { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
         await capture.completion;
-        replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["It"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
-        expect(calls).toEqual([]);
-        expect(results).toEqual([]);
+        expect(observed.parts).toEqual([]);
+        expect(observed.result).toMatchObject({
+          type: 'error', error: { message: 'The standard text strategy cannot preserve an image input.' },
+        });
+        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
+      replay.assertComplete({ requests: 1, nativeCalls: 0 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
 });
+
+const lfm350FullStructuredParts = {
+  completionTokenIds: ['7', '11'], endTokenIds: ['7'],
+  invocations: [
+    { callOrdinal: 1, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 2, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 3, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 4, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 5, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 6, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 7, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 8, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 9, terminal: { kind: 'stream-end' } },
+    { callOrdinal: 10, terminal: { kind: 'control', tokenId: '11' } },
+    { callOrdinal: 11, terminal: { kind: 'control', tokenId: '7' } },
+    { callOrdinal: 12, terminal: { kind: 'control', tokenId: '11' } },
+    { callOrdinal: 13, terminal: { kind: 'control', tokenId: '7' } },
+    { callOrdinal: 14, terminal: { kind: 'control', tokenId: '7' } },
+  ],
+  requests: [
+    { scenario: 'first-turn', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'Sure! Here’s an example of a **template** for a **user', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'continuity', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: `\
+Sure! Here’s a continuation of the synthetic conversation:
+
+---
+
+User`, completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'S', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'system-user', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'The', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'Template', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'S', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'reasoning-low', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'S', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'reasoning-medium', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'S', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'reasoning-high', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'S', completeness: 'partial' },
+    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
+      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
+      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+      { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+    ] },
+    { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
+      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
+      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+      { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+    ] },
+    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+      { type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
+    ], terminal: { type: 'finished', next: 'user' } }] },
+    { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
+  ],
+  legacyInputProjections: [{ scenario: 'continuity', assistant: { role: 'assistant', content: 'Sure! Here’s an example of a **template** for a **user' } }],
+} satisfies StructuredPartsReplayContract;
 
 describe('LFM2.5 350M Provider / sequences', () => {
   it('uses only the settled first callback text for a second request in the same loaded runtime', async () => {
@@ -1976,7 +2073,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -1989,6 +2086,9 @@ describe('LFM2.5 350M Provider / sequences', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(firstCapture);
@@ -1996,12 +2096,12 @@ describe('LFM2.5 350M Provider / sequences', () => {
 
       // Immutable at settlement: late first callbacks cannot rewrite the next
       // request. There is no timer, callback drain, or artificial callback ACK.
-      const firstTextAtSettlement = firstCapture.snapshot().chunks.join('');
-      const secondMessages: ChatMessage[] = [
-        ...evidence.scenario.messages,
-        { role: 'assistant', content: firstTextAtSettlement },
-        { role: 'user', content: 'Continue with one short sentence.' },
-      ];
+      const firstPart = firstCapture.snapshot().parts[0];
+      if (firstPart?.type !== 'text' || firstPart.completeness === 'pending') throw new Error('Expected a drained first text part');
+      const { partId, type, chunks, completeness, index: _index, ...unhandled } = firstPart;
+      unhandled satisfies Record<PropertyKey, never>;
+      const firstTextAtSettlement = chunks.join('');
+      const secondMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type, text: firstTextAtSettlement, completeness }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: 'Continue with one short sentence.', completeness: 'complete' }] }];
       const ortCountAfterFirst = harness.observations.ortCalls.length;
 
       let secondOutcome: { status: 'fulfilled' } | { status: 'rejected', error: unknown };
@@ -2022,6 +2122,9 @@ describe('LFM2.5 350M Provider / sequences', () => {
               effort: undefined,
             },
           },
+          readBinaryObject: undefined,
+          debug: undefined,
+          signal: undefined,
         },
       });
       captures.push(secondCapture);
@@ -2034,7 +2137,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
       }
       // Snapshot the observed completion, without a timer or callback drain.
       // The real Worker delivery tail acknowledges callbacks before settlement.
-      const secondTextAtSettlement = secondCapture.snapshot().chunks.join('');
+      const secondTextAtSettlement = secondCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks).join('');
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
       expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
@@ -2058,9 +2161,8 @@ describe('LFM2.5 350M Provider / sequences', () => {
         released: [16, 16],
       });
     } finally {
-      await harness.close();
+      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
     const replay = await createProviderRequestReplay({
@@ -2070,7 +2172,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
       imagePlatform: undefined
     });
     const captures: ProviderChatCapture[] = [];
-    let firstResponse = '';
+    let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
     try {
       // first-turn: public inputs and settled expectations are owned by this model.
       {
@@ -2091,10 +2193,12 @@ describe('LFM2.5 350M Provider / sequences', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -2102,17 +2206,26 @@ describe('LFM2.5 350M Provider / sequences', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual(["Sure! Here’s an example of a **template** for a **user"]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(textParts.map(part => part.chunks.join(''))).toEqual(["Sure! Here’s an example of a **template** for a **user"]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
-        firstResponse = responses[0]!.join('');
+
+        const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
+        unhandled satisfies Record<PropertyKey, never>;
+        if (completeness === 'pending') throw new Error('Expected a drained first text part');
+        firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
+          id: toMessageId({ raw: 'message_1' }), role: 'assistant',
+          parts: [{ type, text: chunks.join(''), completeness }],
+        });
       }
       // continuity: public inputs and settled expectations are owned by this model.
       {
@@ -2133,10 +2246,12 @@ describe('LFM2.5 350M Provider / sequences', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: firstResponse }, { role: "user", content: "Continue the synthetic conversation with a short response." }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -2144,27 +2259,28 @@ describe('LFM2.5 350M Provider / sequences', () => {
         replay.endNativeRequest();
         const observed = capture.snapshot();
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const { responses, preStartChunks: earlyChunks, toolCalls: calls, toolResults: results, toolEvents, lateEvents } = observed;
+        const textParts = observed.parts.filter(part => part.type === 'text');
+        expect(observed.parts.map(part => part.type)).toEqual(['text']);
+        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(responses.map(chunks => chunks.join(''))).toEqual([`\
+        expect(textParts.map(part => part.chunks.join(''))).toEqual([`\
 Sure! Here’s a continuation of the synthetic conversation:
 
 ---
 
 User`]);
-        expect(order).toEqual(["assistant-start", "settled"]);
-        expect(earlyChunks).toEqual([]);
-        expect(toolEvents).toEqual([]);
-        expect(lateEvents).toEqual([]);
+        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
         expect(calls).toEqual([]);
-        expect(results).toEqual([]);
       }
       replay.assertComplete({ requests: 2, nativeCalls: 2 });
     } finally {
-      await replay.close();
+      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
-    expect(captures.flatMap(capture => capture.snapshot().lateEvents)).toEqual([]);
   }, 30_000);
   it('preserves thirteen causal requests, native streams and settlements in one Load', async () => {
     // This entire sequence belongs to the post-repair recording. Earlier
@@ -2175,6 +2291,10 @@ User`]);
     expect(fullEvidenceJson.observedCacheRevision).toBe('main');
     expect(fullEvidenceJson.requests).toHaveLength(13);
     expect(fullEvidenceJson.invocations).toHaveLength(15);
-    await verifyCapturedFullReplay({ reviewedPublicContract: undefined, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"] });
+    await verifyCapturedFullReplay({ reviewedPublicContract: {
+      correctedEvents: [], correctedFinalizedStreams: undefined, invalidatedOutputs: [],
+      preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
+      structuredParts: lfm350FullStructuredParts,
+    }, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"] });
   }, 30_000);
 });

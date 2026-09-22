@@ -1,12 +1,14 @@
-import type { ChatMessage, ToolCall } from '@/01-models/types';
+import type { ToolCall } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import type { WorkerToolDefinition } from '@/features/transformers-js/types';
 import { z } from 'zod';
+import { readCompleteInferenceReasoning } from '@/features/transformers-js/inference-reasoning';
 
 export type Qwen3_5ReasoningMode = 'default' | 'enabled' | 'disabled';
 
 export interface Qwen3_5TemplateRenderer {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the native tokenizer method and preserves its receiver.
-  apply_chat_template(messages: Array<{ role: string; content: ChatMessage['content']; tool_calls?: unknown[]; tool_call_id?: ChatMessage['tool_call_id'] }>, options: {
+  apply_chat_template(messages: Array<{ role: string; content: InferenceMessage['content']; tool_calls?: unknown[]; tool_call_id?: InferenceMessage['tool_call_id']; reasoning_content?: string }>, options: {
     tokenize: false; add_generation_prompt: true; tools?: WorkerToolDefinition[]; enable_thinking?: boolean;
   }): string;
 }
@@ -54,7 +56,7 @@ export function buildQwen3_5Prompt({
   reasoningMode,
   tokenizer,
 }: {
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   tools: WorkerToolDefinition[] | undefined,
   reasoningMode: Qwen3_5ReasoningMode,
   tokenizer: Qwen3_5TemplateRenderer,
@@ -69,11 +71,18 @@ export function buildQwen3_5Prompt({
   })();
   // Undefined effort is intentionally absent: different native model templates
   // have different defaults. Never add whitespace to the rendered suffix.
-  return tokenizer.apply_chat_template(messages.map(message => ({
-    ...message,
-    role: message.role === 'developer' ? 'system' : message.role,
-    ...(message.tool_calls === undefined ? {} : { tool_calls: normalizeQwen3_5ToolCallsForTemplate({ toolCalls: message.tool_calls }) }),
-  })), { tokenize: false, add_generation_prompt: true, ...thinking, ...(tools?.length ? { tools } : {}) });
+  return tokenizer.apply_chat_template(messages.map(message => {
+    const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
+    unhandled satisfies Record<PropertyKey, never>;
+    const reasoning = readCompleteInferenceReasoning({ message });
+    return {
+      role: role === 'developer' ? 'system' : role,
+      content,
+      ...(tool_call_id === undefined ? {} : { tool_call_id }),
+      ...(tool_calls === undefined ? {} : { tool_calls: normalizeQwen3_5ToolCallsForTemplate({ toolCalls: tool_calls }) }),
+      ...(reasoning === undefined ? {} : { reasoning_content: reasoning }),
+    };
+  }), { tokenize: false, add_generation_prompt: true, ...thinking, ...(tools?.length ? { tools } : {}) });
 }
 
 export type Qwen3_5NoToolContinuationEligibility =
@@ -94,7 +103,7 @@ export function assessQwen3_5NoToolContinuationEligibility({
   conversationState,
   activeModelId,
 }: {
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   conversationState: Qwen3_5ConversationState | undefined,
   activeModelId: string | null,
 }): Qwen3_5NoToolContinuationEligibility {

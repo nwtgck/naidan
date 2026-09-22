@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
-import type { TransformersJsWorkerClient } from '@/features/transformers-js/types';
+import type { TransformersJsWorkerClient, InferenceMessage, WorkerToolDefinition } from '@/features/transformers-js/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { toToolCallId } from '@/01-models/ids';
 import type { GenerationCaptureRequest } from './generation-capture-protocol';
 
 const mocks = vi.hoisted(() => ({
@@ -127,6 +129,59 @@ describe('Transformers.js Worker client cleanup', () => {
       }
       channel.port1.close();
       channel.port2.close();
+    }
+  });
+
+  it('snapshots structured reasoning and native settings before startup and real Comlink serialization', async () => {
+    const comlink = await vi.importActual<typeof import('comlink')>('comlink');
+    const channel = new MessageChannel();
+    const received: Array<{
+      messages: InferenceMessage[];
+      params: Parameters<TransformersJsWorkerClient['generateText']>[0]['params'];
+      tools: WorkerToolDefinition[] | undefined;
+      owner: string | undefined;
+    }> = [];
+    const proxies: Array<import('comlink').Remote<(value: string) => void>> = [];
+    const toolProxies: Array<import('comlink').Remote<(calls: []) => void>> = [];
+    const api = {
+      async generateText(messages: InferenceMessage[], onChunk: typeof proxies[number], onTools: typeof toolProxies[number], params: typeof received[number]['params'], tools: WorkerToolDefinition[] | undefined, _capture: unknown, owner: string | undefined) {
+        proxies.push(onChunk); toolProxies.push(onTools);
+        received.push({ messages, params, tools, owner });
+        await onChunk('<think>literal</think>');
+        await onTools([]);
+      },
+    };
+    comlink.expose(api, channel.port1);
+    mocks.wrap.mockReturnValue(comlink.wrap<typeof api>(channel.port2));
+    const { createTransformersJsWorkerClient } = await import('./client-hosted');
+    const client = createTransformersJsWorkerClient();
+    const callId = toToolCallId({ raw: 'accepted-call' });
+    const reasoning = { text: '  R\n', completeness: 'complete' as 'complete' | 'partial' };
+    const content = [{ type: 'text' as const, text: '<think>literal</think>' }];
+    const functionCall = { name: 'calculator', arguments: ' { } ' };
+    const messages: InferenceMessage[] = [{ role: 'assistant', content, reasoning, tool_calls: [{ id: callId, type: 'function', function: functionCall }] }];
+    const params = { ...EMPTY_LM_PARAMETERS, stop: ['stop'], reasoning: { effort: 'high' as const } };
+    const tools: WorkerToolDefinition[] = [{ type: 'function', function: { name: 'calculator', description: 'accepted', parameters: { type: 'object' } } }];
+    const original = structuredClone({ messages, params, tools });
+    const onChunk = vi.fn(); const onToolCalls = vi.fn();
+    const pending = client.generateText({ messages, params, tools, onChunk, onToolCalls, continuationOwner: 'accepted-owner' });
+    // The accepted request is still waiting for its Worker bootstrap.
+    reasoning.text = 'edited'; reasoning.completeness = 'partial';
+    content[0]!.text = 'edited'; functionCall.arguments = '{"edited":true}';
+    params.stop.push('later'); tools[0]!.function.description = 'edited';
+    try {
+      await MockWorker.latest.publishReady();
+      await pending;
+      expect(received).toEqual([{ ...original, owner: 'accepted-owner' }]);
+      expect(received[0]?.messages[0]?.reasoning).not.toBe(reasoning);
+      expect(onChunk).toHaveBeenCalledExactlyOnceWith({ chunk: '<think>literal</think>' });
+      expect(onToolCalls).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
+    } finally {
+      await client.dispose();
+      await pending.catch(() => undefined);
+      for (const proxy of proxies) proxy[comlink.releaseProxy]();
+      for (const proxy of toolProxies) proxy[comlink.releaseProxy]();
+      channel.port1.close(); channel.port2.close();
     }
   });
 
@@ -455,6 +510,150 @@ describe('investigation-owned generation capture client', () => {
     } finally {
       await owner.client.dispose();
       vi.stubGlobal('Worker', MockWorker);
+    }
+  });
+});
+
+describe('structured generation through the real Comlink callback boundary', () => {
+  beforeEach(() => {
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
+    vi.stubGlobal('Worker', MockWorker); vi.clearAllMocks(); mocks.wrap.mockReturnValue({});
+  });
+
+  it('clones before startup, acknowledges callbacks and rejects late events from an old request', async () => {
+    const C = await vi.importActual<typeof import('comlink')>('comlink');
+    const channel = new MessageChannel();
+    type Event = import('@/features/transformers-js/generation-events').InferenceGenerationEvent;
+    type Callback = import('comlink').Remote<({ event }: { event: Event }) => void | Promise<void>>;
+    const remoteCallbacks: Array<{ event: Callback, chunk: import('comlink').Remote<(chunk: string) => void>, calls: import('comlink').Remote<(calls: []) => void> }> = [];
+    const input: InferenceMessage[] = [{ role: 'assistant', content: '<think>literal</think>', reasoning: { text: '  R\n', completeness: 'complete' } }];
+    const recorded: InferenceMessage[][] = [];
+    const entered = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
+    const api = {
+      // Mirrors the positional Comlink transport.
+      async generateText(messages: InferenceMessage[], chunk: typeof remoteCallbacks[number]['chunk'], calls: typeof remoteCallbacks[number]['calls'], _params: unknown, _tools: unknown, _capture: unknown, _owner: unknown, event: Callback) {
+        recorded.push(messages); remoteCallbacks.push({ event, chunk, calls });
+        if (recorded.length === 1) {
+          await event({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
+          await event({ event: { type: 'text_delta', index: 0, text: '  R\n' } });
+          entered.resolve(); await release.promise;
+        } else {
+          await remoteCallbacks[0]!.event({ event: { type: 'text_delta', index: 0, text: 'late' } });
+          await event({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+        }
+      },
+    };
+    C.expose(api, channel.port1); mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
+    const { createTransformersJsWorkerClient } = await import('./client-hosted'); const client = createTransformersJsWorkerClient();
+    const first = vi.fn(); const second = vi.fn();
+    try {
+      const pending = client.generateMessage({ messages: input, params: undefined, tools: undefined, continuationOwner: 'scope', onEvent: first });
+      input[0]!.content = 'mutated'; input[0]!.reasoning!.text = 'mutated';
+      await MockWorker.latest.publishReady(); await entered.promise;
+      expect(recorded[0]?.[0]).toMatchObject({ content: '<think>literal</think>', reasoning: { text: '  R\n' } });
+      expect(first).toHaveBeenCalledTimes(2); release.resolve(); await pending;
+      await client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: 'scope-2', onEvent: second });
+      expect(first).toHaveBeenCalledTimes(2); expect(second).toHaveBeenCalledOnce();
+    } finally {
+      release.resolve(); await client.dispose();
+      for (const callback of remoteCallbacks) {
+        callback.event[C.releaseProxy](); callback.chunk[C.releaseProxy](); callback.calls[C.releaseProxy]();
+      }
+      channel.port1.close(); channel.port2.close();
+    }
+  });
+
+  it('propagates a failed structured callback acknowledgement', async () => {
+    const C = await vi.importActual<typeof import('comlink')>('comlink'); const channel = new MessageChannel();
+    const retained: Array<import('comlink').Remote<(...args: never[]) => unknown>> = [];
+    const api = {
+      // Mirrors the positional Comlink transport.
+      async generateText(_messages: unknown, chunk: typeof retained[number], calls: typeof retained[number], _params: unknown, _tools: unknown, _capture: unknown, _owner: unknown, event: import('comlink').Remote<({ event }: { event: unknown }) => void | Promise<void>>) {
+        retained.push(chunk, calls, event);
+        await event({ event: { type: 'part_start', index: -1, kind: 'text' } });
+      },
+    };
+    C.expose(api, channel.port1); mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
+    const { createTransformersJsWorkerClient } = await import('./client-hosted'); const client = createTransformersJsWorkerClient(); const sink = vi.fn();
+    try {
+      await MockWorker.latest.publishReady();
+      await expect(client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: undefined, onEvent: sink })).rejects.toThrow();
+      expect(sink).not.toHaveBeenCalled();
+    } finally {
+      await client.dispose(); for (const callback of retained) callback[C.releaseProxy](); channel.port1.close(); channel.port2.close();
+    }
+  });
+
+  it.each(['dispose', 'worker-error', 'dispose-failure'] as const)('settles an accepted acknowledgement but ignores later structured events after %s', async retirement => {
+    const C = await vi.importActual<typeof import('comlink')>('comlink');
+    const channel = new MessageChannel();
+    type Callback = import('comlink').Remote<({ event }: { event: unknown }) => void | Promise<void>>;
+    const retained: Array<import('comlink').Remote<(...args: never[]) => unknown>> = [];
+    const accepted = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const remoteSettled = Promise.withResolvers<void>();
+    const api = {
+      // Mirrors the positional Comlink transport, including a queued callback
+      // that survives physical retirement in this controlled MessageChannel.
+      async generateText(_messages: unknown, chunk: typeof retained[number], calls: typeof retained[number], _params: unknown, _tools: unknown, _capture: unknown, _owner: unknown, event: Callback) {
+        retained.push(chunk, calls, event);
+        try {
+          await event({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
+          await event({ event: { type: 'text_delta', index: 0, text: 'retired' } });
+        } finally {
+          remoteSettled.resolve();
+        }
+      },
+    };
+    C.expose(api, channel.port1);
+    mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
+    const { createTransformersJsWorkerClient } = await import('./client-hosted');
+    const client = createTransformersJsWorkerClient();
+    const sink = vi.fn(async () => {
+      accepted.resolve();
+      await release.promise;
+    });
+    const pending = client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: 'retiring', onEvent: sink });
+    const outcome = pending.then(
+      () => ({ type: 'resolved' as const }),
+      (error: unknown) => ({ type: 'rejected' as const, error }),
+    );
+    try {
+      await MockWorker.latest.publishReady();
+      await accepted.promise;
+      switch (retirement) {
+      case 'dispose':
+        await client.dispose();
+        break;
+      case 'worker-error':
+        MockWorker.latest.dispatchEvent(new ErrorEvent('error', { message: 'Synthetic Worker failure' }));
+        break;
+      case 'dispose-failure': {
+        const failure = new Error('Synthetic physical termination failure');
+        mocks.terminate.mockImplementationOnce(() => {
+          throw failure;
+        });
+        await expect(client.dispose()).rejects.toBe(failure);
+        break;
+      }
+      default: {
+        const exhaustive: never = retirement;
+        throw new Error(`Unhandled retirement: ${exhaustive}`);
+      }
+      }
+      expect(await outcome).toMatchObject({ type: 'rejected', error: { reason: retirement === 'worker-error' ? 'worker-error' : 'disposed' } });
+      release.resolve();
+      await remoteSettled.promise;
+      expect(sink).toHaveBeenCalledExactlyOnceWith({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
+      expect(mocks.terminate).toHaveBeenCalledOnce();
+    } finally {
+      release.resolve();
+      await client.dispose().catch(() => undefined);
+      await outcome;
+      await remoteSettled.promise;
+      for (const callback of retained) callback[C.releaseProxy]();
+      channel.port1.close();
+      channel.port2.close();
     }
   });
 });

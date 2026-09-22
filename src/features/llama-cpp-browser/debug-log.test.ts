@@ -6,12 +6,59 @@ import { errorCode, LlamaCppBrowserError } from './types';
 afterEach(() => vi.restoreAllMocks());
 describe('private browser diagnostics', () => {
   it('logs safe technical fields with the common prefix', () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({ event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' });
   });
+  it('forwards cache counts and native state without exposing either token sequence', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
+    const diagnostic = {
+      event: 'cache-reuse', reason: 'prefix-mismatch', reusedTokens: 0, evaluatedTokens: 48,
+      tokens: 48, cachedTokens: 357, commonPrefixTokens: 17, cacheComparison: 'token-mismatch',
+      nativeMemoryKind: 'hybrid', nativePositionMin: 0, nativePositionMax: 356, nativeRollbackTokens: 0,
+    } as const;
+    try {
+      logDiagnostic({ diagnostic });
+      expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
+      expect(listener).toHaveBeenCalledExactlyOnceWith({ diagnostic });
+    } finally {
+      unsubscribe();
+    }
+  });
+  it('rejects private cache fields and invalid native cache metadata', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const extra = { event: 'cache-reuse' as const, cachedTokens: 2, cachedTokenIds: [65, 66], prompt: 'private prompt' };
+    logDiagnostic({ diagnostic: extra });
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', nativePositionMin: -2 } });
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', commonPrefixTokens: -1 } });
+    // @ts-expect-error Native memory categories must not accept caller text.
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', nativeMemoryKind: 'private model' } });
+    // @ts-expect-error Comparisons must remain a closed technical vocabulary.
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', cacheComparison: 'private prompt' } });
+    expect(debug).not.toHaveBeenCalled();
+  });
+  it('forwards checkpoint cost and effective window without forwarding stored state', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
+    const diagnostic = { event: 'checkpoint-created', bytes: 4096, tokens: 17, elapsedMs: 2 } as const;
+    try {
+      logDiagnostic({ diagnostic });
+      expect(listener).toHaveBeenCalledExactlyOnceWith({ diagnostic });
+      expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
+      debug.mockClear(); listener.mockClear();
+      const privateState = { ...diagnostic, pointer: '123', tokenIds: [1, 2], state: [3, 4] };
+      logDiagnostic({ diagnostic: privateState });
+      logDiagnostic({ diagnostic: { event: 'context-ready', slidingWindowTokens: -1 } });
+      expect(debug).not.toHaveBeenCalled(); expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
   it('rejects arbitrary diagnostic keys rather than leaking personal data', () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const extra = { event: 'failed' as const, prompt: 'private prompt', fileName: 'private.gguf', tokenIds: [1, 2], grammarText: 'private grammar', schema: { description: 'private schema' }, logits: [123] };
     logDiagnostic({ diagnostic: extra });
     expect(debug).not.toHaveBeenCalled();
@@ -22,14 +69,14 @@ describe('private browser diagnostics', () => {
     { error: 123456n, kind: 'native-exception' },
     { error: { name: 'private tool', stack: 'private result', message: 'private schema' }, kind: 'unknown-exception' },
   ])('classifies $kind without serializing exception contents', ({ error, kind }) => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logFailure({ stage: 'partial-parse', error });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'partial-parse', failureKind: kind, code: 'runtime-error', message: expect.stringContaining('Failed while parsing partial generated output with the native chat parser.') }));
     const output = JSON.stringify(debug.mock.calls);
     expect(output).not.toContain('private'); expect(output).not.toContain('123456');
   });
   it('explains stream failures using fixed text instead of caller messages', () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'failed', stage: 'stream-emit', reason: 'non-monotonic-content' } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({
       event: 'failed', stage: 'stream-emit', reason: 'non-monotonic-content',
@@ -41,13 +88,13 @@ describe('private browser diagnostics', () => {
     expect(debug).not.toHaveBeenCalled();
   });
   it('rejects grammar text passed in place of a diagnostic boolean', () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // @ts-expect-error Exercise the runtime boundary for an invalid known field.
     logDiagnostic({ diagnostic: { event: 'failed', grammar: 'private grammar' } });
     expect(debug).not.toHaveBeenCalled();
   });
   it('rejects unknown stage and reason strings', () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // Exercise the runtime boundary even if a caller bypasses its TypeScript type.
     const extra = { event: 'failed' as const, stage: 'private prompt', reason: 'private tool' };
     // @ts-expect-error Diagnostic fields are closed enums.
@@ -103,7 +150,7 @@ describe('native operation diagnostics', () => {
     { message: 'clip_encode: ggml_backend_sched_graph_compute failed with error -1', expected: { event: 'native-error', stage: 'media-encode', failureKind: 'native-graph-error', statusCode: -1 } },
     { message: 'clip_encode: expected output 70 tokens, got 68', expected: { event: 'native-error', stage: 'media-encode', failureKind: 'native-output-mismatch', expectedTokens: 70, tokens: 68 } },
   ])('extracts fixed native progress: $message', ({ message, expected }) => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
     try {
       logNativeDiagnostic({ message });
@@ -127,7 +174,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     'clip_encode: output embedding shape [1024, 70, 1] private',
     'add_text: private prompt', 'Token 0 (first 16 values): 0.5',
   ])('discards malformed or arbitrary native progress: %s', message => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
     try {
       logNativeDiagnostic({ message }); expect(debug).not.toHaveBeenCalled();
@@ -136,7 +183,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     }
   });
   it('suppresses native technical information outside debug mode', () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'off', listener: () => {} });
     try {
       logNativeDiagnostic({ message: 'llama_context: n_ctx                 = 32768' });
@@ -173,7 +220,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     }
   });
   it('keeps only known native failure categories and discards all stderr text', () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logNativeDiagnostic({ message: 'private prompt, model.gguf, image bytes' });
     expect(debug).not.toHaveBeenCalled();
     logNativeDiagnostic({ message: 'Workgroup count exceeds maxComputeWorkgroupsPerDimension limit; private path /private.gguf' });

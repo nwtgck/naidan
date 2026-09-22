@@ -8,8 +8,6 @@ import {
   hierarchyToDomain,
   lmParametersToDomain,
 } from '@/00-storage/mapper/mappers';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
-import type { ChatContentDto } from '@/00-storage/00-dto/dto';
 import { idToRaw, toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
 import type { BinaryObjectId, ChatGroupId, ChatId } from '@/01-models/ids';
 import type { ChatGroup, SidebarItem } from '@/01-models/types';
@@ -124,6 +122,11 @@ export async function createOpfsNaidanSysfsStorageReader(): Promise<NaidanSysfsS
   };
 }
 
+/**
+ * Sysfs chat output follows the current normalized message structure and may
+ * change as that model evolves. Storage mappers retain support for older saved
+ * data; that does not require preserving older public sysfs layouts.
+ */
 export function createNaidanSysfsRemoteReader({
   storageType,
 }: {
@@ -255,7 +258,7 @@ function createRemoteChatGroupPayload({
 }: {
   chatGroup: ChatGroup,
 }): NaidanSysfsRemoteChatGroupPayload {
-  return {
+  return naidanSysfsRemoteChatGroupPayloadSchema.parse({
     dto: chatGroupToDto({ domain: chatGroup }),
     items: chatGroup.items.map(item => createRemoteChatSidebarItem({
       chatId: item.chat.id,
@@ -263,7 +266,7 @@ function createRemoteChatGroupPayload({
       updatedAt: item.chat.updatedAt,
       groupId: item.chat.groupId,
     })),
-  };
+  });
 }
 
 function createRemoteSidebarItem({
@@ -297,13 +300,6 @@ function remoteChatGroupPayloadToDomain({
 }: {
   payload: NaidanSysfsRemoteChatGroupPayload,
 }): ChatGroup {
-  const titleGenerationFields = 'titleGeneration' in payload.dto
-    ? { titleGeneration: payload.dto.titleGeneration }
-    : {
-      autoTitleEnabled: payload.dto.autoTitleEnabled,
-      titleModelId: payload.dto.titleModelId,
-    };
-
   const metadata = chatMetaToDomain({
     dto: {
       id: payload.dto.id,
@@ -313,7 +309,7 @@ function remoteChatGroupPayloadToDomain({
       debugEnabled: false,
       endpoint: payload.dto.endpoint,
       modelId: payload.dto.modelId,
-      ...titleGenerationFields,
+      titleGeneration: payload.dto.titleGeneration,
       currentLeafId: undefined,
       originChatId: undefined,
       originMessageId: undefined,
@@ -375,7 +371,7 @@ async function loadRemoteChatContent({
     return undefined;
   }
   return chatContentToDomain({
-    dto: naidanSysfsRemoteChatContentPayloadSchema.parse(payload) as ChatContentDto,
+    dto: naidanSysfsRemoteChatContentPayloadSchema.parse(payload),
   });
 }
 
@@ -390,7 +386,7 @@ function remoteChatPayloadToDomain({
     ? parsed.metadata.groupId
     : toChatGroupId({ raw: parsed.metadata.groupId });
   const content = chatContentToDomain({
-    dto: parsed.content as ChatContentDto,
+    dto: parsed.content,
   });
   return {
     ...metadata,

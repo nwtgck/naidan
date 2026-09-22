@@ -17,7 +17,7 @@ beforeEach(async () => {
   worker.canReuse.mockReturnValue(true); vi.mocked(listStoredModels).mockResolvedValue([]); vi.mocked(removeStoredModel).mockResolvedValue('deleted');
   worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   service = (await import('./index-hosted')).llamaCppBrowserService;
-  vi.spyOn(console, 'debug').mockImplementation(() => {});
+  vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => {
   service.release(); vi.restoreAllMocks();
@@ -32,7 +32,7 @@ describe('serialized hosted model service', () => {
   });
   it('resolves auto on the same Worker before passing a concrete generation profile', async () => {
     await service.probeProfiles({ signal: undefined });
-    await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.probeProfiles).toHaveBeenCalledOnce();
     expect(worker.generate.mock.calls[0]?.[0].request.options.profile).toBe('cpu-wasm32');
     expect(factory).toHaveBeenCalledOnce();
@@ -48,7 +48,7 @@ describe('serialized hosted model service', () => {
     expect(worker.probeProfiles).toHaveBeenCalledWith({ signal: undefined });
     gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
     await vi.waitFor(() => expect(service.getProfileState().status).toBe('ready'));
-    await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.probeProfiles).toHaveBeenCalledOnce();
   });
   it('invalidates reported capabilities when the Worker is disposed and probes its replacement', async () => {
@@ -56,12 +56,12 @@ describe('serialized hosted model service', () => {
     expect(service.getProfileState().status).toBe('ready');
     worker.subscribeDisposed.mock.calls[0]?.[0].listener();
     expect(service.getProfileState()).toEqual({ status: 'idle' });
-    await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(factory).toHaveBeenCalledTimes(2); expect(worker.probeProfiles).toHaveBeenCalledTimes(2);
   });
   it('does not start inference or silently substitute an unavailable explicit profile', async () => {
     service.setOptions({ options: { profile: 'webgpu-wasm32-jspi' } });
-    await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('unavailable');
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('unavailable');
     expect(worker.generate).not.toHaveBeenCalled();
   });
   it('keeps a terminal probe failure visible and retries only when explicitly requested', async () => {
@@ -100,7 +100,7 @@ describe('serialized hosted model service', () => {
   });
   it('returns a cached report while generation owns the Worker lane', async () => {
     const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
-    const generating = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    const generating = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
     await expect(service.probeProfiles({ signal: undefined })).resolves.toMatchObject({ recommended: 'cpu-wasm32' });
     expect(worker.probeProfiles).toHaveBeenCalledOnce(); expect(service.getState().status).toBe('working');
@@ -111,10 +111,10 @@ describe('serialized hosted model service', () => {
     worker.generate.mockImplementationOnce(() => new Promise<GenerationResult>(resolve => {
       finish = () => resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     }));
-    const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    const first = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
     service.setOptions({ options: { profile: 'cpu-wasm32' } });
-    const pendingInput = input(); const second = service.generate({ input: pendingInput, onChunk: () => {}, signal: undefined });
+    const pendingInput = input(); const second = service.generate({ input: pendingInput, onEvent: () => {}, signal: undefined });
     pendingInput.messages[0]!.content = 'mutated';
     service.setOptions({ options: { profile: 'cpu-wasm64' } });
     expect(worker.generate).toHaveBeenCalledOnce();
@@ -129,10 +129,10 @@ describe('serialized hosted model service', () => {
     worker.generate.mockImplementationOnce(() => new Promise<GenerationResult>(resolve => {
       finish = () => resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     }));
-    const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    const first = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
     const controller = new AbortController();
-    const second = service.generate({ input: input(), onChunk: () => {}, signal: controller.signal });
+    const second = service.generate({ input: input(), onEvent: () => {}, signal: controller.signal });
     controller.abort(); finish(); await first;
     await expect(second).rejects.toThrow('aborted');
     expect(worker.generate).toHaveBeenCalledOnce();
@@ -140,17 +140,17 @@ describe('serialized hosted model service', () => {
   });
   it('terminates failed runtime ownership and exposes only a safe error code', async () => {
     worker.generate.mockRejectedValueOnce(new Error('private prompt, private file and native details'));
-    await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('llama.cpp browser: runtime-error');
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('llama.cpp browser: runtime-error');
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });
     expect(worker.dispose).toHaveBeenCalledOnce();
-    expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private');
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private');
     await service.listModels({ signal: undefined });
     expect(factory).toHaveBeenCalledOnce();
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });
   });
   it('lists and deletes storage without waiting for an active inference request', async () => {
     const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockImplementationOnce(() => gate.promise);
-    const generating = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    const generating = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
     expect(await service.listModels({ signal: undefined })).toEqual([]);
     const plan = { id: 'hf.co/owner/repo:Model-Q4.gguf', files: [] };
@@ -166,7 +166,7 @@ describe('serialized hosted model service', () => {
     await expect(service.removeModel({ plan: { id: 'user/local-GGUF', files: [] }, signal: undefined })).resolves.toBe('deleted');
     expect(worker.dispose).not.toHaveBeenCalled();
     expect(service.getState()).toEqual({ status: 'idle' });
-    expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private observer');
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private observer');
     unsubscribe();
   });
 });
@@ -178,9 +178,9 @@ describe('resident Worker reuse at the service boundary', () => {
     const stop = service.subscribe({ listener: ({ state }) => {
       if (state.status === 'working') states.push(state.progress.phase);
     } });
-    await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('aborted');
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('aborted');
     expect(worker.dispose).not.toHaveBeenCalled(); expect(service.getState()).toEqual({ status: 'idle' });
-    await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(factory).toHaveBeenCalledOnce(); expect(states).toEqual(['prefill', 'prefill']); stop();
   });
   it('recreates a physically terminated Worker after cancellation timeout', async () => {
@@ -188,16 +188,16 @@ describe('resident Worker reuse at the service boundary', () => {
       worker.canReuse.mockReturnValue(false);
       throw new LlamaCppBrowserError({ code: 'aborted' });
     });
-    await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('aborted');
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('aborted');
     expect(worker.dispose).toHaveBeenCalledOnce();
     worker.canReuse.mockReturnValue(true);
-    await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(factory).toHaveBeenCalledTimes(2);
   });
   it('keeps weights after a prompt exceeds the allocated context', async () => {
     worker.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'context-full' }));
-    await expect(service.generate({ input: input(), onChunk: () => {}, signal: undefined })).rejects.toThrow('context-full');
-    await service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('context-full');
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.dispose).not.toHaveBeenCalled(); expect(factory).toHaveBeenCalledOnce();
   });
 });
@@ -209,16 +209,13 @@ describe('tool work holds the generation lane', () => {
       finish = resolve;
     });
     let turns = 0;
-    const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined,
-      onResult: async () => {
-        if (turns++ === 0) {
-          await blocked; return input();
-        }
-        return undefined;
-      },
-    });
+    const first = service.runGenerationOperation({ signal: undefined, operation: async ({ scope }) => {
+      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+      turns++; await blocked;
+      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    } });
     await vi.waitFor(() => expect(turns).toBe(1));
-    const second = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    const second = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).toHaveBeenCalledOnce();
     finish(); await first; await second;
     expect(worker.generate).toHaveBeenCalledTimes(3);
@@ -229,15 +226,15 @@ describe('tool work holds the generation lane', () => {
       releaseTool = resolve;
     });
     let toolSignal: AbortSignal | undefined;
-    const first = service.generate({ input: input(), onChunk: () => {}, signal: undefined,
-      onResult: async ({ signal }) => {
-        toolSignal = signal; await blocked; return input();
-      },
-    });
+    const first = service.runGenerationOperation({ signal: undefined, operation: async ({ scope }) => {
+      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+      toolSignal = scope.signal; await blocked;
+      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    } });
     const rejected = expect(first).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(toolSignal).toBeDefined());
     service.cancel(); expect(toolSignal?.aborted).toBe(true);
-    const second = service.generate({ input: input(), onChunk: () => {}, signal: undefined });
+    const second = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).toHaveBeenCalledOnce();
     releaseTool(); await rejected; await second;
     expect(worker.generate).toHaveBeenCalledTimes(2);

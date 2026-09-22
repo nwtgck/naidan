@@ -4,7 +4,7 @@ import BlockMarkdownRenderer from './block-markdown/BlockMarkdownRenderer.vue';
 import GeneratingIndicator from './GeneratingIndicator.vue';
 import { markRaw } from 'vue';
 import 'katex/dist/katex.min.css';
-import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '@/01-models/types';
+import type { MessageNode, Attachment, EndpointType, LmParameters, Reasoning } from '@/01-models/types';
 import type { FlowMetadata, MessageMode } from '@/composables/useChatDisplayFlow';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { UserIcon, BirdIcon, ChevronLeftIcon, ChevronRightIcon, AlertTriangleIcon, DownloadIcon, RefreshCwIcon, Settings2Icon, XCircleIcon, SquareIcon, FileEditIcon, MoreHorizontalIcon, BrainIcon } from 'lucide-vue-next';
@@ -15,6 +15,9 @@ import SpeechControl from '@/features/speech/components/SpeechControl.vue';
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
+import { getMessageText } from '@/01-models/message-text';
+import { getAssistantDisplayParts, getDisplayedMessageText } from '@/logic/message-display';
+import { useChatMessageError } from '@/composables/chat/useChatMessageError';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from '@/features/speech/components/SpeechLanguageSelector.vue';
@@ -27,7 +30,7 @@ const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: (
 const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ReasoningSettings.vue') });
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./MessageDiffModal.vue') });
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/advanced-text-editor-v3/components/AdvancedTextEditorV3.vue') });
-import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
+import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY, type BinaryObjectPreviewItem } from '@/composables/useImagePreview';
 import { useLayout } from '@/composables/useLayout';
 import { lazyStrings } from '@/strings';
 import { useSettings } from '@/composables/useSettings';
@@ -50,6 +53,7 @@ const props = withDefaults(defineProps<{
   canGenerateImage?: boolean,
   isProcessing?: boolean,
   isGenerating?: boolean,
+  isThinkingActive?: boolean,
   availableImageModels?: string[],
   endpointType?: EndpointType,
   flow?: FlowMetadata,
@@ -62,6 +66,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
   isGenerating: false,
+  isThinkingActive: undefined,
   mode: 'content',
   isFirstInNode: true,
   isLastInNode: true,
@@ -82,7 +87,19 @@ const showLlamaCppStatus = computed(() => props.isGenerating && props.showGenera
 const isEditing = ref(false);
 const isAdvancedEditorOpen = ref(false);
 const showExtensions = ref(false);
-const editContent = ref((props.message.content || '').trimEnd());
+const rawContent = computed(() => getMessageText({ message: props.message }));
+const attachments = computed<Attachment[]>(() => props.message.parts.flatMap(part => {
+  switch (part.type) {
+  case 'attachment': return [part.attachment];
+  case 'text':
+  case 'reasoning':
+  case 'tool_call':
+  case 'tool_result': return [];
+  default: { const _ex: never = part; throw new Error(`Unhandled message part: ${_ex}`); }
+  }
+}));
+const messageError = useChatMessageError({ chatId: computed(() => props.chatId), message: computed(() => props.message) });
+const editContent = ref(rawContent.value);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 const showDiffModal = ref(false);
@@ -90,7 +107,7 @@ const showDiffModal = ref(false);
 const transformersStatus = ref(transformersJsService.getState().status);
 let transformersUnsubscribe: (() => void) | null = null;
 
-const isImageRequestMsg = computed(() => isImageRequest({ content: props.message.content || '' }));
+const isImageRequestMsg = computed(() => isImageRequest({ content: rawContent.value }));
 const showImageSettings = ref(false);
 const editImageMode = ref(false);
 const editImageParams = ref({
@@ -137,42 +154,53 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
   setPreferredEditorMode({ mode });
 }
 
+let previewRequest = 0;
+watch([() => props.chatId, () => props.message], () => {
+  previewRequest += 1;
+});
+onUnmounted(() => {
+  previewRequest += 1;
+});
 async function handlePreviewImage({ id }: { id: BinaryObjectId }) {
-  // To support next/prev navigation, we'd ideally pass all images in this chat or message.
-  // For now, let's at least try to fetch metadata for the clicked one.
-  const obj = await storageService.getBinaryObject({ binaryObjectId: id });
-  if (obj) {
-    // If it's a message attachment, we can pass all images in this message for navigation
-    const allImages: BinaryObject[] = (props.message.attachments || [])
-      .filter(a => a.status !== 'missing' && a.mimeType.startsWith('image/'))
-      .map(a => ({ id: a.binaryObjectId, mimeType: a.mimeType, size: a.size, createdAt: a.uploadedAt, name: a.originalName }));
-
-    // Also include generated images if they exist in this message's content
-    const placeholders = messageRef.value?.querySelectorAll('.naidan-generated-image');
-    if (placeholders) {
-      for (const el of placeholders) {
-        const hid = (el as HTMLElement).dataset.id;
-        if (hid && !allImages.find(i => idToRaw({ id: i.id }) === hid)) {
-          // Fetch meta if missing
-          const meta = await storageService.getBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: hid }) });
-          if (meta) allImages.push(meta);
+  const request = ++previewRequest;
+  // Capture local attachment bytes before waiting for generated-image metadata.
+  const allImages: BinaryObjectPreviewItem[] = attachments.value
+    .filter((attachment): attachment is Exclude<Attachment, { status: 'missing' }> => attachment.status !== 'missing' && attachment.mimeType.startsWith('image/'))
+    .map(attachment => ({
+      id: attachment.binaryObjectId,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      createdAt: attachment.uploadedAt,
+      name: attachment.originalName,
+      memoryBlob: (() => {
+        switch (attachment.status) {
+        case 'memory': return attachment.blob;
+        case 'persisted': return undefined;
+        default: {
+          const unhandled: never = attachment;
+          throw new Error(`Unhandled attachment: ${unhandled}`);
         }
-      }
-    }
-
-    openPreview({
-      objects: allImages.length > 0 ? allImages : [obj],
-      initialId: id,
-    });
+        }
+      })(),
+    }));
+  const ids = new Set<BinaryObjectId>([id]);
+  for (const element of messageRef.value?.querySelectorAll<HTMLElement>('.naidan-generated-image') ?? []) {
+    if (element.dataset.id) ids.add(toBinaryObjectId({ raw: element.dataset.id }));
   }
+  for (const binaryObjectId of ids) {
+    if (allImages.some(image => image.id === binaryObjectId)) continue;
+    const object = await storageService.getBinaryObject({ binaryObjectId });
+    if (request !== previewRequest) return;
+    if (object?.mimeType.startsWith('image/')) allImages.push({ ...object, memoryBlob: undefined });
+  }
+  if (request !== previewRequest || !allImages.some(image => image.id === id)) return;
+  openPreview({ objects: allImages, initialId: id });
 }
 
 provide(MESSAGE_CONTEXTUAL_PREVIEW_KEY, handlePreviewImage);
 
 async function loadAttachments() {
-  if (!props.message.attachments) return;
-
-  for (const att of props.message.attachments) {
+  for (const att of attachments.value) {
     switch (att.status) {
     case 'memory':
       attachmentUrls.value.set(att.id, URL.createObjectURL(att.blob));
@@ -220,7 +248,7 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 // Focus and move cursor to end when editing starts
 watch(isEditing, (editing) => {
   if (editing) {
-    editContent.value = stripNaidanSentinels({ content: props.message.content || '' }).trimEnd();
+    editContent.value = stripNaidanSentinels({ content: rawContent.value });
 
     // Initialize reasoning effort from message if available, otherwise from current chat
     if (props.message.role === 'user' && props.message.lmParameters?.reasoning) {
@@ -232,7 +260,7 @@ watch(isEditing, (editing) => {
     // Initialize image generation settings if it's an image request
     if (isImageRequestMsg.value) {
       editImageMode.value = true;
-      const parsed = parseImageRequest({ content: props.message.content || '' });
+      const parsed = parseImageRequest({ content: rawContent.value });
       if (parsed) {
         editImageParams.value = {
           width: parsed.width ?? 512,
@@ -277,7 +305,7 @@ const versionInfo = computed(() => {
 
 function handleSaveEdit() {
   if (editContent.value.trim()) {
-    let finalContent = editContent.value.trimEnd();
+    let finalContent = editContent.value;
     if (editImageMode.value) {
       const marker = createImageRequestMarker({
         width: editImageParams.value.width,
@@ -301,7 +329,7 @@ function handleSaveEdit() {
 }
 
 function handleCancelEdit() {
-  editContent.value = stripNaidanSentinels({ content: props.message.content || '' }).trimEnd();
+  editContent.value = stripNaidanSentinels({ content: rawContent.value });
   isEditing.value = false;
 }
 
@@ -334,11 +362,7 @@ const displayContent = computed(() => {
   switch (mode) {
   case 'content': {
     if (props.partContent !== undefined) return props.partContent;
-    let content = props.message.content || '';
-    content = stripNaidanSentinels({ content });
-    const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
-    if (cleanContent.length > 0) return cleanContent;
-    return '';
+    return getDisplayedMessageText({ message: props.message });
   }
   case 'thinking':
   case 'waiting':
@@ -351,7 +375,7 @@ const displayContent = computed(() => {
   }
 });
 
-const isImageResponse = computed(() => isImageGenerationProcessed({ content: props.message.content || '' }));
+const isImageResponse = computed(() => isImageGenerationProcessed({ content: rawContent.value }));
 
 const speechText = computed(() => {
   const mode = props.mode;
@@ -468,7 +492,9 @@ const reasoningEffortTooltip = computed(() => {
   }
 });
 
-const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content || ''));
+const hasThinking = computed(() => props.message.role === 'assistant' && getAssistantDisplayParts({ message: props.message }).some(part => part.type === 'reasoning'));
+
+const thinkingIsActive = computed(() => props.isThinkingActive ?? (props.isGenerating && !messageError.value && props.message.role === 'assistant' && props.message.interruption === undefined && getAssistantDisplayParts({ message: props.message }).some(part => part.type === 'reasoning' && part.completeness === 'partial')));
 
 function formatSize({ bytes }: { bytes: number | undefined }): string {
   if (bytes === undefined) return '0 B';
@@ -529,7 +555,7 @@ defineExpose({
             <span>{{ reasoningEffortLabel }}</span>
           </div>
           <div tw-class="flex items-center gap-1 group/msg-header-tools">
-            <SpeechControl v-if="speechText !== undefined && !isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
+            <SpeechControl v-if="speechText !== undefined && !isImageResponse && !isImageGenerationPending({ content: rawContent })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
 
             <!-- Header Extensions Slot (Seamless transition) -->
             <div v-if="showExtensions && speechText !== undefined" class="animate-in slide-in-from-left-1 fade-in" tw-class="flex items-center gap-1 mx-1 duration-200">
@@ -549,7 +575,7 @@ defineExpose({
 
             <!-- Generic More Button (Absolute Right Anchor for Header) -->
             <button
-              v-if="!isImageResponse && !isImageGenerationPending({ content: message.content || '' })"
+              v-if="!isImageResponse && !isImageGenerationPending({ content: rawContent })"
               @click="showExtensions = !showExtensions"
               :tw-class="['p-1 rounded-lg transition-colors', showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300']"
               :title="lazyStrings.MessageItem__more_message_tools()"
@@ -563,16 +589,17 @@ defineExpose({
 
     <div :tw-class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
       <!-- Attachments (Only shown in the first part of a node if any) -->
-      <div v-if="isFirstInNode && message.attachments && message.attachments.length > 0" tw-class="flex flex-wrap gap-2 mb-3">
-        <div v-for="(att, idx) in message.attachments" :key="idToRaw({ id: att.id })" tw-class="relative group/att">
+      <div v-if="isFirstInNode && attachments && attachments.length > 0" tw-class="flex flex-wrap gap-2 mb-3">
+        <div v-for="(att, idx) in attachments" :key="idToRaw({ id: att.id })" tw-class="relative group/att">
           <template v-if="att.status !== 'missing' && attachmentUrls.get(att.id)">
             <img
               :src="attachmentUrls.get(att.id)"
+              data-testid="message-attachment-image"
               @click="handlePreviewImage({ id: att.binaryObjectId })"
               tw-class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
-            <div v-if="message.attachments.length > 1" tw-class="absolute bottom-2 left-2 z-10">
-              <ImageIndexBadge :index="idx + 1" :total="message.attachments.length" />
+            <div v-if="attachments.length > 1" tw-class="absolute bottom-2 left-2 z-10">
+              <ImageIndexBadge :index="idx + 1" :total="attachments.length" />
             </div>
             <a
               :href="attachmentUrls.get(att.id)"
@@ -597,6 +624,7 @@ defineExpose({
         v-if="mode === 'thinking'"
         :message="message"
         :part-content="partContent"
+        :is-active="thinkingIsActive"
         :no-margin="isNested"
         :trailing-inline="showGeneratingIndicator ? markRaw(GeneratingIndicator) : undefined"
       />
@@ -690,7 +718,7 @@ defineExpose({
         <LlamaCppBrowserLoadingIndicator
           v-if="showLlamaCppStatus"
           scope="inference"
-          :waiting="mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending({ content: message.content })"
+          :waiting="mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !messageError && !isImageGenerationPending({ content: rawContent })"
           :is-nested="isNested"
         />
         <!-- Content Display (Always shown if present) -->
@@ -704,26 +732,26 @@ defineExpose({
         <!-- AI Image Synthesis Loader (Componentized) -->
         <!-- Show the image loader for both initial waiting and incremental content updates. -->
         <ImageConjuringLoader
-          v-if="(mode === 'content' || mode === 'waiting') && isImageGenerationPending({ content: message.content || '' }) && message.role === 'assistant' && !message.error"
-          v-bind="getImageGenerationProgress({ content: message.content || '' })"
+          v-if="(mode === 'content' || mode === 'waiting') && isImageGenerationPending({ content: rawContent }) && message.role === 'assistant' && !messageError"
+          v-bind="getImageGenerationProgress({ content: rawContent })"
           :current-step="isGenerating ? imageProgressCurrentStep : undefined"
           :total-steps="isGenerating ? imageProgressTotalSteps : undefined"
         />
 
         <!-- Loading State (Initial Wait for regular text) -->
         <AssistantWaitingIndicator
-          v-else-if="!showLlamaCppStatus && mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending({ content: message.content })"
+          v-else-if="!showLlamaCppStatus && mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !messageError && !isImageGenerationPending({ content: rawContent })"
           :is-nested="isNested"
           data-testid="loading-indicator"
         />
 
         <!-- Error State (Appended below content) -->
-        <div v-if="isLastInNode && message.error" tw-class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
+        <div v-if="isLastInNode && messageError" tw-class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
           <div tw-class="flex items-center gap-2 font-bold">
             <AlertTriangleIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.MessageItem__generation_failed() }}</span>
           </div>
-          <div tw-class="opacity-90">{{ message.error }}</div>
+          <div tw-class="opacity-90">{{ messageError }}</div>
           <button
             @click="emit('regenerate', message.id)"
             tw-class="mt-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-colors flex items-center gap-2"

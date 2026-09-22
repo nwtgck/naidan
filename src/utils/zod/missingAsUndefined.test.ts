@@ -53,6 +53,36 @@ describe('missingAsUndefined', () => {
     }>();
   });
 
+  it('infers an undefined-only field as required undefined rather than optional never', () => {
+    const schema = resolveMissingAsUndefined(z.object({
+      modelId: missingAsUndefined(z.undefined()),
+    }));
+
+    expectTypeOf<z.input<typeof schema>>().toEqualTypeOf<{ modelId?: undefined }>();
+    expectTypeOf<z.output<typeof schema>>().toEqualTypeOf<{ modelId: undefined }>();
+    const explicit: z.output<typeof schema> = { modelId: undefined };
+    expect(schema.parse({})).toEqual(explicit);
+  });
+
+  it('retains explicit keys when mutually recursive schemas infer their own contents', () => {
+    const branch = z.object({
+      get items(): z.ZodArray<typeof node> {
+        return z.array(node);
+      },
+    });
+    const node = resolveMissingAsUndefined(z.object({
+      modelId: missingAsUndefined(z.undefined()),
+      text: missingAsUndefined(z.string()),
+      children: branch,
+    }));
+
+    const parsed = node.parse({ children: { items: [{ children: { items: [] } }] } });
+    expect(Object.hasOwn(parsed, 'modelId')).toBe(true);
+    expect(Object.hasOwn(parsed.children.items[0]!, 'modelId')).toBe(true);
+    expectTypeOf<z.output<typeof node>['modelId']>().toEqualTypeOf<undefined>();
+    expectTypeOf<z.output<typeof node>['children']['items'][number]['text']>().toEqualTypeOf<string | undefined>();
+  });
+
   it('resolves nested objects only when the nested schema is resolved explicitly', () => {
     const nestedSchema = resolveMissingAsUndefined(z.object({
       value: missingAsUndefined(z.string()),

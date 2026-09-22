@@ -1,8 +1,11 @@
+import type { LmProvider } from '@/01-models/lm';
+import { getMessageText } from '@/01-models/message-text';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { storageService } from '@/00-storage/service';
-import type { Chat, SidebarItem, Hierarchy, Settings } from '@/01-models/types';
+import type { Chat, SidebarItem, Hierarchy, Settings, AssistantMessageNode } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import type { ChatId } from '@/01-models/ids';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
@@ -116,13 +119,13 @@ vi.mock('./useToast', () => ({
   }),
 }));
 
-const mockLmChat = vi.fn();
+const mockLmChat = vi.fn<LmProvider['chat']>();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
-      chat: (...args: any[]) => mockLmChat(...args),
+      chat: mockLmChat,
       listModels: (...args: any[]) => mockListModels(...args),
     };
   },
@@ -131,7 +134,7 @@ vi.mock('../features/lm/openai', () => ({
 vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
-      chat: (...args: any[]) => mockLmChat(...args),
+      chat: mockLmChat,
       listModels: (...args: any[]) => mockListModels(...args),
     };
   },
@@ -162,6 +165,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLmChat.mockReset().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => ({ type: 'finished', next: 'user' }),
+    }));
     __testOnlySetCurrentChat({ chat: null });
     rootItems.value = [];
     activeGenerations.clear();
@@ -172,7 +179,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockSettings.value.titleGeneration = 'disabled';
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await vi.waitUntil(() => activeGenerations.size === 0);
     expect(errorCount.value).toBe(0);
   });
 
@@ -187,12 +195,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       resolveChatA = resolve;
     });
 
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'A-Start' });
-      await chatAPromise;
-      onChunk({ chunk: 'A-End' });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'A-Start' });
+        await chatAPromise;
+        await writer.text({ type: 'text', text: 'A-End' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const sendPromiseA = sendMessage({ content: 'Start A' });
     await new Promise(r => setTimeout(r, 50));
@@ -201,11 +212,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatBId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatB = currentChat.value!;
 
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      await new Promise(r => setTimeout(r, 100));
-      onChunk({ chunk: 'B-Response' });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await new Promise(r => setTimeout(r, 100));
+        await writer.text({ type: 'text', text: 'B-Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const sendPromiseB = sendMessage({ content: 'Start B' });
     await new Promise(r => setTimeout(r, 50));
@@ -215,15 +229,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Wait for B to finish background generation
     await vi.waitUntil(() => !activeGenerations.has(chatBId));
     const lastMsgB = chatB.root.items[0]?.replies.items[0];
-    expect(lastMsgB?.content).toBe('B-Response');
+    expect(getMessageText({ message: lastMsgB! })).toBe('B-Response');
 
-    expect(chatA.root.items[0]?.replies.items[0]?.content).toBe('A-Start');
+    expect(getMessageText({ message: chatA.root.items[0]!.replies.items[0]! })).toBe('A-Start');
 
     resolveChatA!();
     await sendPromiseA;
     // Wait for A to finish background generation
     await vi.waitUntil(() => !activeGenerations.has(chatAId));
-    expect(chatA.root.items[0]?.replies.items[0]?.content).toBe('A-StartA-End');
+    expect(getMessageText({ message: chatA.root.items[0]!.replies.items[0]! })).toBe('A-StartA-End');
   });
 
   it('should not jump out of a group if moved while generating in background', async () => {
@@ -236,12 +250,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'Thinking...' });
-      await p;
-      onChunk({ chunk: 'Done' });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Thinking...' });
+        await p;
+        await writer.text({ type: 'text', text: 'Done' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     // 2. Start generation
     const sendPromise = sendMessage({ content: 'Stay in group' });
@@ -256,6 +273,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 4. Finish background generation
     resolveA!();
     await sendPromise;
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
 
     // 5. Verify it's STILL in the group
     const finalChat = await storageService.loadChat({ id: chatAId });
@@ -272,11 +290,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'Thinking...' });
-      await p;
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Thinking...' });
+        await p;
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const sendPromise = sendMessage({ content: 'Rename me' });
     await waitForRegistry(chatAId);
@@ -286,6 +307,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     resolveA!();
     await sendPromise;
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
 
     // Verify title was not reverted to 'Original Title'
     const finalChat = await storageService.loadChat({ id: chatAId });
@@ -301,11 +323,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'Thinking...' });
-      await p;
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Thinking...' });
+        await p;
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const sendPromise = sendMessage({ content: 'Delete me' });
     await waitForRegistry(chatAId);
@@ -316,6 +341,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     resolveA!();
     await sendPromise;
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
 
     // Verify chat was not recreated in storage
     expect(mockChatStorage.has(idToRaw({ id: chatAId }))).toBe(false);
@@ -329,11 +355,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatAId = currentChat.value!.id;
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'A...' });
-      await pA;
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'A...' });
+        await pA;
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     const sendA = sendMessage({ content: 'A' });
     await waitForRegistry(chatAId);
 
@@ -341,11 +370,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatBId = currentChat.value!.id;
     let resolveB: () => void;
     const pB = new Promise<void>(r => resolveB = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'B...' });
-      await pB;
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'B...' });
+        await pB;
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     const sendB = sendMessage({ content: 'B' });
     await waitForRegistry(chatBId);
 
@@ -357,6 +389,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     resolveA!();
     resolveB!();
     await Promise.all([sendA, sendB]);
+    await vi.waitUntil(() => activeGenerations.size === 0);
 
     // 4. Verify storage remains empty
     expect(mockChatStorage.size).toBe(0);
@@ -373,11 +406,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'A...' });
-      await pA;
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'A...' });
+        await pA;
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     const sendA = sendMessage({ content: 'A' });
     await waitForRegistry(chatAId);
 
@@ -391,6 +427,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 4. Finish A
     resolveA!();
     await sendA;
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
 
     // Verify title preserved
     const finalChat = await storageService.loadChat({ id: chatAId });
@@ -411,13 +448,21 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const titleP = new Promise<void>(r => resolveTitle = r);
 
     mockLmChat
-      .mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-        params.onChunk({ chunk: 'Response' });
-      })
-      .mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-        await titleP;
-        params.onChunk({ chunk: 'Auto Title' });
-      });
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Response' });
+          return { type: 'finished', next: 'user' };
+        },
+      }))
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await titleP;
+          await writer.text({ type: 'text', text: 'Auto Title' });
+          return { type: 'finished', next: 'user' };
+        },
+      }));
 
     // 2. Start generation (response finishes, title gen starts and waits)
     const sendPromise = sendMessage({ content: 'Topic' });
@@ -449,11 +494,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'Thinking...' });
-      await p;
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Thinking...' });
+        await p;
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const sendPromise = sendMessage({ content: 'Moving target' });
     await waitForRegistry(chatAId);
@@ -473,6 +521,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 4. Finish generation
     resolveA!();
     await sendPromise;
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
 
     // 5. Verify it stayed in the LATEST group (C)
     const finalChat = await storageService.loadChat({ id: chatAId });
@@ -487,9 +536,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatAId = chatA!.id;
     const chatA_initial = await storageService.loadChat({ id: chatAId }) as Chat;
 
-    mockLmChat.mockImplementationOnce(async () => {
-      throw new Error('Background Explosion');
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => {
+        throw new Error('Background Explosion');
+      },
+    }));
 
     // 2. Switch to Chat B (Active)
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
@@ -507,7 +559,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(currentChat.value?.id).toBe(chatBId); // Still on Chat B
     const chatA_final = await storageService.loadChat({ id: chatAId });
     const nodesA = chatA_final!.root.items;
-    expect(nodesA[nodesA.length - 1]?.replies.items[0]?.error).toBe('Background Explosion');
+    expect((nodesA[nodesA.length - 1]?.replies.items[0] as AssistantMessageNode).interruption).toEqual({
+      type: 'error', message: 'Background Explosion',
+    });
   });
 
   it('should isolate AbortController between concurrent generations', async () => {
@@ -519,11 +573,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLmChat.mockImplementationOnce(async (params: { signal: AbortSignal }) => {
-      const { signal } = params;
-      await pA;
-      if (signal?.aborted) throw new Error('Aborted');
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ signal }) => {
+        await pA;
+        if (signal?.aborted) throw new Error('Aborted');
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     const sendA = sendMessage({ content: 'A' });
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatAId);
@@ -533,17 +590,20 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatB = currentChat.value!;
     const chatBId = chatB.id;
 
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
-      const { onChunk, signal } = params;
-      onChunk({ chunk: 'B-Response' });
-      // Wait for signal abort
-      await new Promise<void>((_, reject) => {
-        const abortErr = new Error('Aborted');
-        abortErr.name = 'AbortError';
-        if (signal?.aborted) return reject(abortErr);
-        signal?.addEventListener('abort', () => reject(abortErr));
-      });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
+        await writer.text({ type: 'text', text: 'B-Response' });
+        // Wait for signal abort
+        await new Promise<void>((_, reject) => {
+          const abortErr = new Error('Aborted');
+          abortErr.name = 'AbortError';
+          if (signal?.aborted) return reject(abortErr);
+          signal?.addEventListener('abort', () => reject(abortErr));
+        });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const sendB = sendMessage({ content: 'B' });
     await new Promise(r => setTimeout(r, 50));
@@ -557,7 +617,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await vi.waitUntil(() => !activeGenerations.has(chatBId));
 
     const lastMsgB = chatB.root.items[0]?.replies.items[0];
-    expect(lastMsgB?.content).toContain('[Generation Aborted]');
+    expect(getMessageText({ message: lastMsgB! })).toBe('B-Response');
+    expect((lastMsgB as AssistantMessageNode).interruption).toEqual({ type: 'cancelled' });
+    expect(lastMsgB?.parts).toEqual([expect.objectContaining({ type: 'text', completeness: 'partial' })]);
 
     // 4. Check Chat A (Still active)
     expect(activeGenerations.has(chatAId)).toBe(true);
@@ -566,7 +628,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Wait for A to finish background generation
     await vi.waitUntil(() => !activeGenerations.has(chatAId));
     expect(activeGenerations.has(chatAId)).toBe(false);
-    expect(chatA.root.items[0]?.replies.items[0]?.error).toBeUndefined();
+    expect((chatA.root.items[0]?.replies.items[0] as AssistantMessageNode).interruption).toBeUndefined();
   });
 
   it('should prevent multiple simultaneous sendMessage calls for the same chat', async () => {
@@ -590,7 +652,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Check chat messages - should only have ONE user message
     expect(chat.root.items.length).toBe(1);
-    expect(chat.root.items[0]?.content).toBe('First');
+    expect(getMessageText({ message: chat.root.items[0]! })).toBe('First');
   });
 
   it('should allow creating and using a new chat while another is streaming', async () => {
@@ -606,12 +668,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'A-Start' });
-      await pA;
-      onChunk({ chunk: 'A-End' });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'A-Start' });
+        await pA;
+        await writer.text({ type: 'text', text: 'A-End' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const sendA = sendMessage({ content: 'Message A' });
     await waitForRegistry(chatAId);
@@ -625,11 +690,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 3. Start Chat B (Concurrent Generation)
     let resolveBStarted: () => void;
     const pBStarted = new Promise<void>(r => resolveBStarted = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      const { onChunk } = params;
-      onChunk({ chunk: 'B-Response' });
-      resolveBStarted();
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'B-Response' });
+        resolveBStarted();
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     // Pass chatB explicitly to sendMessage
     const sendB = sendMessage({ content: 'Message B', parentId: null, attachments: [], chatTarget: chatB as any });
@@ -647,13 +715,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await flushPromises();
     expect(activeGenerations.has(chatBId)).toBe(false);
     expect(activeGenerations.size).toBe(1);
-    expect(chatB.root.items[0]?.replies.items[0]?.content).toBe('B-Response');
+    expect(getMessageText({ message: chatB.root.items[0]!.replies.items[0]! })).toBe('B-Response');
 
     // 6. Let A finish
     resolveA!();
     await sendA;
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
     await flushPromises();
     expect(activeGenerations.size).toBe(0);
-    expect(chatA.root.items[0]?.replies.items[0]?.content).toBe('A-StartA-End');
+    expect(getMessageText({ message: chatA.root.items[0]!.replies.items[0]! })).toBe('A-StartA-End');
   }, 15000);
 });

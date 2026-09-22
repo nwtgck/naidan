@@ -16,6 +16,25 @@ describe('native call adaptation', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('allows optional allocations to decline without hiding native traps', () => {
+    let allocate = (): bigint => 0n;
+    const module = new Proxy(core.module, { get(target, property) {
+      return property === '_lcb_malloc' ? allocate : Reflect.get(target, property, target);
+    } });
+    const optionalCore = attachCore({ module, callMode: 'direct' });
+    expect(optionalCore.tryAlloc({ bytes: 8 })).toBeUndefined();
+    expect(() => optionalCore.alloc({ bytes: 8 })).toThrow('Native allocation failed');
+    const trap = new WebAssembly.RuntimeError('fixture allocation trap');
+    allocate = () => {
+      throw trap;
+    };
+    expect(() => optionalCore.tryAlloc({ bytes: 8 })).toThrow(trap);
+    expect(() => optionalCore.tryAlloc({ bytes: 0 })).toThrow('Allocation must be nonempty');
+    const pointer = core.tryAlloc({ bytes: 8 });
+    expect(pointer).toBeDefined();
+    if (pointer !== undefined) core.free({ pointer });
+  });
+
   it('uses direct Promise calls and bigint pointers for the wasm32 JSPI profile', async () => {
     const original = artifacts.loadCoreModule;
     // Substitute the real CPU32 module only at loading so this test also runs

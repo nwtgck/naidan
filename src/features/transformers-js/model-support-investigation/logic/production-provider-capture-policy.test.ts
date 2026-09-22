@@ -21,7 +21,7 @@ const eventCallbacks = {
   'tool-exit': ({ trace }) => trace.callbacks.onToolEvent({ id: toolCallId, event: { type: 'exit', exitCode: -Number.MAX_SAFE_INTEGER } }),
   'tool-success': ({ trace }) => trace.callbacks.onToolResult({ id: toolCallId, result: { status: 'success', content: '' } }),
   'tool-error': ({ trace }) => trace.callbacks.onToolResult({ id: toolCallId, result: { status: 'error', code: 'invalid_arguments', message: 'Not retained' } }),
-} satisfies Record<ProductionProviderTraceEvent['kind'], ({ trace }: { trace: Trace }) => void>;
+} satisfies Record<Exclude<ProductionProviderTraceEvent['kind'], 'assistant_message' | 'part_text' | 'part_call' | 'generation_finished' | 'generation_interrupted' | 'generation_error'>, ({ trace }: { trace: Trace }) => void>;
 
 // Capacity stress only: these callbacks are not recorded model output or proof
 // of a naturally executed tool loop. No Provider, Worker, or model is imported.
@@ -67,7 +67,7 @@ describe('fixed Provider capture policy', () => {
     expect(policy).toEqual({
       format: 'production-provider-capture-policy-v1', plan: 'full-v2',
       traceLimits: { maximumEvents: 1024, maximumCharacters: 65536 }, maximumFieldCharacters: 16384,
-      reservation: { unit: 'json-characters', scenarioCount: 13, maximumCharacters: 33554432, upperBoundCharacters: 24313856 },
+      reservation: { unit: 'json-characters', scenarioCount: 13, maximumCharacters: 33554432, upperBoundCharacters: 24838144 },
     });
     expect(PRODUCTION_PROVIDER_TRACE_LIMITS).toEqual({ maximumEvents: 4096, maximumCharacters: 262144, maximumFieldCharacters: 16384 });
     const capture = captureFixture({ fill: () => undefined });
@@ -81,7 +81,7 @@ describe('fixed Provider capture policy', () => {
 
   it('accounts for all encoded v2 rows even when scope leaves some requests unstarted', () => {
     expect(createProductionProviderCapturePolicy({ plan: 'generation-v2' }).reservation).toEqual({
-      unit: 'json-characters', scenarioCount: 13, maximumCharacters: 33554432, upperBoundCharacters: 24313856,
+      unit: 'json-characters', scenarioCount: 13, maximumCharacters: 33554432, upperBoundCharacters: 24838144,
     });
     expect(createProductionProviderCapturePolicy({ plan: 'first-only' }).reservation).toEqual({
       unit: 'json-characters', scenarioCount: 1, maximumCharacters: 33554432, upperBoundCharacters: 1900544,
@@ -134,7 +134,7 @@ describe('fixed Provider capture policy', () => {
     expect(policy.reservation.upperBoundCharacters).toBeLessThan(policy.reservation.maximumCharacters);
     expect(json).toContain('\\u0000');
     const restored = readProductionProviderCaptureEvidence({ json, runId, modelId });
-    expect(restored.requests[1]?.input?.messages[1]?.content).toBe('\u0000'.repeat(65536));
+    expect(restored.requests[1]?.input?.messages[1]).toMatchObject({ content: '\u0000'.repeat(65536) });
     expect(restored.requests.every(request => request.trace.events.length === 1024 && request.trace.retainedCharacters === 65536)).toBe(true);
     expect(restored.requests.every(request => request.trace.settled?.events.length === 1024 && request.trace.limits.maximumEvents === 1024)).toBe(true);
   });
@@ -151,4 +151,22 @@ describe('fixed Provider capture policy', () => {
     const deepestOccurrence = longestSequence.length + 14 * longestSequence.split('\n').length + 2;
     expect(deepestOccurrence).toBeLessThanOrEqual(TEST_ONLY.eventMetadataCharacters);
   });
+});
+
+it('also bounds the new parts observation metadata at the deepest encoded occurrence', () => {
+  const base = { sequence: 4097, phase: 'before-settlement' as const };
+  const events = [
+    { ...base, kind: 'assistant_message', messageId: '' },
+    { ...base, kind: 'part_text', messageId: '', partId: '', index: Number.MAX_SAFE_INTEGER, partType: 'reasoning', text: '', completeness: 'complete' },
+    { ...base, kind: 'part_call', messageId: '', partId: '', index: Number.MAX_SAFE_INTEGER, toolCallId: '', toolName: '', modelVisibleArguments: '' },
+    { ...base, kind: 'generation_finished', next: 'tool_results' },
+    { ...base, kind: 'generation_interrupted', reason: 'stop_sequence' },
+    { ...base, kind: 'generation_error', errorName: 'ProductionWorkerLifecycleError' },
+  ] satisfies ProductionProviderTraceEvent[];
+  for (const event of events) {
+    const encoded = JSON.stringify(event, undefined, 2);
+    // Text payloads are budgeted separately at six JSON characters per code unit.
+    // This bound covers the metadata even when a new kind has more fields.
+    expect(encoded.length + 14 * encoded.split('\n').length + 2).toBeLessThanOrEqual(TEST_ONLY.eventMetadataCharacters);
+  }
 });

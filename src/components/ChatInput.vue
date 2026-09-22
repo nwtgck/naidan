@@ -993,6 +993,8 @@ watch(
   [
     () => chat.value,
     appInteraction,
+    // Route-driven prompts are released only after the requested chat has loaded.
+    () => props.autoSendPrompt,
   ],
   async ([chatValue, interaction]) => {
     if (interaction !== 'enabled' || !chatValue) return;

@@ -1,8 +1,10 @@
+import { buildGptOssPromptMessages } from '@/features/transformers-js/models/gpt-oss-input';
+import { toToolCallId } from '@/01-models/ids';
 import parsedMetadata from './model-parsed-metadata.evidence.json';
 import { assertParsedMetadataModelRequest, cleanupParsedMetadataRequests, parsedMetadataFixtureSchema } from '@/features/transformers-js/replay-models/support/model-parsed-metadata-requests';
 // @vitest-environment node
-import { afterEach, describe, it } from 'vitest';
-import { assertRawModelSelection, assertRawTokenizer, installRawReplay } from '@/features/transformers-js/replay-models/support/model-runtime-input-harness';
+import { afterEach, describe, expect, it } from 'vitest';
+import { archiveFor, start, assertRawModelSelection, assertRawTokenizer, installRawReplay } from '@/features/transformers-js/replay-models/support/model-runtime-input-harness';
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
@@ -43,5 +45,42 @@ describe('parsed metadata candidate requests', () => {
       expected: { modelId: 'onnx-community/gpt-oss-20b-ONNX', chunks: { q4f16: { model: 7 }, q4: { model: 0 } }, registryExtra: [], missing: ['q4'] },
       dtype, expectedAutoClass: 'AutoModelForCausalLM',
     });
+  });
+});
+
+// Native input controls use synthetic content and the unmodified model template.
+describe('GPT-OSS structured reasoning in native model inputs', () => {
+  it('maps complete reasoning to thinking for tools while ordinary later input uses the native omission rule', async () => {
+    const archive = await archiveFor({ modelId });
+    const { harness } = await start({ archive, bodyPaths: [] });
+    const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(modelId, {
+      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+    });
+    const callId = toToolCallId({ raw: 'synthetic-call' });
+    const question = { role: 'user', content: 'Question.' };
+    // Only the unchanged system preamble comes from this control render.
+    // Every message/channel boundary under test is written independently below.
+    const prefix = tokenizer.apply_chat_template([question], { tokenize: false, add_generation_prompt: false });
+    const mapped = buildGptOssPromptMessages({ messages: [
+      question,
+      { role: 'assistant', content: '', reasoning: { text: '  Reason\n', completeness: 'complete' }, tool_calls: [{ id: callId, type: 'function', function: { name: 'calculator', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: callId, content: '391' },
+    ], tools: undefined });
+    expect(mapped[1]?.thinking).toBe('  Reason\n');
+    const prompt = tokenizer.apply_chat_template(mapped, { tokenize: false, add_generation_prompt: true });
+    const expected = prefix + `<|start|>assistant<|channel|>analysis<|message|>  Reason
+<|end|><|start|>assistant to=functions.calculator<|channel|>commentary json<|message|>"{}"<|call|><|start|>functions.calculator to=assistant<|channel|>commentary<|message|>"391"<|end|><|start|>assistant`;
+    expect(prompt).toBe(expected);
+    expect(tokenizer.encode(prompt, { add_special_tokens: false })).toEqual(tokenizer.encode(expected, { add_special_tokens: false }));
+    const later = buildGptOssPromptMessages({ messages: [question,
+      { role: 'assistant', content: '<think>literal</think>Answer', reasoning: { text: 'Reason', completeness: 'complete' } },
+      { role: 'user', content: 'Next.' },
+    ], tools: undefined });
+    const followUp = tokenizer.apply_chat_template(later, { tokenize: false, add_generation_prompt: true });
+    const expectedFollowUp = prefix + '<|start|>assistant<|channel|>final<|message|><think>literal</think>Answer<|end|><|start|>user<|message|>Next.<|end|><|start|>assistant';
+    expect(followUp).toBe(expectedFollowUp);
+    expect(harness.sessions).not.toHaveBeenCalled();
+    expect(harness.bodyReads).toEqual([]);
+    expect(harness.transport).not.toHaveBeenCalled();
   });
 });

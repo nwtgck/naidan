@@ -162,8 +162,8 @@ export async function runPartialModelSupportInvestigation({
     } catch (error) {
       run.persistenceRoundTrip = {
         status: 'failed',
-        fixtureId: 'tool-call-history-v1',
-        method: 'chat-content-dto-json-roundtrip-v1',
+        fixtureId: 'parts_history_v2',
+        method: 'chat_content_parts_json_roundtrip_v2',
         error: serializeInvestigationError({ error }),
       };
     }

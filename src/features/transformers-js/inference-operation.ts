@@ -1,4 +1,6 @@
-import type { ChatMessage, LmParameters } from '@/01-models/types';
+import type { InferenceGenerationCallback } from './generation-events';
+import type { LmParameters } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import type { TransformersJsChunkCallback, TransformersJsToolCallsCallback, WorkerToolDefinition } from './types';
 
 export interface TransformersJsInferenceScope {
@@ -7,9 +9,16 @@ export interface TransformersJsInferenceScope {
   getState(): { status: 'idle' | 'loading' | 'ready' | 'error', activeModelId: string | undefined },
   loadDownloadedModel({ modelId }: { modelId: string }): Promise<void>,
   generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner }: {
-    messages: ChatMessage[],
+    messages: InferenceMessage[],
     onChunk: TransformersJsChunkCallback,
     onToolCalls: TransformersJsToolCallsCallback,
+    params: LmParameters | undefined,
+    tools: WorkerToolDefinition[] | undefined,
+    continuationOwner: string | undefined,
+  }): Promise<void>,
+  generateMessage({ messages, onEvent, params, tools, continuationOwner }: {
+    messages: InferenceMessage[],
+    onEvent: InferenceGenerationCallback,
     params: LmParameters | undefined,
     tools: WorkerToolDefinition[] | undefined,
     continuationOwner: string | undefined,

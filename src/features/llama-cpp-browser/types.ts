@@ -64,8 +64,17 @@ const chatMessageSchema = z.object({
 }).strict();
 export const generationResultSchema = z.object({
   content: z.string(), reasoningContent: z.string(), toolCalls: z.array(toolCallSchema),
-  finishReason: z.enum(['stop', 'length']),
+  finishReason: z.enum(['stop', 'length', 'stop_sequence']),
 }).strict();
+// Plain messages at the Worker boundary; draft arguments are not exposed.
+export const generationEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }).strict(),
+  z.object({ type: z.literal('reasoning'), text: z.string() }).strict(),
+  z.object({ type: z.literal('tool_call_start'), index: z.number().int().nonnegative() }).strict(),
+  z.object({ type: z.literal('tool_call'), index: z.number().int().nonnegative(), toolCall: toolCallSchema }).strict(),
+]);
+export type GenerationEvent = z.infer<typeof generationEventSchema>;
+export type GenerationCallback = ({ event }: { event: GenerationEvent }) => void | Promise<void>;
 export type GenerationResult = z.infer<typeof generationResultSchema>;
 export type GenerateInput = z.infer<typeof generateInputSchema>;
 export const generateInputSchema = z.object({

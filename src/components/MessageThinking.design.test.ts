@@ -14,15 +14,18 @@ describe('MessageThinking Design', () => {
   const createMessageWithThinking = (content: string): MessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   it('isolates its internal stacking layers from surrounding UI', () => {
     const message = createMessageWithThinking('<think>Testing</think>Hello');
     const wrapper = mount(MessageThinking, {
-      props: { message },
+      props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) },
     });
 
     expect(wrapper.get('[data-testid="thinking-block"]').classes()).toContain('isolate');
@@ -31,7 +34,7 @@ describe('MessageThinking Design', () => {
   it('does not have uppercase header', () => {
     const message = createMessageWithThinking('<think>Testing</think>Hello');
     const wrapper = mount(MessageThinking, {
-      props: { message },
+      props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) },
     });
 
     const header = wrapper.find('[data-testid="thinking-header"]');
@@ -42,7 +45,7 @@ describe('MessageThinking Design', () => {
   it('shows "Show Thought Process" instead of all-caps header', () => {
     const message = createMessageWithThinking('<think>Done thinking</think>Hello');
     const wrapper = mount(MessageThinking, {
-      props: { message },
+      props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) },
     });
 
     expect(wrapper.text()).toContain('Show Thought Process');

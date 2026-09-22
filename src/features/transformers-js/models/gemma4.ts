@@ -1,8 +1,9 @@
 /* eslint-disable no-restricted-imports -- Gemma 4 worker adapter intentionally depends on transformers.js runtime image utilities. */
 import type { RawImage as TransformersRawImage, PreTrainedTokenizer } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import type { LmParameters, ToolCall } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import { z } from 'zod';
-import { splitAssistantThinking } from '@/logic/assistant-thinking';
+import { readCompleteInferenceReasoning } from '@/features/transformers-js/inference-reasoning';
 
 export type Gemma4TemplateContentPart =
   | { type: 'text', text: string }
@@ -12,7 +13,7 @@ export interface Gemma4TemplateMessage {
   role: string,
   content: string | Gemma4TemplateContentPart[],
   tool_calls?: Array<Omit<ToolCall, 'function'> & { function: Omit<ToolCall['function'], 'arguments'> & { arguments: Record<string, unknown> } }>,
-  tool_call_id?: ChatMessage['tool_call_id'],
+  tool_call_id?: InferenceMessage['tool_call_id'],
   reasoning_content?: string,
 }
 
@@ -73,16 +74,18 @@ export function isGemma4Model({
 export async function buildGemma4TemplateInput({
   messages,
 }: {
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
 }): Promise<{
   images: TransformersRawImage[],
   templateMessages: Gemma4TemplateMessage[],
 }> {
+  // Validate all framing before image decoding or asynchronous reads begin.
+  const reasoningTexts = messages.map(message => readCompleteInferenceReasoning({ message }));
   const images: TransformersRawImage[] = [];
   const templateMessages: Gemma4TemplateMessage[] = [];
 
-  for (const message of messages) {
-    const { role, content, tool_calls, tool_call_id, ...unhandledMessage } = message;
+  for (const [index, message] of messages.entries()) {
+    const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandledMessage } = message;
     unhandledMessage satisfies Record<PropertyKey, never>;
     const normalizedRole = normalizeGemma4Role({ role });
     if (normalizedRole === 'tool') {
@@ -93,39 +96,28 @@ export async function buildGemma4TemplateInput({
       validateGemma4TemplateArgument({ value: responseText, depth: 0 });
     }
     if (tool_calls !== undefined) validateGemma4ToolCallsForTemplate({ toolCalls: tool_calls });
+    const reasoning = reasoningTexts[index];
     const toolFields = {
+      ...(reasoning === undefined ? {} : { reasoning_content: reasoning }),
       ...(tool_call_id === undefined ? {} : { tool_call_id }),
       ...(tool_calls === undefined ? {} : { tool_calls: tool_calls.map(call => ({
         ...call, function: { ...call.function, arguments: parseGemma4ToolArguments({ argumentsText: call.function.arguments }) },
       })) }),
     };
 
-    const assistantText = normalizedRole === 'assistant' && Array.isArray(content) && content.every(part => part.type === 'text')
-      ? content.map(part => part.text).join('')
-      : undefined;
-    if (assistantText !== undefined) {
-      const thinking = splitAssistantThinking({ content: assistantText });
-      // Preserve ordinary array boundaries: the original template trims each
-      // text part independently. A thinking-only array must become empty
-      // content, not a truthy empty text part that changes tool-turn framing.
-      if (thinking.thinking !== undefined) {
-        templateMessages.push({ role: normalizedRole, content: thinking.content, reasoning_content: thinking.thinking, ...toolFields });
-        continue;
-      }
-    }
+    // Content is model-visible text, not a display projection. Native channel
+    // decoding belongs to its own codec; literal think tags are never parsed here.
     if (typeof content === 'string') {
-      // Gemma's original template consumes reasoning_content only in the live
-      // tool turn and strips historical thought elsewhere. Use the existing
-      // inline-think meaning policy; do not add fields to persisted messages.
-      const thinking = normalizedRole === 'assistant'
-        ? splitAssistantThinking({ content })
-        : { content, thinking: undefined };
-      templateMessages.push({
-        role: normalizedRole,
-        content: thinking.content,
-        ...(thinking.thinking === undefined ? {} : { reasoning_content: thinking.thinking }),
-        ...toolFields,
-      });
+      templateMessages.push({ role: normalizedRole, content, ...toolFields });
+      continue;
+    }
+
+    if (normalizedRole === 'assistant' && content.length === 0 && tool_calls?.length) {
+      // No text part is not an empty text part in common history. At this
+      // template boundary, however, the call-only message must have falsey
+      // content: an empty JS sequence would add a turn terminator after the
+      // tool responses. Keep this format-specific choice out of stored parts.
+      templateMessages.push({ role: normalizedRole, content: '', ...toolFields });
       continue;
     }
 
@@ -148,7 +140,7 @@ export async function buildGemma4TemplateInput({
 
     templateMessages.push({
       role: normalizedRole,
-      content: contentParts.length > 0 ? contentParts : '',
+      content: contentParts,
       ...toolFields,
     });
   }

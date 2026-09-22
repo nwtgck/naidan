@@ -1,125 +1,47 @@
-import { z } from 'zod';
-import { customAlphabet } from 'nanoid';
-import type { LmProvider } from '@/01-models/lm';
-import { idToRaw, toToolCallId } from '@/01-models/ids';
-import { formatToolExecutionOutcomeForLm, type ToolExecutionOutcome } from '@/01-models/tool';
-import { zodToJsonSchema } from '@/utils/lm-tools';
+import type { ChatGenerationItem, LmProvider } from '@/01-models/lm';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
-import { imageFromDataUrl } from './runtime/image-input';
-import { LlamaCppBrowserError, type GenerateInput } from './types';
+import { createLlamaCppGeneration, createScopedGeneration } from './provider-generation';
+import type { LlamaCppBrowserService } from './service-contract';
 
-// Short alphanumeric IDs also fit templates that enforce nine-character IDs.
-const createCallId = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', 9);
-
-export class LlamaCppBrowserProvider implements LmProvider {
-  async listModels({ signal }: Parameters<LmProvider['listModels']>[0]): Promise<string[]> {
-    return (await llamaCppBrowserService.listModels({ signal })).map(model => model.name);
+class HostedLlamaCppBrowserProvider implements LmProvider {
+  private readonly service: Pick<LlamaCppBrowserService, 'listModels' | 'generate' | 'runGenerationOperation'>;
+  constructor({ service }: { service: Pick<LlamaCppBrowserService, 'listModels' | 'generate' | 'runGenerationOperation'> }) {
+    this.service = service;
   }
-  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, debug, signal }: Parameters<LmProvider['chat']>[0]): Promise<void> {
-    const callNames = new Map<string, string>();
-    const usedIds = new Set<string>();
-    const accepted: GenerateInput['messages'] = messages.map(message => {
-      const { role, content: sourceContent, tool_calls, tool_call_id, ...unhandled } = message;
-      unhandled satisfies Record<PropertyKey, never>;
-      if (role !== 'user' && role !== 'assistant' && role !== 'system' && role !== 'tool') throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-      const content = typeof sourceContent === 'string' ? sourceContent : sourceContent.every(part => part.type === 'text') ? sourceContent.map(part => part.text).join('') : sourceContent.map(part => {
-        switch (part.type) {
-        case 'text': return { type: 'text' as const, text: part.text };
-        case 'image_url': return { type: 'image' as const, blob: imageFromDataUrl({ url: part.image_url.url }) };
-        default: { const exhaustive: never = part; throw new Error(String(exhaustive)); }
-        }
-      });
-      const calls = tool_calls?.map(({ id, type, function: fn, ...rest }) => {
-        rest satisfies Record<PropertyKey, never>;
-        const raw = idToRaw({ id }); usedIds.add(raw); callNames.set(raw, fn.name);
-        return { id: raw, type, function: { ...fn } };
-      });
-      const id = tool_call_id === undefined ? undefined : idToRaw({ id: tool_call_id });
-      if (role === 'tool' && !id) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-      return { role, content, ...(calls?.length ? { tool_calls: calls } : {}), ...(id ? { tool_call_id: id, name: callNames.get(id) } : {}) };
-    });
-    const definitions: GenerateInput['tools'] = tools?.map(tool => ({ type: 'function', function: {
-      name: tool.name, description: tool.description,
-      parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })),
-    } }));
-    const input = (): Omit<GenerateInput, 'options'> => ({ model, debug, messages: accepted, tools: definitions,
-      reasoningEffort: parameters?.reasoning.effort,
-      temperature: parameters?.temperature ?? 0.7, topP: parameters?.topP ?? 0.95,
-      maxTokens: parameters?.maxCompletionTokens, presencePenalty: parameters?.presencePenalty ?? 0,
-      frequencyPenalty: parameters?.frequencyPenalty ?? 0, stop: parameters?.stop ? [...parameters.stop] : [] });
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-    onAssistantMessageStart?.();
-    await llamaCppBrowserService.generate({ input: input(), onChunk, signal,
-      onResult: async ({ result, signal: turnSignal }) => {
-        const checkCancelled = (): void => {
-          if (turnSignal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-        };
-        checkCancelled();
-        // A token limit may leave syntactically plausible but incomplete arguments.
-        // Only a completed native turn is allowed to execute tools.
-        if (result.finishReason !== 'stop' || !result.toolCalls.length) return undefined;
-        const calls = result.toolCalls.map(call => {
-          let id = call.id;
-          if (!id || usedIds.has(id)) {
-            do {
-              id = createCallId();
-            } while (usedIds.has(id));
-          }
-          usedIds.add(id); return { ...call, id };
-        });
-        accepted.push({ role: 'assistant', content: result.content, reasoning_content: result.reasoningContent, tool_calls: calls });
-        for (const call of calls) {
-          checkCancelled();
-          const id = toToolCallId({ raw: call.id });
-          onToolCall?.({ id, toolName: call.function.name, modelVisibleArguments: call.function.arguments });
-          checkCancelled();
-          const tool = tools?.find(tool => tool.name === call.function.name);
-          let outcome: ToolExecutionOutcome;
-          if (!tool) outcome = { status: 'error', code: 'other', message: `Tool "${call.function.name}" not found.` };
-          else {
-            try {
-              let args: unknown;
-              try {
-                args = JSON.parse(call.function.arguments);
-              } catch (error) {
-                throw new ToolArgumentsError({ message: `Failed to parse tool arguments: ${error instanceof Error ? error.message : String(error)}` });
-              }
-              const validatedArgs = tool.parametersSchema.strict().parse(args);
-              checkCancelled();
-              let acceptingEvents = true;
-              try {
-                outcome = await tool.execute({ args: validatedArgs, signal: turnSignal, approvalContext: toolApprovalContext,
-                  onEvent: async ({ event }) => {
-                    if (!acceptingEvents || turnSignal.aborted) return;
-                    onToolEvent?.({ id, event });
-                  },
-                });
-              } finally {
-                acceptingEvents = false;
-              }
-              checkCancelled();
-            } catch (error) {
-              checkCancelled();
-              outcome = { status: 'error', code: error instanceof z.ZodError || error instanceof ToolArgumentsError ? 'invalid_arguments' : 'other',
-                message: error instanceof Error ? error.message : String(error) };
-            }
-          }
-          checkCancelled();
-          onToolResult?.({ id, result: outcome });
-          checkCancelled();
-          accepted.push({ role: 'tool', tool_call_id: call.id, name: call.function.name, content: formatToolExecutionOutcomeForLm({ outcome }) });
-        }
-        checkCancelled();
-        onAssistantMessageStart?.();
-        checkCancelled();
-        return input();
-      },
-    });
+  async listModels({ signal }: { signal: AbortSignal | undefined }): Promise<string[]> {
+    return (await this.service.listModels({ signal })).map(model => model.name);
+  }
+
+  chat({ messages, model, parameters, tools, readBinaryObject, debug, signal }: Parameters<LmProvider['chat']>[0]): AsyncIterable<ChatGenerationItem> {
+    return createLlamaCppGeneration({ request: { messages, model, parameters, tools, readBinaryObject, debug, signal }, generate: this.service.generate.bind(this.service) });
+  }
+
+  async runChatOperation({ signal, operation }: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]): Promise<void> {
+    await this.service.runGenerationOperation({ signal, operation: async ({ scope }) => {
+      const owned = createScopedGeneration({ scope });
+      let failure: { error: unknown } | undefined;
+      try {
+        await operation({ chat: owned.chat, signal: scope.signal });
+      } catch (error) {
+        failure = { error };
+      }
+      try {
+        await owned.close();
+      } catch (error) {
+        if (failure !== undefined && failure.error !== error) throw new AggregateError([failure.error, error], 'Chat operation and cleanup failed.');
+        throw error;
+      }
+      if (failure !== undefined) throw failure.error;
+    } });
   }
 }
-class ToolArgumentsError extends Error {
-  constructor({ message }: { message: string }) {
-    super(message);
+export function createLlamaCppProvider({ service }: { service: Pick<LlamaCppBrowserService, 'listModels' | 'generate' | 'runGenerationOperation'> }): LmProvider {
+  return new HostedLlamaCppBrowserProvider({ service });
+}
+
+export class LlamaCppBrowserProvider extends HostedLlamaCppBrowserProvider {
+  constructor() {
+    super({ service: llamaCppBrowserService });
   }
 }
 export const TEST_ONLY = {

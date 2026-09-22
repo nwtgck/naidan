@@ -7,8 +7,12 @@ import { createProviderReplayTestImagePlatform } from './provider-replay-test-im
 import * as artifactFixture from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import type { ProviderReplayGenerate } from './provider-replay-test-runtime';
 import type { LmProvider } from '@/01-models/lm';
-import { createProductionProviderTrace } from '@/features/transformers-js/model-support-investigation/logic/production-provider-trace';
-import type { CaptureRequestInput } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-plan';
+import { createProductionProviderPartsTrace } from '@/features/transformers-js/model-support-investigation/logic/production-provider-trace';
+import { captureScenarioInput, type CaptureRequestInput } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-plan';
+import { generateProductionProviderCapture } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-generation';
+import { captureProviderChat, type CapturedChatRequest } from './capture-provider-chat';
+import { toMessageId } from '@/01-models/ids';
+import type { ChatMessage } from '@/01-models/types';
 
 const capturedSmolLoadIdentity = {
   status: 'ready', workerLoadOrdinal: 1, requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
@@ -17,6 +21,26 @@ const capturedSmolLoadIdentity = {
   selectedCandidate: { device: 'webgpu', dtype: 'q4f16' },
   resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
 };
+
+function textMessage({ id, role, text }: { id: string; role: 'user' | 'assistant'; text: string }): ChatMessage {
+  return {
+    id: toMessageId({ raw: id }), role,
+    parts: [{ type: 'text', text, completeness: 'complete' }],
+  };
+}
+
+async function captureMechanicsChat({ provider, messages, parameters }: {
+  provider: Pick<LmProvider, 'chat'>;
+  messages: readonly ChatMessage[];
+  parameters: CapturedChatRequest['parameters'];
+}) {
+  const capture = captureProviderChat({ provider, request: {
+    model: 'HuggingFaceTB/SmolLM2-135M-Instruct', messages, parameters, tools: [],
+    readBinaryObject: undefined, debug: undefined, signal: undefined,
+  } });
+  await capture.completion;
+  return capture.snapshot();
+}
 
 function mechanicsArguments({ generate }: { generate: ProviderReplayGenerate }): Parameters<typeof createProviderReplayTestRuntime>[0] {
   return {
@@ -445,7 +469,9 @@ describe('Production replay native inference boundary', () => {
     });
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
     try {
-      await expect(harness.provider.chat({ model: 'HuggingFaceTB/SmolLM2-135M-Instruct', messages: [{ role: 'user', content: 'Synthetic mechanics probe' }], onChunk: () => undefined })).rejects.toThrow('Synthetic inference inspection');
+      const observed = await captureMechanicsChat({ provider: harness.provider,
+        messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })], parameters: undefined });
+      expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
       if (!invocation) throw new Error('Actual inference was not reached');
       const captured = invocation;
       const tensor = captured.options.attention_mask;
@@ -468,7 +494,9 @@ describe('Production replay native inference boundary', () => {
     });
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
     try {
-      await expect(harness.provider.chat({ model: 'HuggingFaceTB/SmolLM2-135M-Instruct', messages: [{ role: 'user', content: 'Synthetic mechanics probe' }], onChunk: () => undefined })).rejects.toThrow('Synthetic inference inspection');
+      const observed = await captureMechanicsChat({ provider: harness.provider,
+        messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })], parameters: undefined });
+      expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
       if (!invocation) throw new Error('Actual inference was not reached');
       const captured = invocation;
       const tensor = captured.options.input_ids;
@@ -644,77 +672,63 @@ describe('Production replay Worker construction boundary', () => {
 });
 
 describe('Production replay runtime mechanics, not captured model semantics', () => {
-  it('keeps the real Provider settlement observation unchanged when the bounded trace is enabled', async () => {
-    type Callbacks = Pick<Parameters<LmProvider['chat']>[0], 'onChunk' | 'onAssistantMessageStart'>;
-    async function run({ callbacks, onSettled }: { callbacks: Callbacks; onSettled: () => void }) {
-      const generate = vi.fn<ProviderReplayGenerate>(async ({ options, tokenizer, runtime }) => {
+  it('keeps the real Provider settlement observation unchanged when the bounded parts trace is enabled', async () => {
+    function createNativeBoundary(): ProviderReplayGenerate {
+      return async ({ options, tokenizer, runtime }) => {
         const input = options.input_ids;
         if (!(input instanceof runtime.Tensor) || !options.streamer) throw new Error('Expected actual strategy input and streamer');
         const output = tokenizer.encode('Synthetic output.', { add_special_tokens: false }).map(BigInt);
-        // Exactly the synchronous native substitute used by the adjacent RED.
-        // The real streamer, parser, Worker client and Provider still execute.
         options.streamer.put(input.tolist());
         for (const token of output) options.streamer.put([[token]]);
         options.streamer.end();
         return new runtime.Tensor('int64', BigInt64Array.from(output), [1, output.length]);
-      });
-      const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
-      try {
-        await harness.provider.chat({
-          model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-          messages: [{ role: 'user', content: 'Synthetic mechanics probe' }],
-          ...callbacks,
-        });
-        // Measure inside the same direct-await continuation for both runs.
-        // Cleanup and this helper's own Promise resolution occur afterwards.
-        onSettled();
-        expect(generate).toHaveBeenCalledOnce();
-        expect(harness.observations.workers).toHaveLength(1);
-        expect(harness.observations.forbiddenTransport).toEqual([]);
-        expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      } finally {
-        await harness.close();
-      }
+      };
     }
-    const baselineEvents: Array<{ kind: 'assistant-start' } | { kind: 'chunk'; chunk: string }> = [];
-    let baselineAtSettlement: typeof baselineEvents = [];
-    await run({
-      callbacks: {
-        onAssistantMessageStart: () => {
-          baselineEvents.push({ kind: 'assistant-start' });
-        },
-        onChunk: ({ chunk }) => {
-          baselineEvents.push({ kind: 'chunk', chunk });
-        },
-      },
-      onSettled: () => {
-        baselineAtSettlement = baselineEvents.slice();
-      },
-    });
-    const trace = createProductionProviderTrace({
+    const baseline = await createProviderReplayTestRuntime(mechanicsArguments({ generate: createNativeBoundary() }));
+    let baselineSnapshot: Awaited<ReturnType<typeof captureMechanicsChat>>;
+    try {
+      baselineSnapshot = await captureMechanicsChat({
+        provider: baseline.provider,
+        messages: [textMessage({ id: 'mechanics-user', role: 'user', text: 'Template probe user message.' })],
+        parameters: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }).parameters,
+      });
+      expect(baseline.observations.workers).toHaveLength(1);
+      expect(baseline.observations.forbiddenTransport).toEqual([]);
+      expect(baseline.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    } finally {
+      await baseline.close();
+    }
+
+    const traced = await createProviderReplayTestRuntime(mechanicsArguments({ generate: createNativeBoundary() }));
+    const trace = createProductionProviderPartsTrace({
       requestId: 'synthetic-production-settlement', limits: { maximumEvents: 64, maximumCharacters: 4096 },
     });
-    await run({
-      callbacks: trace.callbacks,
-      onSettled: () => {
-        trace.settle({ outcome: 'fulfilled', error: undefined });
-      },
-    });
-    const snapshot = trace.snapshot();
-    if (snapshot.settled === undefined) throw new Error('Expected actual Provider settlement');
-    expect(snapshot.settled.outcome).toEqual({ status: 'fulfilled' });
-    expect(snapshot.settled.completeness).toBe('complete');
-    expect(snapshot.settled.events.map(({ sequence: _sequence, phase: _phase, ...event }) => event)).toEqual(baselineAtSettlement);
-    expect(snapshot.settled.events.map(event => event.sequence)).toEqual(baselineAtSettlement.map((_, index) => index));
-    expect(snapshot.settled.events.every(event => event.phase === 'before-settlement')).toBe(true);
-    // Equality here proves diagnostic non-repair, not successful delivery.
-    // The adjacent contract independently demands the full output and stays RED.
-    // Immediate test cleanup also does not certify that no late callbacks exist.
+    try {
+      const result = await generateProductionProviderCapture({
+        provider: traced.provider, modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+        input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }),
+        abortController: new AbortController(), trace,
+      });
+      trace.settle({ outcome: 'fulfilled', error: undefined });
+      expect(result).toEqual(baselineSnapshot.result);
+      expect(trace.snapshot().settled?.outcome).toEqual({ status: 'fulfilled' });
+      expect(trace.snapshot().settled?.events.at(-1)).toMatchObject({
+        kind: 'generation_interrupted', reason: 'unknown', phase: 'before-settlement',
+      });
+      const applied = trace.snapshot().settled?.events.filter(event => event.kind === 'part_text').at(-1);
+      expect(applied).toMatchObject({ kind: 'part_text', partType: 'text', text: 'Synthetic output.', completeness: 'partial' });
+      expect(baselineSnapshot.parts).toEqual([{
+        type: 'text', partId: 'part_0', index: 0, chunks: ['', 'S', 'ynthetic ', 'output.'], completeness: 'partial',
+      }]);
+      expect(trace.snapshot().lateEvents).toEqual([]);
+    } finally {
+      await traced.close();
+    }
   }, 30_000);
 
   it('preserves real Comlink settlement and immediate next inputs inside the investigation Provider owner', async () => {
-    type Trace = ReturnType<typeof createProductionProviderTrace>;
-    type CapturedRequest = { input: Pick<CaptureRequestInput, 'messages'> | undefined; trace: ReturnType<Trace['snapshot']> };
+    type Trace = ReturnType<typeof createProductionProviderPartsTrace>;
+    type CapturedRequest = { input: CaptureRequestInput | undefined; trace: ReturnType<Trace['snapshot']> };
     function comparableRequests({ requests }: { requests: readonly CapturedRequest[] }) {
       return requests.map(({ input, trace }) => ({
         messages: input?.messages,
@@ -746,27 +760,18 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     let expectedRequests: ReturnType<typeof comparableRequests> = [];
     try {
       const requests: CapturedRequest[] = [];
-      let firstSettledText = '';
-      for (const scenario of ['first', 'continuity', 'independent'] as const) {
-        const messages: Array<{ role: 'user' | 'assistant'; content: string }> = scenario === 'continuity'
-          ? [
-            { role: 'user', content: 'Template probe user message.' },
-            { role: 'assistant', content: firstSettledText },
-            { role: 'user', content: 'Continue the synthetic conversation with a short response.' },
-          ]
-          : [{ role: 'user', content: scenario === 'first' ? 'Template probe user message.' : 'A separate synthetic capture conversation.' }];
-        const trace = createProductionProviderTrace({ requestId: scenario, limits: { maximumEvents: 64, maximumCharacters: 4096 } });
-        await baseline.provider.chat({
-          model: 'HuggingFaceTB/SmolLM2-135M-Instruct', messages, tools: [], ...trace.callbacks,
-          parameters: {
-            temperature: 0, topP: 1, maxCompletionTokens: scenario === 'independent' ? 1 : 16,
-            presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined },
-          },
+      let firstSettled: ReturnType<Trace['settle']> | undefined;
+      for (const scenario of ['first-turn', 'continuity', 'independent-next-input'] as const) {
+        const input = captureScenarioInput({ scenario, firstSettled });
+        const trace = createProductionProviderPartsTrace({ requestId: scenario, limits: { maximumEvents: 64, maximumCharacters: 4096 } });
+        await generateProductionProviderCapture({
+          provider: baseline.provider, modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct', input,
+          abortController: new AbortController(), trace,
         });
         const settled = trace.settle({ outcome: 'fulfilled', error: undefined });
-        if (scenario === 'first') firstSettledText = settled.events.filter(event => event.kind === 'chunk').map(event => event.chunk).join('');
+        if (scenario === 'first-turn') firstSettled = settled;
         // Keep live trace access, not a post-hoc repaired settlement or history.
-        requests.push({ input: { messages }, get trace() {
+        requests.push({ input, get trace() {
           return trace.snapshot();
         } });
       }
@@ -917,7 +922,7 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     }
   }, 30_000);
 
-  it('observes actual streamed callbacks at Provider settlement without a post-hoc drain', async () => {
+  it('observes actual streamed parts at Provider settlement without a post-hoc drain', async () => {
     const harness = await createProviderReplayTestRuntime({
       imagePlatform: undefined,
       modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
@@ -936,13 +941,16 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       },
     });
     try {
-      const chunks: string[] = [];
-      await harness.provider.chat({
-        model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-        messages: [{ role: 'user', content: 'Synthetic mechanics probe' }],
-        onChunk: ({ chunk }) => chunks.push(chunk),
+      const snapshot = await captureMechanicsChat({
+        provider: harness.provider,
+        messages: [textMessage({ id: 'mechanics-user', role: 'user', text: 'Synthetic mechanics probe' })],
+        parameters: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }).parameters,
       });
-      expect(chunks.join('')).toBe('Synthetic output.');
+      expect(snapshot.parts).toEqual([{
+        type: 'text', partId: 'part_0', index: 0, chunks: ['', 'S', 'ynthetic ', 'output.'], completeness: 'partial',
+      }]);
+      expect(snapshot.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(snapshot.settlement).toEqual({ status: 'fulfilled' });
     } finally {
       await harness.close();
     }
@@ -963,13 +971,16 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       generate,
     });
     try {
-      const onChunk = vi.fn();
-      await expect(harness.provider.chat({
-        model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-        messages: [{ role: 'user', content: 'Synthetic mechanics probe' }], onChunk,
-      })).rejects.toThrow('Synthetic inference boundary reached');
+      const snapshot = await captureMechanicsChat({
+        provider: harness.provider,
+        messages: [textMessage({ id: 'mechanics-user', role: 'user', text: 'Synthetic mechanics probe' })],
+        parameters: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }).parameters,
+      });
       expect(generate).toHaveBeenCalledOnce();
-      expect(onChunk).not.toHaveBeenCalled();
+      expect(snapshot.parts).toEqual([]);
+      expect(snapshot.result?.type).toBe('error');
+      expect(snapshot.result?.type === 'error' ? snapshot.result.error.message : undefined).toBe('Synthetic inference boundary reached');
+      expect(snapshot.settlement).toEqual({ status: 'fulfilled' });
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);

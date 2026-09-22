@@ -28,12 +28,63 @@ describe('useChatDisplayFlow complex scenario', () => {
 
   it('correctly atomizes and groups the reported complex scenario with full JSON validation', () => {
     const messages: MessageNode[] = [
-      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'Calc', timestamp: 0, replies: { items: [] }, attachments: [], lmParameters: undefined, thinking: undefined, error: undefined, modelId: undefined, toolCalls: undefined, results: undefined } as MessageNode,
-      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '<think>T1</think>', timestamp: 0, replies: { items: [] }, toolCalls: [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'c', arguments: '{}' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined } as MessageNode,
-      { id: toMessageId({ raw: 't1' }), role: 'tool', content: undefined, timestamp: 0, replies: { items: [] }, results: [{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R1' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined } as MessageNode,
-      { id: toMessageId({ raw: 'am' }), role: 'assistant', content: '<think>TM</think>Body', timestamp: 0, replies: { items: [] }, toolCalls: [{ id: toToolCallId({ raw: 'tcm' }), type: 'function', function: { name: 'c', arguments: '{}' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined } as MessageNode,
-      { id: toMessageId({ raw: 'tm' }), role: 'tool', content: undefined, timestamp: 0, replies: { items: [] }, results: [{ toolCallId: toToolCallId({ raw: 'tcm' }), status: 'success', content: { type: 'text', text: 'RM' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined } as MessageNode,
-      { id: toMessageId({ raw: 'al' }), role: 'assistant', content: '<think>TL</think>End', timestamp: 0, replies: { items: [] }, attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined } as MessageNode,
+      {
+        id: toMessageId({ raw: 'u1' }),
+        role: 'user',
+        replies: { items: [] },
+        lmParameters: undefined,
+        modelId: undefined,
+        parts: [{ type: 'text' as const, text: 'Calc', completeness: 'complete' as const }, ...([]).map((attachment) => ({ type: 'attachment' as const, attachment }))],
+        createdAt: 0,
+      } as MessageNode,
+      {
+        id: toMessageId({ raw: 'a1' }),
+        role: 'assistant',
+        replies: { items: [] },
+        modelId: 'm',
+        lmParameters: undefined,
+        parts: [{ type: 'text' as const, text: '<think>T1</think>', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'c', arguments: '{}' } }]).map((toolCall) => ({ type: 'tool_call' as const, toolCall }))],
+        createdAt: 0,
+        interruption: undefined,
+      } as MessageNode,
+      {
+        id: toMessageId({ raw: 't1' }),
+        role: 'tool',
+        replies: { items: [] },
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [...([{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R1' } }]).map((result) => ({ type: 'tool_result' as const, result }))],
+        createdAt: 0,
+      } as MessageNode,
+      {
+        id: toMessageId({ raw: 'am' }),
+        role: 'assistant',
+        replies: { items: [] },
+        modelId: 'm',
+        lmParameters: undefined,
+        parts: [{ type: 'text' as const, text: '<think>TM</think>Body', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tcm' }), type: 'function' as const, function: { name: 'c', arguments: '{}' } }]).map((toolCall) => ({ type: 'tool_call' as const, toolCall }))],
+        createdAt: 0,
+        interruption: undefined,
+      } as MessageNode,
+      {
+        id: toMessageId({ raw: 'tm' }),
+        role: 'tool',
+        replies: { items: [] },
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [...([{ toolCallId: toToolCallId({ raw: 'tcm' }), status: 'success', content: { type: 'text', text: 'RM' } }]).map((result) => ({ type: 'tool_result' as const, result }))],
+        createdAt: 0,
+      } as MessageNode,
+      {
+        id: toMessageId({ raw: 'al' }),
+        role: 'assistant',
+        replies: { items: [] },
+        modelId: 'm',
+        lmParameters: undefined,
+        parts: [{ type: 'text' as const, text: '<think>TL</think>End', completeness: 'complete' as const }],
+        createdAt: 0,
+        interruption: undefined,
+      } as MessageNode,
     ];
 
     const { chatFlow } = useChatDisplayFlow({
@@ -45,7 +96,7 @@ describe('useChatDisplayFlow complex scenario', () => {
 
     const expected = [
       {
-        type: 'message',
+        type: 'message', key: expect.any(String),
         node: expect.objectContaining({ id: 'u1' }),
         mode: 'content',
         partContent: 'Calc',
@@ -56,7 +107,7 @@ describe('useChatDisplayFlow complex scenario', () => {
       },
       {
         type: 'process_sequence',
-        id: 'seq-a1-thinking',
+        id: expect.any(String),
         isFirstInTurn: true,
         stats: {
           thinkingSteps: 2,
@@ -67,15 +118,15 @@ describe('useChatDisplayFlow complex scenario', () => {
           isWaiting: false,
         },
         items: [
-          { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'thinking', partContent: 'T1', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
-          { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'message', key: expect.any(String), node: expect.objectContaining({ id: 'a1' }), mode: 'thinking', partContent: 'T1', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'message', key: expect.any(String), node: expect.objectContaining({ id: 'a1' }), mode: 'tool_calls', toolCalls: expect.any(Array), isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
           { type: 'tool_group', id: 't1', node: expect.objectContaining({ id: 't1' }), toolCalls: [expect.objectContaining({ id: 'tc1' })], flow: { position: 'standalone', nesting: 'inside-group' }, isFirstInTurn: true },
-          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'thinking', partContent: 'TM', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'message', key: expect.any(String), node: expect.objectContaining({ id: 'am' }), mode: 'thinking', partContent: 'TM', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
         ],
         flow: { position: 'start', nesting: 'none' },
       },
       {
-        type: 'message',
+        type: 'message', key: expect.any(String),
         node: expect.objectContaining({ id: 'am' }),
         mode: 'content',
         partContent: 'Body',
@@ -86,7 +137,7 @@ describe('useChatDisplayFlow complex scenario', () => {
       },
       {
         type: 'process_sequence',
-        id: 'seq-am-tool_calls',
+        id: expect.any(String),
         isFirstInTurn: false,
         stats: {
           thinkingSteps: 1,
@@ -97,14 +148,14 @@ describe('useChatDisplayFlow complex scenario', () => {
           isWaiting: false,
         },
         items: [
-          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'message', key: expect.any(String), node: expect.objectContaining({ id: 'am' }), mode: 'tool_calls', toolCalls: expect.any(Array), isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
           { type: 'tool_group', id: 'tm', node: expect.objectContaining({ id: 'tm' }), toolCalls: [expect.objectContaining({ id: 'tcm' })], flow: { position: 'standalone', nesting: 'inside-group' }, isFirstInTurn: true },
-          { type: 'message', node: expect.objectContaining({ id: 'al' }), mode: 'thinking', partContent: 'TL', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'message', key: expect.any(String), node: expect.objectContaining({ id: 'al' }), mode: 'thinking', partContent: 'TL', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
         ],
         flow: { position: 'middle', nesting: 'none' },
       },
       {
-        type: 'message',
+        type: 'message', key: expect.any(String),
         node: expect.objectContaining({ id: 'al' }),
         mode: 'content',
         partContent: 'End',
@@ -116,12 +167,45 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     expect(result).toEqual(expected);
+
+    // Sequence identity follows its first display item, not a persisted part ID.
+    const sequences = chatFlow.value.filter(item => item.type === 'process_sequence');
+    expect(sequences).toHaveLength(2);
+    expect(new Set(sequences.map(sequence => sequence.id)).size).toBe(2);
+    for (const sequence of sequences) {
+      const first = sequence.items[0];
+      if (first?.type !== 'message') throw new Error('Expected each sequence to start with a message');
+      expect(sequence.id).toBe(`seq-${first.key}`);
+    }
+
+    const repeated = useChatDisplayFlow({
+      chat: createChat(messages),
+      isProcessing: () => false,
+    });
+    expect(repeated.chatFlow.value).toEqual(chatFlow.value);
   });
 
   it('correctly handles streaming state with active thinking and waiting', () => {
     const messages: MessageNode[] = [
-      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'Hi', timestamp: 0, replies: { items: [] }, attachments: [], lmParameters: undefined, thinking: undefined, error: undefined, modelId: undefined, toolCalls: undefined, results: undefined } as MessageNode,
-      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: 'Answer<think>Active', timestamp: 0, replies: { items: [] }, attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined } as MessageNode,
+      {
+        id: toMessageId({ raw: 'u1' }),
+        role: 'user',
+        replies: { items: [] },
+        lmParameters: undefined,
+        modelId: undefined,
+        parts: [{ type: 'text' as const, text: 'Hi', completeness: 'complete' as const }, ...([]).map((attachment) => ({ type: 'attachment' as const, attachment }))],
+        createdAt: 0,
+      } as MessageNode,
+      {
+        id: toMessageId({ raw: 'a1' }),
+        role: 'assistant',
+        replies: { items: [] },
+        modelId: 'm',
+        lmParameters: undefined,
+        parts: [{ type: 'text' as const, text: 'Answer<think>Active', completeness: 'complete' as const }],
+        createdAt: 0,
+        interruption: undefined,
+      } as MessageNode,
     ];
 
     const { chatFlow } = useChatDisplayFlow({
@@ -133,7 +217,7 @@ describe('useChatDisplayFlow complex scenario', () => {
 
     const expected = [
       {
-        type: 'message',
+        type: 'message', key: expect.any(String),
         node: expect.objectContaining({ id: 'u1' }),
         mode: 'content',
         partContent: 'Hi',
@@ -143,7 +227,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         flow: { position: 'standalone', nesting: 'none' },
       },
       {
-        type: 'message',
+        type: 'message', key: expect.any(String),
         node: expect.objectContaining({ id: 'a1' }),
         mode: 'content',
         partContent: 'Answer',
@@ -153,7 +237,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         flow: { position: 'start', nesting: 'none' },
       },
       {
-        type: 'message',
+        type: 'message', key: expect.any(String),
         node: expect.objectContaining({ id: 'a1' }),
         mode: 'thinking',
         partContent: 'Active',
@@ -171,15 +255,23 @@ describe('useChatDisplayFlow complex scenario', () => {
   it('handles multiple think blocks and intermixed tool groups', () => {
     const messages: MessageNode[] = [
       {
-        id: toMessageId({ raw: 'a1' }), role: 'assistant',
-        content: '<think>T1</think>C1<think>T2</think>',
-        timestamp: 0, replies: { items: [] }, toolCalls: [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'f', arguments: '{}' } }],
-        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined,
+        id: toMessageId({ raw: 'a1' }),
+        role: 'assistant',
+        replies: { items: [] },
+        modelId: 'm',
+        lmParameters: undefined,
+        parts: [{ type: 'text' as const, text: '<think>T1</think>C1<think>T2</think>', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'f', arguments: '{}' } }]).map((toolCall) => ({ type: 'tool_call' as const, toolCall }))],
+        createdAt: 0,
+        interruption: undefined,
       } as MessageNode,
       {
-        id: toMessageId({ raw: 't1' }), role: 'tool', content: undefined, timestamp: 0, replies: { items: [] },
-        results: [{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R' } }],
-        attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined,
+        id: toMessageId({ raw: 't1' }),
+        role: 'tool',
+        replies: { items: [] },
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [...([{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R' } }]).map((result) => ({ type: 'tool_result' as const, result }))],
+        createdAt: 0,
       } as MessageNode,
     ];
 
@@ -200,8 +292,14 @@ describe('useChatDisplayFlow complex scenario', () => {
   it('handles empty assistant messages and single internal atoms', () => {
     const messages: MessageNode[] = [
       {
-        id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: 0, replies: { items: [] },
-        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined,
+        id: toMessageId({ raw: 'a1' }),
+        role: 'assistant',
+        replies: { items: [] },
+        modelId: 'm',
+        lmParameters: undefined,
+        parts: [{ type: 'text' as const, text: '', completeness: 'complete' as const }],
+        createdAt: 0,
+        interruption: undefined,
       } as MessageNode,
     ];
 
@@ -220,8 +318,14 @@ describe('useChatDisplayFlow complex scenario', () => {
   it('does NOT create a sequence for a single internal atom', () => {
     const messages: MessageNode[] = [
       {
-        id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '<think>Just one think</think>', timestamp: 0, replies: { items: [] },
-        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined,
+        id: toMessageId({ raw: 'a1' }),
+        role: 'assistant',
+        replies: { items: [] },
+        modelId: 'm',
+        lmParameters: undefined,
+        parts: [{ type: 'text' as const, text: '<think>Just one think</think>', completeness: 'complete' as const }],
+        createdAt: 0,
+        interruption: undefined,
       } as MessageNode,
     ];
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getMessageText } from '@/01-models/message-text';
 import { computed, ref, onUnmounted, watch } from 'vue';
 import { XIcon, HistoryIcon, ClockIcon, CpuIcon, ArrowDownIcon, CopyIcon, CheckIcon, ArrowRightIcon, RotateCcwIcon, EyeIcon, EyeOffIcon } from 'lucide-vue-next';
 import { idToRaw } from '@/01-models/ids';
@@ -72,9 +73,9 @@ const versionItems = computed((): VersionItem[] => {
   return props.siblings.map((msg, i) => ({
     id: msg.id,
     versionNumber: i + 1,
-    content: msg.content || '',
+    content: getMessageText({ message: msg }),
     modelId: msg.modelId,
-    timestamp: msg.timestamp,
+    timestamp: msg.createdAt,
   }));
 });
 
@@ -131,16 +132,16 @@ const sequentialDiffs = computed(() => {
       }
 
       diffParts = prevMsg
-        ? computeWordDiff({ oldText: prevMsg.content || '', newText: msg.content || '' })
-        : [{ type: 'unchanged', value: msg.content || '' } as DiffPart];
+        ? computeWordDiff({ oldText: getMessageText({ message: prevMsg }), newText: getMessageText({ message: msg }) })
+        : [{ type: 'unchanged', value: getMessageText({ message: msg }) } as DiffPart];
     }
 
     result.push({
       id: msg.id,
       versionNumber: props.siblings.findIndex(m => m.id === msg.id) + 1,
-      timestamp: msg.timestamp,
+      timestamp: msg.createdAt,
       modelId: msg.modelId,
-      content: msg.content || '',
+      content: getMessageText({ message: msg }),
       diffParts,
       isCurrent: msg.id === props.currentMessageId,
       isSkipped,

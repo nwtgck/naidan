@@ -98,6 +98,32 @@ function decodeXmlParameter({ value, name, parameterName, tools }: {
   return value;
 }
 
+/** Parses one completed native XML envelope, without guessing missing parameters. */
+export function parseQwen3_5NativeToolCall({ content, tools }: {
+  content: string,
+  tools: readonly WorkerToolDefinition[] | undefined,
+}): ToolCall {
+  const matched = content.trim().match(/^<function=([^\n>]+)>([\s\S]*)<\/function>$/);
+  if (!matched) throw new Error('Unsupported or incomplete Qwen native tool body.');
+  const name = matched[1]!;
+  let remaining = matched[2]!;
+  const parameters = Object.create(null) as Record<string, unknown>;
+  while (remaining.trim().length > 0) {
+    const parameter = remaining.match(/^\s*<parameter=([^\n>]+)>([\s\S]*?)<\/parameter>/);
+    if (!parameter) throw new Error('Unexpected content in Qwen native tool parameters.');
+    const parameterName = parameter[1]!;
+    if (Object.hasOwn(parameters, parameterName)) throw new Error('Duplicate Qwen native tool parameter.');
+    // The original template inserts one LF on each side of an argument value.
+    // Preserve any further whitespace belonging to the value itself.
+    let value = parameter[2]!;
+    if (value.startsWith('\n')) value = value.slice(1);
+    if (value.endsWith('\n')) value = value.slice(0, -1);
+    parameters[parameterName] = decodeXmlParameter({ value, name, parameterName, tools });
+    remaining = remaining.slice(parameter[0].length);
+  }
+  return buildToolCall({ name, parameters });
+}
+
 function tryParseQwen3_5ToolCall({ content, tools }: {
   content: string,
   tools: readonly WorkerToolDefinition[] | undefined,

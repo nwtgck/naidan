@@ -131,7 +131,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     root!.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat', id: chatID }] }));
     root!.file('chat-metas.json', JSON.stringify({ entries: [{ id: chatID, title: 'Test', createdAt: 0, updatedAt: 0, debugEnabled: false }] }));
 
-    // Chat content with attachment (V2 format)
+    // Legacy message content with an attachment V2 reference.
     root!.folder('chat-contents')!.file(`${chatID}.json`, JSON.stringify({
       root: {
         items: [{
@@ -173,7 +173,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     // 3. Verify storage is now sharded and hydrated correctly
     const loadedChat = await storageService.loadChat({ id: toChatId({ raw: chatID }) });
     expect(loadedChat).not.toBeNull();
-    const att = loadedChat!.root.items[0]!.attachments![0]!;
+    const att = loadedChat!.root.items[0]!.parts.filter(part => part.type === 'attachment').map(part => part.attachment)![0]!;
 
     expect(att.binaryObjectId).toBe(binaryID);
     expect(att.mimeType).toBe('image/png'); // Must be hydrated from storage index

@@ -36,8 +36,9 @@ function preflightReservation({ scenarios, traceLimits }: {
   }).strict().parse(traceLimits);
   // Each UTF-16 unit needs at most six JSON characters. Settled events occur
   // twice; late events occur only once and are covered by the same reservation.
-  // Continuity includes one further copy of the first settled chunk text.
-  const continuityCharacters = rows.data.includes('continuity') ? 6 * limits.maximumCharacters : 0;
+  // Continuity includes the last applied parts, with text and bounded metadata.
+  // The same conservative reservation also covers legacy literal continuity.
+  const continuityCharacters = rows.data.includes('continuity') ? 6 * limits.maximumCharacters + eventMetadataCharacters * limits.maximumEvents : 0;
   const upperBoundCharacters = scaffoldCharacters
     + rows.data.length * (12 * limits.maximumCharacters + 2 * eventMetadataCharacters * limits.maximumEvents)
     + continuityCharacters;

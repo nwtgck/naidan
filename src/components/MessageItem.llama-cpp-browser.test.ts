@@ -18,7 +18,7 @@ beforeEach(async () => {
 });
 describe('message-local llama.cpp preparation status', () => {
   const message: MessageNode = { id: toMessageId({ raw: 'preparing-message' }), role: 'assistant',
-    content: '', timestamp: 1, replies: { items: [] } };
+    parts: [], createdAt: 1, interruption: undefined, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
   it('mounts preparation UI only inside the generating message and removes it after completion', async () => {
     const wrapper = shallowMount(MessageItem, { props: { chatId: toChatId({ raw: 'local-chat' }), message,
       endpointType: 'llama_cpp_browser', isGenerating: true, showGeneratingIndicator: true } });

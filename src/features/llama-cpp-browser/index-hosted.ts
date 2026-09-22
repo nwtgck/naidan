@@ -3,7 +3,7 @@ import { defaultRuntimeOptions, parseRuntimeOptions } from '@/features/llama-cpp
 import { listStoredModels, removeStoredModel, withModelMutationLock } from './runtime/model-store';
 import { createLlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/client';
 import type { LlamaCppWorkerClient } from './worker/types';
-import { errorCode, generateInputSchema, LlamaCppBrowserError, type EngineState, type Progress, type RuntimeOptions } from './types';
+import { errorCode, generateInputSchema, LlamaCppBrowserError, type EngineState, type Progress, type RuntimeOptions, type GenerationResult } from './types';
 import type { LlamaCppBrowserService } from './service-contract';
 import { logDiagnostic } from './debug-log';
 
@@ -36,6 +36,15 @@ async function ensureProfiles({ worker }: { worker: LlamaCppWorkerClient }): Pro
   if (epoch !== profileEpoch || client !== worker || !worker.canReuse()) throw new LlamaCppBrowserError({ code: 'worker-failed' });
   profileOwner = worker; publishProfiles({ next: { status: 'ready', capabilities } });
   return capabilities;
+}
+async function resolveGenerationOptions({ worker, options }: { worker: LlamaCppWorkerClient, options: RuntimeOptions }) {
+  const capabilities = await ensureProfiles({ worker });
+  const profile = resolveProfilePreference({ preference: options.profile, capabilities });
+  if (profile === undefined || !capabilities.profiles.some(entry => entry.profile === profile && entry.status === 'available')) {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
+  if (client !== worker || !worker.canReuse()) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+  return { ...options, profile };
 }
 async function observeProbe({ pending, signal }: { pending: Promise<ProfileCapabilities>, signal: AbortSignal | undefined }): Promise<ProfileCapabilities> {
   if (!signal) return pending;
@@ -227,30 +236,92 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     }
     return result;
   },
-  generate({ input, onChunk, onResult, signal }) {
+  generate({ input, onEvent, signal }) {
     // Snapshot accepted inputs before waiting in the queue; Vue proxies never cross RPC.
     const initialRequest = generateInputSchema.parse({ ...input, options: { ...options } });
     return run({ kind: 'operation', signal, operation: async ({ worker, signal }) => {
       // Only the Worker knows whether weights/context actually need preparation.
       progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
-      const capabilities = await ensureProfiles({ worker });
-      const profile = resolveProfilePreference({ preference: initialRequest.options.profile, capabilities });
-      if (profile === undefined || !capabilities.profiles.some(entry => entry.profile === profile && entry.status === 'available')) {
-        throw new LlamaCppBrowserError({ code: 'unavailable' });
-      }
-      const concreteOptions = { ...initialRequest.options, profile };
-      let request = { ...initialRequest, options: concreteOptions };
-      while (true) {
-        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-        if (client !== worker || !worker.canReuse()) throw new LlamaCppBrowserError({ code: 'worker-failed' });
-        const result = await worker.generate({ request, onChunk, onProgress: progress, signal });
-        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-        const next = await onResult?.({ result, signal });
-        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-        if (!next) break;
-        request = { ...generateInputSchema.parse({ ...next, options: concreteOptions }), options: concreteOptions };
-      }
+      const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
+      if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+      return worker.generate({ request: { ...initialRequest, options: concreteOptions }, onEvent, onProgress: progress, signal });
     } });
+  },
+  async runGenerationOperation({ signal, operation }) {
+    const acceptedOptions = { ...options };
+    let callbackCompleted = false;
+    let observedFailure: { error: unknown } | undefined;
+    try {
+      await run({ kind: 'operation', signal, operation: async ({ worker, signal }) => {
+        const controller = new AbortController();
+        const abort = () => controller.abort(signal.reason);
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) abort();
+        let phase: 'open' | 'closed' = 'open';
+        let pending: Promise<GenerationResult> | undefined;
+        const generate: LlamaCppBrowserService['generate'] = ({ input, onEvent, signal }) => {
+          switch (phase) {
+          case 'open': break;
+          case 'closed': throw new Error('The generation operation is closed.');
+          default: { const exhaustive: never = phase; throw new Error(`Unknown operation phase: ${exhaustive}`); }
+          }
+          if (pending) throw new LlamaCppBrowserError({ code: 'busy' });
+          if (observedFailure) throw observedFailure.error;
+          if (controller.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+          const request = generateInputSchema.parse({ ...input, options: acceptedOptions });
+          const local = new AbortController();
+          const sources = [...new Set([signal, controller.signal].filter(value => value !== undefined))];
+          const removers = sources.map(source => {
+            const forward = () => local.abort(source.reason);
+            source.addEventListener('abort', forward, { once: true });
+            if (source.aborted) forward();
+            return () => source.removeEventListener('abort', forward);
+          });
+          pending = Promise.resolve().then(async () => {
+            try {
+              if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+              progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
+              const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions });
+              if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+              return await worker.generate({ request: { ...request, options: concreteOptions }, onEvent, onProgress: progress, signal: local.signal });
+            } catch (error) {
+              // A failed model request is not a user cancellation. Keep its error
+              // visible to the consumer instead of aborting the delivery signal.
+              observedFailure = { error };
+              throw error;
+            } finally {
+              for (const remove of removers) remove();
+              pending = undefined;
+            }
+          });
+          // Own rejection even if a buggy operation returns before awaiting the request.
+          void pending.catch(() => {});
+          return pending;
+        };
+        let callbackFailure: { error: unknown } | undefined;
+        try {
+          await operation({ scope: { signal: controller.signal, generate } });
+        } catch (error) {
+          callbackFailure = { error };
+        } finally {
+          phase = 'closed';
+          const running = pending;
+          if (running) {
+            controller.abort();
+            await running.catch(() => {});
+            callbackFailure ??= { error: new Error('The generation operation ended with a pending request.') };
+          }
+          signal.removeEventListener('abort', abort);
+        }
+        if (callbackFailure) throw callbackFailure.error;
+        callbackCompleted = true;
+        // The common consumer may have recorded a model failure as a result.
+        // Let run retire the failed runtime, without replacing that recorded result.
+        if (observedFailure) throw observedFailure.error;
+      } });
+    } catch (error) {
+      if (!callbackCompleted || observedFailure === undefined) throw error;
+    }
   },
   cancel() {
     activeController?.abort();

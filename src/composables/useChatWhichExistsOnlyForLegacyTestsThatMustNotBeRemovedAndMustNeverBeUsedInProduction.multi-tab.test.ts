@@ -1,3 +1,5 @@
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { storageService } from '@/00-storage/service';
@@ -81,7 +83,16 @@ vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
-    return { chat: vi.fn().mockImplementation(({ onChunk }) => onChunk({ chunk: 'OK' })), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
+    return {
+      chat: vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'OK' });
+          return { type: 'finished', next: 'user' };
+        },
+      })),
+      listModels: vi.fn().mockResolvedValue(['gpt-4']),
+    };
   },
 }));
 
@@ -110,8 +121,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chat1: Chat = {
       id: toChatId({ raw: 'c1' }), title: 'C1',
       root: { items: [{
-        id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Hi', timestamp: 0,
-        replies: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'assistant', content: 'Hello', replies: { items: [] }, timestamp: 0 }] },
+        id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
+        replies: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'assistant', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, createdAt: 0 }] },
       }] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'm2' }),
     };
@@ -123,14 +134,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 1. Tab A adds a branch (Branch A). It modifies its local currentChat and calls updateChatContent.
     await chatStoreA.regenerateMessage({ failedMessageId: idToRaw({ id: toMessageId({ raw: 'm2' }) }) });
-    await vi.waitUntil(() => !chatStoreA.streaming.value);
+    await vi.waitUntil(() => !chatStoreA.isProcessing({ chatId: chat1.id }));
     const chatAfterA = mocks.mockChatStorage.get('c1');
     expect(chatAfterA.root.items[0].replies.items).toHaveLength(2);
     const branchAId = chatAfterA.root.items[0].replies.items[1].id;
 
     // 2. Tab B adds a branch (Branch B).
     await chatStoreB.regenerateMessage({ failedMessageId: idToRaw({ id: toMessageId({ raw: 'm2' }) }) });
-    await vi.waitUntil(() => !chatStoreB.streaming.value);
+    await vi.waitUntil(() => !chatStoreB.isProcessing({ chatId: chat1.id }));
 
     // 3. Verification: Branch A must survive Tab B's update.
     const finalChat = mocks.mockChatStorage.get('c1');
@@ -146,7 +157,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const chat1: Chat = {
       id: toChatId({ raw: 'c1' }), title: 'Original Title',
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Hi', replies: { items: [] }, timestamp: 0 }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'm1' }),
     };
     mocks.mockChatStorage.set('c1', chat1);
@@ -160,8 +171,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     vi.mocked(storageService.updateChatContent).mockImplementation(async ({ id, updater }) => {
       await genP;
       const current = mocks.mockChatStorage.get(idToRaw({ id })) || null;
-      const updated = await updater({ current: current });
-      mocks.mockChatStorage.set(idToRaw({ id }), JSON.parse(JSON.stringify(updated)));
+      const updated = await updater({ current: current ? { root: current.root, currentLeafId: current.currentLeafId } : null });
+      mocks.mockChatStorage.set(idToRaw({ id }), JSON.parse(JSON.stringify({ ...current, ...updated })));
     });
 
     const sendP = chatStoreB.sendMessage({ content: 'Reply to me' });
@@ -175,6 +186,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Saving generated content must preserve the title changed by Tab A.
     resolveGen!();
     await sendP;
+    await vi.waitUntil(() => !chatStoreB.isProcessing({ chatId: chat1.id }));
 
     // 4. Verification: Title should still be "New Title"
     const finalChat = mocks.mockChatStorage.get('c1');

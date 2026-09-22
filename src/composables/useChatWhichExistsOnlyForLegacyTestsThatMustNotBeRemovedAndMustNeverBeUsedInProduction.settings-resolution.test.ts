@@ -1,10 +1,21 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { storageService } from '@/00-storage/service';
 import type { ChatMeta } from '@/01-models/types';
+
+afterEach(() => {
+  for (const providerChat of [mockOpenAIChat, mockOllamaChat]) {
+    for (const result of providerChat.mock.results) {
+      expect(result.type).toBe('return');
+      expect(result.value).toEqual(expect.objectContaining({ [Symbol.asyncIterator]: expect.any(Function) }));
+    }
+  }
+});
 
 // Mock storage
 vi.mock('../00-storage/service', () => ({
@@ -28,8 +39,8 @@ vi.mock('../00-storage/service', () => ({
   },
 }));
 
-const mockOpenAIChat = vi.fn();
-const mockOllamaChat = vi.fn();
+const mockOpenAIChat = vi.fn<LmProvider['chat']>();
+const mockOllamaChat = vi.fn<LmProvider['chat']>();
 const mockOpenAIModels = vi.fn();
 const mockOllamaModels = vi.fn();
 
@@ -74,8 +85,20 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'other-gpt', 'pinned-model', 'model-a', 'model-b']);
     mockOllamaModels.mockResolvedValue(['llama-global', 'llama-other']);
 
-    mockOpenAIChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'OpenAI Resp' }));
-    mockOllamaChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'Ollama Resp' }));
+    mockOpenAIChat.mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'OpenAI Resp' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
+    mockOllamaChat.mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Ollama Resp' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
   });
@@ -94,8 +117,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Send first message using Global A
     await sendMessage({ content: 'Message 1' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'global-gpt', onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'global-gpt', signal: expect.any(AbortSignal) }));
 
     // 2. Change to Setting B
     __testOnlySetSettings({ newSettings: {
@@ -106,8 +129,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Send second message in SAME chat - should now use Global B
     await sendMessage({ content: 'Message 2' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'model-b', onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'model-b', signal: expect.any(AbortSignal) }));
 
     // 3. Verify that the chat object itself didn't "lock in" model-b
     expect(currentChat.value!.modelId).toBeUndefined();
@@ -120,14 +143,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await updateChatModel({ id: idToRaw({ id }), modelId: 'pinned-model' });
 
     await sendMessage({ content: 'M1' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'pinned-model', onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'pinned-model', signal: expect.any(AbortSignal) }));
 
     // Change global model - should NOT affect pinned chat
     __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'new-global-gpt' } });
     await sendMessage({ content: 'M2' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'pinned-model', onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'pinned-model', signal: expect.any(AbortSignal) }));
   });
 
   it('Policy: Respect chat-level endpoint settings while following global model if not pinned', async () => {
@@ -140,14 +163,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Global is OpenAI, but chat endpoint is Ollama. Model should be llama-global because Ollama list results in llama-global
     await sendMessage({ content: 'M1' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'llama-global', onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'llama-global', signal: expect.any(AbortSignal) }));
 
     // Change global model to something available in Ollama
     __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'llama-other' } });
     await sendMessage({ content: 'M2' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'llama-other', onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'llama-other', signal: expect.any(AbortSignal) }));
   });
 
   it('Policy: Dynamic resolution when preferred model is unavailable', async () => {
@@ -159,7 +182,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockOpenAIModels.mockResolvedValue(['first-available', 'second']);
 
     await sendMessage({ content: 'M1' });
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'first-available', onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'first-available', signal: expect.any(AbortSignal) }));
   });
 
   it('Policy: Resolve an endpoint atomically at Chat or Global scope', async () => {
@@ -177,8 +201,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await openChat({ id: idToRaw({ id }) });
 
     await sendMessage({ content: 'G' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), signal: expect.any(AbortSignal) }));
 
     // 2. Chat Override
     await updateChatSettings({
@@ -192,8 +216,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
     });
     await sendMessage({ content: 'C' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), onChunk: expect.any(Function) }));
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), signal: expect.any(AbortSignal) }));
   });
 
   it('applies_an_atomic_endpoint_override_to_a_non_live_group_chat', async () => {

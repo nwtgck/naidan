@@ -9,25 +9,27 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import { toToolCallId, type ToolCallId } from '@/01-models/ids';
-import { zodToJsonSchema } from '@/utils/lm-tools';
+import { toToolCallId, type BinaryObjectId } from '@/01-models/ids';
 import type { LmParameters, ChatMessage } from '@/01-models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import { formatToolExecutionOutcomeForLm, type Tool, type ToolExecutionOutcome } from '@/01-models/tool';
-import type { ToolApprovalContext } from '@/features/tools/approval';
 import { getDefaultLmFetch, type LmFetch } from '@/features/lm/fetch';
-import { type LmProvider } from '@/01-models/lm';
+import type { LmProvider, ChatGenerationItem, ChatGenerationResult, JsonValue } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { buildApiChatMessages, snapshotChatRequest, type ApiChatMessage } from './chat-request';
+import { readSseData, readApiErrorDetails } from './response-stream';
 
 const { addErrorEvent } = useGlobalEvents();
 
 const OpenAIChatChunkSchema = z.object({
   choices: z.array(z.object({
+    index: z.number().int().nonnegative().optional(),
+    finish_reason: z.string().nullable().optional(),
     delta: z.object({
       content: z.string().nullable().optional(),
       reasoning: z.string().nullable().optional(),
       reasoning_content: z.string().nullable().optional(),
       tool_calls: z.array(z.object({
-        index: z.number(),
+        index: z.number().int().nonnegative(),
         id: z.string().optional(),
         type: z.literal('function').optional(),
         function: z.object({
@@ -47,7 +49,7 @@ const OpenAIModelsSchema = z.object({
 
 interface OpenAICompletionRequest {
   model: string,
-  messages: ChatMessage[],
+  messages: ApiChatMessage[],
   stream: boolean,
   temperature?: number,
   top_p?: number,
@@ -61,7 +63,7 @@ interface OpenAICompletionRequest {
     function: {
       name: string,
       description: string,
-      parameters: unknown,
+      parameters: { [key: string]: JsonValue },
     },
   }[],
 }
@@ -77,291 +79,114 @@ export class OpenAIProvider implements LmProvider {
     this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
-  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
-    messages: ChatMessage[],
+  chat({ messages, model, parameters, tools, readBinaryObject, signal }: {
+    messages: readonly ChatMessage[],
     model: string,
-    onChunk: ({ chunk }: { chunk: string }) => void,
-    parameters?: LmParameters,
-    tools?: Tool[],
-    toolApprovalContext?: ToolApprovalContext,
-    onToolCall?: ({ id, toolName, modelVisibleArguments }: { id: ToolCallId, toolName: string, modelVisibleArguments: string }) => void,
-    onToolEvent?: ({ id, event }: { id: ToolCallId, event: import('@/01-models/tool').ToolExecutionEvent }) => void,
-    onToolResult?: ({ id, result }: {
-      id: ToolCallId,
-      result: ToolExecutionOutcome,
-    }) => void,
-    onAssistantMessageStart?: () => void,
-    signal?: AbortSignal,
-  }): Promise<void> {
+    parameters: LmParameters | undefined,
+    tools: Parameters<LmProvider['chat']>[0]['tools'],
+    readBinaryObject: (({ binaryObjectId, signal }: { binaryObjectId: BinaryObjectId, signal: AbortSignal | undefined }) => Promise<Blob>) | undefined,
+    signal: AbortSignal | undefined,
+  }): AsyncIterable<ChatGenerationItem> {
+    const snapshot = snapshotChatRequest({ messages, parameters, tools });
     const { endpoint, headers, fetcher } = this.config;
-    const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
-
-    // Local copy to manage the conversation loop (tool calls/results)
-    const currentMessages: ChatMessage[] = [...messages];
-
-    while (true) {
-      if (signal?.aborted) throw new Error('Generation aborted');
-
-      onAssistantMessageStart?.();
-
+    const requestHeaders = headers?.map(([name, value]): [string, string] => [name, value]);
+    return createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
+      const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
       const body: OpenAICompletionRequest = {
-        model,
-        messages: currentMessages,
-        stream: true,
+        model, messages: await buildApiChatMessages({ messages: snapshot.messages, readBinaryObject, signal }), stream: true,
       };
-
-      if (parameters) {
-        if (parameters.temperature !== undefined) body.temperature = parameters.temperature;
-        if (parameters.topP !== undefined) body.top_p = parameters.topP;
-        if (parameters.maxCompletionTokens !== undefined) body.max_completion_tokens = parameters.maxCompletionTokens;
-        if (parameters.presencePenalty !== undefined) body.presence_penalty = parameters.presencePenalty;
-        if (parameters.frequencyPenalty !== undefined) body.frequency_penalty = parameters.frequencyPenalty;
-        if (parameters.stop !== undefined) body.stop = parameters.stop;
-        if (parameters.reasoning?.effort !== undefined) body.reasoning_effort = parameters.reasoning.effort;
+      if (snapshot.parameters) {
+        const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = snapshot.parameters;
+        unhandled satisfies Record<PropertyKey, never>;
+        body.temperature = temperature; body.top_p = topP; body.max_completion_tokens = maxCompletionTokens;
+        body.presence_penalty = presencePenalty; body.frequency_penalty = frequencyPenalty; body.stop = stop;
+        body.reasoning_effort = reasoning.effort;
       }
-
-      if (tools && tools.length > 0) {
-        body.tools = tools.map(t => ({
-          type: 'function',
-          function: {
-            name: t.name,
-            description: t.description,
-            parameters: zodToJsonSchema({ schema: t.parametersSchema }),
-          },
-        }));
-      }
-
+      if (snapshot.tools?.length) body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
       let response: Response;
       try {
         response = await fetcher(url, {
-          method: 'POST',
-          headers: [
-            ['Content-Type', 'application/json'],
-            ...(headers || []),
-          ],
-          body: JSON.stringify(body),
-          signal,
+          method: 'POST', headers: [['Content-Type', 'application/json'], ...(requestHeaders ?? [])],
+          body: JSON.stringify(body), signal,
         });
-      } catch (e) {
-        const isAbort = e instanceof Error && e.name === 'AbortError';
-        if (!isAbort) {
-          const message = `Network error or CORS issue: ${e instanceof Error ? e.message : String(e)}. Please check if the server is running and your endpoint URL is correct.`;
-          addErrorEvent({
-            source: 'OpenAIProvider',
-            message,
-            details: { error: e, url, method: 'POST' },
-          });
-          throw new Error(message);
-        }
-        throw e;
+      } catch (error) {
+        if (signal.aborted) throw error;
+        const message = `Network error or CORS issue: ${error instanceof Error ? error.message : String(error)}. Please check if the server is running and your endpoint URL is correct.`;
+        addErrorEvent({ source: 'OpenAIProvider', message, details: { error, url, method: 'POST' } });
+        throw new Error(message);
       }
-
       if (!response.ok) {
-        let details = response.statusText;
-        try {
-          const errorJson = await response.json();
-          details = errorJson.error?.message || errorJson.error || JSON.stringify(errorJson);
-        } catch (e) { /* ignore */ }
-        const errorMsg = `OpenAI API Error (${response.status}): ${details}`;
-        addErrorEvent({
-          source: 'OpenAIProvider',
-          message: errorMsg,
-          details: { status: response.status, statusText: response.statusText, url },
-        });
-        throw new Error(errorMsg);
+        const message = `OpenAI API Error (${response.status}): ${await readApiErrorDetails({ response })}`;
+        addErrorEvent({ source: 'OpenAIProvider', message, details: { status: response.status, url } });
+        throw new Error(message);
       }
-      if (!response.body) throw new Error('No response body');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      const accumulatedToolCalls: Map<string, import('@/01-models/types').ToolCall> = new Map();
-      // Track the current active ID for each index to detect sequential calls on the same index
-      const indexToCurrentIdMap: Map<number, string> = new Map();
-      let fullContent = '';
-      let isThinking = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          if (isThinking) {
-            onChunk({ chunk: '</think>' });
-            fullContent += '</think>';
-            isThinking = false;
-          }
-          break;
+      const drafts: { key: number, id: string | undefined, name: string, arguments: string }[] = [];
+      const currentByIndex = new Map<number, typeof drafts[number]>();
+      async function completeCalls(): Promise<void> {
+        const ids = new Set<string>();
+        for (const call of drafts) {
+          if (!call.id || !call.name || ids.has(call.id)) throw new Error('Incomplete or duplicate tool call in a completed response.');
+          ids.add(call.id);
         }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.trim() === '') continue;
-          if (line.trim() === 'data: [DONE]') continue;
-          if (!line.startsWith('data: ')) continue;
-
-          try {
-            const rawJson = JSON.parse(line.slice(6));
-            const validated = OpenAIChatChunkSchema.parse(rawJson);
-            const delta = validated.choices[0]?.delta;
-            if (!delta) continue;
-
-            const reasoning = delta.reasoning || delta.reasoning_content;
-            if (reasoning) {
-              if (!isThinking) {
-                onChunk({ chunk: '<think>' });
-                fullContent += '<think>';
-                isThinking = true;
-              }
-              fullContent += reasoning;
-              onChunk({ chunk: reasoning });
-            }
-
-            if (delta.content) {
-              if (isThinking) {
-                onChunk({ chunk: '</think>' });
-                fullContent += '</think>';
-                isThinking = false;
-              }
-              fullContent += delta.content;
-              onChunk({ chunk: delta.content });
-            }
-
-            if (delta.tool_calls) {
-              for (const tc of delta.tool_calls) {
-                if (tc.id) {
-                  indexToCurrentIdMap.set(tc.index, tc.id);
-                }
-                const currentId = indexToCurrentIdMap.get(tc.index) || `index_${tc.index}`;
-                // Using composite key ensures different IDs at the same index are handled separately
-                const key = `${tc.index}_${currentId}`;
-
-                if (!accumulatedToolCalls.has(key)) {
-                  accumulatedToolCalls.set(key, {
-                    id: toToolCallId({ raw: tc.id || currentId }),
-                    type: 'function',
-                    function: { name: '', arguments: '' },
-                  });
-                }
-                const record = accumulatedToolCalls.get(key)!;
-                if (tc.function?.name) {
-                  if (record.function.name !== tc.function.name) {
-                    record.function.name += tc.function.name;
-                  }
-                }
-                if (tc.function?.arguments) {
-                  if (record.function.arguments !== tc.function.arguments) {
-                    record.function.arguments += tc.function.arguments;
-                  }
-                }
-                if (tc.id) record.id = toToolCallId({ raw: tc.id });
-              }
-            }
-          } catch (e) {
-            addErrorEvent({
-              source: 'OpenAIProvider',
-              message: 'Failed to parse or validate SSE line',
-              details: { line, error: e instanceof Error ? e : String(e) },
-            });
-          }
+        for (const call of drafts) {
+          // A terminal API event, not successful JSON parsing, completes this call.
+          await writer.call({ key: call.key, toolCall: { id: toToolCallId({ raw: call.id! }), type: 'function', function: { name: call.name, arguments: call.arguments } } });
         }
       }
-
-      const toolCalls = Array.from(accumulatedToolCalls.values()).filter(tc => !!tc.function.name);
-
-      if (toolCalls.length > 0) {
-        // Execute tools and loop
-        currentMessages.push({
-          role: 'assistant',
-          content: fullContent,
-          tool_calls: toolCalls,
-        });
-
-        for (const tc of toolCalls) {
-          if (signal?.aborted) throw new Error('Generation aborted');
-
-          onToolCall?.({
-            id: tc.id,
-            toolName: tc.function.name,
-            modelVisibleArguments: tc.function.arguments,
-          });
-
-          const tool = tools?.find(t => t.name === tc.function.name);
-          let result: string;
-          let parsedArgs: unknown;
-
-          if (typeof tc.function.arguments === 'string') {
-            try {
-              parsedArgs = JSON.parse(tc.function.arguments);
-            } catch (e) {
-              const errorResult: ToolExecutionOutcome = {
-                status: 'error',
-                code: 'invalid_arguments',
-                message: `Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
-              };
-              onToolResult?.({ id: tc.id, result: errorResult });
-              result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
-            }
-          } else {
-            parsedArgs = tc.function.arguments;
+      try {
+        for await (const data of readSseData({ response, signal })) {
+          if (data === '[DONE]') {
+            await completeCalls();
+            return { type: 'finished', next: drafts.length ? 'tool_results' : 'user' };
           }
-
-          if (tool && parsedArgs !== undefined) {
-            try {
-              if (signal?.aborted) throw new Error('Generation aborted');
-
-              // Perform common strict validation here to enforce strictness globally
-              const validatedArgs = tool.parametersSchema.strict().parse(parsedArgs);
-
-              const executionResult = await tool.execute({
-                args: validatedArgs,
-                signal,
-                onEvent: async ({ event }) => {
-                  onToolEvent?.({ id: tc.id, event });
-                },
-                approvalContext: toolApprovalContext,
-              });
-
-              if (signal?.aborted) throw new Error('Generation aborted');
-
-              onToolResult?.({ id: tc.id, result: executionResult });
-              result = formatToolExecutionOutcomeForLm({ outcome: executionResult });
-            } catch (e) {
-              if (e instanceof Error && e.message === 'Generation aborted') throw e;
-
-              const errorResult: ToolExecutionOutcome = e instanceof z.ZodError
-                ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
-                : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
-
-              onToolResult?.({ id: tc.id, result: errorResult });
-              result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
+          const chunk = OpenAIChatChunkSchema.parse(JSON.parse(data));
+          if (chunk.choices.length > 1) throw new Error('Multiple generated choices are not supported in one assistant message.');
+          const choice = chunk.choices[0];
+          if (!choice) continue; // Usage-only event.
+          if (choice.index !== undefined && choice.index !== 0) throw new Error('Unexpected choice index.');
+          const delta = choice.delta;
+          if (delta) {
+            if (delta.reasoning !== undefined && delta.reasoning !== null && delta.reasoning_content !== undefined && delta.reasoning_content !== null && delta.reasoning !== delta.reasoning_content) {
+              throw new Error('Conflicting reasoning fields in the same response chunk.');
             }
-
-          } else if (!tool) {
-            const errorResult: ToolExecutionOutcome = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
-            onToolResult?.({ id: tc.id, result: errorResult });
-            result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
-          } else {
-            // result already set by parse catch block if parsedArgs is undefined
-            result = result! || 'Error: Unknown failure.';
+            const reasoning = delta.reasoning ?? delta.reasoning_content;
+            // Empty deltas are API keep-alives/placeholders, not declared empty parts.
+            if (reasoning) await writer.text({ type: 'reasoning', text: reasoning });
+            if (delta.content) await writer.text({ type: 'text', text: delta.content });
+            for (const piece of delta.tool_calls ?? []) {
+              let draft = currentByIndex.get(piece.index);
+              if (!draft || (piece.id && draft.id && draft.id !== piece.id)) {
+                draft = { key: drafts.length, id: piece.id, name: '', arguments: '' };
+                drafts.push(draft); currentByIndex.set(piece.index, draft);
+                writer.reserveCall({ key: draft.key });
+              }
+              if (piece.id) draft.id = piece.id;
+              // Delta text is never deduplicated because two equal fragments can be intentional.
+              draft.name += piece.function?.name ?? '';
+              draft.arguments += piece.function?.arguments ?? '';
+            }
           }
-
-          currentMessages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: result,
-          });
+          if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
+            switch (choice.finish_reason) {
+            case 'stop':
+            case 'tool_calls':
+              await completeCalls();
+              return { type: 'finished', next: drafts.length ? 'tool_results' : 'user' };
+            case 'length': return { type: 'interrupted', reason: 'limit' };
+            default: return { type: 'interrupted', reason: 'unknown' };
+            }
+          }
         }
-        continue; // Loop for next response from LM
+        // A socket closing by itself is not a model-level completion event.
+        return { type: 'interrupted', reason: 'unknown' } satisfies ChatGenerationResult;
+      } catch (error) {
+        if (!signal.aborted) addErrorEvent({ source: 'OpenAIProvider', message: 'Failed to read or validate the generation stream', details: { error: error instanceof Error ? error : String(error) } });
+        throw error;
       }
-
-      break; // No more tool calls or we already sent content
-    }
+    } });
   }
 
-  async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
+  async listModels({ signal }: { signal: AbortSignal | undefined }): Promise<string[]> {
     const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/models`;
     let response: Response;
@@ -382,11 +207,7 @@ export class OpenAIProvider implements LmProvider {
     }
 
     if (!response.ok) {
-      let details = response.statusText;
-      try {
-        const errorJson = await response.json();
-        details = errorJson.error?.message || errorJson.error || JSON.stringify(errorJson);
-      } catch (e) { /* ignore */ }
+      const details = await readApiErrorDetails({ response });
       const errorMsg = `Failed to fetch models (${response.status}): ${details}`;
       addErrorEvent({
         source: 'OpenAIProvider:listModels',

@@ -1,10 +1,21 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { storageService } from '@/00-storage/service';
 import { reactive, nextTick } from 'vue';
 import type { Chat, ChatGroup, SidebarItem } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+
+afterEach(() => {
+  for (const providerChat of [mockLmChat]) {
+    for (const result of providerChat.mock.results) {
+      expect(result.type).toBe('return');
+      expect(result.value).toEqual(expect.objectContaining({ [Symbol.asyncIterator]: expect.any(Function) }));
+    }
+  }
+});
 
 // Mock storage
 const mockRootItems: SidebarItem[] = [];
@@ -47,7 +58,7 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-const mockLmChat = vi.fn();
+const mockLmChat = vi.fn<LmProvider['chat']>();
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
@@ -71,6 +82,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLmChat.mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     chatStore.TEST_ONLY.clearLiveChatRegistry();
     chatStore.rootItems.value = [];
     mockRootItems.length = 0;
@@ -92,7 +110,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: toChatGroupId({ raw: 'g1' }),
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'chat-model',
       createdAt: 0,
       updatedAt: 0,
@@ -105,7 +123,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Testing sendMessage resolution
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
     // Verify the LM was called with resolved settings
     // Resolved System Prompt: ["Group Prompt", "Chat Prompt"]
@@ -113,11 +131,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
-          expect.objectContaining({ role: 'system', content: 'Group Prompt' }),
-          expect.objectContaining({ role: 'system', content: 'Chat Prompt' }),
+          expect.objectContaining({ role: 'system', parts: [{ type: 'text', text: 'Group Prompt', completeness: 'complete' }] }),
+          expect.objectContaining({ role: 'system', parts: [{ type: 'text', text: 'Chat Prompt', completeness: 'complete' }] }),
         ]),
         model: 'chat-model',
-        onChunk: expect.any(Function),
         parameters: expect.objectContaining({ temperature: 0.5 }),
         signal: expect.any(AbortSignal),
       }),
@@ -138,7 +155,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: toChatGroupId({ raw: 'g1' }),
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'base-model',
       createdAt: 0,
       updatedAt: 0,
@@ -149,7 +166,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
     // Global: "Global Prompt"
     // Group: Append "Group Instruction" -> ["Global Prompt", "Group Instruction"]
@@ -157,11 +174,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
-          expect.objectContaining({ role: 'system', content: 'Global Prompt' }),
-          expect.objectContaining({ role: 'system', content: 'Group Instruction' }),
+          expect.objectContaining({ role: 'system', parts: [{ type: 'text', text: 'Global Prompt', completeness: 'complete' }] }),
+          expect.objectContaining({ role: 'system', parts: [{ type: 'text', text: 'Group Instruction', completeness: 'complete' }] }),
         ]),
         model: expect.any(String),
-        onChunk: expect.any(Function),
         parameters: expect.any(Object),
         signal: expect.any(AbortSignal),
       }),
@@ -182,7 +198,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: toChatGroupId({ raw: 'g1' }),
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: '',
       createdAt: 0,
       updatedAt: 0,
@@ -193,13 +209,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
     expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'group-special-model',
-        onChunk: expect.any(Function),
         parameters: expect.any(Object),
         signal: expect.any(AbortSignal),
       }),
@@ -209,7 +224,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('clears currentChatGroup when opening a chat or creating a new one', async () => {
     chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
 
-    vi.mocked(storageService.loadChat).mockResolvedValue({ id: 'c1', title: 'C1' } as any);
+    vi.mocked(storageService.loadChat).mockResolvedValue({ id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false });
     await chatStore.openChat({ id: 'c1' });
     expect(chatStore.currentChatGroup.value).toBeNull();
 
@@ -236,7 +251,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: toChatGroupId({ raw: 'g1' }),
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'some-model',
       createdAt: 0,
       updatedAt: 0,
@@ -247,13 +262,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
     expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),
-        onChunk: expect.any(Function),
         parameters: expect.any(Object),
         signal: expect.any(AbortSignal),
       }),
@@ -270,7 +284,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: toChatGroupId({ raw: 'g1' }),
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
@@ -282,13 +296,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
     expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),
-        onChunk: expect.any(Function),
         parameters: expect.objectContaining({
           temperature: 0.1,         // Chat wins
           topP: 0.5,                // Group wins (not in chat)
@@ -308,7 +321,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: toChatGroupId({ raw: 'g1' }),
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
@@ -319,12 +332,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
     const params = mockLmChat.mock.calls[0]![0];
     const messages = params.messages;
     // Global "Global Prompt" should be gone. Only User message left.
-    expect(messages.filter((m: any) => m.role === 'system')).toHaveLength(0);
+    expect(messages.filter(m => m.role === 'system')).toHaveLength(0);
   });
 
   it('updates resolved settings dynamically when chat is moved to a group', async () => {
@@ -336,7 +349,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: null, // Initially no group
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: '', createdAt: 0, updatedAt: 0, debugEnabled: false,
     });
 
@@ -348,12 +361,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 1. Send message while Chat is NOT in group
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
     expect(mockLmChat).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'global-model',
-        onChunk: expect.any(Function),
         parameters: expect.any(Object),
         signal: expect.any(AbortSignal),
       }),
@@ -364,13 +376,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await nextTick();
 
     await chatStore.sendMessage({ content: 'Hi again', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
     expect(mockLmChat).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'group-model',
-        onChunk: expect.any(Function),
         parameters: expect.any(Object),
         signal: expect.any(AbortSignal),
       }),
@@ -395,7 +406,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: toChatGroupId({ raw: 'g1' }),
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'some-model',
       createdAt: 0,
       updatedAt: 0,
@@ -406,13 +417,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
     expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),
-        onChunk: expect.any(Function),
         parameters: expect.any(Object),
         signal: expect.any(AbortSignal),
       }),

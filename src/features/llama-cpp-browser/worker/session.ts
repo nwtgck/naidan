@@ -5,13 +5,15 @@ import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile, type Progress, 
 import { storedModelDirectory } from "@/features/llama-cpp-browser/runtime/model-store";
 import { loadRuntime } from "@/features/llama-cpp-browser/runtime/load-runtime";
 import { resolveRuntimeProfile } from "@/features/llama-cpp-browser/runtime/detect-profile";
-import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
+import { logDiagnostic, logFailure } from "@/features/llama-cpp-browser/debug-log";
 import type { WorkerGenerateInput } from "./types";
 import { loadProjector, type ResidentProjector } from "./projector";
+import { probeNewContextSequenceRemoval, type SequenceRemoval } from './cache-capabilities';
+import { disposePromptCheckpoint, type PromptCheckpoint } from './prompt-checkpoint';
 
-export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid' };
+export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', checkpoint: PromptCheckpoint | undefined };
 
-type ResidentModel = { model: bigint, context: bigint, cache: PromptCache, name: string,
+type ResidentModel = { model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, name: string,
   id: string, files: ModelFile[], projector: ResidentProjector | undefined };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string | undefined } | undefined;
 let resident: ResidentModel | undefined;
@@ -22,7 +24,12 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
   const current = resident; resident = undefined;
   if (runtime && current) {
     try {
-      if (current.context !== 0n) await runtime.core.api.llama_free(current.context);
+      try {
+        const checkpoint = current.cache.checkpoint; current.cache.checkpoint = undefined;
+        disposePromptCheckpoint({ core: runtime.core, checkpoint });
+      } finally {
+        if (current.context !== 0n) await runtime.core.api.llama_free(current.context);
+      }
     } finally {
       try {
         await current.projector?.release();
@@ -42,10 +49,14 @@ export async function invalidateStoredModel({ id }: { id: string }): Promise<voi
 }
 export async function prepareSession({ request, onProgress, signal }: {
   request: WorkerGenerateInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
-}): Promise<{ core: Core, model: bigint, context: bigint, cache: PromptCache, projector: bigint }> {
+}): Promise<{ core: Core, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval, slidingWindow: number, cache: PromptCache, projector: bigint }> {
   const checkCancelled = (): void => {
     if (signal?.aborted) {
-      if (resident) resident.cache.validity = 'invalid';
+      if (resident) {
+        resident.cache.validity = 'invalid';
+        const checkpoint = resident.cache.checkpoint; resident.cache.checkpoint = undefined;
+        if (runtime) disposePromptCheckpoint({ core: runtime.core, checkpoint });
+      }
       throw new LlamaCppBrowserError({ code: "aborted" });
     }
   };
@@ -124,7 +135,7 @@ export async function prepareSession({ request, onProgress, signal }: {
       } else model = await api.llama_model_load_from_file(path, params);
       checkCancelled();
       if (model === 0n) throw new LlamaCppBrowserError({ code: "runtime-error" });
-      resident = { model, projector: undefined, context: 0n, cache: { tokens: [], validity: 'invalid' }, name: request.model, id: directory.id, files: directory.files };
+      resident = { model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined }, name: request.model, id: directory.id, files: directory.files };
       model = 0n;
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
       logDiagnostic({ diagnostic: { event: "load-complete", elapsedMs: performance.now() - started, profile } });
@@ -165,6 +176,12 @@ export async function prepareSession({ request, onProgress, signal }: {
     let failed = false;
     try {
       await api.llama_context_default_params(cp);
+      const swaField = core.fieldLayout({ name: 'llama_context_params', field: 'swa_full' });
+      if (swaField.kind !== 'boolean' || swaField.size !== 1) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      // Full SWA retention needs no extra SWA snapshot. Read the actual native
+      // default instead of assuming that every model with n_swa needs one.
+      const swaFull = core.bytes({ pointer: cp + swaField.offset, length: 1 })[0] !== 0;
+      current.slidingWindow = swaFull ? 0 : await api.llama_model_n_swa(current.model);
       for (const [field, value] of Object.entries({ n_batch: 128, n_ubatch: 128, n_threads: 1, n_threads_batch: 1 })) {
         core.setField({ name: "llama_context_params", pointer: cp, field: field, value: value });
       }
@@ -185,7 +202,14 @@ export async function prepareSession({ request, onProgress, signal }: {
         requested = Math.max(floor, Math.floor(requested / 2));
         logDiagnostic({ diagnostic: { event: "context-retry", contextTokens: requested, reason: 'context-allocation' } });
       }
-      logDiagnostic({ diagnostic: { event: "context-ready", contextTokens: await api.llama_n_ctx(current.context), elapsedMs: performance.now() - started, profile } });
+      try {
+        current.sequenceRemoval = await probeNewContextSequenceRemoval({ core, context: current.context });
+      } catch (error) {
+        logFailure({ stage: 'cache-probe', error });
+        throw error;
+      }
+      checkCancelled();
+      logDiagnostic({ diagnostic: { event: "context-ready", cacheRemoval: current.sequenceRemoval, slidingWindowTokens: current.slidingWindow, contextTokens: await api.llama_n_ctx(current.context), elapsedMs: performance.now() - started, profile } });
     } catch (error) {
       failed = true;
       throw error;
@@ -198,7 +222,8 @@ export async function prepareSession({ request, onProgress, signal }: {
     }
   }
   checkCancelled();
-  return { core, model: current.model, context: current.context, cache: current.cache, projector: current.projector?.pointer ?? 0n };
+  if (current.sequenceRemoval === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+  return { core, model: current.model, context: current.context, sequenceRemoval: current.sequenceRemoval, slidingWindow: current.slidingWindow, cache: current.cache, projector: current.projector?.pointer ?? 0n };
 }
 export const TEST_ONLY = {
   residentContext: () => resident?.context,

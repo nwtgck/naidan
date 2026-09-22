@@ -1,5 +1,7 @@
 import { OPFS_MODELS_DIR } from '@/constants';
-import type { ChatMessage, LmParameters } from '@/01-models/types';
+import type { InferenceGenerationCallback } from './generation-events';
+import type { LmParameters } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import { cloneChatMessages, cloneLmParameters, cloneWorkerTools } from './inference-input-snapshot';
 import { isOpfsStagingFileName } from './runtime/opfs-staging-file';
 import { removeTransformersModelFiles } from './runtime/model-storage';
@@ -510,6 +512,111 @@ export function createTransformersJsService({ createWorkerClient }: {
       const _ex: never = run;
       throw new Error(`Unhandled Production download preparation status: ${String(_ex)}`);
     }
+    }
+  }
+
+  async function generateForOwner({ messages, params, tools, signal, continuationOwner, delivery }: {
+    messages: InferenceMessage[],
+    params: LmParameters | undefined,
+    tools: WorkerToolDefinition[] | undefined,
+    signal: AbortSignal | undefined,
+    continuationOwner: string | undefined,
+    delivery:
+      | { type: 'legacy', onChunk: TransformersJsChunkCallback, onToolCalls: TransformersJsToolCallsCallback }
+      | { type: 'structured', onEvent: InferenceGenerationCallback },
+  }): Promise<void> {
+    const { owner, assertCurrent, isCurrent } = captureRuntimeOperation();
+    assertCurrent();
+    switch (loadingStatus) {
+    case 'idle':
+    case 'loading':
+    case 'error':
+      throw new Error('Model not loaded');
+    case 'ready':
+      break;
+    default: {
+      const _ex: never = loadingStatus;
+      throw new Error(`Unhandled loading status: ${_ex}`);
+    }
+    }
+
+    let interruptPromise: Promise<void> | undefined;
+    let generationClient: TransformersJsWorkerClient | undefined;
+    const onAbort = () => {
+      if (interruptPromise !== undefined || generationClient === undefined) {
+        return;
+      }
+      const interruptedClient = generationClient;
+      interruptPromise = (async () => {
+        try {
+          await interruptedClient.interrupt();
+        } catch (error) {
+          console.error('Failed to interrupt Transformers.js generation:', error);
+        }
+      })();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted === true) {
+      onAbort();
+    }
+
+    try {
+      const remote = await getClient();
+      assertCurrent();
+      if (signal?.aborted === true) {
+        await interruptPromise;
+        return;
+      }
+      generationClient = remote;
+      switch (delivery.type) {
+      case 'legacy':
+        await remote.generateText({
+          messages: cloneChatMessages({ messages }),
+          onChunk: ({ chunk }) => {
+            if (isCurrent() && !owner.signal.aborted) return delivery.onChunk({ chunk });
+          },
+          onToolCalls: ({ toolCalls }) => {
+            if (isCurrent() && !owner.signal.aborted) return delivery.onToolCalls({ toolCalls });
+          },
+          params: cloneLmParameters({ params }),
+          tools: cloneWorkerTools({ tools }),
+          continuationOwner,
+        });
+        break;
+      case 'structured':
+        await remote.generateMessage({
+          messages: cloneChatMessages({ messages }), params: cloneLmParameters({ params }),
+          tools: cloneWorkerTools({ tools }), continuationOwner,
+          onEvent: ({ event }) => {
+            // An ordinary stop does not discard already accepted native events.
+            // A revoked owner or replaced runtime still cannot mutate this run.
+            if (isCurrent()) return delivery.onEvent({ event });
+          },
+        });
+        break;
+      default: { const exhaustive: never = delivery; throw new Error(`Unhandled generation delivery: ${exhaustive}`); }
+      }
+      assertCurrent();
+    } catch (e) {
+      if (!isCurrent() || owner.signal.aborted) throw e;
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
+        console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
+        await recoverAfterFailure({ error: e });
+        if (!isCurrent()) throw e;
+        // Recovery replaces the model-bearing client even if cancellation
+        // arrived during retirement. Never advertise its empty replacement
+        // as the previously loaded model to the next Provider operation.
+        activeModelId = undefined;
+        loadingStatus = 'idle';
+        notify();
+      }
+      throw e;
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+      if (interruptPromise !== undefined) {
+        await interruptPromise;
+      }
     }
   }
 
@@ -1253,7 +1360,7 @@ export function createTransformersJsService({ createWorkerClient }: {
      * Generates text through the worker.
      */
     async generateText({ messages, onChunk, onToolCalls, params, tools, signal, continuationOwner }: {
-      messages: ChatMessage[],
+      messages: InferenceMessage[],
       onChunk: TransformersJsChunkCallback,
       onToolCalls: TransformersJsToolCallsCallback,
       params?: LmParameters,
@@ -1261,83 +1368,9 @@ export function createTransformersJsService({ createWorkerClient }: {
       signal?: AbortSignal,
       continuationOwner?: string,
     }) {
-      const { owner, assertCurrent, isCurrent } = captureRuntimeOperation();
-      assertCurrent();
-      switch (loadingStatus) {
-      case 'idle':
-      case 'loading':
-      case 'error':
-        throw new Error('Model not loaded');
-      case 'ready':
-        break;
-      default: {
-        const _ex: never = loadingStatus;
-        throw new Error(`Unhandled loading status: ${_ex}`);
-      }
-      }
-
-      let interruptPromise: Promise<void> | undefined;
-      let generationClient: TransformersJsWorkerClient | undefined;
-      const onAbort = () => {
-        if (interruptPromise !== undefined || generationClient === undefined) {
-          return;
-        }
-        const interruptedClient = generationClient;
-        interruptPromise = (async () => {
-          try {
-            await interruptedClient.interrupt();
-          } catch (error) {
-            console.error('Failed to interrupt Transformers.js generation:', error);
-          }
-        })();
-      };
-      signal?.addEventListener('abort', onAbort, { once: true });
-      if (signal?.aborted === true) {
-        onAbort();
-      }
-
-      try {
-        const remote = await getClient();
-        assertCurrent();
-        if (signal?.aborted === true) {
-          await interruptPromise;
-          return;
-        }
-        generationClient = remote;
-        await remote.generateText({
-          messages: cloneChatMessages({ messages }),
-          onChunk: ({ chunk }) => {
-            if (isCurrent() && !owner.signal.aborted) return onChunk({ chunk });
-          },
-          onToolCalls: ({ toolCalls }) => {
-            if (isCurrent() && !owner.signal.aborted) return onToolCalls({ toolCalls });
-          },
-          params: cloneLmParameters({ params }),
-          tools: cloneWorkerTools({ tools }),
-          continuationOwner,
-        });
-        assertCurrent();
-      } catch (e) {
-        if (!isCurrent() || owner.signal.aborted) throw e;
-        const errorMsg = e instanceof Error ? e.message : String(e);
-        if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
-          console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
-          await recoverAfterFailure({ error: e });
-          if (!isCurrent()) throw e;
-          // Recovery replaces the model-bearing client even if cancellation
-          // arrived during retirement. Never advertise its empty replacement
-          // as the previously loaded model to the next Provider operation.
-          activeModelId = undefined;
-          loadingStatus = 'idle';
-          notify();
-        }
-        throw e;
-      } finally {
-        signal?.removeEventListener('abort', onAbort);
-        if (interruptPromise !== undefined) {
-          await interruptPromise;
-        }
-      }
+      return generateForOwner({ messages, params, tools, signal, continuationOwner,
+        delivery: { type: 'legacy', onChunk, onToolCalls },
+      });
     },
   };
 
@@ -1467,6 +1500,15 @@ export function createTransformersJsService({ createWorkerClient }: {
           },
         };
         return runChild({ execute: () => rawService.generateText({ ...snapshot, signal: owner.signal }) });
+      },
+      generateMessage({ messages, onEvent, params, tools, continuationOwner }) {
+        const snapshot = { messages: cloneChatMessages({ messages }), params: cloneLmParameters({ params }),
+          tools: cloneWorkerTools({ tools }), continuationOwner };
+        return runChild({ execute: () => generateForOwner({ ...snapshot, signal: owner.signal,
+          delivery: { type: 'structured', onEvent: ({ event }) => {
+            if (open) return onEvent({ event });
+          } },
+        }) });
       },
     };
     let callbackFailure: { error: unknown } | undefined;

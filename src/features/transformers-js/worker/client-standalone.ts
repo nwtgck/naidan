@@ -1,4 +1,5 @@
-import type { ChatMessage, LmParameters } from '@/01-models/types';
+import type { LmParameters } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import type { GenerationCaptureClient, GenerationCaptureRequest } from './generation-capture-protocol';
 import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import type {
@@ -43,13 +44,16 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
       throw createUnsupportedError();
     },
     async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools, continuationOwner: _continuationOwner }: {
-      messages: ChatMessage[],
+      messages: InferenceMessage[],
       onChunk: TransformersJsChunkCallback,
       onToolCalls: TransformersJsToolCallsCallback,
       params?: LmParameters,
       tools?: WorkerToolDefinition[],
       continuationOwner?: string,
     }): Promise<void> {
+      throw createUnsupportedError();
+    },
+    async generateMessage({ messages: _messages, onEvent: _onEvent, params: _params, tools: _tools, continuationOwner: _continuationOwner }) {
       throw createUnsupportedError();
     },
     async dispose(): Promise<void> {

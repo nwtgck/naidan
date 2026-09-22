@@ -333,6 +333,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
           async generateText() {
             throw new Error('Service generation is outside this fixture contract');
           },
+          async generateMessage() {
+            throw new Error('Service generation is outside this fixture contract');
+          },
         };
         clients.push(client);
         serviceClientEvents.push({ service: serviceId, event: 'created' });

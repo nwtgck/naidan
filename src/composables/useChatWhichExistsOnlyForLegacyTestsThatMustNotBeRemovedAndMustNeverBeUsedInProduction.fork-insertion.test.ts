@@ -81,13 +81,29 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     ];
 
     (storageService.loadChat as any).mockResolvedValue({
-      id: 'a', title: 'A', root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
+      id: 'a', title: 'A', root: { items: [{
+        id: 'm1',
+        role: 'user',
+        replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
+        createdAt: 0,
+        modelId: undefined,
+        lmParameters: undefined,
+      }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1',
     });
 
     chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: {
-      id: 'a', title: 'A', root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
+      id: 'a', title: 'A', root: { items: [{
+        id: 'm1',
+        role: 'user',
+        replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
+        createdAt: 0,
+        modelId: undefined,
+        lmParameters: undefined,
+      }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1',
     } as any });
@@ -134,14 +150,30 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     (storageService.loadChat as any).mockResolvedValue({
       id: 'a', title: 'A', groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
+      root: { items: [{
+        id: 'm1',
+        role: 'user',
+        replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
+        createdAt: 0,
+        modelId: undefined,
+        lmParameters: undefined,
+      }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1',
     });
 
     chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: {
       id: 'a', title: 'A', groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
+      root: { items: [{
+        id: 'm1',
+        role: 'user',
+        replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
+        createdAt: 0,
+        modelId: undefined,
+        lmParameters: undefined,
+      }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1',
     } as any });

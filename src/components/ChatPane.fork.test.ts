@@ -1,5 +1,6 @@
+import type { MessageNode } from '@/01-models/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
-import { toMessageId, toChatId } from '@/01-models/ids';
+import { idToRaw, toMessageId, toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
@@ -40,7 +41,7 @@ const mockCurrentChat = ref<{
   originChatId: undefined,
   modelId: undefined,
 });
-const mockActiveMessages = ref<any[]>([]);
+const mockActiveMessages = ref<MessageNode[]>([]);
 const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>({
   endpoint: { type: 'openai', url: 'http://localhost' },
@@ -115,6 +116,7 @@ vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemoved
     getLiveChat: vi.fn().mockImplementation((c) => c),
     chatFlow: computed(() => mockActiveMessages.value.map(m => ({
       type: 'message',
+      key: `${idToRaw({ id: m.id })}:body`,
       node: m,
       mode: 'content',
       flow: { position: 'standalone', nesting: 'none' },
@@ -169,6 +171,7 @@ vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
     chatFlow: computed(() => mockActiveMessages.value.map(m => ({
       type: 'message',
+      key: `${idToRaw({ id: m.id })}:body`,
       node: m,
       mode: 'content',
       flow: { position: 'standalone', nesting: 'none' },
@@ -303,7 +306,7 @@ describe('ChatPane Fork Functionality', () => {
   });
 
   it('should show fork button when there are messages', async () => {
-    mockActiveMessages.value = [{ id: 'msg-1', role: 'user', content: 'hello' }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } }];
     const wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -313,8 +316,8 @@ describe('ChatPane Fork Functionality', () => {
 
   it('should call forkChat with the last message ID when fork button is clicked', async () => {
     mockActiveMessages.value = [
-      { id: 'msg-1', role: 'user', content: 'hello' },
-      { id: 'msg-2', role: 'assistant', content: 'hi' },
+      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-2' }), role: 'assistant', parts: [{ type: 'text', text: 'hi', completeness: 'complete' }], createdAt: 2, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } },
     ];
     mockForkChat.mockResolvedValue('new-chat-id');
 

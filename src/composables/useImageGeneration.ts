@@ -246,6 +246,16 @@ export function useImageGeneration() {
     }
     }
 
+    // Experimental images remain text markup; no image attachment migration is performed.
+    if (assistantNode.parts.length === 0) {
+      assistantNode.parts.push({ type: 'text', text: '', completeness: 'partial' });
+    }
+    const imagePart = assistantNode.parts[0];
+    if (assistantNode.parts.length !== 1 || imagePart?.type !== 'text') {
+      throw new Error('Image generation requires its own text-only assistant message.');
+    }
+    imagePart.completeness = 'partial';
+
     // Prioritize the model requested in the sentinel (for regeneration/history)
     // Fallback to the currently selected model or the first available one
     const imageModel = (requestedModel && availableModels.includes(requestedModel))
@@ -253,8 +263,8 @@ export function useImageGeneration() {
       : getSelectedImageModel({ chatId, availableModels });
 
     if (!imageModel) {
-      assistantNode.error = await ensureStrings.useImageGeneration__no_suitable_image_generation_model_found();
-      assistantNode.content = await ensureStrings.useImageGeneration__failed_to_generate_image();
+      assistantNode.interruption = { type: 'error', message: await ensureStrings.useImageGeneration__no_suitable_image_generation_model_found() };
+      imagePart.text = await ensureStrings.useImageGeneration__failed_to_generate_image();
       return;
     }
 
@@ -263,7 +273,7 @@ export function useImageGeneration() {
       const imageCount = count || getCount({ chatId });
       const persistAs = requestedPersistAs || getPersistAs({ chatId });
       const responseMarker = createImageResponseMarker({ count: imageCount });
-      assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING;
+      imagePart.text = responseMarker + SENTINEL_IMAGE_PENDING;
 
       // Ensure the assistant node uses the actual model ID for metadata
       assistantNode.modelId = imageModel;
@@ -354,7 +364,7 @@ export function useImageGeneration() {
           });
 
           const blocksContent = blocks.map(b => `\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(b, null, 2)}\n\`\`\``).join('\n\n');
-          assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blocksContent;
+          imagePart.text = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blocksContent;
           break;
         }
         case 'local': {
@@ -366,9 +376,9 @@ export function useImageGeneration() {
           )}">`;
 
           if (i === 0) {
-            assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blockHtml;
+            imagePart.text = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blockHtml;
           } else {
-            assistantNode.content += '\n\n' + blockHtml;
+            imagePart.text += '\n\n' + blockHtml;
           }
           break;
         }
@@ -386,13 +396,15 @@ export function useImageGeneration() {
         });
       }
       // Finalize: replace PENDING with PROCESSED
-      assistantNode.content = assistantNode.content.replace(SENTINEL_IMAGE_PENDING, signal?.aborted ? '' : SENTINEL_IMAGE_PROCESSED);
+      imagePart.text = imagePart.text.replace(SENTINEL_IMAGE_PENDING, signal?.aborted ? '' : SENTINEL_IMAGE_PROCESSED);
+      imagePart.completeness = signal?.aborted ? 'partial' : 'complete';
+      if (signal?.aborted) assistantNode.interruption = { type: 'cancelled' };
     } catch (e) {
-      assistantNode.error = (e as Error).message;
+      assistantNode.interruption = signal?.aborted ? { type: 'cancelled' } : { type: 'error', message: e instanceof Error ? e.message : String(e) };
       // Cleanup sentinel on error
-      assistantNode.content = assistantNode.content.replace(SENTINEL_IMAGE_PENDING, '');
-      if (assistantNode.content.trim() === '') {
-        assistantNode.content = await ensureStrings.useImageGeneration__failed_to_generate_image();
+      imagePart.text = imagePart.text.replace(SENTINEL_IMAGE_PENDING, '');
+      if (imagePart.text.trim() === '') {
+        imagePart.text = await ensureStrings.useImageGeneration__failed_to_generate_image();
       }
     } finally {
       imageProgressMap.value.delete(chatId);

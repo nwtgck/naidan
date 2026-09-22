@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import type { BinaryObject } from '@/01-models/types';
+import type { BinaryObjectPreviewItem } from '@/composables/useImagePreview';
 import { idToRaw } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
 import type { BinaryObjectId } from '@/01-models/ids';
@@ -13,24 +13,36 @@ import {
 } from 'lucide-vue-next';
 
 interface Props {
-  objects: BinaryObject[],
+  objects: BinaryObjectPreviewItem[],
   initialId: BinaryObjectId,
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: 'close'): void,
-  (e: 'delete', obj: BinaryObject): void,
-  (e: 'download', obj: BinaryObject): void,
+  (e: 'delete', obj: BinaryObjectPreviewItem): void,
+  (e: 'download', obj: BinaryObjectPreviewItem): void,
 }>();
 
-const currentIndex = ref(props.objects.findIndex(o => o.id === props.initialId));
+const currentIndex = ref(props.objects.findIndex(object => object.id === props.initialId));
+watch([() => props.objects, () => props.initialId], ([objects, initialId], [previousObjects, previousInitialId]) => {
+  const previous = previousObjects[currentIndex.value];
+  if (initialId !== previousInitialId || previous === undefined) {
+    currentIndex.value = objects.findIndex(object => object.id === initialId);
+    return;
+  }
+  // Keep the selected occurrence: a message may reference the same binary more than once.
+  let occurrence = previousObjects.slice(0, currentIndex.value).filter(object => object.id === previous.id).length;
+  currentIndex.value = objects.findIndex(object => {
+    if (object.id !== previous.id) return false;
+    return occurrence-- === 0;
+  });
+});
 const currentObject = computed(() => props.objects[currentIndex.value]);
 
-const previewUrl = ref<string | null>(null);
+const previewUrl = ref<string | undefined>(undefined);
 const isImage = computed(() => currentObject.value?.mimeType.startsWith('image/'));
 const isLoading = ref(false);
-let loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const zoom = ref(1);
 const position = ref({ x: 0, y: 0 });
@@ -54,39 +66,40 @@ const handleMouseMove = () => {
   showControls();
 };
 
-const loadPreview = async ({ obj }: { obj: BinaryObject }) => {
-  if (loadingTimeout) clearTimeout(loadingTimeout);
+watch(currentObject, (obj, _previous, onCleanup) => {
+  // The read and URL belong to this exact selection, not just to its binary ID.
+  let active = true;
+  let url: string | undefined;
+  let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
+  previewUrl.value = undefined;
+  isLoading.value = false;
+  zoom.value = 1;
+  position.value = { x: 0, y: 0 };
+  isDragging.value = false;
+  onCleanup(() => {
+    active = false;
+    if (loadingTimeout !== undefined) clearTimeout(loadingTimeout);
+    if (url !== undefined) URL.revokeObjectURL(url);
+  });
+  if (!obj) return;
   loadingTimeout = setTimeout(() => {
-    isLoading.value = true;
+    if (active) isLoading.value = true;
   }, 200);
-
-  try {
-    const blob = await storageService.getFile({ binaryObjectId: obj.id });
-    if (blob && currentObject.value?.id === obj.id) {
-      const newUrl = URL.createObjectURL(blob);
-      const oldUrl = previewUrl.value;
-
-      previewUrl.value = newUrl;
-      zoom.value = 1;
-      position.value = { x: 0, y: 0 };
-
-      if (oldUrl) {
-        // Delay revocation slightly to ensure the new image has started rendering
-        setTimeout(() => URL.revokeObjectURL(oldUrl), 100);
+  void (async () => {
+    try {
+      const blob = obj.memoryBlob ?? await storageService.getFile({ binaryObjectId: obj.id });
+      if (!active || !blob) return;
+      url = URL.createObjectURL(blob);
+      previewUrl.value = url;
+    } catch (error) {
+      if (active) console.error('Failed to load preview:', error);
+    } finally {
+      if (active) {
+        if (loadingTimeout !== undefined) clearTimeout(loadingTimeout);
+        isLoading.value = false;
       }
     }
-  } catch (e) {
-    console.error('Failed to load preview:', e);
-  } finally {
-    if (currentObject.value?.id === obj.id) {
-      if (loadingTimeout) clearTimeout(loadingTimeout);
-      isLoading.value = false;
-    }
-  }
-};
-
-watch(() => currentObject.value, (newObj) => {
-  if (newObj) loadPreview({ obj: newObj });
+  })();
 }, { immediate: true });
 
 const next = () => {
@@ -123,7 +136,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
   if (controlsTimeout) clearTimeout(controlsTimeout);
 });
 
@@ -235,14 +247,14 @@ defineExpose({
         <!-- Image/File Display -->
         <div
           tw-class="w-full h-full flex items-center justify-center p-0"
-          @wheel.prevent="event => handleWheel({ event })"
-          @mousedown="event => startDrag({ event })"
-          @mousemove="event => onDrag({ event })"
+          @wheel.prevent="handleWheel({ event: $event })"
+          @mousedown="startDrag({ event: $event })"
+          @mousemove="onDrag({ event: $event })"
           @mouseup="stopDrag"
           @mouseleave="stopDrag"
         >
           <!-- Loading Overlay -->
-          <div v-if="isLoading" tw-class="absolute inset-0 flex items-center justify-center z-30 pointer-events-none bg-black/20 backdrop-blur-sm transition-opacity">
+          <div v-if="isLoading" data-testid="preview-loading" tw-class="absolute inset-0 flex items-center justify-center z-30 pointer-events-none bg-black/20 backdrop-blur-sm transition-opacity">
             <div tw-class="flex flex-col items-center gap-4 text-white">
               <RefreshCwIcon tw-class="w-10 h-10 animate-spin text-blue-500" />
               <p tw-class="text-xs font-bold tracking-widest opacity-50">{{ lazyStrings.binaryObjects__loading() }}</p>
@@ -260,6 +272,7 @@ defineExpose({
                 }"
               >
                 <img
+                  data-testid="preview-image"
                   :src="previewUrl"
                   tw-class="max-w-screen max-h-screen object-contain shadow-2xl"
                   draggable="false"
@@ -355,7 +368,7 @@ defineExpose({
             <button @click="emit('download', currentObject)" tw-class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition-all active:scale-95" :title="lazyStrings.binaryObjects__download()" data-testid="preview-download-btn">
               <DownloadIcon tw-class="w-5 h-5" />
             </button>
-            <button @click="emit('delete', currentObject)" tw-class="p-3 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-2xl border border-red-500/20 transition-all active:scale-95" :title="lazyStrings.binaryObjects__delete()" data-testid="preview-delete-btn">
+            <button :disabled="currentObject.memoryBlob !== undefined" @click="currentObject.memoryBlob === undefined && emit('delete', currentObject)" tw-class="p-3 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-2xl border border-red-500/20 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed" :title="lazyStrings.binaryObjects__delete()" data-testid="preview-delete-btn">
               <Trash2Icon tw-class="w-5 h-5" />
             </button>
             <div tw-class="w-px h-8 bg-white/10 mx-1"></div>

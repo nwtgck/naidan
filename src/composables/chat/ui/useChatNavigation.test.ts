@@ -98,4 +98,29 @@ describe('useChatNavigation', () => {
       id: 'group-1',
     });
   });
+
+  for (const method of ['openChat', 'openChatAtMessage'] as const) {
+    const storeOpen = method === 'openChat' ? mockStoreOpenChat : mockStoreOpenChatAtMessage;
+    const args = { chatId: toChatId({ raw: 'broken-chat' }), leafId: undefined, messageId: toMessageId({ raw: 'message-1' }) };
+
+    it(`${method} leaves tool selection unchanged while a read is pending or rejected`, async () => {
+      let rejectRead!: (error: Error) => void;
+      storeOpen.mockReturnValueOnce(new Promise((_resolve, reject) => {
+        rejectRead = reject;
+      }));
+      const result = useChatNavigation()[method](args);
+
+      expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+      rejectRead(new Error('Unreadable chat'));
+      await expect(result).rejects.toThrow('Unreadable chat');
+      expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+      expect(mockSetToolEnabled).not.toHaveBeenCalled();
+    });
+
+    it(`${method} clears tool selection for an absent chat`, async () => {
+      storeOpen.mockResolvedValueOnce(null);
+      await expect(useChatNavigation()[method](args)).resolves.toBeNull();
+      expect(mockSetCurrentChatId).toHaveBeenCalledExactlyOnceWith({ chatId: null });
+    });
+  }
 });

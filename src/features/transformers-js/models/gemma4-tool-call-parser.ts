@@ -116,6 +116,21 @@ class ArgumentReader {
   }
 }
 
+/** Parses one already-delimited native call body, not a visible-text protocol. */
+export function parseGemma4ToolCallBody({ body }: { body: string }): ToolCall {
+  if (body.length > MAX_PROTOCOL_CHARACTERS) throw new Gemma4ToolCallProtocolError();
+  const reader = new ArgumentReader({ source: body, position: 0 });
+  reader.consume({ token: 'call:' });
+  const name = reader.bareToken();
+  reader.whitespace();
+  const args = reader.object({ depth: 1 });
+  reader.whitespace();
+  if (reader.position !== body.length) throw new Gemma4ToolCallProtocolError();
+  // Gemma emits its native argument notation rather than JSON. Keep this
+  // conversion local; no tool schema defaults or transforms are applied here.
+  return exactObject<ToolCall>()({ id: generateId<ToolCallId>(), type: 'function', function: { name, arguments: JSON.stringify(args) } });
+}
+
 /**
  * Parses generated native syntax, not an inverse of arbitrary template input:
  * the template's unescaped quote delimiter makes some source values ambiguous.

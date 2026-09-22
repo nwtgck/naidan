@@ -53,7 +53,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('should use "Fork of New Chat" when the original chat title is null', async () => {
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = {
+      id: toMessageId({ raw: 'm1' }),
+      role: 'user',
+      replies: { items: [] },
+      parts: [{ type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
+    };
     const untitledChat: Chat = {
       id: toChatId({ raw: 'c1' }),
       title: null,
@@ -80,7 +88,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('should still use the original title when it is present', async () => {
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = {
+      id: toMessageId({ raw: 'm1' }),
+      role: 'user',
+      replies: { items: [] },
+      parts: [{ type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
+    };
     const titledChat: Chat = {
       id: toChatId({ raw: 'c1' }),
       title: 'Original Title',

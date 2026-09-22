@@ -36,9 +36,11 @@ describe('MessageItem Image Generation Progress', () => {
   const createMessage = (content: string) => ({
     id: '1',
     role: 'assistant' as const,
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
   });
 
   beforeEach(() => {

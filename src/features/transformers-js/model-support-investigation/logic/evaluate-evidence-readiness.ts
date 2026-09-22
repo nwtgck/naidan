@@ -726,7 +726,14 @@ export function evaluateEvidenceReadiness({ run }: {
               evidencePaths: ['continuity/persistence-roundtrip.json'],
             };
           }
-          switch (persistence.modelVisibleProjectionMethod) {
+          const projectionMethod = persistence.modelVisibleProjectionMethod;
+          switch (projectionMethod) {
+          case 'build_chat_generation_messages_parts_v2':
+            return {
+              status: 'matched_parts_projection' as const,
+              answer: `Naidan persistence mapper/DTO/JSON roundtrip preserved ${persistence.originalMessages.length} structured synthetic messages through the shared parts projection. This observes neither a model-native template/tokenizer roundtrip nor physical storage-provider I/O`,
+              evidencePaths: ['continuity/persistence-roundtrip.json'],
+            };
           case undefined:
             return {
               status: 'matched-serialization-only' as const,
@@ -740,7 +747,7 @@ export function evaluateEvidenceReadiness({ run }: {
               evidencePaths: ['continuity/persistence-roundtrip.json'],
             };
           default: {
-            const _ex: never = persistence.modelVisibleProjectionMethod;
+            const _ex: never = projectionMethod;
             return _ex;
           }
           }
@@ -775,6 +782,7 @@ export function evaluateEvidenceReadiness({ run }: {
           return hasImplementationReadyPrefixEvidence && cacheDecisionObserved
             ? "implementation-ready" as const
             : "partial" as const;
+        case 'matched_parts_projection':
         case 'matched-serialization-only':
         case 'unobserved':
           return "partial" as const;
@@ -806,6 +814,8 @@ export function evaluateEvidenceReadiness({ run }: {
             return _ex;
           }
           }
+        case 'matched_parts_projection':
+          return 'The structured synthetic history survived persistence and shared parts projection. A matching native-input/tokenizer roundtrip is still needed before this proves exact model input preservation.';
         case 'matched-serialization-only':
           return "The persistence serialization roundtrip matched, but the Evidence does not prove that the restored history passed through the same Production LM-message projection, so continuity readiness remains partial.";
         case 'unobserved':

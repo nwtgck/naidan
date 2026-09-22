@@ -559,13 +559,11 @@ ${JSON.stringify({
       expect(chat.root.experimental).toEqual({});
       expect(rootNode.experimental).toEqual({});
       expect(rootNode.replies.experimental).toEqual({});
-      expect(rootNode.attachments[0]).toEqual({
+      expect(rootNode.parts.find((part: { type: string }) => part.type === 'attachment').attachment).toEqual({
         id: UUID_A1,
         experimental: {},
-        originalName: 'legacy.txt',
-        mimeType: 'text/plain',
-        size: 1,
-        uploadedAt: 1000,
+        binaryObjectId: UUID_A1,
+        name: 'legacy.txt',
         status: 'persisted',
       });
       expect(currentNode.experimental).toEqual({});
@@ -737,10 +735,10 @@ ${JSON.stringify({
       const rootFolder = Object.keys(zip.files).find(f => f.startsWith('naidan-data-'))!;
       const content = JSON.parse(await zip.file(`${rootFolder}chat-contents/${UUID_C1}.json`)!.async('string'));
 
-      expect(content.root.items[0].thinking).toBe('I am thinking...');
+      expect(content.root.items[0].parts[0]).toMatchObject({ type: 'reasoning', text: 'I am thinking...' });
       expect(content.root.items[0].modelId).toBe('gpt-4');
-      expect(content.root.items[0].toolCalls).toHaveLength(1);
-      expect(content.root.items[0].replies.items[0].results[0].content.text).toBe('Sunny');
+      expect(content.root.items[0].parts.filter((part: { type: string }) => part.type === 'tool_call')).toHaveLength(1);
+      expect(content.root.items[0].replies.items[0].parts[0].result.content.text).toBe('Sunny');
     });
 
     it('exports transformers_js endpoint settings', async () => {
@@ -846,10 +844,10 @@ ${JSON.stringify({
       const rootFolder = Object.keys(zip.files).find(f => f.startsWith('naidan-data-'))!;
       const content = JSON.parse(await zip.file(`${rootFolder}chat-contents/${UUID_C1}.json`)!.async('string'));
 
-      expect(content.root.items[0].results[0].status).toBe('error');
-      expect(content.root.items[0].results[0].error.code).toBe('execution_failed');
-      expect(content.root.items[0].results[1].content.type).toBe('binary_object');
-      expect(content.root.items[0].results[1].content.id).toBe(UUID_A1);
+      expect(content.root.items[0].parts[0].result.status).toBe('error');
+      expect(content.root.items[0].parts[0].result.error.code).toBe('execution_failed');
+      expect(content.root.items[0].parts[1].result.content.type).toBe('binary_object');
+      expect(content.root.items[0].parts[1].result.content.id).toBe(UUID_A1);
     });
   });
 
@@ -1003,11 +1001,35 @@ ${JSON.stringify({
       }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
-      if (chatChunk?.type === 'chat' && chatChunk.data.root) {
-        const nestedNode = chatChunk.data.root.items[0]!.replies.items[0];
-        expect(nestedNode!.attachments![0]!.id).toBe(NEW_UUID);
-      }
-      expect(chunks.find(c => c.type === 'binary_object')?.id).toBe(NEW_UUID);
+      expect(mockStorage.restore).toHaveBeenCalledOnce();
+      expect(chunks.filter(chunk => chunk.type === 'chat')).toHaveLength(1);
+      if (chatChunk?.type !== 'chat') throw new Error('Expected the imported chat');
+      expect(chatChunk.data.id).toBe(NEW_UUID);
+      expect(chatChunk.data.root?.items).toHaveLength(1);
+      const parentNode = chatChunk.data.root?.items[0];
+      expect(parentNode).toMatchObject({
+        id: NEW_UUID,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'hello' }],
+      });
+      expect(parentNode?.replies.items).toHaveLength(1);
+      const nestedNode = parentNode?.replies.items[0];
+      expect(nestedNode).toMatchObject({
+        id: NEW_UUID,
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'response' },
+          {
+            type: 'attachment',
+            attachment: { id: NEW_UUID, binaryObjectId: NEW_UUID, name: 'img.png', status: 'persisted' },
+          },
+        ],
+      });
+      expect(chunks.filter(chunk => chunk.type === 'binary_object')).toHaveLength(1);
+      expect(chunks.find(chunk => chunk.type === 'binary_object')).toMatchObject({
+        type: 'binary_object',
+        id: NEW_UUID,
+      });
     });
 
     it('should remap and convert V1 attachments to V2 during append import', async () => {
@@ -1058,15 +1080,38 @@ ${JSON.stringify({
       }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
-      if (chatChunk?.type === 'chat' && chatChunk.data.root) {
-        const node = chatChunk.data.root.items[0]!;
-        const att = node.attachments![0]!;
-        // Check V2 conversion
-        expect((att as any).binaryObjectId).toBe(NEW_UUID);
-        expect((att as any).name).toBe('old.png');
-        expect((att as any).originalName).toBeUndefined();
-        expect((att as any).mimeType).toBeUndefined();
-      }
+      expect(mockStorage.restore).toHaveBeenCalledOnce();
+      expect(chunks.filter(chunk => chunk.type === 'chat')).toHaveLength(1);
+      if (chatChunk?.type !== 'chat') throw new Error('Expected the imported chat');
+      expect(chatChunk.data.id).toBe(NEW_UUID);
+      expect(chatChunk.data.root?.items).toHaveLength(1);
+      const node = chatChunk.data.root?.items[0];
+      expect(node).toMatchObject({
+        id: NEW_UUID,
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'v1 test' },
+          { type: 'attachment' },
+        ],
+      });
+      const attachment = node?.parts?.find(part => part.type === 'attachment')?.attachment;
+      expect(attachment).toMatchObject({
+        id: NEW_UUID,
+        binaryObjectId: NEW_UUID,
+        name: 'old.png',
+        status: 'persisted',
+      });
+      expect(attachment).not.toHaveProperty('originalName');
+      expect(attachment).not.toHaveProperty('mimeType');
+      expect(attachment).not.toHaveProperty('size');
+      expect(attachment).not.toHaveProperty('uploadedAt');
+      expect(chunks.find(chunk => chunk.type === 'binary_object')).toMatchObject({
+        type: 'binary_object',
+        id: NEW_UUID,
+        mimeType: 'image/png',
+        size: 50,
+        createdAt: 1000,
+      });
     });
 
     it('remaps currentLeafId, originChatId and originMessageId during append import', async () => {

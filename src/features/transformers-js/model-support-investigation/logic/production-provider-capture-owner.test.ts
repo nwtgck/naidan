@@ -4,6 +4,8 @@ import { createMemoryFiles } from '@/features/transformers-js/replay-models/supp
 import { createTransformersJsService, transformersJsService } from '@/features/transformers-js/index-hosted';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import { toToolCallId } from '@/01-models/ids';
+import type { InferenceGenerationCallback } from '@/features/transformers-js/generation-events';
+import { captureSettledAssistantParts } from './production-provider-capture-plan';
 import type { TransformersJsWorkerClient } from '@/features/transformers-js/types';
 import * as providerTrace from './production-provider-trace';
 import {
@@ -26,10 +28,22 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+async function finishMessage({ onEvent }: { onEvent: InferenceGenerationCallback }): Promise<void> {
+  await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+}
+
+async function emitMessage({ onEvent, chunks }: { onEvent: InferenceGenerationCallback; chunks: string[] }): Promise<void> {
+  await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+  for (const text of chunks) await onEvent({ event: { type: 'text_delta', index: 0, text } });
+  await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+  await finishMessage({ onEvent });
+}
+
 function clientFixture() {
   return {
     loadDownloadedModel: vi.fn<TransformersJsWorkerClient['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
     generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockResolvedValue(undefined),
+    generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>().mockImplementation(async ({ onEvent }) => finishMessage({ onEvent })),
     interrupt: vi.fn<TransformersJsWorkerClient['interrupt']>().mockResolvedValue(undefined),
     unloadModel: vi.fn<TransformersJsWorkerClient['unloadModel']>().mockResolvedValue(undefined),
     resetCache: vi.fn<TransformersJsWorkerClient['resetCache']>().mockResolvedValue(undefined),
@@ -82,13 +96,15 @@ describe('isolated fixed Production Provider capture owner', () => {
     const releaseFirst = deferred<void>();
     const secondEntered = deferred<void>();
     const releaseSecond = deferred<void>();
-    client.generateText.mockImplementationOnce(async () => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       firstEntered.resolve();
       await releaseFirst.promise;
+      await finishMessage({ onEvent });
     });
-    client.generateText.mockImplementationOnce(async () => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       secondEntered.resolve();
       await releaseSecond.promise;
+      await finishMessage({ onEvent });
     });
     const { owner } = createOwner({ client, runId: 'progress', plan: 'first-continuity-independent', traceLimits: limits });
     expect(owner.getProgress()).toEqual({
@@ -121,9 +137,9 @@ describe('isolated fixed Production Provider capture owner', () => {
   });
 
   it('samples only small progress counters without copying trace payloads or invoking a UI callback', async () => {
-    const original = providerTrace.createProductionProviderTrace;
+    const original = providerTrace.createProductionProviderPartsTrace;
     const snapshots: Array<ReturnType<typeof vi.fn<ReturnType<typeof original>['snapshot']>>> = [];
-    vi.spyOn(providerTrace, 'createProductionProviderTrace').mockImplementation(args => {
+    vi.spyOn(providerTrace, 'createProductionProviderPartsTrace').mockImplementation(args => {
       const trace = original(args);
       const snapshot = vi.fn(trace.snapshot);
       snapshots.push(snapshot);
@@ -131,8 +147,8 @@ describe('isolated fixed Production Provider capture owner', () => {
     });
     const client = clientFixture();
     const { owner } = createOwner({ client, runId: 'small-progress', plan: 'generation-v2', traceLimits: limits });
-    client.generateText.mockImplementation(async ({ onChunk }) => {
-      onChunk({ chunk: 'Synthetic observed output.' });
+    client.generateMessage.mockImplementation(async ({ onEvent }) => {
+      await emitMessage({ onEvent, chunks: ['Synthetic observed output.'] });
       expect(owner.getProgress()).toMatchObject({ run: { status: 'running' }, selectedRequests: 3, totalRequests: 13 });
       expect(snapshots.every(snapshot => snapshot.mock.calls.length === 0)).toBe(true);
     });
@@ -152,7 +168,7 @@ describe('isolated fixed Production Provider capture owner', () => {
     const client = clientFixture();
     const { owner } = createOwner({ client, runId: 'full-v2', plan: 'full-v2', traceLimits: limits });
     const result = await owner.run();
-    expect(result.format).toBe('production-provider-capture-v2');
+    expect(result.format).toBe('production-provider-capture-v3');
     expect(result.requests.map(request => request.scenario)).toEqual([
       'first-turn', 'continuity', 'independent-next-input', 'system-user', 'supplied-history',
       'reasoning-none', 'reasoning-low', 'reasoning-medium', 'reasoning-high',
@@ -162,12 +178,12 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(result.requests.slice(5, 9).map(request => request.input?.parameters.reasoning.effort)).toEqual(['none', 'low', 'medium', 'high']);
     expect(result.requests.every(request => request.status === 'settled')).toBe(true);
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
-    expect(client.generateText).toHaveBeenCalledTimes(13);
+    expect(client.generateMessage).toHaveBeenCalledTimes(13);
   });
 
   it('blocks only continuity after first rejection in v2 while same-runtime independent inputs proceed', async () => {
     const client = clientFixture();
-    client.generateText.mockRejectedValueOnce(new Error('ordinary runtime rejection'));
+    client.generateMessage.mockRejectedValueOnce(new Error('ordinary runtime rejection'));
     const { owner } = createOwner({ client, runId: 'reject-v2', plan: 'generation-continuity-v2', traceLimits: limits });
     const result = await owner.run();
     expect(result.run).toEqual({ status: 'completed' });
@@ -176,45 +192,50 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(result.requests.slice(2, 5).map(request => request.status)).toEqual(['settled', 'settled', 'settled']);
     expect(result.requests.slice(5).every(request => request.status === 'not-started')).toBe(true);
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
-    expect(client.generateText).toHaveBeenCalledTimes(4);
+    expect(client.generateMessage).toHaveBeenCalledTimes(4);
     // Settlement includes a rejected request; this counter is not a success count.
     expect(owner.getProgress()).toMatchObject({ settledRequests: 4, selectedRequests: 5 });
   });
 
   it('continues independent v2 requests after capture overflow without repairing first history from late text', async () => {
     const client = clientFixture();
-    let late: Parameters<TransformersJsWorkerClient['generateText']>[0]['onChunk'] | undefined;
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
-      late = onChunk; onChunk({ chunk: 'overflow' });
+    let late: Parameters<TransformersJsWorkerClient['generateMessage']>[0]['onEvent'] | undefined;
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      late = onEvent; await emitMessage({ onEvent, chunks: ['overflow'] });
     });
-    client.generateText.mockImplementationOnce(async () => {
-      late?.({ chunk: 'not usable as history' });
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await late?.({ event: { type: 'text_delta', index: 0, text: 'not usable as history' } });
+      await finishMessage({ onEvent });
     });
     const { owner } = createOwner({ client, runId: 'overflow-v2', plan: 'generation-continuity-v2', traceLimits: { maximumEvents: 1, maximumCharacters: 2 } });
     const result = await owner.run();
     expect(result.run).toEqual({ status: 'completed' });
     expect(result.requests[0]?.trace.settled).toMatchObject({ outcome: { status: 'fulfilled' }, completeness: 'incomplete' });
     expect(result.requests[1]).toMatchObject({ status: 'not-started', notStartedReason: 'first-settlement-unavailable' });
-    expect(client.generateText.mock.calls[1]?.[0].messages).toEqual([{ role: 'user', content: 'A separate synthetic capture conversation.' }]);
-    expect(client.generateText).toHaveBeenCalledTimes(4);
+    expect(client.generateMessage.mock.calls[1]?.[0].messages).toEqual([{ role: 'user', content: 'A separate synthetic capture conversation.' }]);
+    expect(client.generateMessage).toHaveBeenCalledTimes(4);
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
   });
 
   it('records the ordinary Provider weather execution and result reinsertion without changing the fixed input', async () => {
     const client = clientFixture();
     let emitted = false;
-    client.generateText.mockImplementation(async ({ messages, onToolCalls, onChunk }) => {
+    client.generateMessage.mockImplementation(async ({ messages, onEvent }) => {
       if (!emitted && messages.length === 1 && messages[0]?.content === 'Use the weather tool for Tokyo.') {
         emitted = true;
-        onToolCalls?.({ toolCalls: [{ id: toToolCallId({ raw: 'fixed-generated-tool' }), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }] });
-      } else if (emitted && messages.at(-1)?.role === 'tool') onChunk({ chunk: 'Tool continuation.' });
+        await onEvent({ event: { type: 'tool_start', index: 0 } });
+        await onEvent({ event: { type: 'tool_call', index: 0, toolCall: { id: toToolCallId({ raw: 'fixed-generated-tool' }), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } } });
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'tool_results' } } });
+      } else if (emitted && messages.at(-1)?.role === 'tool') {
+        await emitMessage({ onEvent, chunks: ['Tool continuation.'] });
+      } else await finishMessage({ onEvent });
     });
     const { owner } = createOwner({ client, runId: 'tools-v2', plan: 'generation-capabilities-v2', traceLimits: limits });
     const result = await owner.run();
     const natural = result.requests.find(request => request.scenario === 'natural-tool-minimal');
     expect(natural?.input?.messages).toEqual([{ role: 'user', content: 'Use the weather tool for Tokyo.' }]);
-    expect(natural?.trace.events).toContainEqual({ kind: 'tool-success', sequence: 2, phase: 'before-settlement', toolCallId: 'fixed-generated-tool', content: '{"temperatureC":20,"condition":"clear"}' });
-    const continued = client.generateText.mock.calls.find(([request]) => request.messages.at(-1)?.tool_call_id === toToolCallId({ raw: 'fixed-generated-tool' }));
+    expect(natural?.trace.events).toContainEqual(expect.objectContaining({ kind: 'tool-success', phase: 'before-settlement', toolCallId: 'fixed-generated-tool', content: '{"temperatureC":20,"condition":"clear"}' }));
+    const continued = client.generateMessage.mock.calls.find(([request]) => request.messages.at(-1)?.tool_call_id === toToolCallId({ raw: 'fixed-generated-tool' }));
     expect(continued?.[0].messages.at(-1)).toEqual({ role: 'tool', tool_call_id: 'fixed-generated-tool', content: '{"temperatureC":20,"condition":"clear"}' });
     expect(continued?.[0].params?.maxCompletionTokens).toBe(128);
     expect(continued?.[0].tools?.[0]?.function.parameters).toEqual({ type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false });
@@ -224,26 +245,27 @@ describe('isolated fixed Production Provider capture owner', () => {
   it('preserves explicit v2 deadline and unselected reasons without starting later requests', async () => {
     const client = clientFixture();
     const { owner } = createOwner({ client, runId: 'deadline-v2', plan: 'generation-v2', traceLimits: limits });
-    client.generateText.mockImplementationOnce(async () => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       owner.abort({ reason: 'deadline' });
+      await onEvent({ event: { type: 'result', result: { type: 'interrupted', reason: 'aborted' } } });
     });
     const result = await owner.run();
     expect(result.run).toEqual({ status: 'stopped', reason: 'aborted' });
     expect(result.requests[1]?.notStartedReason).toBe('scope-not-selected');
     expect(result.requests[3]?.notStartedReason).toBe('deadline');
     expect(result.requests[4]?.notStartedReason).toBe('deadline');
-    expect(client.generateText).toHaveBeenCalledOnce();
+    expect(client.generateMessage).toHaveBeenCalledOnce();
   });
 
   it('does not let v2 independent requests auto-load a replacement after fatal runtime loss', async () => {
     const client = clientFixture();
-    client.generateText.mockRejectedValueOnce(new ProductionWorkerLifecycleError({ reason: 'worker-error', message: 'lost runtime' }));
+    client.generateMessage.mockRejectedValueOnce(new ProductionWorkerLifecycleError({ reason: 'worker-error', message: 'lost runtime' }));
     const { owner, factory } = createOwner({ client, runId: 'lost-v2', plan: 'full-v2', traceLimits: limits });
     const result = await owner.run();
     expect(result.run).toEqual({ status: 'stopped', reason: 'runtime-unavailable' });
     expect(result.requests.slice(1).every(request => request.status === 'not-started')).toBe(true);
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
-    expect(client.generateText).toHaveBeenCalledOnce();
+    expect(client.generateMessage).toHaveBeenCalledOnce();
     // The ordinary service eagerly replaces its failed client, but the capture
     // must not load or generate on that replacement for a later scenario.
     expect(factory).toHaveBeenCalledTimes(2);
@@ -253,17 +275,17 @@ describe('isolated fixed Production Provider capture owner', () => {
     const client = clientFixture();
     const { owner, factory } = createOwner({ client, runId: 'three', plan: 'first-continuity-independent', traceLimits: limits });
     const identities: Array<ProductionProviderCaptureRequestIdentity | undefined> = [];
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       identities.push(owner.getActiveRequest());
-      onChunk({ chunk: 'First ' }); onChunk({ chunk: 'answer.' });
+      await emitMessage({ onEvent, chunks: ['First ', 'answer.'] });
     });
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       identities.push(owner.getActiveRequest());
-      onChunk({ chunk: 'Second answer.' });
+      await emitMessage({ onEvent, chunks: ['Second answer.'] });
     });
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       identities.push(owner.getActiveRequest());
-      onChunk({ chunk: 'Independent answer.' });
+      await emitMessage({ onEvent, chunks: ['Independent answer.'] });
     });
     const result = await owner.run();
     expect(result.run).toEqual({ status: 'completed' });
@@ -274,16 +296,20 @@ describe('isolated fixed Production Provider capture owner', () => {
       [{ role: 'user', content: 'Template probe user message.' }],
       [
         { role: 'user', content: 'Template probe user message.' },
-        { role: 'assistant', content: 'First answer.' },
+        { role: 'assistant', parts: [{ id: 'part_0', type: 'text', text: 'First answer.', completeness: 'complete' }] },
         { role: 'user', content: 'Continue the synthetic conversation with a short response.' },
       ],
       [{ role: 'user', content: 'A separate synthetic capture conversation.' }],
     ]);
-    expect(client.generateText.mock.calls.map(([input]) => input.messages.map(message => ({ role: message.role, content: message.content }))))
-      .toEqual(result.requests.map(request => request.input?.messages));
-    expect(client.generateText.mock.calls.map(([input]) => input.params)).toEqual(result.requests.map(request => request.input?.parameters));
+    expect(client.generateMessage.mock.calls.map(([input]) => input.messages.map(message => ({ role: message.role, content: message.content }))))
+      .toEqual([
+        [{ role: 'user', content: 'Template probe user message.' }],
+        [{ role: 'user', content: 'Template probe user message.' }, { role: 'assistant', content: 'First answer.' }, { role: 'user', content: 'Continue the synthetic conversation with a short response.' }],
+        [{ role: 'user', content: 'A separate synthetic capture conversation.' }],
+      ]);
+    expect(client.generateMessage.mock.calls.map(([input]) => input.params)).toEqual(result.requests.map(request => request.input?.parameters));
     expect(result.requests.map(request => request.input?.parameters.maxCompletionTokens)).toEqual([16, 16, 1]);
-    expect(client.generateText.mock.calls.every(([input]) => input.tools === undefined)).toBe(true);
+    expect(client.generateMessage.mock.calls.every(([input]) => input.tools === undefined)).toBe(true);
     expect(identities).toEqual([
       { runId: 'three', requestId: 'three-first-turn', scenario: 'first-turn' },
       { runId: 'three', requestId: 'three-continuity', scenario: 'continuity' },
@@ -302,7 +328,7 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(client.resetCache).not.toHaveBeenCalled();
     expect(Object.keys(owner).sort()).toEqual(['abort', 'dispose', 'getActiveRequest', 'getProgress', 'run', 'snapshot']);
     expect(result.capabilities).toEqual({
-      providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected',
+      providerCallbacks: 'parts_and_tools_projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected',
     });
     expect(transformersJsService.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
   });
@@ -314,32 +340,36 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(result.plan).toBe('first-only');
     expect(result.run).toEqual({ status: 'completed' });
     expect(result.requests.map(request => request.scenario)).toEqual(['first-turn']);
-    expect(client.generateText).toHaveBeenCalledOnce();
+    expect(client.generateMessage).toHaveBeenCalledOnce();
   });
 
   it('keeps an empty settled assistant and rejects expired client callbacks during continuity', async () => {
     const client = clientFixture();
     const { owner } = createOwner({ client, runId: 'late', plan: 'first-continuity-independent', traceLimits: limits });
-    let firstCallback: Parameters<TransformersJsWorkerClient['generateText']>[0]['onChunk'] | undefined;
+    let firstCallback: Parameters<TransformersJsWorkerClient['generateMessage']>[0]['onEvent'] | undefined;
     let duringContinuity: unknown;
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
-      firstCallback = onChunk; // no callback before the first Promise settles
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      firstCallback = onEvent;
+      await finishMessage({ onEvent });
     });
-    client.generateText.mockImplementationOnce(async ({ messages, onChunk }) => {
+    client.generateMessage.mockImplementationOnce(async ({ messages, onEvent }) => {
       duringContinuity = { assistant: messages[1]?.content, firstEvents: owner.snapshot().requests[0]?.trace.settled?.events };
-      firstCallback?.({ chunk: 'late first text' });
-      onChunk({ chunk: 'second text' });
+      await firstCallback?.({ event: { type: 'text_delta', index: 0, text: 'late first text' } });
+      await emitMessage({ onEvent, chunks: ['second text'] });
     });
     const result = await owner.run();
-    expect(duringContinuity).toEqual({ assistant: '', firstEvents: [
-      { kind: 'assistant-start', phase: 'before-settlement', sequence: 0 },
+    expect(duringContinuity).toEqual({ assistant: [], firstEvents: [
+      { kind: 'assistant_message', messageId: 'capture_assistant_0', phase: 'before-settlement', sequence: 0 },
+      { kind: 'generation_finished', next: 'user', phase: 'before-settlement', sequence: 1 },
     ] });
     expect(result.run).toEqual({ status: 'completed' });
-    expect(result.requests[1]?.input?.messages[1]).toEqual({ role: 'assistant', content: '' });
+    expect(result.requests[1]?.input?.messages[1]).toEqual({ role: 'assistant', parts: [] });
     // The fixture can retain a callback beyond its RPC, but the real service
     // must revoke that capability. It is not a late Provider event to export.
     expect(result.requests[0]?.trace.lateEvents).toEqual([]);
-    expect(result.requests[1]?.trace.events.filter(event => event.kind === 'chunk').map(event => event.chunk)).toEqual(['second text']);
+    const settled = result.requests[1]?.trace.settled;
+    if (settled === undefined) throw new Error('Missing settled continuation');
+    expect(captureSettledAssistantParts({ settled })).toEqual([{ id: 'part_0', type: 'text', text: 'second text', completeness: 'complete' }]);
     expect(result.requests[2]?.input?.messages).toEqual([{ role: 'user', content: 'A separate synthetic capture conversation.' }]);
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
   });
@@ -349,8 +379,13 @@ describe('isolated fixed Production Provider capture owner', () => {
     const entered = deferred<void>();
     const release = deferred<void>();
     const { owner } = createOwner({ client, runId: 'partial', plan: 'first-only', traceLimits: limits });
-    client.generateText.mockImplementationOnce(({ onChunk }) => {
-      onChunk({ chunk: 'partial' }); entered.resolve(); return release.promise;
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'partial' } });
+      await vi.waitFor(() => expect(owner.snapshot().requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_text', text: 'partial', completeness: 'partial' })));
+      entered.resolve(); await release.promise;
+      await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+      await finishMessage({ onEvent });
     });
     const running = owner.run();
     await entered.promise;
@@ -366,20 +401,20 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(Object.isFrozen(input.messages)).toBe(true);
     expect(input.messages.every(Object.isFrozen)).toBe(true);
     expect(Object.isFrozen(input.parameters.reasoning)).toBe(true);
-    const forwarded = client.generateText.mock.calls[0]![0].messages;
+    const forwarded = client.generateMessage.mock.calls[0]![0].messages;
     expect(forwarded).not.toBe(input.messages);
     expect(forwarded[0]).not.toBe(input.messages[0]);
     forwarded[0]!.content = 'mutated worker fixture argument';
-    expect(input.messages[0]?.content).toBe('Template probe user message.');
+    expect(input.messages[0]).toMatchObject({ content: 'Template probe user message.' });
     release.resolve();
     const complete = await running;
     expect(complete.requests[0]?.trace.settled?.outcome.status).toBe('fulfilled');
     expect(before.requests[0]?.trace.settled).toBeUndefined();
-    const callback = client.generateText.mock.calls[0]![0].onChunk;
-    callback({ chunk: 'after completion' });
+    const callback = client.generateMessage.mock.calls[0]![0].onEvent;
+    await callback({ event: { type: 'text_delta', index: 0, text: 'after completion' } });
     expect(complete.requests[0]?.trace.lateEvents).toEqual([]);
     expect(owner.snapshot().requests[0]?.trace).toEqual(complete.requests[0]?.trace);
-    expect(complete.requests[0]?.trace.events).toContainEqual({ kind: 'chunk', chunk: 'partial', phase: 'before-settlement', sequence: 1 });
+    expect(complete.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_text', text: 'partial', completeness: 'partial', phase: 'before-settlement' }));
     await owner.dispose();
     expect(owner.snapshot().observation).toBe('end-requested-by-dispose');
     expect(owner.snapshot().requests[0]?.trace).toEqual(complete.requests[0]?.trace);
@@ -388,26 +423,28 @@ describe('isolated fixed Production Provider capture owner', () => {
   it('separates a rejected Provider outcome from a stopped script and preserves partial callbacks', async () => {
     const client = clientFixture();
     const original = Object.assign(new Error('Private error text must not be copied'), { name: 'RangeError' });
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => {
-      onChunk({ chunk: 'partial before failure' }); throw original;
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'partial before failure' } });
+      throw original;
     });
     const { owner, factory } = createOwner({ client, runId: 'reject', plan: 'first-continuity-independent', traceLimits: limits });
     const result = await owner.run();
     expect(result.run).toEqual({ status: 'stopped', reason: 'provider-rejected' });
     expect(result.requests[0]?.trace.settled?.outcome).toEqual({ status: 'rejected', errorName: 'RangeError' });
-    expect(result.requests[0]?.trace.events).toContainEqual({
-      kind: 'chunk', chunk: 'partial before failure', sequence: 1, phase: 'before-settlement',
-    });
+    expect(result.requests[0]?.trace.events).toContainEqual(expect.objectContaining({
+      kind: 'part_text', text: 'partial before failure', completeness: 'partial', phase: 'before-settlement',
+    }));
     expect(result.requests.slice(1).map(request => ({ status: request.status, input: request.input, settled: request.trace.settled })))
       .toEqual([{ status: 'not-started', input: undefined, settled: undefined }, { status: 'not-started', input: undefined, settled: undefined }]);
     expect(JSON.stringify(result)).not.toContain('Private error text');
     expect(factory).toHaveBeenCalledOnce();
-    expect(client.generateText).toHaveBeenCalledOnce();
+    expect(client.generateMessage).toHaveBeenCalledOnce();
   });
 
   it('does not construct history from an overflowing trace or turn fulfilled into rejected', async () => {
     const client = clientFixture();
-    client.generateText.mockImplementationOnce(async ({ onChunk }) => onChunk({ chunk: 'not fully retained' }));
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => emitMessage({ onEvent, chunks: ['not fully retained'] }));
     const { owner } = createOwner({
       client, runId: 'overflow', plan: 'first-continuity-independent', traceLimits: { maximumEvents: 1, maximumCharacters: 10 },
     });
@@ -416,7 +453,7 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(result.requests[0]?.trace.settled?.outcome).toEqual({ status: 'fulfilled' });
     expect(result.requests[0]?.trace.completeness).toBe('incomplete');
     expect(result.requests.slice(1).every(request => request.status === 'not-started' && request.input === undefined)).toBe(true);
-    expect(client.generateText).toHaveBeenCalledOnce();
+    expect(client.generateMessage).toHaveBeenCalledOnce();
   });
 
   it('records pre-run abort as not-started, not as a Provider rejection', async () => {
@@ -437,8 +474,9 @@ describe('isolated fixed Production Provider capture owner', () => {
     const client = clientFixture();
     const entered = deferred<void>();
     const generation = deferred<void>();
-    client.generateText.mockImplementationOnce(() => {
-      entered.resolve(); return generation.promise;
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      entered.resolve(); await generation.promise;
+      await finishMessage({ onEvent });
     });
     client.interrupt.mockImplementationOnce(async () => generation.resolve());
     const { owner } = createOwner({ client, runId: 'aborting', plan: 'first-continuity-independent', traceLimits: limits });
@@ -448,21 +486,22 @@ describe('isolated fixed Production Provider capture owner', () => {
     const result = await running;
     expect(result.abortReason).toBe('deadline');
     expect(result.run).toEqual({ status: 'stopped', reason: 'aborted' });
-    // The owning lane rejects cancellation after draining the fulfilled client.
-    // The trace deliberately reads only own data error names; DOMException's
-    // inherited name remains unknown without evaluating an arbitrary getter.
-    expect(result.requests[0]?.trace.settled?.outcome).toEqual({ status: 'rejected', errorName: 'unknown' });
+    // The common generation runner returns an explicit interrupted result.
+    // Fulfilling this operation does not certify successful model completion.
+    expect(result.requests[0]?.trace.settled?.outcome).toEqual({ status: 'fulfilled' });
+    expect(result.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'generation_interrupted', reason: 'aborted' }));
     expect(result.requests.slice(1).every(request => request.status === 'not-started')).toBe(true);
     expect(client.interrupt).toHaveBeenCalledOnce();
-    expect(client.generateText).toHaveBeenCalledOnce();
+    expect(client.generateMessage).toHaveBeenCalledOnce();
   });
 
   it('rejects concurrent and repeated runs rather than queuing them', async () => {
     const client = clientFixture();
     const entered = deferred<void>();
     const generation = deferred<void>();
-    client.generateText.mockImplementationOnce(() => {
-      entered.resolve(); return generation.promise;
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      entered.resolve(); await generation.promise;
+      await finishMessage({ onEvent });
     });
     const { owner } = createOwner({ client, runId: 'once', plan: 'first-only', traceLimits: limits });
     const running = owner.run();
@@ -471,7 +510,7 @@ describe('isolated fixed Production Provider capture owner', () => {
     generation.resolve();
     await running;
     await expect(owner.run()).rejects.toThrow('only once');
-    expect(client.generateText).toHaveBeenCalledOnce();
+    expect(client.generateMessage).toHaveBeenCalledOnce();
   });
 
   it('terminally disposes pending work without waiting for settlement or resurrecting a client', async () => {
@@ -480,8 +519,9 @@ describe('isolated fixed Production Provider capture owner', () => {
     const generation = deferred<void>();
     const cleanup = deferred<void>();
     const disposed = new ProductionWorkerLifecycleError({ reason: 'disposed', message: 'Controlled physical client disposal' });
-    client.generateText.mockImplementationOnce(() => {
-      entered.resolve(); return generation.promise;
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      entered.resolve(); await generation.promise;
+      await finishMessage({ onEvent });
     });
     client.dispose.mockImplementationOnce(() => {
       generation.reject(disposed); return cleanup.promise;
@@ -510,7 +550,7 @@ describe('isolated fixed Production Provider capture owner', () => {
     const client = clientFixture();
     const generationError = Object.assign(new Error('Original generation failure'), { name: 'SyntaxError' });
     const cleanupError = new Error('Separate cleanup failure');
-    client.generateText.mockRejectedValueOnce(generationError);
+    client.generateMessage.mockRejectedValueOnce(generationError);
     client.dispose.mockRejectedValueOnce(cleanupError);
     const { owner, factory } = createOwner({ client, runId: 'two-failures', plan: 'first-only', traceLimits: limits });
     const result = await owner.run();
@@ -590,6 +630,6 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(result.run).toEqual({ status: 'completed' });
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
     expect(client.loadDownloadedModel.mock.calls[0]?.[0].modelId).toBe('hf.co/fixture/model');
-    expect(client.generateText).toHaveBeenCalledTimes(3);
+    expect(client.generateMessage).toHaveBeenCalledTimes(3);
   });
 });

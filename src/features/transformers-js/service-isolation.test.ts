@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryFiles } from './replay-models/support/download-memory-files';
 import { ProductionWorkerLifecycleError } from './worker/production-worker-session';
 import type { TransformersJsWorkerClient } from './types';
-import type { ChatMessage } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import { toToolCallId } from '@/01-models/ids';
 import type { resolvePublicHuggingFaceRevision } from './download-verification/logic/resolve-public-hugging-face-revision';
 import type { reuseDownloadedProductionRevision } from './download-verification/logic/reuse-downloaded-production-revision';
@@ -33,6 +33,7 @@ function createClientFixture() {
     loadDownloadedModel: vi.fn<TransformersJsWorkerClient['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
     unloadModel: vi.fn<TransformersJsWorkerClient['unloadModel']>().mockResolvedValue(undefined),
     generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockResolvedValue(undefined),
+    generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>().mockResolvedValue(undefined),
     interrupt: vi.fn<TransformersJsWorkerClient['interrupt']>().mockResolvedValue(undefined),
     resetCache: vi.fn<TransformersJsWorkerClient['resetCache']>().mockResolvedValue(undefined),
     dispose: vi.fn<TransformersJsWorkerClient['dispose']>().mockResolvedValue(undefined),
@@ -74,6 +75,35 @@ afterEach(async () => {
 // These tests cover the real service with controlled client lifecycles, not
 // native Worker termination, GPU reclamation, or cancellation of Download I/O.
 describe('Transformers.js service instance ownership', () => {
+  it('keeps queued structured reasoning detached until the owned client accepts it', async () => {
+    const client = createClientFixture();
+    const owner = await createOwner({ createWorkerClient: () => client });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    client.generateText.mockImplementationOnce(async () => {
+      entered.resolve(); await release.promise;
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/reasoning' });
+    const first = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
+    await entered.promise;
+    const reasoning = { text: '  R\n', completeness: 'complete' as 'complete' | 'partial' };
+    const accepted: InferenceMessage[] = [{ role: 'assistant', content: '<think>literal</think>', reasoning }];
+    const next = owner.service.generateText({ messages: accepted, onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'reasoning-owner' });
+    reasoning.text = 'edited'; reasoning.completeness = 'partial';
+    accepted[0]!.content = 'edited';
+    try {
+      expect(client.generateText).toHaveBeenCalledTimes(1);
+      release.resolve(); await Promise.all([first, next]);
+      const sent = client.generateText.mock.calls[1]![0];
+      expect(sent.messages).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning: { text: '  R\n', completeness: 'complete' } }]);
+      expect(sent.messages[0]?.reasoning).not.toBe(reasoning);
+      expect(sent.continuationOwner).toBe('reasoning-owner');
+      expect(client.interrupt).not.toHaveBeenCalled();
+    } finally {
+      release.resolve(); await Promise.allSettled([first, next]);
+    }
+  });
+
   it('settles an interrupted Download before admitting the next Load without canceling Download I/O', async () => {
     const client = createClientFixture();
     const owner = await createOwner({ createWorkerClient: () => client });
@@ -171,7 +201,7 @@ describe('Transformers.js service instance ownership', () => {
   it.each(['absent', 'undefined'] as const)('keeps %s optional tool fields out of ordinary messages sent to every model', async shape => {
     const client = createClientFixture();
     const owner = await createOwner({ createWorkerClient: () => client });
-    const messages: ChatMessage[] = [
+    const messages: InferenceMessage[] = [
       { role: 'user', content: 'Synthetic user.' },
       { role: 'assistant', content: 'Synthetic answer.' },
     ];
@@ -201,7 +231,7 @@ describe('Transformers.js service instance ownership', () => {
       { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,fixture' } },
     ];
     const calls = [{ id, type: 'function' as const, function: { name: 'lookup', arguments: '{"value":1}' } }];
-    const messages: ChatMessage[] = [
+    const messages: InferenceMessage[] = [
       { role: 'user', content: parts },
       { role: 'assistant', content: '', tool_calls: calls },
       { role: 'tool', content: 'Synthetic result.', tool_call_id: id },

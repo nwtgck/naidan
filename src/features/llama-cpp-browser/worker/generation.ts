@@ -1,28 +1,34 @@
 import { prepareMultimodal } from './multimodal';
-import { LlamaCppBrowserError, type GenerationResult, type Progress } from '@/features/llama-cpp-browser/types';
-import { logDiagnostic, logFailure, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
+import { LlamaCppBrowserError, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
+import { logDiagnostic, logFailure, type Diagnostic, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
 import { createOutputStream } from './output-stream';
 import { prepareSession } from './session';
 import { prepareChat } from './native-chat';
 import { createChatSampler } from './chat-sampler';
+import { capturePromptCheckpoint, disposePromptCheckpoint, promptCheckpointBoundary, restorePromptCheckpoint } from './prompt-checkpoint';
 
 /** Reuse only a verified decoded prefix; sampling and parsing stay request-local. */
-export async function generate({ request, onChunk, onProgress, signal }: {
+export async function generate({ request, onEvent, onProgress, signal }: {
   request: WorkerGenerateInput,
   signal: AbortSignal | undefined,
-  onChunk: ({ chunk }: { chunk: string }) => void,
+  onEvent: GenerationCallback,
   onProgress: ({ progress }: { progress: Progress }) => void,
 }): Promise<GenerationResult> {
   const started = performance.now();
   let stage: DiagnosticStage = 'session';
   let generated = 0;
+  let flushPartial: (() => Promise<void>) | undefined;
   const progress = ({ phase, completed, total }: Progress): void => onProgress({ progress: { phase, completed, total } });
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  const { core, model, context, cache, projector } = await prepareSession({ request, onProgress, signal });
+  const { core, model, context, sequenceRemoval, slidingWindow, cache, projector } = await prepareSession({ request, onProgress, signal });
   const api = core.api;
+  const discardCheckpoint = (): void => {
+    const checkpoint = cache.checkpoint; cache.checkpoint = undefined;
+    disposePromptCheckpoint({ core, checkpoint });
+  };
   let chat: ReturnType<typeof prepareChat> | undefined;
   let multimodal: Awaited<ReturnType<typeof prepareMultimodal>> | undefined;
   let chatSampler: Awaited<ReturnType<typeof createChatSampler>> | undefined;
@@ -59,6 +65,7 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       }
     } catch (error) {
       cache.validity = 'invalid';
+      discardCheckpoint();
       logFailure({ stage: 'cleanup', error }); throw error;
     }
   };
@@ -81,9 +88,11 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     const capacity = await api.llama_n_ctx(context);
     let promptTokens: number[];
     let tokens: bigint;
+    let promptPointer = 0n;
     if (chat.images.length) {
       // Image identity and native positions are not represented by a token prefix.
       cache.validity = 'invalid'; cache.tokens = [];
+      discardCheckpoint();
       multimodal = await prepareMultimodal({ core, projector, prompt: promptText, images: chat.images });
       promptTokens = multimodal.textTokens;
       tokens = alloc({ bytes: Math.max(4, promptTokens.length * 4) });
@@ -91,6 +100,7 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       promptTokens.forEach((token, index) => view.setInt32(index * 4, token, true));
     } else {
       const prompt = string({ text: promptText });
+      promptPointer = prompt;
       const countResult = await api.llama_tokenize(vocab, prompt, promptLength, 0n, 0, 1, 1);
       const count = Math.abs(countResult);
       if (count < 1 || count >= capacity) throw new LlamaCppBrowserError({ code: 'context-full' });
@@ -109,31 +119,122 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       default: { const exhaustive: never = cache.validity; throw new Error(`Unknown cache validity: ${exhaustive}`); }
       }
     })();
-    const prefixMatches = cacheValid && cache.tokens.length > 0
-      && cache.tokens.length <= tokenCount && cache.tokens.every((token, index) => token === promptTokens[index]);
+    const cachedTokens = cache.tokens.length;
+    let commonPrefixTokens = 0;
+    while (commonPrefixTokens < Math.min(cachedTokens, promptTokens.length)
+      && cache.tokens[commonPrefixTokens] === promptTokens[commonPrefixTokens]) commonPrefixTokens++;
+    // Report only lengths and positions, never token IDs or prompt text. A
+    // shorter prompt and a differing token require different investigations.
+    const cacheComparison = cachedTokens === 0 ? 'empty-cache'
+      : commonPrefixTokens < Math.min(cachedTokens, promptTokens.length) ? 'token-mismatch'
+        : cachedTokens > promptTokens.length ? 'prompt-shorter'
+          : cachedTokens === promptTokens.length ? 'identical' : 'prompt-extension';
+    const nativePositionMin = memory === 0n ? undefined : await api.llama_memory_seq_pos_min(memory, 0);
+    const nativePositionMax = memory === 0n ? undefined : await api.llama_memory_seq_pos_max(memory, 0);
+    const nativeMemoryKind = memory === 0n ? 'none'
+      : await api.llama_model_is_hybrid(model) ? 'hybrid'
+        : await api.llama_model_is_recurrent(model) ? 'recurrent' : 'attention';
+    const nativeRollbackTokens = await api.llama_n_rs_seq(context);
+    const prefixMatches = cacheValid && cachedTokens > 0 && commonPrefixTokens === cachedTokens;
     // The last successful decode owns the context logits. Native CPU sampling
     // copies them into candidates; no evaluation runs between resident requests.
-    const reuse = !multimodal && memory !== 0n && prefixMatches
-      && await api.llama_memory_seq_pos_max(memory, 0) === cache.tokens.length - 1;
-    const reusedTokens = reuse ? cache.tokens.length : 0;
-    logDiagnostic({ diagnostic: { event: 'cache-reuse', reusedTokens, evaluatedTokens: tokenCount - reusedTokens,
-      reason: reuse ? 'prefix-match' : !cacheValid ? 'cache-invalid' : !prefixMatches ? 'prefix-mismatch' : 'cache-position' } });
-    // No rollback or state transfer: edited/shortened prompts and uncertain state
-    // rebuild the cache, including for recurrent and sliding-window models.
+    const cachePositionMatches = nativePositionMax === cachedTokens - 1;
+    const reuse = !multimodal && memory !== 0n && prefixMatches && cachePositionMatches;
+    const canRemoveSuffix = (() => {
+      switch (sequenceRemoval) {
+      case 'partial': case 'bounded': return true;
+      case 'none': case 'full-only': return false;
+      default: { const exhaustive: never = sequenceRemoval; throw new Error(`Unknown sequence removal capability: ${exhaustive}`); }
+      }
+    })();
+    const checkpointEnabled = !multimodal && memory !== 0n && (() => {
+      switch (sequenceRemoval) {
+      case 'none': return false;
+      case 'full-only': case 'bounded': return true;
+      case 'partial': return slidingWindow > 0;
+      default: { const exhaustive: never = sequenceRemoval; throw new Error(`Unknown sequence removal capability: ${exhaustive}`); }
+      }
+    })();
+    if (!cacheValid) discardCheckpoint();
+    let reusedTokens = reuse ? cachedTokens : 0;
+    let reason: Diagnostic['reason'] = reuse ? 'prefix-match' : !cacheValid ? 'cache-invalid'
+      : !cachePositionMatches ? 'cache-position' : 'prefix-mismatch';
     cache.validity = 'invalid';
-    if (!reuse) {
+    let attemptedRemoval = false;
+    if (!reuse && canRemoveSuffix && !multimodal && memory !== 0n && cacheValid && cachePositionMatches && commonPrefixTokens > 0) {
+      // Require the entire original prefix to remain resident. llama.cpp's
+      // attention cache keeps every position between min/max; composite memory
+      // reports its narrowest retained range. Let native seq_rm decide whether
+      // that memory can actually rewind, without model-specific dispatch.
+      if (nativePositionMin === 0) {
+        // Removing a suffix does not refresh logits. Even a shortened prompt
+        // must decode at least its final token before sampling again.
+        const retained = Math.min(commonPrefixTokens, tokenCount - 1);
+        // Avoid a knowingly unsupported mutation: a checkpoint may still
+        // restore an older boundary beyond the native recurrent rollback bound.
+        if (retained > 0 && (sequenceRemoval !== 'bounded' || cachedTokens - retained <= nativeRollbackTokens)) {
+          attemptedRemoval = true;
+          const removed = await api.llama_memory_seq_rm(memory, 0, retained, -1);
+          if (removed && await api.llama_memory_seq_pos_min(memory, 0) === 0
+            && await api.llama_memory_seq_pos_max(memory, 0) === retained - 1) {
+            reusedTokens = retained;
+            cache.tokens.length = retained;
+            reason = 'prefix-partial-match';
+          } else reason = 'cache-rollback-failed';
+        }
+      } else reason = 'cache-window';
+    }
+    const checkpoint = cache.checkpoint;
+    // A failed direct mutation may have damaged ordinary attention, which a
+    // partial snapshot cannot replace. Only restore an untouched native prefix.
+    if (!reuse && reusedTokens === 0 && !attemptedRemoval && checkpointEnabled && cacheValid && cachePositionMatches
+      && checkpoint && checkpoint.tokens.length <= commonPrefixTokens && checkpoint.tokens.length < tokenCount
+      && checkpoint.tokens.every((token, index) => token === promptTokens[index])) {
+      stage = 'cache-checkpoint';
+      if (await restorePromptCheckpoint({ core, context, checkpoint })) {
+        reusedTokens = checkpoint.tokens.length;
+        cache.tokens = checkpoint.tokens.slice();
+        reason = 'checkpoint-match';
+      } else reason = 'checkpoint-invalid';
+    }
+    // Full-prefix appends need no restoration. Keeping their earlier checkpoint
+    // avoids repeated copies and preserves a boundary before generated thinking.
+    if (!reuse) discardCheckpoint();
+    logDiagnostic({ diagnostic: { event: 'cache-reuse', reusedTokens, evaluatedTokens: tokenCount - reusedTokens,
+      tokens: tokenCount, cachedTokens, commonPrefixTokens, cacheComparison,
+      nativeMemoryKind, nativePositionMin, nativePositionMax, nativeRollbackTokens,
+      reason } });
+    if (reusedTokens === 0) {
       cache.tokens = [];
       if (memory !== 0n) await api.llama_memory_clear(memory, 1);
     }
+    let checkpointBoundary: number | undefined;
+    if (checkpointEnabled && !cache.checkpoint) {
+      stage = 'cache-checkpoint';
+      const boundary = await promptCheckpointBoundary({ core, vocab, prompt: promptText, promptPointer,
+        generationPrompt: chat.params.generation_prompt, tokens: promptTokens });
+      if (boundary > 0 && boundary < tokenCount && boundary >= reusedTokens) checkpointBoundary = boundary;
+    }
+    const captureAtBoundary = async ({ offset }: { offset: number }): Promise<void> => {
+      if (offset !== checkpointBoundary) return;
+      stage = 'cache-checkpoint';
+      // The pointer is published only after the native writer has finished.
+      // Cancellation cannot free a buffer while that writer still owns it.
+      cache.checkpoint = await capturePromptCheckpoint({ core, context, tokens: cache.tokens });
+      checkCancelled();
+    };
+    await captureAtBoundary({ offset: reusedTokens });
     const batch = record({ name: 'llama_batch' });
     stage = 'prefill-decode';
     if (multimodal) {
       checkCancelled();
       nextPosition = await multimodal.evaluate({ context, capacity });
       checkCancelled();
-    } else for (let offset = reusedTokens; offset < tokenCount; offset += 128) {
+    } else for (let offset = reusedTokens; offset < tokenCount;) {
       checkCancelled();
-      const count = Math.min(128, tokenCount - offset);
+      stage = 'prefill-decode';
+      const boundaryLimit = checkpointBoundary !== undefined && offset < checkpointBoundary ? checkpointBoundary - offset : tokenCount - offset;
+      const count = Math.min(128, tokenCount - offset, boundaryLimit);
       await api.llama_batch_get_one(batch, tokens + BigInt(offset * 4), count);
       const status = await api.llama_decode(context, batch);
       checkCancelled();
@@ -142,7 +243,9 @@ export async function generate({ request, onChunk, onProgress, signal }: {
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
       cache.tokens.push(...promptTokens.slice(offset, offset + count));
-      progress({ phase: 'prefill', completed: offset + count, total: tokenCount });
+      offset += count;
+      await captureAtBoundary({ offset });
+      progress({ phase: 'prefill', completed: offset, total: tokenCount });
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
     checkCancelled();
@@ -182,32 +285,41 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     const samplingChain = sampler; sampler = 0n;
     chatSampler = await createChatSampler({ core, vocab, chain: samplingChain, params: chat.params });
     const stream = createOutputStream({ stops: [...request.stop, ...chat.additionalStops], harmony: false, initialChannel: 'final' });
-    let output = ''; let content = ''; let reasoning = ''; let thinkingOpen = false;
-    const emitParsed = ({ parsed }: { parsed: Omit<GenerationResult, 'finishReason'> }): void => {
+    let output = ''; let content = ''; let reasoning = ''; let pendingCalls = 0;
+    let deliveryFailed = false;
+    const send: GenerationCallback = async ({ event }) => {
       stage = 'stream-emit';
-      if (!parsed.content.startsWith(content) || !parsed.reasoningContent.startsWith(reasoning)) {
+      try {
+        await onEvent({ event });
+      } catch (error) {
+        deliveryFailed = true; throw error;
+      }
+    };
+    const emitParsed = async ({ parsed }: { parsed: Omit<GenerationResult, 'finishReason'> }): Promise<void> => {
+      stage = 'stream-emit';
+      if (!parsed.content.startsWith(content) || !parsed.reasoningContent.startsWith(reasoning) || parsed.toolCalls.length < pendingCalls) {
         logDiagnostic({ diagnostic: { event: 'failed', stage, tokens: generated,
           reason: !parsed.content.startsWith(content) ? 'non-monotonic-content' : 'non-monotonic-reasoning' } });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
       const thought = parsed.reasoningContent.slice(reasoning.length);
-      if (thought) {
-        if (!thinkingOpen) {
-          onChunk({ chunk: '<think>' }); thinkingOpen = true; checkCancelled();
-        }
-        onChunk({ chunk: thought }); checkCancelled();
-      }
       const text = parsed.content.slice(content.length);
-      if (text) {
-        if (thinkingOpen) {
-          onChunk({ chunk: '</think>' }); thinkingOpen = false; checkCancelled();
-        }
-        onChunk({ chunk: text }); checkCancelled();
-      }
+      // Commit the accepted parser snapshot before awaiting delivery; never resend a delta.
       content = parsed.content; reasoning = parsed.reasoningContent;
+      if (thought) await send({ event: { type: 'reasoning', text: thought } });
+      if (text) await send({ event: { type: 'text', text } });
+      while (pendingCalls < parsed.toolCalls.length) {
+        const index = pendingCalls++;
+        await send({ event: { type: 'tool_call_start', index } });
+      }
     };
     let finishReason: GenerationResult['finishReason'] = 'length';
     const decoder = new TextDecoder(); const nextToken = alloc({ bytes: 4 });
+    flushPartial = async () => {
+      if (deliveryFailed) return;
+      output += stream.push({ text: decoder.decode() }).text + stream.finish();
+      await emitParsed({ parsed: chat!.parse({ text: output, partial: true }) });
+    };
     const position = multimodal ? alloc({ bytes: 4 }) : undefined;
     let piece = alloc({ bytes: 256 }); let pieceCapacity = 256;
     const remaining = capacity - Math.max(tokenCount, nextPosition);
@@ -235,9 +347,10 @@ export async function generate({ request, onChunk, onProgress, signal }: {
       checkCancelled();
       output += rendered.text;
       stage = 'partial-parse';
-      emitParsed({ parsed: chat.parse({ text: output, partial: true }) });
+      await emitParsed({ parsed: chat.parse({ text: output, partial: true }) });
       if (rendered.done || endOfGeneration) {
-        finishReason = 'stop'; break;
+        const stop = stream.getMatchedStop();
+        finishReason = stop !== undefined && request.stop.includes(stop) ? 'stop_sequence' : 'stop'; break;
       }
       stage = 'generation-decode';
       const tokenBytes = core.bytes({ pointer: nextToken, length: 4 }); new DataView(tokenBytes.buffer, tokenBytes.byteOffset, 4).setInt32(0, token, true);
@@ -262,16 +375,30 @@ export async function generate({ request, onChunk, onProgress, signal }: {
     const tail = stream.push({ text: decoder.decode() }).text + stream.finish();
     output += tail;
     stage = 'final-parse';
-    const parsed = chat.parse({ text: output, partial: finishReason === 'length' });
-    emitParsed({ parsed });
-    if (thinkingOpen) {
-      onChunk({ chunk: '</think>' }); checkCancelled();
+    const parsed = chat.parse({ text: output, partial: finishReason !== 'stop' });
+    await emitParsed({ parsed });
+    // Only a completed native turn confirms calls. JSON validity alone does not.
+    switch (finishReason) {
+    case 'stop':
+      for (const [index, toolCall] of parsed.toolCalls.entries()) await send({ event: { type: 'tool_call', index, toolCall } });
+      break;
+    case 'length': case 'stop_sequence': break;
+    default: { const exhaustive: never = finishReason; throw new Error(`Unknown completion: ${exhaustive}`); }
     }
+    flushPartial = undefined;
     logDiagnostic({ diagnostic: { event: 'generation-complete', tokens: generated, elapsedMs: performance.now() - started } });
     cache.validity = !multimodal && memory !== 0n ? 'valid' : 'invalid';
     return { ...parsed, finishReason };
   } catch (error) {
+    // Drain already accepted bytes before reporting a cooperative cancellation or failure.
+    // Do not retry delivery after a consumer failure or replace the original error.
+    try {
+      await flushPartial?.();
+    } catch (drainError) {
+      logFailure({ stage: 'stream-emit', error: drainError });
+    }
     cache.validity = 'invalid';
+    discardCheckpoint();
     logFailure({ stage, error });
     logDiagnostic({ diagnostic: { event: 'failed', stage, tokens: generated } });
     throw error;

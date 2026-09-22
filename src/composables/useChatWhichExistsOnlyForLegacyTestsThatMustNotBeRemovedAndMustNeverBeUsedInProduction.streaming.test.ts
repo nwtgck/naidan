@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import type { ChatId } from '@/01-models/ids';
+import type { LmProvider } from '@/01-models/lm';
+import { getMessageText } from '@/01-models/message-text';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 vi.mock('../00-storage/service', () => ({
@@ -46,7 +50,7 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-const mockLmChat = vi.fn();
+const mockLmChat = vi.fn<LmProvider['chat']>();
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
@@ -70,68 +74,77 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   const { currentChat, TEST_ONLY, streaming, sendMessage, createNewChat, abortChat } = chatStore;
   const { activeGenerations, __testOnlySetCurrentChat } = TEST_ONLY;
 
-  const waitForRegistry = async (id: ChatId) => {
+  const waitForRegistry = async ({ id }: { id: ChatId }) => {
     await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000 });
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
+    mockLmChat.mockReset();
+    TEST_ONLY.clearLiveChatRegistry();
     __testOnlySetCurrentChat({ chat: null });
   });
 
   it('should correctly set streaming state when generation starts and ends', async () => {
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = currentChat.value!;
-
-    let resolveGen: () => void;
-    const p = new Promise<void>(r => resolveGen = r);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'Start' });
-      await p;
-      params.onChunk({ chunk: 'End' });
-    });
-
+    const accepted = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
+      await writer.text({ type: 'text', text: 'Start' });
+      accepted.resolve();
+      await finish.promise;
+      await writer.text({ type: 'text', text: 'End' });
+      return { type: 'finished', next: 'user' };
+    } }));
     const sendPromise = sendMessage({ content: 'Hello' });
-    await waitForRegistry(chat.id);
-
-    expect(streaming.value).toBe(true);
-    expect(activeGenerations.has(chat.id)).toBe(true);
-
-    resolveGen!();
-    await sendPromise;
-    // Wait for the background generation task to complete and clear from activeGenerations
-    await vi.waitUntil(() => !streaming.value, { timeout: 5000 });
-
-    expect(streaming.value).toBe(false);
+    try {
+      await accepted.promise;
+      await waitForRegistry({ id: chat.id });
+      expect(streaming.value).toBe(true);
+      expect(activeGenerations.has(chat.id)).toBe(true);
+      await vi.waitUntil(() => getMessageText({ message: chat.root.items[0]!.replies.items[0]! }) === 'Start');
+    } finally {
+      finish.resolve();
+      await sendPromise;
+      await vi.waitUntil(() => !streaming.value, { timeout: 5000 });
+    }
     expect(activeGenerations.has(chat.id)).toBe(false);
+    const assistant = chat.root.items[0]!.replies.items[0]!;
+    expect(assistant.parts).toMatchObject([{ type: 'text', text: 'StartEnd', completeness: 'complete' }]);
   });
 
-  it('should clear streaming state when aborted', async () => {
+  it('should clear streaming state when aborted, after the producer settles', async () => {
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = currentChat.value!;
-
-    let resolveGen: () => void;
-    const p = new Promise<void>(r => resolveGen = r);
-    mockLmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
-      const { signal } = params;
-      await p;
-      if (signal?.aborted) throw new Error('Aborted');
-    });
-
+    const started = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    const sawAbort = Promise.withResolvers<void>();
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
+      await writer.text({ type: 'text', text: 'Unfinished' });
+      signal.addEventListener('abort', () => sawAbort.resolve(), { once: true });
+      started.resolve();
+      // A stop request is not permission to release an uncooperative producer early.
+      await finish.promise;
+      return { type: 'interrupted', reason: 'aborted' };
+    } }));
     const sendPromise = sendMessage({ content: 'Hello' });
-    await waitForRegistry(chat.id);
-
-    expect(streaming.value).toBe(true);
-
-    abortChat({ chatId: undefined });
-    resolveGen!();
-
-    // sendMessage itself might not throw because it backgrounds generation,
-    // but we wait for streaming to clear.
-    await sendPromise;
-    await vi.waitUntil(() => !streaming.value, { timeout: 5000 });
-
-    expect(streaming.value).toBe(false);
+    try {
+      await started.promise;
+      await waitForRegistry({ id: chat.id });
+      abortChat({ chatId: undefined });
+      await sawAbort.promise;
+      expect(streaming.value).toBe(true);
+      expect(activeGenerations.has(chat.id)).toBe(true);
+    } finally {
+      finish.resolve();
+      await sendPromise;
+      await vi.waitUntil(() => !streaming.value, { timeout: 5000 });
+    }
     expect(activeGenerations.has(chat.id)).toBe(false);
+    const assistant = chat.root.items[0]!.replies.items[0]!;
+    expect(assistant.parts).toMatchObject([{ type: 'text', text: 'Unfinished', completeness: 'partial' }]);
+    expect(assistant.role === 'assistant' && assistant.interruption).toEqual({ type: 'cancelled' });
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { inspectChatPersistenceRoundTrip } from "./inspect-chat-persistence-roundtrip";
 import type {
   ModelSupportInvestigationRun,
   ModelSupportInvestigationTemplateCase,
@@ -715,7 +716,7 @@ TypeError: fixture inspection failed
     expect(continuity?.questions[0]?.answer).toContain("persistence mapper/DTO/JSON roundtrip was not observed");
   });
 
-  it("marks continuity implementation-ready when exact prefix and persistence serialization evidence agree", () => {
+  it("keeps legacy readiness separate from a current shared-parts observation", async () => {
     const value = run();
     value.persistenceRoundTrip = {
       status: 'observed',
@@ -749,6 +750,17 @@ TypeError: fixture inspection failed
     expect(continuity).toMatchObject({ status: 'implementation-ready' });
     expect(continuity?.questions[0]?.answer).toContain('preserved 1 model-visible synthetic messages exactly');
     expect(continuity?.questions[0]?.evidencePaths).toContain('continuity/persistence-roundtrip.json');
+
+    // A real shared-parts roundtrip is not the native template/tokenizer boundary.
+    const current = await inspectChatPersistenceRoundTrip();
+    expect(current.status).toBe('observed');
+    value.persistenceRoundTrip = current;
+    const currentReadiness = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === 'continuity-kv-cache');
+    expect(currentReadiness?.status).toBe('partial');
+    expect(currentReadiness?.questions[0]?.answer).toContain('shared parts projection');
+    expect(currentReadiness?.questions[0]?.answer).toContain('neither a model-native template/tokenizer roundtrip nor physical storage-provider I/O');
+    expect(currentReadiness?.summary).toContain('matching native-input/tokenizer roundtrip is still needed');
+    expect(currentReadiness?.questions[0]?.evidencePaths).toContain('continuity/persistence-roundtrip.json');
   });
 
   it('keeps legacy persistence evidence partial when Production history projection provenance is absent', () => {

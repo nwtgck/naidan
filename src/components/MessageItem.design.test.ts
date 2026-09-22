@@ -1,3 +1,4 @@
+import { getMessageText } from '@/01-models/message-text';
 import { toChatId } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
@@ -35,14 +36,17 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
   const createMessage = (content: string): MessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   it('applies thinking-gradient-border element when thinking is active', () => {
     const message = createMessage('<think>Deep thought...');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
 
     const border = wrapper.find('.thinking-gradient-border');
     expect(border.exists()).toBe(true);
@@ -75,7 +79,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
 
   it('is always full width but changes height based on expansion', async () => {
     const message = createMessage('<think>Thinking process content</think>Final response');
-    const wrapper = mount(MessageThinking, { props: { message } });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: getMessageText({ message }).includes('<think>') && !getMessageText({ message }).includes('</think>') } });
 
     const container = wrapper.find('[data-testid="toggle-thinking"]');
 
@@ -101,7 +105,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
   it('shows a fixed-height streaming view when thinking is active but collapsed', async () => {
     // Message with unclosed <think> tag
     const message = createMessage('<think>Ongoing streaming thoughts...');
-    const wrapper = mount(MessageThinking, { props: { message } });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: getMessageText({ message }).includes('<think>') && !getMessageText({ message }).includes('</think>') } });
 
     const container = wrapper.find('[data-testid="toggle-thinking"]');
 
@@ -121,7 +125,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     const message = createMessage('<think>thought</think>');
     const nestedFlow = { position: 'standalone' as const, nesting: 'inside-group' as const };
     const wrapper = mount(MessageItem, {
-      props: { message, mode: 'thinking', flow: nestedFlow, isLastInNode: true },
+      props: { message, mode: 'thinking', isGenerating: true, flow: nestedFlow, isLastInNode: true },
     });
 
     // MessageThinking should have no bottom margin (no mb-3)
@@ -138,7 +142,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
   it('uses mt-3 on controls when not nested (normal case)', () => {
     const message = createMessage('<think>thought</think>');
     const wrapper = mount(MessageItem, {
-      props: { message, mode: 'thinking', isLastInNode: true },
+      props: { message, mode: 'thinking', isGenerating: true, isLastInNode: true },
     });
 
     const controls = wrapper.find('[data-testid="message-actions-wrapper"]');
@@ -149,7 +153,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
 
   it('maintains the thinking border during expansion if thinking is active', async () => {
     const message = createMessage('<think>Ongoing thought...');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
 
     const container = wrapper.find('[data-testid="toggle-thinking"]');
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(true);

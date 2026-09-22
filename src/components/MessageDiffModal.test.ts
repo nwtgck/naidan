@@ -14,9 +14,12 @@ describe('MessageDiffModal', () => {
   const createMessage = (id: string, content: string, timestamp: number): MessageNode => ({
     id: toMessageId({ raw: id }),
     role: 'assistant',
-    content,
-    timestamp,
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: timestamp,
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   const siblings: MessageNode[] = [

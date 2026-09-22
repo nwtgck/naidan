@@ -1,3 +1,4 @@
+import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import {
@@ -45,26 +46,24 @@ export class MemoryStorageProvider extends IStorageProvider {
   private blobCache = new Map<AttachmentId, Blob>();
 
   private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
-    for (const node of nodes) {
-      if (node.attachments) {
-        for (const att of node.attachments) {
-          switch (att.status) {
-          case 'memory': {
-            const cached = this.blobCache.get(att.id);
-            if (cached) (att as unknown as { blob: Blob }).blob = cached;
-            break;
-          }
-          case 'persisted':
-          case 'missing':
-            break;
-          default: {
-            const _ex: never = att;
-            throw new Error(`Unhandled attachment status: ${_ex}`);
-          }
-          }
+    for (const part of iterateAttachmentParts({ nodes })) {
+      const att = part.attachment;
+      switch (att.status) {
+      case 'memory': {
+        const cached = this.blobCache.get(att.id);
+        if (cached) {
+          part.attachment = { ...att, blob: cached };
         }
+        break;
       }
-      this.restoreBlobs({ nodes: node.replies.items });
+      case 'persisted':
+      case 'missing':
+        break;
+      default: {
+        const _ex: never = att;
+        throw new Error(`Unhandled attachment status: ${_ex}`);
+      }
+      }
     }
   }
 
@@ -114,21 +113,21 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
-    const findAndCacheBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
-      for (const node of nodes) {
-        if (node.attachments) {
-          for (const att of node.attachments) {
-            if (att.status === 'memory' && att.blob) {
-              this.blobCache.set(att.id, att.blob);
-            }
-          }
-        }
-        if (node.replies?.items) {
-          findAndCacheBlobs({ nodes: node.replies.items });
-        }
+    for (const part of iterateAttachmentParts({ nodes: content.root.items })) {
+      const att = part.attachment;
+      switch (att.status) {
+      case 'memory':
+        if (att.blob) this.blobCache.set(att.id, att.blob);
+        break;
+      case 'persisted':
+      case 'missing':
+        break;
+      default: {
+        const _ex: never = att;
+        throw new Error(`Unhandled attachment status: ${_ex}`);
       }
-    };
-    findAndCacheBlobs({ nodes: content.root.items });
+      }
+    }
 
     const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);

@@ -9,27 +9,30 @@ describe('chat-search AND logic', () => {
       {
         id: toMessageId({ raw: '1' }),
         role: 'user',
-        content: 'Hello world, this is a test message with multiple keywords',
-        timestamp: Date.now(),
+        modelId: undefined, lmParameters: undefined,
+        parts: [{ type: 'text', text: 'Hello world, this is a test message with multiple keywords', completeness: 'complete' }],
+        createdAt: Date.now(),
         replies: {
           items: [
             {
               id: toMessageId({ raw: '2' }),
               role: 'assistant',
-              content: 'I see your test message about the world',
-              timestamp: Date.now(),
+              modelId: undefined, lmParameters: undefined, interruption: undefined,
+              parts: [{ type: 'text', text: 'I see your test message about the world', completeness: 'complete' }],
+              createdAt: Date.now(),
               replies: { items: [] },
-            } as MessageNode,
+            },
           ],
         },
-      } as MessageNode,
+      },
       {
         id: toMessageId({ raw: '3' }),
         role: 'user',
-        content: 'Another unrelated message',
-        timestamp: Date.now(),
+        modelId: undefined, lmParameters: undefined,
+        parts: [{ type: 'text', text: 'Another unrelated message', completeness: 'complete' }],
+        createdAt: Date.now(),
         replies: { items: [] },
-      } as MessageNode,
+      },
     ],
   };
 
