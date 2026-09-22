@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getDisplayedMessageText } from '@/logic/message-display';
 import { lazyStrings } from '@/strings';
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { idToRaw } from '@/01-models/ids';
@@ -32,20 +33,36 @@ const topScrollHintVisibility = ref<ScrollHintVisibility>('hidden');
 const bottomScrollHintVisibility = ref<ScrollHintVisibility>('hidden');
 
 const outlineItems = computed(() => {
-  return props.flowItems
-    .filter((item): item is Extract<ChatFlowItem, { type: 'message' }> => item.type === 'message' && item.mode === 'content')
-    .map((item, index) => {
-      const rawContent = (item.partContent || item.node.content || '').replace(/\s+/g, ' ').trim();
-      return {
-        id: item.node.id,
-        role: item.node.role,
-        node: item.node,
-        partContent: item.partContent,
-        preview: rawContent || lazyStrings.ConversationOutlineOverlay__empty_message(),
-        peek: item.partContent || item.node.content || '',
-        index: index + 1,
-      };
-    });
+  const includedMessageIds = new Set<MessageId>();
+  return props.flowItems.flatMap(item => {
+    if (item.type !== 'message' || item.mode !== 'content' || includedMessageIds.has(item.node.id)) return [];
+    includedMessageIds.add(item.node.id);
+    // The outline navigates messages, while the main display navigates their parts.
+    const partContent = (() => {
+      switch (item.node.role) {
+      case 'assistant': return getDisplayedMessageText({ message: item.node });
+      case 'user':
+      case 'system':
+      case 'tool': return item.partContent ?? getDisplayedMessageText({ message: item.node });
+      default: { const _ex: never = item.node; throw new Error(`Unhandled outline message: ${_ex}`); }
+      }
+    })();
+    const preview = partContent.replace(/\s+/g, ' ').trim();
+    return [{
+      id: item.node.id,
+      role: item.node.role,
+      node: item.node,
+      partContent,
+      preview: preview || lazyStrings.ConversationOutlineOverlay__empty_message(),
+      index: includedMessageIds.size,
+    }];
+  });
+});
+
+watch([() => props.chatId, () => props.visibility, outlineItems], ([chatId, visibility, items], [previousChatId]) => {
+  if (chatId !== previousChatId || visibility === 'hidden' || !items.some(item => item.id === peekMessageId.value)) {
+    peekMessageId.value = undefined;
+  }
 });
 
 const outlineMaxHeightClass = computed(() => {

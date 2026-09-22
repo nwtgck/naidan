@@ -53,6 +53,7 @@ describe('Production native collection through actual Comlink', () => {
               interrupt: () => unavailable({ operation: 'interrupt' }),
               resetCache: () => unavailable({ operation: 'reset-cache' }),
               generateText: () => unavailable({ operation: 'generate' }),
+              generateMessage: () => unavailable({ operation: 'generate-message' }),
               async dispose() {
                 replacementOperations.push('dispose');
               },
@@ -216,7 +217,11 @@ describe('Production native collection through actual Comlink', () => {
           throw new Error(boundary);
         }
         // Preceding text calls exercise collection only, not model inference.
-        const output = tokenizer.encode('Synthetic reply.', { add_special_tokens: false }).map(BigInt);
+        const prompt = tokenizer.decode(Array.from(input.data, Number), { skip_special_tokens: false });
+        const generated = prompt.endsWith('<think>\n')
+          ? 'Synthetic reasoning.</think>Synthetic reply.<|im_end|>'
+          : 'Synthetic reply.<|im_end|>';
+        const output = tokenizer.encode(generated, { add_special_tokens: false }).map(BigInt);
         options.streamer.put(input.tolist());
         options.streamer.put([output]);
         options.streamer.end();
@@ -264,7 +269,12 @@ describe('Production native collection through actual Comlink', () => {
       }
       const { createProductionProviderNativeEvidence, verifyProductionProviderNativeEvidenceSidecar } = await import('@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence');
       const sidecar = await createProductionProviderNativeEvidence({ native: snapshot.native.capture, provider: snapshot.provider, maximumBinaryBytes: 64 * 1024 * 1024 });
-      expect(sidecar.summary).toMatchObject({ refusedEpochCount: 0, capturedCallCount: 13, enteredNativeInvocationCount: 13, unrecordedValueCount: 0 });
+      expect(sidecar.summary).toMatchObject({
+        refusedEpochCount: 0,
+        capturedCallCount: 13,
+        enteredNativeInvocationCount: 13,
+        unrecordedValueCount: 0,
+      });
       await verifyProductionProviderNativeEvidenceSidecar({ evidence: structuredClone(sidecar), provider: snapshot.provider, maximumBinaryBytes: 64 * 1024 * 1024 });
       const { createInitialInvestigationCheckpoint } = await import('@/features/transformers-js/model-support-investigation/logic/investigation-recovery');
       const { createPartialModelSupportEvidence } = await import('@/features/transformers-js/model-support-investigation/logic/create-partial-evidence');
@@ -490,11 +500,11 @@ describe('Production native collection through actual Comlink', () => {
           { ...common, operation: 'put', phase: 'entering', streamCallOrdinal: 1, detail: { kind: 'tokens', tokenType: 'bigint', groups: [nativeInputs[index]] } },
           { ...common, operation: 'put', phase: 'returned', streamCallOrdinal: 1, detail: { kind: 'none' } },
           { ...common, operation: 'put', phase: 'entering', streamCallOrdinal: 2, detail: { kind: 'tokens', tokenType: 'bigint', groups: [nativeOutputs[index]] } },
-          { ...common, operation: 'on_finalized_text', phase: 'entering', streamCallOrdinal: 3, detail: { kind: 'finalized-text', text: 'Synthetic ', streamEnd: false } },
+          { ...common, operation: 'on_finalized_text', phase: 'entering', streamCallOrdinal: 3, detail: { kind: 'finalized-text', text: 'Synthetic reply.', streamEnd: false } },
           { ...common, operation: 'on_finalized_text', phase: 'returned', streamCallOrdinal: 3, detail: { kind: 'none' } },
           { ...common, operation: 'put', phase: 'returned', streamCallOrdinal: 2, detail: { kind: 'none' } },
           { ...common, operation: 'end', phase: 'entering', streamCallOrdinal: 4, detail: { kind: 'none' } },
-          { ...common, operation: 'on_finalized_text', phase: 'entering', streamCallOrdinal: 5, detail: { kind: 'finalized-text', text: 'reply.', streamEnd: true } },
+          { ...common, operation: 'on_finalized_text', phase: 'entering', streamCallOrdinal: 5, detail: { kind: 'finalized-text', text: '', streamEnd: true } },
           { ...common, operation: 'on_finalized_text', phase: 'returned', streamCallOrdinal: 5, detail: { kind: 'none' } },
           { ...common, operation: 'end', phase: 'returned', streamCallOrdinal: 4, detail: { kind: 'none' } },
         ];
@@ -619,11 +629,14 @@ describe('Production native collection through actual Comlink', () => {
       ]);
       expect(provider.requests.map(request => request.status)).toEqual(Array(13).fill('settled'));
       expect(provider.requests.map(request => request.notStartedReason)).toEqual(Array(13).fill(undefined));
-      expect(provider.requests.map(request => request.trace.settled?.outcome)).toEqual(Array(13).fill({ status: 'fulfilled' }));
+      expect(provider.requests.map(request => request.trace.settled?.outcome)).toEqual([
+        ...Array(9).fill({ status: 'fulfilled' }),
+        ...Array(4).fill({ status: 'rejected', errorName: 'Error' }),
+      ]);
       expect(provider.requests.map(request => request.trace.limits)).toEqual(Array(13).fill({
         maximumEvents: 64, maximumCharacters: 4096, maximumFieldCharacters: 16384,
       }));
-      expect(budgets).toEqual([16, 16, 1, 1, 1, 1, 1, 1, 1, 128, 128, 128, 1]);
+      expect(budgets).toEqual([16, 16, 1, 1, 1, 1, 1, 1, 1]);
       expect(takeCalls).toHaveLength(1);
       expect(takeCalls[0]).not.toHaveBeenCalled();
       await owner.collectNative();
@@ -648,7 +661,7 @@ describe('Production native collection through actual Comlink', () => {
         provider: snapshot.provider, native: snapshot.native.capture, maximumBinaryBytes: 64 * 1024 * 1024,
       });
       expect(nativeEvidence.summary).toEqual({
-        phase: 'finished', refusedEpochCount: 0, recording: 'recorded', capturedCallCount: 13, enteredNativeInvocationCount: 13,
+        phase: 'finished', refusedEpochCount: 0, recording: 'recorded', capturedCallCount: 13, enteredNativeInvocationCount: 9,
         issuedNotObservedCallCount: 0, unavailableEpochCount: 0, incompleteEpochCount: 0,
         unobservedLoadCount: 0, incompleteInvocationCount: 0, unrecordedValueCount: 0,
       });

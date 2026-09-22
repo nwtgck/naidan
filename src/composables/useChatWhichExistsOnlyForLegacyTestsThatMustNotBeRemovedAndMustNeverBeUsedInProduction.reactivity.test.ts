@@ -1,4 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
+import type { LmProvider } from '@/01-models/lm';
+import { getMessageText } from '@/01-models/message-text';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { createAsyncChannel } from '@/utils/async-channel';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { nextTick } from 'vue';
 
@@ -26,20 +31,25 @@ vi.mock('../00-storage/service', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', defaultModelId: 'gpt-4', titleGeneration: 'disabled' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
 }));
 
 // Mock LM
-let onChunkCallback: (params: { chunk: string }) => void;
+let chunks: ReturnType<typeof createAsyncChannel<string>>;
 vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
-    chat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      onChunkCallback = params.onChunk;
-      return new Promise<void>(() => {});
-    });
+    chat = vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        for await (const text of chunks.values) {
+          await writer.text({ type: 'text', text });
+        }
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     listModels = vi.fn().mockResolvedValue([]);
   }
   return {
@@ -57,6 +67,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   beforeEach(() => {
     vi.clearAllMocks();
     chatStore.TEST_ONLY.clearLiveChatRegistry();
+    chunks = createAsyncChannel<string>({ capacity: 4, onCancel: () => {} });
+  });
+
+  afterEach(async () => {
+    chunks.close();
+    await vi.waitUntil(() => chatStore.TEST_ONLY.activeGenerations.size === 0);
   });
 
   it('should reflect streamed chunks in activeMessages immediately', async () => {
@@ -70,15 +86,19 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await vi.waitUntil(() => chatStore.TEST_ONLY.activeGenerations.has(chat.id), { timeout: 2000 });
 
     expect(chatStore.activeMessages.value).toHaveLength(2);
-    expect(chatStore.activeMessages.value[1]?.content).toBe('');
+    expect(getMessageText({ message: chatStore.activeMessages.value[1]! })).toBe('');
 
     // Simulate chunk
-    onChunkCallback({ chunk: 'A' });
+    await chunks.send({ value: 'A' });
+    await flushPromises();
     await nextTick();
-    expect(chatStore.activeMessages.value[1]?.content).toBe('A');
+    expect(getMessageText({ message: chatStore.activeMessages.value[1]! })).toBe('A');
+    expect(chatStore.TEST_ONLY.activeGenerations.has(chat.id)).toBe(true);
 
-    onChunkCallback({ chunk: 'B' });
+    await chunks.send({ value: 'B' });
+    await flushPromises();
     await nextTick();
-    expect(chatStore.activeMessages.value[1]?.content).toBe('AB');
+    expect(getMessageText({ message: chatStore.activeMessages.value[1]! })).toBe('AB');
+    expect(chatStore.TEST_ONLY.activeGenerations.has(chat.id)).toBe(true);
   });
 });

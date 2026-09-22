@@ -45,7 +45,7 @@ describe("generation RPC lifecycle", () => {
     calls.generate.mockImplementationOnce(async () => {
       await blocked.promise; return completed();
     });
-    const generating = api.generate(request({ generationId: 1 }), () => {}, () => {});
+    const generating = api.generate(request({ generationId: 1 }), async () => {}, () => {});
     await vi.waitFor(() => expect(calls.generate).toHaveBeenCalledOnce());
     await expect(api.release()).rejects.toThrow('busy');
     expect(calls.releaseSession).not.toHaveBeenCalled();
@@ -55,15 +55,15 @@ describe("generation RPC lifecycle", () => {
   });
   it("posts native callbacks immediately and drains their acknowledgements before RPC completion", async () => {
     const blocked = deferred(); const events: string[] = [];
-    calls.generate.mockImplementation(async ({ onProgress, onChunk }) => {
+    calls.generate.mockImplementation(async ({ onProgress, onEvent }) => {
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
       onProgress({ progress: { phase: "prefill", completed: 2, total: 2 } });
-      onChunk({ chunk: "first" }); onChunk({ chunk: "second" });
+      await onEvent({ event: { type: "text", text: "first" } }); await onEvent({ event: { type: "text", text: "second" } });
       return completed();
     });
     const api = createWorkerApi(); let settled = false;
-    const pending = api.generate(request({ generationId: 1 }), async ({ text }) => {
-      events.push(text);
+    const pending = api.generate(request({ generationId: 1 }), async ({ event }) => {
+      if (event.type === "text") events.push(event.text);
     },
     async ({ phase }) => {
       events.push(phase); if (phase === "loading") await blocked.promise;
@@ -80,41 +80,41 @@ describe("generation RPC lifecycle", () => {
       signal = args.signal; await blocked.promise;
       return completed();
     });
-    const api = createWorkerApi(); const pending = api.generate(request({ generationId: 1 }), () => {}, () => {});
+    const api = createWorkerApi(); const pending = api.generate(request({ generationId: 1 }), async () => {}, () => {});
     await vi.waitFor(() => expect(signal).toBeDefined());
     await api.cancelGeneration({ generationId: 2 }); expect(signal?.aborted).toBe(false);
-    await expect(api.generate(request({ generationId: 2 }), () => {}, () => {})).rejects.toThrow("busy");
+    await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).rejects.toThrow("busy");
     await api.cancelGeneration({ generationId: 1 }); expect(signal?.aborted).toBe(true);
     blocked.resolve(); await pending;
     calls.generate.mockImplementation(async args => {
       signal = args.signal;
       return completed();
     });
-    await api.generate(request({ generationId: 2 }), () => {}, () => {});
+    await api.generate(request({ generationId: 2 }), async () => {}, () => {});
     await api.cancelGeneration({ generationId: 1 }); expect(signal?.aborted).toBe(false);
   });
-  it("stops forwarding content emitted after cancellation while draining earlier proxy promises", async () => {
+  it("drains already accepted content after cancellation and waits for proxy acknowledgements", async () => {
     const blocked = deferred(); const first = vi.fn(async () => blocked.promise); const chunk = vi.fn();
-    calls.generate.mockImplementation(async ({ onProgress, onChunk }) => {
+    calls.generate.mockImplementation(async ({ onProgress, onEvent }) => {
       onProgress({ progress: { phase: "loading", completed: 0, total: 1 } }); await blocked.promise;
-      onChunk({ chunk: "not sent" });
+      await onEvent({ event: { type: "text", text: "accepted before cancellation" } });
       return completed();
     });
     const api = createWorkerApi(); const pending = api.generate(request({ generationId: 1 }), chunk, first);
     await vi.waitFor(() => expect(first).toHaveBeenCalledOnce());
     await api.cancelGeneration({ generationId: 1 }); blocked.resolve(); await pending;
-    expect(chunk).not.toHaveBeenCalled();
+    expect(chunk).toHaveBeenCalledWith({ event: { type: "text", text: "accepted before cancellation" } });
   });
   it("sanitizes proxy failures and can accept a later generation instead of keeping a stuck active owner", async () => {
-    calls.generate.mockImplementation(async ({ onChunk }) => {
-      onChunk({ chunk: "not logged" });
+    calls.generate.mockImplementation(async ({ onEvent }) => {
+      await onEvent({ event: { type: "text", text: "not logged" } });
       return completed();
     });
     const api = createWorkerApi();
     await expect(api.generate(request({ generationId: 1 }), async () => {
       throw new Error("private callback detail");
     }, () => {})).rejects.toThrow("llama.cpp browser: worker-failed");
-    await expect(api.generate(request({ generationId: 2 }), () => {}, () => {})).resolves.toEqual(completed());
+    await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
   });
   it("invalidates resident weights before deleting their stored model", async () => {
     const api = createWorkerApi(); const order: string[] = [];
@@ -133,9 +133,9 @@ describe("generation RPC lifecycle", () => {
   it("does not reuse an active id after a generation error", async () => {
     calls.generate.mockRejectedValueOnce(new Error("private native detail"));
     const api = createWorkerApi();
-    await expect(api.generate(request({ generationId: 1 }), () => {}, () => {})).rejects.toThrow("llama.cpp browser: runtime-error");
+    await expect(api.generate(request({ generationId: 1 }), async () => {}, () => {})).rejects.toThrow("llama.cpp browser: runtime-error");
     calls.generate.mockResolvedValueOnce(completed());
-    await expect(api.generate(request({ generationId: 2 }), () => {}, () => {})).resolves.toEqual(completed());
+    await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
   });
 });
 
@@ -147,7 +147,7 @@ describe('directory import RPC', () => {
     });
     const api = createWorkerApi(); const pending = api.importDirectory({ directory: { name: 'Model', files: [{ path: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, generationId: 4 }, () => {});
     await vi.waitFor(() => expect(signal).toBeDefined());
-    await expect(api.generate(request({ generationId: 5 }), () => {}, () => {})).rejects.toThrow('busy');
+    await expect(api.generate(request({ generationId: 5 }), async () => {}, () => {})).rejects.toThrow('busy');
     await api.cancelGeneration({ generationId: 3 }); expect(signal?.aborted).toBe(false);
     await api.cancelGeneration({ generationId: 4 }); expect(signal?.aborted).toBe(true);
     blocked.resolve(); await expect(pending).rejects.toThrow('aborted');
@@ -156,7 +156,7 @@ describe('directory import RPC', () => {
 
 describe('native diagnostic checkpoints', () => {
   it.each(['success', 'failure', 'cancel'] as const)('scopes detailed output to a request and releases it after %s', async outcome => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // A resident core retains this callback, never a particular request preference.
     const residentPrintErr = () => logNativeDiagnostic({ message: 'encoding image slice...' });
     const blocked = deferred(); const entered = deferred();
@@ -171,7 +171,7 @@ describe('native diagnostic checkpoints', () => {
       }
     });
     try {
-      const pending = api.generate({ ...request({ generationId: 1 }), debug: 'on' }, () => {}, () => {}, receive);
+      const pending = api.generate({ ...request({ generationId: 1 }), debug: 'on' }, async () => {}, () => {}, receive);
       const settled = pending.catch(() => undefined);
       await entered.promise;
       expect(readDiagnostics({ calls: debug.mock.calls }).filter(value => value.event === 'operation-start')).toHaveLength(2);
@@ -183,9 +183,9 @@ describe('native diagnostic checkpoints', () => {
         residentPrintErr(); return completed();
       });
       receive.mockClear();
-      await api.generate({ ...request({ generationId: 2 }), debug: 'off' }, () => {}, () => {}, receive);
+      await api.generate({ ...request({ generationId: 2 }), debug: 'off' }, async () => {}, () => {}, receive);
       expect(debug).not.toHaveBeenCalled(); expect(receive).toHaveBeenCalledTimes(2);
-      await api.generate({ ...request({ generationId: 3 }), debug: 'on' }, () => {}, () => {}, receive);
+      await api.generate({ ...request({ generationId: 3 }), debug: 'on' }, async () => {}, () => {}, receive);
       expect(readDiagnostics({ calls: debug.mock.calls }).filter(value => value.event === 'operation-start')).toHaveLength(2);
     } finally {
       debug.mockRestore();
@@ -198,7 +198,7 @@ describe('native diagnostic checkpoints', () => {
       nativeEntered = true; return completed();
     });
     const receive = vi.fn(async () => blocked.promise);
-    const pending = createWorkerApi().generate(request({ generationId: 1 }), () => {}, () => {}, receive);
+    const pending = createWorkerApi().generate(request({ generationId: 1 }), async () => {}, () => {}, receive);
     await vi.waitFor(() => expect(receive).toHaveBeenCalledOnce());
     expect(nativeEntered).toBe(false); blocked.resolve(); await pending;
     expect(nativeEntered).toBe(true);

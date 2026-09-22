@@ -8,12 +8,12 @@ import { profileSchema, type LlamaCppProfile } from './types';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed browser variant artifact commit: 0a05a0ae05a2b13125cfaecc8407fa6bc200d061.
+// Reviewed browser variant artifact commit: 8eb01e7aa8ad0968a6dfba26d938817d4a441b31.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 const coreHashes = {
   'webgpu-wasm64-jspi': 'ff3786e68fa11050df3950980116e19988ef790da382b3eb3abd7ef2c5424921',
   'webgpu-wasm32-jspi': 'c676739632d85c50ab7798df591d7fe4b59a5dedfb068756837bf775e9a6f785',
-  'webgpu-wasm32-asyncify': 'ec17b1a5397bc3cfb2481996f472ce01446c5fc3605c59780a439bfc07a7c0df',
+  'webgpu-wasm32-asyncify': '0bef53602f8502b81779f460e28770057f48d1665238b3537fb943a0fc0cc532',
   'cpu-wasm64': '6e499ce22b0eea54a204713d3c8fa99b5971ac9ccf44edc4d7767f50ef7de298',
   'cpu-wasm32': 'd5dc3e3115cacaff3e7dab6122b96b4c77f1a69cc7aee21b8b2844ff31a6bc86',
 } as const satisfies Record<LlamaCppProfile, string>;
@@ -21,8 +21,8 @@ const coreHashes = {
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
 const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '7c6ca268e5fe66ac884d86ba4d71721785efa7f8c8a5c4db02d43ce182fa5d4a' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'f00a014d118145ed53182cf7ff469f0f7ba4f007795a40a53e1320423904d53b' },
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: 'e492f5b73ed75ea70f330e18febe90d43a624e3ae2bc2e67e97e10f686fcb507' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '8ea80cff58eb529a31f166628c7797f83142300f01941cf8e0bfb9d2c07589ee' },
 } as const;
 const manifestSchema = z.object({ formatVersion: z.literal(2), files: z.array(z.object({
   path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/),

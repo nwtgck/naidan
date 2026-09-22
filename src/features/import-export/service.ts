@@ -21,6 +21,7 @@ import {
   type SettingsDto,
   type ChatDto,
   type MessageNodeDto,
+  type MessageNodeDtoV2,
   type HierarchyDto,
   type ChatGroupDto,
   type BinaryObjectDto,
@@ -35,6 +36,8 @@ import {
   hierarchyToDomain,
   chatToDomain,
   chatToDto,
+  messageNodeToDomain,
+  messageNodeToDto,
 } from '@/00-storage/mapper/mappers';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/01-models/types';
@@ -66,14 +69,89 @@ function truncateByByteLength({ str, maxBytes }: { str: string, maxBytes: number
   return decoder.decode(buf.slice(0, maxBytes)).replace(/\uFFFD/g, '');
 }
 
-function normalizeChatDtoTree({ chatDto }: { chatDto: ChatDto }): ChatDto {
-  if (
-    chatDto.root !== undefined
-    && (chatDto.root.items.length > 0 || (chatDto.messages?.length ?? 0) === 0)
-  ) {
-    return chatDto;
-  }
+function normalizeMessageDtoTree({ node }: { node: MessageNodeDto }): MessageNodeDtoV2 {
+  const replies = { ...node.replies, items: node.replies.items.map(node => normalizeMessageDtoTree({ node })) };
+  if (node.parts !== undefined) return { ...node, replies };
 
+  // Reuse the ordinary migration for stable part IDs and content rules, but keep
+  // the DTO-only experimental envelopes that are not application state.
+  const converted = messageNodeToDto({ domain: messageNodeToDomain({ dto: {
+    ...node, replies: { ...node.replies, items: [] },
+  } }) });
+  converted.experimental = node.experimental;
+  converted.replies = replies;
+  switch (converted.role) {
+  case 'user': {
+    switch (node.role) {
+    case 'user': break;
+    case 'assistant':
+    case 'system':
+    case 'tool': throw new Error('Message role changed during migration.');
+    default: { const _ex: never = node; throw new Error(`Unhandled legacy message: ${_ex}`); }
+    }
+    let attachmentIndex = 0;
+    for (const part of converted.parts) {
+      switch (part.type) {
+      case 'attachment': break;
+      case 'text': continue;
+      default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+      }
+      const source = node.attachments?.[attachmentIndex++];
+      if (!source) throw new Error('Attachment missing during migration.');
+      part.attachment.experimental = source.experimental;
+    }
+    break;
+  }
+  case 'assistant': {
+    switch (node.role) {
+    case 'assistant': break;
+    case 'user':
+    case 'system':
+    case 'tool': throw new Error('Message role changed during migration.');
+    default: { const _ex: never = node; throw new Error(`Unhandled legacy message: ${_ex}`); }
+    }
+    let callIndex = 0;
+    for (const part of converted.parts) {
+      switch (part.type) {
+      case 'tool_call': break;
+      case 'text':
+      case 'reasoning': continue;
+      default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
+      }
+      const source = node.toolCalls?.[callIndex++];
+      if (!source) throw new Error('Tool call missing during migration.');
+      part.toolCall = source;
+    }
+    break;
+  }
+  case 'tool': {
+    switch (node.role) {
+    case 'tool': break;
+    case 'user':
+    case 'assistant':
+    case 'system': throw new Error('Message role changed during migration.');
+    default: { const _ex: never = node; throw new Error(`Unhandled legacy message: ${_ex}`); }
+    }
+    for (const [index, part] of converted.parts.entries()) {
+      const source = node.results[index];
+      if (!source) throw new Error('Tool result missing during migration.');
+      part.result = source;
+    }
+    break;
+  }
+  case 'system': break;
+  default: { const _ex: never = converted; throw new Error(`Unhandled migrated message: ${_ex}`); }
+  }
+  return converted;
+}
+
+function normalizeChatDtoTree({ chatDto }: { chatDto: ChatDto }): ChatDto {
+  // Export/append write V2 message trees, without round-tripping existing V2
+  // envelopes through application objects that intentionally omit experimental.
+  if (chatDto.root && chatDto.root.items.length > 0) return {
+    ...chatDto, messages: undefined,
+    root: { ...chatDto.root, items: chatDto.root.items.map(node => normalizeMessageDtoTree({ node })) },
+  };
   return chatToDto({ domain: chatToDomain({ dto: chatDto }) });
 }
 
@@ -140,6 +218,53 @@ function addGeneratedImageBinaryObjectIds({
   }
 }
 
+function remapGeneratedImageReferences({ content, remapBinary }: {
+  content: string,
+  remapBinary: ({ id }: { id: string }) => string,
+}): string {
+  const blocks = new RegExp('```' + IMAGE_BLOCK_LANG + '[^\\n]*\\n([\\s\\S]*?)\\n```', 'g');
+  return content.replace(blocks, (block: string, json: string) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      return block;
+    }
+    const result = GeneratedImageBlockSchema.safeParse(parsed);
+    if (!result.success) return block;
+    let depth = 0;
+    let property: string | undefined;
+    // JSON has already been validated. Track nesting so a same-named field in
+    // unrelated metadata or an escaped-looking value is not rewritten.
+    const tokens = /"(?:[^"\\]|\\.)*"|[{}[\]:,]/g;
+    let updated = '';
+    let copiedThrough = 0;
+    for (const token of json.matchAll(tokens)) {
+      const value = token[0];
+      switch (value) {
+      case '{':
+      case '[': depth++; break;
+      case '}':
+      case ']': depth--; break;
+      case ':': break;
+      case ',': if (depth === 1) property = undefined; break;
+      default:
+        if (depth !== 1) break;
+        if (property === undefined) {
+          property = JSON.parse(value) as string; break;
+        }
+        if (property === 'binaryObjectId') {
+          updated += json.slice(copiedThrough, token.index) + JSON.stringify(remapBinary({ id: result.data.binaryObjectId }));
+          copiedThrough = token.index + value.length;
+        }
+        break;
+      }
+    }
+    updated += json.slice(copiedThrough);
+    return block.replace(json, updated);
+  });
+}
+
 function addMessageBinaryObjectIds({
   node,
   binaryObjectIds,
@@ -147,65 +272,37 @@ function addMessageBinaryObjectIds({
   node: MessageNodeDto,
   binaryObjectIds: Set<string>,
 }) {
-  if (node.content !== undefined) {
-    addGeneratedImageBinaryObjectIds({ content: node.content, binaryObjectIds });
-  }
-
-  switch (node.role) {
-  case 'user':
-    for (const attachment of node.attachments ?? []) {
-      binaryObjectIds.add(
-        'binaryObjectId' in attachment
-          ? attachment.binaryObjectId
-          : attachment.id,
-      );
-    }
-    break;
-  case 'tool':
-    for (const result of node.results) {
+  if (node.parts === undefined) throw new Error('Expected a normalized message before binary collection.');
+  for (const part of node.parts) {
+    switch (part.type) {
+    case 'text': addGeneratedImageBinaryObjectIds({ content: part.text, binaryObjectIds }); break;
+    case 'attachment': binaryObjectIds.add(part.attachment.binaryObjectId); break;
+    case 'tool_result': {
+      const result = part.result;
       switch (result.status) {
-      case 'executing':
-        break;
+      case 'executing': break;
       case 'success':
         switch (result.content.type) {
-        case 'text':
-          break;
-        case 'binary_object':
-          binaryObjectIds.add(result.content.id);
-          break;
-        default: {
-          const _ex: never = result.content;
-          throw new Error(`Unhandled tool result content: ${_ex}`);
-        }
+        case 'text': break;
+        case 'binary_object': binaryObjectIds.add(result.content.id); break;
+        default: { const _ex: never = result.content; throw new Error(`Unhandled tool content: ${_ex}`); }
         }
         break;
       case 'error':
         switch (result.error.message.type) {
-        case 'text':
-          break;
-        case 'binary_object':
-          binaryObjectIds.add(result.error.message.id);
-          break;
-        default: {
-          const _ex: never = result.error.message;
-          throw new Error(`Unhandled tool error message: ${_ex}`);
-        }
+        case 'text': break;
+        case 'binary_object': binaryObjectIds.add(result.error.message.id); break;
+        default: { const _ex: never = result.error.message; throw new Error(`Unhandled tool error: ${_ex}`); }
         }
         break;
-      default: {
-        const _ex: never = result;
-        throw new Error(`Unhandled tool execution result: ${_ex}`);
+      default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
       }
-      }
+      break;
     }
-    break;
-  case 'assistant':
-  case 'system':
-    break;
-  default: {
-    const _ex: never = node;
-    throw new Error(`Unhandled message role: ${_ex}`);
-  }
+    case 'reasoning':
+    case 'tool_call': break;
+    default: { const _ex: never = part; throw new Error(`Unhandled message part: ${_ex}`); }
+    }
   }
 }
 
@@ -221,9 +318,10 @@ function createCurrentThreadChatDto({ chatDto }: { chatDto: ChatDto }): {
     addMessageBinaryObjectIds({ node, binaryObjectIds });
   }
 
-  let currentNode: MessageNodeDto | undefined;
+  let currentNode: MessageNodeDtoV2 | undefined;
   for (let index = currentThread.length - 1; index >= 0; index--) {
     const node = currentThread[index]!;
+    if (node.parts === undefined) throw new Error('Expected normalized message tree.');
     currentNode = {
       ...node,
       replies: {
@@ -512,7 +610,7 @@ export class ImportExportService {
             }
             await addTextFile({
               path: `${rootPath}chat-contents/${chunk.data.id}.json`,
-              text: JSON.stringify(chunk.data, null, 2),
+              text: JSON.stringify(normalizeChatDtoTree({ chatDto: chunk.data }), null, 2),
             });
             break;
           }
@@ -777,6 +875,17 @@ export class ImportExportService {
       const settingsFile = zip.file({ name: rootPath + 'settings.json' });
 
       const mode = config.data.mode;
+      // Check every selected message before any destructive write. Restore reads a
+      // fresh stream afterwards; validation does not buffer all binary contents.
+      const inspection = await (async () => {
+        switch (mode) {
+        case 'replace': return this.createRestoreSnapshot({ zip, rootPath });
+        case 'append': return this.createAppendSnapshot({ zip, rootPath, config });
+        default: { const _ex: never = mode; throw new Error(`Unhandled import mode: ${_ex}`); }
+        }
+      })();
+      for await (const _ of inspection.contentStream) { /* Validate the entire selected archive. */ }
+
       switch (mode) {
       case 'replace': {
         await this.storage.clearAll();
@@ -939,8 +1048,10 @@ export class ImportExportService {
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
-            yield { type: 'chat' as const, data: { ...meta, ...content, experimental: meta.experimental, messages: undefined } };
-          } catch (e) { /* Ignore */ }
+            yield { type: 'chat' as const, data: normalizeChatDtoTree({ chatDto: { ...meta, ...content, experimental: meta.experimental, currentLeafId: content.currentLeafId ?? meta.currentLeafId, messages: undefined } }) };
+          } catch (error) {
+            throw new Error(`Cannot restore chat content: ${meta.id}`, { cause: error });
+          }
         }
       }
 
@@ -1029,6 +1140,37 @@ export class ImportExportService {
       } catch (e) { /* Ignore */ }
     }
 
+    // Reserve IDs only for existing fork targets in imported chats. Reading each
+    // referenced chat separately keeps forward references independent of archive
+    // order without retaining every chat body or a map of every message ID.
+    const originMessageIdMaps = new Map<string, Map<string, string | undefined>>();
+    for (const { dto } of importedMetas) {
+      const { originChatId, originMessageId } = dto;
+      if (originChatId === undefined || originMessageId === undefined || !chatIdMap.has(originChatId)) continue;
+      let messageIds = originMessageIdMaps.get(originChatId);
+      if (messageIds === undefined) {
+        messageIds = new Map();
+        originMessageIdMaps.set(originChatId, messageIds);
+      }
+      messageIds.set(originMessageId, undefined);
+    }
+    for (const [originalId, messageIds] of originMessageIdMaps) {
+      const contentFile = zip.file({ name: `${rootPath}chat-contents/${originalId}.json` });
+      if (contentFile === undefined) continue;
+      try {
+        const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
+        const visit = ({ node }: { node: MessageNodeDto }): void => {
+          if (messageIds.has(node.id) && messageIds.get(node.id) === undefined) {
+            messageIds.set(node.id, idToRaw({ id: generateId<MessageId>() }));
+          }
+          node.replies.items.forEach(node => visit({ node }));
+        };
+        content.root.items.forEach(node => visit({ node }));
+      } catch (error) {
+        throw new Error(`Cannot append chat content: ${originalId}`, { cause: error });
+      }
+    }
+
     // 3. Hierarchy
     const currentHierarchy = await this.storage.loadHierarchy() || { items: [] };
     const hierarchyFile = zip.file({ name: rootPath + 'hierarchy.json' });
@@ -1060,11 +1202,15 @@ export class ImportExportService {
 
     const mergedHierarchy: Hierarchy = { items: [...currentHierarchy.items, ...importedHierarchyItems] };
     const chatMetas = importedMetas.map(({ dto }) => {
-      // Remap fork origin if possible
-      if (dto.originChatId && chatIdMap.has(dto.originChatId)) {
-        dto.originChatId = chatIdMap.get(dto.originChatId)!;
-        // Note: originMessageId remapping is harder as we don't have all messageIdMaps yet.
-        // But we can handle it inside contentStream if we process in a way that allows it.
+      const { originChatId, originMessageId } = dto;
+      const importedOriginId = originChatId === undefined ? undefined : chatIdMap.get(originChatId);
+      if (originChatId !== undefined && importedOriginId !== undefined) {
+        dto.originChatId = importedOriginId;
+        // Missing history stays a dangling reference; never redirect it to a
+        // copied message in the fork or invent a target absent from the archive.
+        if (originMessageId !== undefined) {
+          dto.originMessageId = originMessageIdMaps.get(originChatId)?.get(originMessageId) ?? originMessageId;
+        }
       }
       return chatMetaToDomain({ dto });
     });
@@ -1093,50 +1239,67 @@ export class ImportExportService {
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
-            const dto: ChatDto = {
+            const dto = normalizeChatDtoTree({ chatDto: {
               ...meta,
               ...content,
               experimental: meta.experimental,
               // ChatContentSchemaDto materializes missing currentLeafId as undefined.
               currentLeafId: content.currentLeafId ?? meta.currentLeafId,
               messages: undefined,
-            };
+            } });
 
             const messageIdMap = new Map<string, string>();
+            const originMessageIds = originMessageIdMaps.get(originalId);
             const process = ({ node }: { node: MessageNodeDto }) => {
               const oldMsgId = node.id;
-              const newMsgId = idToRaw({ id: generateId<MessageId>() });
+              const newMsgId = originMessageIds?.get(oldMsgId) ?? idToRaw({ id: generateId<MessageId>() });
               messageIdMap.set(oldMsgId, newMsgId);
               node.id = newMsgId;
 
-              if (node.attachments) {
-                node.attachments.forEach(a => {
-                  // remap attachment ID (the reference)
-                  const originalAttId = a.id;
-                  a.id = idToRaw({ id: generateId<AttachmentId>() });
-
-                  // Resolve binaryObjectId from V1 or V2
-                  const oldBinaryId = ('binaryObjectId' in a) ? a.binaryObjectId : originalAttId;
-
-                  if (!binaryRemapMap.has(oldBinaryId)) {
-                    binaryRemapMap.set(oldBinaryId, idToRaw({ id: generateId<BinaryObjectId>() }));
+              if (node.parts === undefined) throw new Error('Expected normalized imported message.');
+              const remapBinary = ({ id }: { id: string }): string => {
+                let mapped = binaryRemapMap.get(id);
+                if (mapped === undefined) {
+                  mapped = idToRaw({ id: generateId<BinaryObjectId>() });
+                  binaryRemapMap.set(id, mapped);
+                }
+                return mapped;
+              };
+              for (const part of node.parts) {
+                switch (part.type) {
+                case 'attachment':
+                  part.attachment.id = idToRaw({ id: generateId<AttachmentId>() });
+                  part.attachment.binaryObjectId = remapBinary({ id: part.attachment.binaryObjectId });
+                  break;
+                case 'text':
+                  part.text = remapGeneratedImageReferences({ content: part.text, remapBinary });
+                  break;
+                case 'tool_result': {
+                  const result = part.result;
+                  switch (result.status) {
+                  case 'executing': break;
+                  case 'success':
+                    switch (result.content.type) {
+                    case 'text': break;
+                    case 'binary_object': result.content.id = remapBinary({ id: result.content.id }); break;
+                    default: { const _ex: never = result.content; throw new Error(`Unhandled result content: ${_ex}`); }
+                    }
+                    break;
+                  case 'error':
+                    switch (result.error.message.type) {
+                    case 'text': break;
+                    case 'binary_object': result.error.message.id = remapBinary({ id: result.error.message.id }); break;
+                    default: { const _ex: never = result.error.message; throw new Error(`Unhandled error content: ${_ex}`); }
+                    }
+                    break;
+                  default: { const _ex: never = result; throw new Error(`Unhandled result: ${_ex}`); }
                   }
-
-                  const newBinaryId = binaryRemapMap.get(oldBinaryId)!;
-
-                  // Use Record to mutate properties while keeping it somewhat safe
-                  const mutAtt = a as unknown as Record<string, unknown>;
-                  mutAtt.binaryObjectId = newBinaryId;
-
-                  // Ensure it looks like V2
-                  if (!('name' in a)) {
-                    mutAtt.name = (a as unknown as { originalName: string }).originalName || 'file';
-                    delete mutAtt.originalName;
-                    delete mutAtt.mimeType;
-                    delete mutAtt.size;
-                    delete mutAtt.uploadedAt;
-                  }
-                });
+                  break;
+                }
+                case 'reasoning':
+                case 'tool_call': break;
+                default: { const _ex: never = part; throw new Error(`Unhandled imported part: ${_ex}`); }
+                }
               }
               if (node.replies?.items) node.replies.items.forEach(node => process({ node }));
             };
@@ -1147,13 +1310,10 @@ export class ImportExportService {
               dto.currentLeafId = messageIdMap.get(dto.currentLeafId);
             }
 
-            // Remap originMessageId if it refers to a message in this chat
-            if (dto.originMessageId && messageIdMap.has(dto.originMessageId)) {
-              dto.originMessageId = messageIdMap.get(dto.originMessageId);
-            }
-
             yield { type: 'chat' as const, data: dto };
-          } catch (e) { /* Ignore */ }
+          } catch (error) {
+            throw new Error(`Cannot append chat content: ${originalId}`, { cause: error });
+          }
         }
       }
 

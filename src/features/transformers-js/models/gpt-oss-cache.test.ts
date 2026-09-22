@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
-import type { ChatMessage } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import { toToolCallId } from '@/01-models/ids';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import { prepareGptOssContinuation, retainGptOssContinuation } from './gpt-oss-cache';
@@ -29,9 +29,9 @@ function inputs({ ids }: { ids: bigint[] }) {
 }
 function fixture() {
   const id = toToolCallId({ raw: 'actually-emitted-tool-id' });
-  const messages: ChatMessage[] = [{ role: 'user', content: 'Original owned request' }];
-  const assistant: ChatMessage = { role: 'assistant', content: '', tool_calls: [{ id, type: 'function', function: { name: 'weather', arguments: '{}' } }] };
-  const next: ChatMessage[] = [...messages, assistant, { role: 'tool', tool_call_id: id, content: 'sunny' }];
+  const messages: InferenceMessage[] = [{ role: 'user', content: 'Original owned request' }];
+  const assistant: InferenceMessage = { role: 'assistant', content: '', tool_calls: [{ id, type: 'function', function: { name: 'weather', arguments: '{}' } }] };
+  const next: InferenceMessage[] = [...messages, assistant, { role: 'tool', tool_call_id: id, content: 'sunny' }];
   const model = { sessions: { model: { inputNames: ['input_ids', 'attention_mask'] } } };
   const config = { model_type: 'gpt_oss' };
   const baseInputs = inputs({ ids: [10n, 11n] });
@@ -84,6 +84,25 @@ describe('GPT-OSS operation identity and native sequence/PKV ownership', () => {
     }
     expect(prepareGptOssContinuation({ ...value.prepare, messages })).toBeUndefined();
   });
+  it('includes structured reasoning and its state in owned cache history identity', () => {
+    const value = fixture();
+    const reasoning: NonNullable<InferenceMessage['reasoning']> = { text: '  R\n', completeness: 'complete' };
+    const assistant = { ...value.retain.assistant, reasoning };
+    const cache = retainGptOssContinuation({ ...value.retain, assistant });
+    const messages = [...value.retain.messages, assistant, value.prepare.messages.at(-1)!];
+    const request = { ...value.prepare, cache, messages };
+    expect(prepareGptOssContinuation(request)?.pastKeyValues).toBe(value.pastKeyValues);
+    const changed = structuredClone(messages);
+    changed[1]!.reasoning!.text = 'different';
+    expect(prepareGptOssContinuation({ ...request, messages: changed })).toBeUndefined();
+    changed[1]!.reasoning = { text: '  R\n', completeness: 'partial' };
+    expect(prepareGptOssContinuation({ ...request, messages: changed })).toBeUndefined();
+    delete changed[1]!.reasoning;
+    expect(prepareGptOssContinuation({ ...request, messages: changed })).toBeUndefined();
+    reasoning.text = 'mutated original';
+    expect(prepareGptOssContinuation(request)).toBeUndefined();
+  });
+
   it('rejects changed tools/template tokens even when the messages still match', () => {
     expect(prepareGptOssContinuation({ ...fixture().prepare, buildBaseInputs: () => inputs({ ids: [99n, 11n] }) })).toBeUndefined();
   });

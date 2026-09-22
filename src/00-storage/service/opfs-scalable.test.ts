@@ -103,8 +103,10 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
         items: [{
           id: generateId<MessageId>(),
           role: 'user',
-          content: 'Huge Content'.repeat(100),
-          timestamp: Date.now(),
+          parts: [{ type: 'text', text: 'Huge Content'.repeat(100), completeness: 'complete' }],
+          createdAt: Date.now(),
+          modelId: undefined,
+          lmParameters: undefined,
           replies: { items: [] },
         }],
       },
@@ -132,7 +134,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     const contentText = await (await contentFile.getFile()).text();
     const contentJson = JSON.parse(contentText);
 
-    expect(contentJson.root.items[0].content).toContain('Huge Content');
+    expect(contentJson.root.items[0].parts[0].text).toContain('Huge Content');
   });
 
   it('should reassemble meta and content correctly on load', async () => {
@@ -140,7 +142,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     const mockChat: Chat = {
       id: chatId,
       title: 'Join Test',
-      root: { items: [{ id: generateId<MessageId>(), role: 'user', content: 'Hello', timestamp: 1, replies: { items: [] } }] },
+      root: { items: [{ id: generateId<MessageId>(), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } }] },
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: true,
@@ -153,7 +155,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     expect(loaded).not.toBeNull();
     expect(loaded?.id).toBe(chatId);
     expect(loaded?.title).toBe('Join Test');
-    expect(loaded?.root.items[0]?.content).toBe('Hello');
+    expect(loaded?.root.items[0]?.parts.find(part => part.type === 'text')?.text).toBe('Hello');
   });
 
   it('should validate persisted sidebar DTOs before mapping experimental endpoints', async () => {

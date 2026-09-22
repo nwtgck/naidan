@@ -1,12 +1,13 @@
 import { generateId } from '@/01-models/id';
 import { LlamaCppBrowserProvider } from '@/features/llama-cpp-browser/provider';
-import type { AssistantMessageNode, Attachment, ChatMessage, Endpoint, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/01-models/types';
+import type { AssistantMessageNode, ChatMessage, Endpoint, MessageNode, MultimodalContent } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
-import type { ToolExecutionResult } from '@/01-models/tool';
-import { fileToDataUrl } from '@/logic/chat-tree';
-import { idToRaw } from '@/01-models/ids';
-import type { MessageId } from '@/01-models/ids';
+import { copyChatMessage, createChatMessageSnapshot } from '@/01-models/chat-message';
+import { copyMessageWithoutReplies } from '@/logic/copy-message-node';
+import { getMessageText } from '@/01-models/message-text';
+import { idToRaw, toMessageId } from '@/01-models/ids';
+import type { BinaryObjectId, MessageId } from '@/01-models/ids';
 
 export type ContextCompactProgress =
   | { phase: 'idle' }
@@ -169,7 +170,7 @@ function createCompactConversationMessageContent({
   node: MessageNode,
   promptMode: ContextCompactPromptMode,
 }): string {
-  const content = node.content ?? '';
+  const content = getMessageText({ message: node });
   switch (promptMode) {
   case 'with_message_ids':
     // The messageId prefix may reduce inference-cache reuse, but it makes sysfs-based
@@ -193,15 +194,15 @@ export function buildCompactRequestMessages({
   promptMode: ContextCompactPromptMode,
   instructionContent: string | undefined,
 }): ChatMessage[] {
-  return [
-    ...prefix,
-    {
-      role: 'user',
-      content: instructionContent ?? createCompactInstruction({
-        promptMode,
-      }),
-    },
-  ];
+  const messages = prefix.map(message => copyChatMessage({ message }));
+  const ids = new Set(messages.map(message => idToRaw({ id: message.id })));
+  let raw = 'compact_instruction';
+  while (ids.has(raw)) raw += '_';
+  messages.push({
+    id: toMessageId({ raw }), role: 'user',
+    parts: [{ type: 'text', text: instructionContent ?? createCompactInstruction({ promptMode }), completeness: 'complete' }],
+  });
+  return messages;
 }
 
 export async function createProviderForCompact({
@@ -248,138 +249,70 @@ export async function createCompactChatMessagesFromPrefix({
   prefix: readonly MessageNode[],
   promptMode: ContextCompactPromptMode,
 }): Promise<ChatMessage[]> {
-  const result: ChatMessage[] = [];
-
-  for (const node of prefix) {
-    switch (node.role) {
-    case 'tool': {
-      for (const toolResult of node.results) {
-        let toolContent = '';
-        switch (toolResult.status) {
-        case 'success':
-          switch (toolResult.content.type) {
-          case 'text':
-            toolContent = toolResult.content.text;
-            break;
-          case 'binary_object': {
-            const blob = await storageService.getFile({ binaryObjectId: toolResult.content.id });
-            toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
-            break;
-          }
-          default: {
-            const _ex: never = toolResult.content;
-            throw new Error(`Unhandled tool success content type: ${_ex}`);
-          }
-          }
-          break;
-        case 'error':
-          switch (toolResult.error.message.type) {
-          case 'text':
-            toolContent = `Error [${toolResult.error.code}]: ${toolResult.error.message.text}`;
-            break;
-          case 'binary_object': {
-            const blob = await storageService.getFile({ binaryObjectId: toolResult.error.message.id });
-            const detail = blob ? await blob.text() : 'Binary error detail missing';
-            toolContent = `Error [${toolResult.error.code}]: ${detail}`;
-            break;
-          }
-          default: {
-            const _ex: never = toolResult.error.message;
-            throw new Error(`Unhandled tool error content type: ${_ex}`);
-          }
-          }
-          break;
-        case 'executing':
-          toolContent = '[Error: Tool still executing]';
-          break;
-        default: {
-          const _ex: never = toolResult;
-          throw new Error(`Unhandled tool result status: ${_ex}`);
-        }
-        }
-
-        result.push({
-          role: 'tool',
-          tool_call_id: toolResult.toolCallId,
-          content: createCompactToolMessageContent({
-            messageId: node.id,
-            content: toolContent,
-            promptMode,
-          }),
-        });
-      }
-      break;
-    }
-    case 'user': {
-      const baseContent = createCompactConversationMessageContent({
-        node,
-        promptMode,
-      });
-      if (!node.attachments || node.attachments.length === 0) {
-        result.push({ role: 'user', content: baseContent });
-        break;
-      }
-
-      const images: string[] = [];
-      for (const attachment of node.attachments) {
-        let blob: Blob | null = null;
-        switch (attachment.status) {
-        case 'memory':
-          blob = attachment.blob;
-          break;
-        case 'persisted':
-          blob = await storageService.getFile({ binaryObjectId: attachment.binaryObjectId });
-          break;
-        case 'missing':
-          blob = null;
-          break;
-        default: {
-          const _ex: never = attachment;
-          throw new Error(`Unhandled attachment status while compacting: ${_ex}`);
-        }
-        }
-
-        if (blob && attachment.mimeType.startsWith('image/')) {
-          images.push(await fileToDataUrl({ blob }));
-        }
-      }
-
-      result.push({
-        role: 'user',
-        content: createCompactMultimodalContent({
-          text: baseContent,
-          images,
-        }),
-      });
-      break;
-    }
-    case 'assistant':
-      result.push({
-        role: 'assistant',
-        content: createCompactConversationMessageContent({
-          node,
-          promptMode,
-        }),
-        tool_calls: node.toolCalls,
-      });
-      break;
-    case 'system':
-      result.push({
-        role: 'system',
-        content: createCompactConversationMessageContent({
-          node,
-          promptMode,
-        }),
-      });
-      break;
-    default: {
-      const _ex: never = node;
-      throw new Error(`Unhandled compact prefix node role: ${_ex}`);
-    }
-    }
+  // Capture every message before any binary read yields. Lookup annotations are
+  // request-only; neither the source history nor its part boundaries are changed.
+  const messages = prefix.map(node => createChatMessageSnapshot({ node }));
+  switch (promptMode) {
+  case 'without_message_ids': return messages;
+  case 'with_message_ids': break;
+  default: { const _ex: never = promptMode; throw new Error(`Unhandled compact prompt mode: ${_ex}`); }
   }
+  return Promise.all(messages.map(async message => {
+    switch (message.role) {
+    case 'user': return { ...message, parts: addCompactLookupText({ parts: message.parts, messageId: message.id }) };
+    case 'assistant': return { ...message, parts: addCompactLookupText({ parts: message.parts, messageId: message.id }) };
+    case 'system': return { ...message, parts: addCompactLookupText({ parts: message.parts, messageId: message.id }) };
+    case 'tool': return {
+      ...message,
+      parts: await Promise.all(message.parts.map(async part => {
+        const result = part.result;
+        const annotate = async ({ content }: { content: { type: 'text', text: string } | { type: 'binary_object', id: BinaryObjectId } }) => {
+          let text: string;
+          switch (content.type) {
+          case 'text': text = content.text; break;
+          case 'binary_object': {
+            const blob = await storageService.getFile({ binaryObjectId: content.id });
+            if (!blob) throw new Error('Cannot compact a missing tool result.');
+            // Match inline tool text, including a leading BOM; corrupt bytes must not
+            // become replacement characters inside the annotated model input.
+            text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await blob.arrayBuffer());
+            break;
+          }
+          default: { const _ex: never = content; throw new Error(`Unhandled tool content: ${_ex}`); }
+          }
+          return { type: 'text' as const, text: createCompactToolMessageContent({ messageId: message.id, content: text, promptMode }) };
+        };
+        switch (result.status) {
+        case 'success': return { ...part, result: { ...result, content: await annotate({ content: result.content }) } };
+        case 'error': return { ...part, result: { ...result, error: { ...result.error, message: await annotate({ content: result.error.message }) } } };
+        case 'executing': throw new Error('Cannot compact a tool result that is still executing.');
+        default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+        }
+      })),
+    };
+    default: { const _ex: never = message; throw new Error(`Unhandled compact message: ${_ex}`); }
+    }
+  }));
+}
 
-  return result;
+function addCompactLookupText<Part extends ChatMessage['parts'][number]>({ parts, messageId }: {
+  parts: readonly Part[],
+  messageId: MessageId,
+}): (Part | { type: 'text', text: string, completeness: 'complete' })[] {
+  let annotated = false;
+  const copied = parts.map(part => {
+    if (part.type !== 'text' || annotated) return part;
+    annotated = true;
+    return { ...part, text: createCompactToolMessageContent({ messageId, content: part.text, promptMode: 'with_message_ids' }) };
+  });
+  if (annotated) return copied;
+  // Reasoning remains before visible text, including reasoning-only assistants.
+  const next = copied.findIndex(part => part.type !== 'reasoning');
+  return [
+    ...copied.slice(0, next === -1 ? copied.length : next),
+    { type: 'text', text: createCompactToolMessageContent({ messageId, content: '', promptMode: 'with_message_ids' }), completeness: 'complete' },
+    ...copied.slice(next === -1 ? copied.length : next),
+  ];
 }
 
 export function createCompactRequestPreview({
@@ -387,209 +320,40 @@ export function createCompactRequestPreview({
 }: {
   messages: readonly ChatMessage[],
 }): string {
-  return messages.map((message) => {
-    const content = (() => {
-      if (typeof message.content === 'string') {
-        return message.content;
+  // This is a diagnostic projection, never the provider input or stored content.
+  return messages.map(message => {
+    const content = message.parts.map(part => {
+      switch (part.type) {
+      case 'text': return part.text;
+      case 'reasoning': return `[reasoning] ${part.text}`;
+      case 'attachment': return `[attachment: ${part.attachment.originalName}]`;
+      case 'tool_call': return `[tool_call: ${part.toolCall.function.name}] ${part.toolCall.function.arguments}`;
+      case 'tool_result': {
+        const result = part.result;
+        switch (result.status) {
+        case 'executing': return '[tool_result: executing]';
+        case 'success': {
+          switch (result.content.type) {
+          case 'text': return result.content.text;
+          case 'binary_object': return '[tool_result: binary object]';
+          default: { const _ex: never = result.content; throw new Error(`Unhandled compact content: ${_ex}`); }
+          }
+        }
+        case 'error': {
+          switch (result.error.message.type) {
+          case 'text': return result.error.message.text;
+          case 'binary_object': return '[tool_result: binary error]';
+          default: { const _ex: never = result.error.message; throw new Error(`Unhandled compact error: ${_ex}`); }
+          }
+        }
+        default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+        }
       }
-
-      return message.content.map((part) => {
-        switch (part.type) {
-        case 'text':
-          return part.text;
-        case 'image_url':
-          return '[image attachment]';
-        default: {
-          const _ex: never = part;
-          throw new Error(`Unhandled compact preview part: ${_ex}`);
-        }
-        }
-      }).join('\n');
-    })();
-
+      default: { const _ex: never = part; throw new Error(`Unhandled compact preview part: ${_ex}`); }
+      }
+    }).join('\n');
     return `[${message.role}]\n${content}`;
   }).join('\n\n');
-}
-
-function cloneToolCalls({
-  toolCalls,
-}: {
-  toolCalls: ToolCall[] | undefined,
-}): ToolCall[] | undefined {
-  return toolCalls?.map(({ id, type, function: fn }) => ({
-    id,
-    type,
-    function: {
-      name: fn.name,
-      arguments: fn.arguments,
-    },
-  }));
-}
-
-function cloneResults({
-  results,
-}: {
-  results: ToolExecutionResult[] | undefined,
-}): ToolExecutionResult[] | undefined {
-  return results?.map((result) => {
-    const resultStatus = result.status;
-    switch (resultStatus) {
-    case 'executing':
-      return {
-        toolCallId: result.toolCallId,
-        status: 'executing',
-      };
-    case 'success':
-      return {
-        toolCallId: result.toolCallId,
-        status: 'success',
-        content: (() => {
-          switch (result.content.type) {
-          case 'text':
-            return { type: 'text', text: result.content.text } as const;
-          case 'binary_object':
-            return { type: 'binary_object', id: result.content.id } as const;
-          default: {
-            const _ex: never = result.content;
-            throw new Error(`Unhandled tool success content: ${_ex}`);
-          }
-          }
-        })(),
-      };
-    case 'error':
-      return {
-        toolCallId: result.toolCallId,
-        status: 'error',
-        error: {
-          code: result.error.code,
-          message: (() => {
-            switch (result.error.message.type) {
-            case 'text':
-              return { type: 'text', text: result.error.message.text } as const;
-            case 'binary_object':
-              return { type: 'binary_object', id: result.error.message.id } as const;
-            default: {
-              const _ex: never = result.error.message;
-              throw new Error(`Unhandled tool error message: ${_ex}`);
-            }
-            }
-          })(),
-        },
-      };
-    default: {
-      const _ex: never = resultStatus;
-      throw new Error(`Unhandled tool execution result: ${_ex}`);
-    }
-    }
-  });
-}
-
-function cloneAttachments({
-  attachments,
-}: {
-  attachments: Attachment[] | undefined,
-}): Attachment[] | undefined {
-  return attachments?.map((attachment) => {
-    switch (attachment.status) {
-    case 'persisted':
-      return { ...attachment };
-    case 'missing':
-      return { ...attachment };
-    case 'memory':
-      return { ...attachment, blob: attachment.blob };
-    default: {
-      const _ex: never = attachment;
-      throw new Error(`Unhandled attachment clone status: ${_ex}`);
-    }
-    }
-  });
-}
-
-function cloneLmParameters({
-  lmParameters,
-}: {
-  lmParameters: LmParameters | undefined,
-}): LmParameters | undefined {
-  return lmParameters
-    ? JSON.parse(JSON.stringify(lmParameters)) as LmParameters
-    : undefined;
-}
-
-function cloneLinearMessageNode({
-  node,
-  id,
-  timestamp,
-}: {
-  node: MessageNode,
-  id: MessageId,
-  timestamp: number,
-}): MessageNode {
-  switch (node.role) {
-  case 'user':
-    return {
-      id,
-      role: 'user',
-      content: node.content,
-      attachments: cloneAttachments({ attachments: node.attachments }),
-      timestamp,
-      replies: { items: [] },
-      thinking: undefined,
-      error: undefined,
-      modelId: undefined,
-      lmParameters: cloneLmParameters({ lmParameters: node.lmParameters }),
-      toolCalls: undefined,
-      results: undefined,
-    };
-  case 'assistant':
-    return {
-      id,
-      role: 'assistant',
-      content: node.content,
-      attachments: undefined,
-      timestamp,
-      replies: { items: [] },
-      thinking: node.thinking,
-      error: node.error,
-      modelId: node.modelId,
-      lmParameters: cloneLmParameters({ lmParameters: node.lmParameters }),
-      toolCalls: cloneToolCalls({ toolCalls: node.toolCalls }),
-      results: undefined,
-    };
-  case 'system':
-    return {
-      id,
-      role: 'system',
-      content: node.content,
-      attachments: undefined,
-      timestamp,
-      replies: { items: [] },
-      thinking: undefined,
-      error: undefined,
-      modelId: undefined,
-      lmParameters: undefined,
-      toolCalls: undefined,
-      results: undefined,
-    };
-  case 'tool':
-    return {
-      id,
-      role: 'tool',
-      content: undefined,
-      attachments: undefined,
-      timestamp,
-      replies: { items: [] },
-      thinking: undefined,
-      error: undefined,
-      modelId: undefined,
-      lmParameters: undefined,
-      toolCalls: undefined,
-      results: cloneResults({ results: node.results }) ?? [],
-    };
-  default: {
-    const _ex: never = node;
-    throw new Error(`Unhandled message node role: ${_ex}`);
-  }
-  }
 }
 
 export function deepCopyCompactSuffix({
@@ -612,11 +376,7 @@ export function deepCopyCompactSuffix({
   }
 
   const copiedNodes = suffix.map((node) =>
-    cloneLinearMessageNode({
-      node,
-      id: createMessageId(),
-      timestamp: now(),
-    }));
+    ({ ...copyMessageWithoutReplies({ message: node }), id: createMessageId(), createdAt: now() }));
 
   for (let index = 0; index < copiedNodes.length - 1; index += 1) {
     copiedNodes[index]!.replies.items.push(copiedNodes[index + 1]!);
@@ -644,16 +404,12 @@ export function createCompactBranchFromResponse({
   const compactNode: AssistantMessageNode = {
     id: createMessageId(),
     role: 'assistant',
-    content: compactContent,
-    timestamp: now(),
+    parts: [{ type: 'text', text: compactContent, completeness: 'complete' }],
+    createdAt: now(),
     modelId: compactModelId,
     replies: { items: [] },
-    attachments: undefined,
-    thinking: undefined,
-    error: undefined,
+    interruption: undefined,
     lmParameters: undefined,
-    toolCalls: undefined,
-    results: undefined,
   };
 
   const { copiedHead, copiedLeafId } = deepCopyCompactSuffix({

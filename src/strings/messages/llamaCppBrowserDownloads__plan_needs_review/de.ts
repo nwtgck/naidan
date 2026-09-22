@@ -1,0 +1,1 @@
+export const llamaCppBrowserDownloads__plan_needs_review = (): string => "Die vorgeschlagenen Dateien konnten nicht ausgewählt werden. Prüfen Sie den Download-Inhalt oder wählen Sie Dateien über die Repository-Eingabe.";

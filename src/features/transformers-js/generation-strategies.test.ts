@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ChatMessage, LmParameters } from "@/01-models/types";
+import type { LmParameters } from "@/01-models/types";
 import { toToolCallId } from '@/01-models/ids';
 import type { GenerationCaptureCall } from "./worker/generation-capture";
 import * as standardToolProtocol from './standard-tool-call-protocol';
-import type { WorkerToolJsonObject } from './types';
+import type { InferenceMessage, WorkerToolJsonObject } from './types';
 
 vi.mock("@huggingface/transformers", () => ({
   TextStreamer: class {
@@ -36,7 +36,7 @@ async function pendingGptPublication() {
     gptOssPastKeyValues: { previous: true }, qwen3_5ConversationState: undefined,
     generationStateOwner: {}, qwen3_5SequenceCache: undefined,
   };
-  const operation = selectGenerationStrategy({ modelType: 'gpt_oss', activeModelId: 'synthetic/gpt' }).generate({
+  const operation = selectGenerationStrategy({ modelType: 'gpt_oss', activeModelId: 'synthetic/gpt' }).generate({ onGenerationEvent: undefined,
     model: {} as never, tokenizer: {} as never, messages: [], onChunk: vi.fn(), onRawChunk: vi.fn(), onToolCalls: vi.fn(),
     params: undefined, tools: undefined, runtimeState: state, stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
     debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
@@ -90,8 +90,8 @@ describe('verified content-route tool publication', () => {
       streamer.emit(output); return { sequences: [], past_key_values: null };
     });
     try {
-      const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({
-        model: { generate } as never,
+      const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({ onGenerationEvent: undefined,
+        model: { generate, config: { model_type: 'synthetic' } } as never,
         tokenizer: { all_special_ids: [7, 10, 11], decode: () => '', apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } } } as never,
         messages: [{ role: 'user', content: 'Use a tool.' }],
         onChunk: ({ chunk }) => {
@@ -151,7 +151,7 @@ literal <think>
       for (const text of output) streamer.emit(text);
       return { past_key_values: null, sequences: [] };
     });
-    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
       model: { generate, sessions: {} } as never, tokenizer: { apply_chat_template } as never,
       messages: [{ role: 'user', content: 'A fixed prompt.' }],
       onChunk: ({ chunk }) => {
@@ -177,7 +177,7 @@ literal <think>
     const chunks: string[] = [];
     const calls: unknown[] = [];
     const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
-    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
       model: { sessions: {}, generate: async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
         streamer.emit('<tool_call><function=lookup_weather><parameter=city>Tokyo</parameter></function></tool_call>');
         return { past_key_values: null, sequences: [] };
@@ -199,7 +199,7 @@ literal <think>
 
   it.each(['tool-continuation', 'image'] as const)('restores the current %s prompt opening without changing prepared inputs', async kind => {
     const chunks: string[] = [];
-    const messages: ChatMessage[] = kind === 'tool-continuation' ? [
+    const messages: InferenceMessage[] = kind === 'tool-continuation' ? [
       { role: 'user', content: 'Use the weather tool for Tokyo.' },
       { role: 'assistant', content: '', tool_calls: [{ id: toToolCallId({ raw: 'fixed-call' }), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }] },
       { role: 'tool', tool_call_id: toToolCallId({ raw: 'fixed-call' }), content: '{"temperatureC":20}' },
@@ -210,7 +210,7 @@ literal <think>
     const generate = vi.fn(async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
       streamer.emit('Reason</think>Answer'); return { past_key_values: null, sequences: [] };
     });
-    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
       model: { generate, sessions: { vision_encoder: {} } } as never, tokenizer: { apply_chat_template } as never, messages,
       onChunk: ({ chunk }) => {
         chunks.push(chunk);
@@ -243,7 +243,7 @@ describe('schema-bound Qwen XML arguments, not captured model output', () => {
       return { past_key_values: null, sequences: [] };
     });
     const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
-    const operation = selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+    const operation = selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
       model: { generate, sessions: {} } as never,
       tokenizer: { apply_chat_template: () => 'Explicit synthetic prompt.' } as never,
       messages: [{ role: 'user', content: 'Use the supplied tool.' }],
@@ -273,7 +273,7 @@ describe('schema-bound Qwen XML arguments, not captured model output', () => {
       streamer.emit('<tool_call><function=write_file><parameter=content>{"city":"Tokyo"}</parameter></function></tool_call>');
       return { past_key_values: null, sequences: [] };
     });
-    await expect(selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+    await expect(selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
       model: { generate, sessions: {} } as never,
       tokenizer: { apply_chat_template: () => 'Explicit synthetic prompt.' } as never,
       messages: [{ role: 'user', content: 'Use the supplied tool.' }],
@@ -302,7 +302,7 @@ describe("generation strategy observation isolation", () => {
     const observationSink: GenerationStrategyObservationSink = {
       onFullConversationInputPrepared: vi.fn(), onGenerateStart: vi.fn(), onGenerateInvocation: vi.fn(), onGenerateComplete: vi.fn(),
     };
-    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/model' }).generate({
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/model' }).generate({ onGenerationEvent: undefined,
       model: { generate } as never, tokenizer: { apply_chat_template } as never,
       messages: [{ role: 'user', content: 'first' }, { role: 'user', content: 'next' }],
       onChunk: vi.fn(), onRawChunk: vi.fn(), onToolCalls: vi.fn(), params: explicitParameters, tools: undefined,
@@ -345,7 +345,8 @@ describe("generation strategy observation isolation", () => {
     });
 
     await expect(strategy.generate({
-      model: { generate } as never,
+      onGenerationEvent: undefined,
+      model: { generate, config: { model_type: 'fixture' } } as never,
       tokenizer: { apply_chat_template: applyChatTemplate } as never,
       messages: [{ role: "user", content: "hello" }],
       onChunk: vi.fn(),
@@ -418,7 +419,7 @@ function createInvocationFixture({ inputs, params, modelConfig }: {
     }),
   };
   function run({ observationSink, generationCapture }: { observationSink: GenerationStrategyObservationSink | undefined; generationCapture: GenerationCaptureCall | undefined }) {
-    return selectGenerationStrategy({ modelType: 'fixture', activeModelId: 'org/model' }).generate({
+    return selectGenerationStrategy({ modelType: 'fixture', activeModelId: 'org/model' }).generate({ onGenerationEvent: undefined,
       model: model as never,
       tokenizer: { apply_chat_template: vi.fn(() => inputs) } as never,
       messages: [{ role: 'user', content: 'Fixed synthetic invocation input.' }],

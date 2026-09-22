@@ -1,8 +1,10 @@
 import { computed, type ComputedRef, toRaw } from 'vue';
 import { idToRaw } from '@/01-models/ids';
-import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/01-models/types';
-import type { ChatId, ToolCallId } from '@/01-models/ids';
-import { stripNaidanSentinels } from '@/utils/image-generation';
+import type { MessageNode, CombinedToolCall, ToolCall, Chat } from '@/01-models/types';
+import type { ChatId, MessageId, ToolCallId } from '@/01-models/ids';
+import type { ToolCallDraft } from '@/01-models/lm';
+import { getAssistantPartDisplayParts, type AssistantDisplayPart } from '@/logic/message-display';
+import { getMessageText } from '@/01-models/message-text';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 
 /**
@@ -34,10 +36,13 @@ export interface SequenceStats {
 export type ChatFlowItem =
   | {
       type: 'message',
+      key: string,
       node: MessageNode,
       flow: FlowMetadata,
       mode: MessageMode,
       partContent?: string,
+      toolCalls?: ToolCall[],
+      toolCallDrafts?: readonly ToolCallDraft[],
       isFirstInNode: boolean,
       isLastInNode: boolean,
       isFirstInTurn: boolean,
@@ -49,19 +54,21 @@ export type ChatFlowItem =
 /**
  * A "ChatFlowAtom" is an atomic unit of a message branch before grouping.
  */
-export type ChatFlowAtom =
+export type ChatFlowAtom = { key: string } & (
   | { type: 'thinking', node: MessageNode, content: string, isCompleted: boolean, isFirstInNode: boolean, isLastInNode: boolean, isFirstInTurn: boolean }
   | { type: 'content', node: MessageNode, content: string, isFirstInNode: boolean, isLastInNode: boolean, isFirstInTurn: boolean }
-  | { type: 'tool_calls', node: MessageNode, toolCalls: ToolCall[], isFirstInNode: boolean, isLastInNode: boolean, isFirstInTurn: boolean }
+  | { type: 'tool_calls', node: MessageNode, toolCalls: ToolCall[], toolCallDrafts?: readonly ToolCallDraft[], isFirstInNode: boolean, isLastInNode: boolean, isFirstInTurn: boolean }
   | { type: 'tool_group', id: string, toolCalls: CombinedToolCall[], node: MessageNode, isFirstInTurn: boolean }
-  | { type: 'waiting', node: MessageNode, isFirstInNode: boolean, isLastInNode: boolean, isFirstInTurn: boolean };
+  | { type: 'waiting', node: MessageNode, isFirstInNode: boolean, isLastInNode: boolean, isFirstInTurn: boolean });
 
 export function useChatDisplayFlow({
   chat,
   isProcessing,
+  getToolCallDrafts,
 }: {
   chat: ComputedRef<Chat | null>,
   isProcessing: ({ chatId }: { chatId: ChatId }) => boolean,
+  getToolCallDrafts: (({ chatId, messageId }: { chatId: ChatId, messageId: MessageId }) => readonly ToolCallDraft[]) | undefined,
 }) {
 
   /**
@@ -80,9 +87,9 @@ export function useChatDisplayFlow({
       case 'user':
       case 'system':
         yield {
-          type: 'content',
+          type: 'content', key: JSON.stringify([idToRaw({ id: node.id }), 'body']),
           node,
-          content: node.content || '',
+          content: getMessageText({ message: node }),
           isFirstInNode: true,
           isLastInNode: true,
           isFirstInTurn,
@@ -91,70 +98,62 @@ export function useChatDisplayFlow({
 
       case 'assistant': {
         const nodeAtoms: (Exclude<ChatFlowAtom, { type: 'tool_group' }>)[] = [];
-        const content = node.content || '';
-
-        // 1. Completed thinking from node property
-        if (node.thinking) {
-          nodeAtoms.push({
-            type: 'thinking',
-            node,
-            content: node.thinking,
-            isCompleted: true,
-            isFirstInNode: false,
-            isLastInNode: false,
-            isFirstInTurn: false,
-          });
-        }
-
-        // 2. Parse inline tags in content (streaming support)
-        const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
-        let lastIdx = 0;
-        let match;
-        while ((match = thinkRegex.exec(content)) !== null) {
-          const before = content.slice(lastIdx, match.index).trim();
-          if (before) {
-            nodeAtoms.push({ type: 'content', node, content: before, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
-          }
-          const thinkContent = match[1]?.trim();
-          if (thinkContent) {
-            nodeAtoms.push({ type: 'thinking', node, content: thinkContent, isCompleted: true, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
-          }
-          lastIdx = thinkRegex.lastIndex;
-        }
-
-        const remaining = content.slice(lastIdx);
-        const lastOpen = remaining.lastIndexOf('<think>');
-        const lastClose = remaining.lastIndexOf('</think>');
         const chatVal = chat.value;
-        const isActiveThinking = lastOpen > -1 && lastClose < lastOpen && chatVal && isProcessing({ chatId: chatVal.id });
-
-        if (isActiveThinking) {
-          const bodyBefore = remaining.slice(0, lastOpen).trim();
-          if (bodyBefore) {
-            nodeAtoms.push({ type: 'content', node, content: bodyBefore, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+        const isLive = !!chatVal && isProcessing({ chatId: chatVal.id }) && nodeIdx === nodeArray.length - 1 && node.interruption === undefined;
+        const drafts = isLive && chatVal
+          ? [...(getToolCallDrafts?.({ chatId: chatVal.id, messageId: node.id }) ?? [])].sort((a, b) => a.index - b.index)
+          : [];
+        const displayParts: (AssistantDisplayPart | { type: 'tool_call_draft', key: string, draft: ToolCallDraft })[] = [];
+        let draftIndex = 0;
+        for (let partIndex = 0; partIndex <= node.parts.length; partIndex++) {
+          while (draftIndex < drafts.length && drafts[draftIndex]!.beforePartIndex <= partIndex) {
+            const draft = drafts[draftIndex++]!;
+            displayParts.push({ type: 'tool_call_draft', key: `draft-${draft.partId}`, draft });
           }
-          const activeThink = remaining.slice(lastOpen + 7).trim();
-          nodeAtoms.push({ type: 'thinking', node, content: activeThink, isCompleted: false, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
-        } else {
-          const cleanBody = stripNaidanSentinels({ content: remaining }).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-          if (cleanBody) {
-            nodeAtoms.push({ type: 'content', node, content: cleanBody, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+          const sourcePart = node.parts[partIndex];
+          if (sourcePart !== undefined) displayParts.push(...getAssistantPartDisplayParts({ part: sourcePart }));
+        }
+        for (const part of displayParts) {
+          const key = JSON.stringify([idToRaw({ id: node.id }), part.key]);
+          switch (part.type) {
+          case 'reasoning':
+            nodeAtoms.push({ type: 'thinking', key, node, content: part.text, isCompleted: part.completeness === 'complete' || !isLive, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+            break;
+          case 'text':
+            if (part.text.length) nodeAtoms.push({ type: 'content', key, node, content: part.text, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+            break;
+          case 'tool_call_draft':
+            nodeAtoms.push({ type: 'tool_calls', key, node, toolCalls: [], toolCallDrafts: [part.draft], isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+            break;
+          case 'tool_call': {
+            const last = nodeAtoms.at(-1);
+            switch (last?.type) {
+            case 'tool_calls':
+              if (!last.toolCallDrafts) {
+                last.toolCalls.push(part.toolCall);
+                break;
+              }
+              nodeAtoms.push({ type: 'tool_calls', key, node, toolCalls: [part.toolCall], isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+              break;
+            case 'thinking':
+            case 'content':
+            case 'waiting':
+            case undefined:
+              nodeAtoms.push({ type: 'tool_calls', key, node, toolCalls: [part.toolCall], isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+              break;
+            default: { const _ex: never = last; throw new Error(`Unhandled flow atom: ${_ex}`); }
+            }
+            break;
+          }
+          default: { const _ex: never = part; throw new Error(`Unhandled display part: ${_ex}`); }
           }
         }
-
-        // 3. Tool Calls (Internal)
-        if (node.toolCalls && node.toolCalls.length > 0) {
-          nodeAtoms.push({ type: 'tool_calls', node, toolCalls: node.toolCalls, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+        // Empty stopped/error messages still need their footer and diagnostic UI.
+        if (nodeAtoms.length === 0 && !isLive) {
+          nodeAtoms.push({ type: 'content', key: JSON.stringify([idToRaw({ id: node.id }), 'empty']), node, content: '', isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         }
-
-        // 4. Error-only assistant message
-        if (nodeAtoms.length === 0 && node.error !== undefined) {
-          nodeAtoms.push({ type: 'content', node, content: '', isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
-        }
-
-        // 5. Waiting indicator
-        if (nodeAtoms.length === 0 && chatVal && isProcessing({ chatId: chatVal.id }) && nodeIdx === nodeArray.length - 1) {
-          nodeAtoms.push({ type: 'waiting', node, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+        if (nodeAtoms.length === 0 && isLive) {
+          nodeAtoms.push({ type: 'waiting', key: JSON.stringify([idToRaw({ id: node.id }), 'waiting']), node, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         }
 
         // Finalize node atoms
@@ -169,22 +168,34 @@ export function useChatDisplayFlow({
 
       case 'tool': {
         const nodeId = toRaw(node).id;
-        let triggeringAssistant: AssistantMessageNode | null = null;
-        for (let j = nodeIdx - 1; j >= 0; j--) {
-          const prev = nodeArray[j];
-          if (prev?.role === 'assistant' && prev.toolCalls?.some(tc => node.results.some(er => er.toolCallId === tc.id))) {
-            triggeringAssistant = prev as AssistantMessageNode;
-            break;
+        const toolCalls: CombinedToolCall[] = [];
+        // Pair each result with the nearest preceding call on this selected branch.
+        // A repeated call ID in a different branch must not supply this display item.
+        for (const part of node.parts) {
+          const result = part.result;
+          let call: ToolCall | undefined;
+          findCall: for (let j = nodeIdx - 1; j >= 0 && !call; j--) {
+            const previous = nodeArray[j];
+            if (previous === undefined) continue;
+            switch (previous.role) {
+            case 'user': break findCall;
+            case 'system':
+            case 'tool': continue;
+            case 'assistant':
+              for (const previousPart of previous.parts) {
+                if (previousPart.type === 'tool_call' && previousPart.toolCall.id === result.toolCallId) call = previousPart.toolCall;
+              }
+              break;
+            default: { const _ex: never = previous; throw new Error(`Unhandled message: ${_ex}`); }
+            }
           }
+          if (call) toolCalls.push({ id: result.toolCallId, nodeId, call, result });
         }
-        if (triggeringAssistant) {
-          const toolCalls: CombinedToolCall[] = node.results.map(er => ({
-            id: er.toolCallId, nodeId, call: triggeringAssistant!.toolCalls!.find(tc => tc.id === er.toolCallId)!, result: er,
-          }));
-          yield { type: 'tool_group', id: idToRaw({ id: nodeId }), toolCalls, node, isFirstInTurn };
+        if (toolCalls.length === node.parts.length && toolCalls.length > 0) {
+          yield { type: 'tool_group', key: JSON.stringify([idToRaw({ id: nodeId }), 'tools']), id: idToRaw({ id: nodeId }), toolCalls, node, isFirstInTurn };
         } else {
-          // TODO(strings-localize): Localizing this fallback requires a semantic flow item so this synchronous structure does not store display copy.
-          yield { type: 'content', node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn };
+          // TODO(strings-localize): Preserve visibility for unmatched results until a dedicated renderer can explain them.
+          yield { type: 'content', key: JSON.stringify([idToRaw({ id: node.id }), 'unmatched_tools']), node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn };
         }
         break;
       }
@@ -203,7 +214,8 @@ export function useChatDisplayFlow({
     const isInternal = ({ atom }: { atom: ChatFlowAtom }): boolean => {
       switch (atom.type) {
       case 'thinking': return atom.isCompleted;
-      case 'tool_calls':
+      // In-progress calls remain visible instead of disappearing into a collapsed sequence.
+      case 'tool_calls': return !atom.toolCallDrafts?.length;
       case 'tool_group': return true;
       case 'content':
       case 'waiting': return false;
@@ -218,7 +230,7 @@ export function useChatDisplayFlow({
         const firstType = first.type;
         const id = (() => {
           switch (firstType) {
-          case 'message': return `seq-${idToRaw({ id: first.node.id })}-${first.mode}`;
+          case 'message': return `seq-${first.key}`;
           case 'tool_group': return `seq-${first.id}`;
           case 'process_sequence': return `seq-${first.id}`;
           default: {
@@ -286,7 +298,16 @@ export function useChatDisplayFlow({
         }
       })();
       return {
-        type: 'message', node: atom.node, mode, partContent: (type === 'thinking' || type === 'content') ? atom.content : undefined,
+        type: 'message', key: atom.key, node: atom.node, mode, partContent: (type === 'thinking' || type === 'content') ? atom.content : undefined,
+        ...(() => {
+          switch (atom.type) {
+          case 'tool_calls': return { toolCalls: atom.toolCalls, ...(atom.toolCallDrafts ? { toolCallDrafts: atom.toolCallDrafts } : {}) };
+          case 'thinking':
+          case 'content':
+          case 'waiting': return {};
+          default: { const _ex: never = atom; throw new Error(`Unhandled flow atom: ${_ex}`); }
+          }
+        })(),
         isFirstInNode: atom.isFirstInNode, isLastInNode: atom.isLastInNode, isFirstInTurn: atom.isFirstInTurn,
         isCompletedThinking,
         flow: { position: 'standalone', nesting: 'none' },
@@ -310,15 +331,12 @@ export function useChatDisplayFlow({
           thinkingSteps++;
           break;
         case 'tool_calls': {
-          const node = item.node;
-          if (node.role === 'assistant' && node.toolCalls) {
-            node.toolCalls.forEach(tc => {
-              if (!seenToolIds.has(tc.id)) {
-                seenToolIds.add(tc.id);
-                toolNames.push(tc.function.name);
-              }
-            });
-          }
+          (item.toolCalls ?? []).forEach(tc => {
+            if (!seenToolIds.has(tc.id)) {
+              seenToolIds.add(tc.id);
+              toolNames.push(tc.function.name);
+            }
+          });
           break;
         }
         case 'content':

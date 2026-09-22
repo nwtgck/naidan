@@ -1,13 +1,13 @@
 // eslint-disable-next-line no-restricted-imports -- Worker-only native Tensor validation; no UI runtime import.
 import type { Tensor } from '@huggingface/transformers';
-import type { ChatMessage } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 
 // Optimization ceilings, not input or generation limits. No truncation or GPU readback.
 const MAX_TOKENS = 131072;
 const MAX_IDENTITY_CHARS = 262144;
 type Cache = Readonly<{
   owner: string; model: object; config: string; expectedHistory: string;
-  baseMessages: ChatMessage[]; baseInput: BigInt64Array; sequence: BigInt64Array; pastKeyValues: object;
+  baseMessages: InferenceMessage[]; baseInput: BigInt64Array; sequence: BigInt64Array; pastKeyValues: object;
 }>;
 const ownedCaches = new WeakSet<object>();
 
@@ -63,7 +63,7 @@ function length({ value }: { value: object }): number | undefined {
 }
 
 export function retainGptOssContinuation({ owner, model, config, messages, assistant, baseInputs, inputs, sequences, pastKeyValues, tensorClass }: {
-  owner: string | undefined; model: object; config: unknown; messages: ChatMessage[]; assistant: ChatMessage;
+  owner: string | undefined; model: object; config: unknown; messages: InferenceMessage[]; assistant: InferenceMessage;
   baseInputs: Record<string, unknown>; inputs: Record<string, unknown>; sequences: unknown; pastKeyValues: unknown; tensorClass: typeof Tensor;
 }): Cache | undefined {
   if (typeof owner !== 'string' || owner.length === 0 || owner.length > 128 || !assistant.tool_calls?.length) return undefined;
@@ -82,9 +82,9 @@ export function retainGptOssContinuation({ owner, model, config, messages, assis
 }
 
 export function prepareGptOssContinuation({ cache, owner, model, config, messages, buildBaseInputs, buildSuffixInputs, tensorClass }: {
-  cache: unknown; owner: string | undefined; model: object; config: unknown; messages: ChatMessage[];
-  buildBaseInputs: ({ messages }: { messages: ChatMessage[] }) => Record<string, unknown>;
-  buildSuffixInputs: ({ messages }: { messages: ChatMessage[] }) => Record<string, unknown>;
+  cache: unknown; owner: string | undefined; model: object; config: unknown; messages: InferenceMessage[];
+  buildBaseInputs: ({ messages }: { messages: InferenceMessage[] }) => Record<string, unknown>;
+  buildSuffixInputs: ({ messages }: { messages: InferenceMessage[] }) => Record<string, unknown>;
   tensorClass: typeof Tensor;
 }): { inputs: Record<string, unknown>; pastKeyValues: object } | undefined {
   if (typeof cache !== 'object' || cache === null || !ownedCaches.has(cache)) return undefined;

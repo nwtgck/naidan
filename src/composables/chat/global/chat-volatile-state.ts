@@ -2,8 +2,21 @@ import { reactive } from 'vue';
 import { findNodeInBranch } from '@/logic/chat-tree';
 import type { ChatId, MessageId, ToolCallId } from '@/01-models/ids';
 import type { Chat } from '@/01-models/types';
+import type { ToolCallDraft } from '@/01-models/lm';
 
 export type ChatVolatileState = {
+  setToolCallDrafts({ chatId, messageId, owner, drafts }: {
+    chatId: ChatId,
+    messageId: MessageId,
+    owner: AbortSignal,
+    drafts: readonly ToolCallDraft[],
+  }): void,
+
+  getToolCallDrafts({ chatId, messageId }: {
+    chatId: ChatId,
+    messageId: MessageId,
+  }): readonly ToolCallDraft[],
+
   setVolatileAssistantError({
     chatId,
     messageId,
@@ -22,7 +35,12 @@ export type ChatVolatileState = {
     messageId: MessageId,
   }): void,
 
-  applyVolatileAssistantErrorsToChat({
+  getVolatileAssistantError({ chatId, messageId }: {
+    chatId: ChatId,
+    messageId: MessageId,
+  }): string | undefined,
+
+  pruneVolatileAssistantErrorsForChat({
     chat,
   }: {
     chat: Chat,
@@ -64,6 +82,24 @@ export type ChatVolatileState = {
 export function createChatVolatileState(): ChatVolatileState {
   const volatileAssistantErrors = reactive(new Map<ChatId, Map<MessageId, string>>());
   const volatileToolOutputs = reactive(new Map<ToolCallId, string>());
+  const toolCallDrafts = reactive(new Map<ChatId, Map<MessageId, { owner: AbortSignal, drafts: readonly ToolCallDraft[] }>>());
+
+  function setToolCallDrafts({ chatId, messageId, owner, drafts }: { chatId: ChatId, messageId: MessageId, owner: AbortSignal, drafts: readonly ToolCallDraft[] }): void {
+    const existing = toolCallDrafts.get(chatId);
+    if (drafts.length === 0) {
+      if (existing?.get(messageId)?.owner !== owner) return;
+      existing.delete(messageId);
+      if (existing?.size === 0) toolCallDrafts.delete(chatId);
+      return;
+    }
+    const snapshot = drafts.map(draft => ({ ...draft }));
+    if (existing !== undefined) existing.set(messageId, { owner, drafts: snapshot });
+    else toolCallDrafts.set(chatId, new Map([[messageId, { owner, drafts: snapshot }]]));
+  }
+
+  function getToolCallDrafts({ chatId, messageId }: { chatId: ChatId, messageId: MessageId }): readonly ToolCallDraft[] {
+    return toolCallDrafts.get(chatId)?.get(messageId)?.drafts ?? [];
+  }
 
   function setVolatileAssistantError({
     chatId,
@@ -98,7 +134,7 @@ export function createChatVolatileState(): ChatVolatileState {
     }
   }
 
-  function applyVolatileAssistantErrorsToChat({
+  function pruneVolatileAssistantErrorsForChat({
     chat,
   }: {
     chat: Chat,
@@ -106,11 +142,26 @@ export function createChatVolatileState(): ChatVolatileState {
     const errors = volatileAssistantErrors.get(chat.id);
     if (!errors || errors.size === 0) return;
 
-    for (const [messageId, error] of errors.entries()) {
+    for (const messageId of errors.keys()) {
       const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
-      if (!node || node.role !== 'assistant') continue;
-      node.error = error;
+      if (!node) {
+        errors.delete(messageId); continue;
+      }
+      switch (node.role) {
+      case 'assistant': break;
+      case 'user':
+      case 'system':
+      case 'tool': errors.delete(messageId); break;
+      default: { const _ex: never = node; throw new Error(`Unhandled message: ${_ex}`); }
+      }
     }
+    if (errors.size === 0) volatileAssistantErrors.delete(chat.id);
+  }
+
+  // UI diagnostics stay outside the persisted message. Reloading history must
+  // not turn a storage/title error into a model-generation interruption.
+  function getVolatileAssistantError({ chatId, messageId }: { chatId: ChatId, messageId: MessageId }): string | undefined {
+    return volatileAssistantErrors.get(chatId)?.get(messageId);
   }
 
   function setVolatileToolOutput({
@@ -151,9 +202,12 @@ export function createChatVolatileState(): ChatVolatileState {
   }
 
   return {
+    setToolCallDrafts,
+    getToolCallDrafts,
     setVolatileAssistantError,
     clearVolatileAssistantError,
-    applyVolatileAssistantErrorsToChat,
+    getVolatileAssistantError,
+    pruneVolatileAssistantErrorsForChat,
     setVolatileToolOutput,
     appendVolatileToolOutput,
     deleteVolatileToolOutput,

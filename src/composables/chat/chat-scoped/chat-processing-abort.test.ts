@@ -75,9 +75,7 @@ describe('abortProcessingForChat', () => {
     await vi.runAllTimersAsync();
 
     expect(abortGeneration).toHaveBeenCalledTimes(1);
-    expect(mockDeleteActiveGeneration).toHaveBeenCalledWith({
-      chatId: toChatId({ raw: 'chat-1' }),
-    });
+    expect(mockDeleteActiveGeneration).not.toHaveBeenCalled();
     expect(abortCompaction).toHaveBeenCalledTimes(1);
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({
       chatId: toChatId({ raw: 'chat-1' }),

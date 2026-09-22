@@ -1,11 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { z } from 'zod';
+import type { LmProvider } from '@/01-models/lm';
+import type { Tool } from '@/01-models/tool';
+import { getMessageText } from '@/01-models/message-text';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { storageService } from '@/00-storage/service';
 import { reactive, nextTick, computed } from 'vue';
 import type { Chat, SidebarItem, Hierarchy } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import { toChatId } from '@/01-models/ids';
+import { toChatId, toToolCallId } from '@/01-models/ids';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
@@ -54,7 +59,8 @@ vi.mock('./useConfirm', () => ({
 }));
 
 // Mock LM Provider
-const mockLmChat = vi.fn();
+const mockLmChat = vi.fn<LmProvider['chat']>();
+const mockToolExecute = vi.fn<Tool['execute']>();
 
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
@@ -74,16 +80,14 @@ vi.mock('../features/lm/ollama', () => ({
   },
 }));
 
-// Mock Tools Registry
-vi.mock('../features/tools/registry', () => ({
-  ALL_TOOLS: [
-    {
-      name: 'calculator',
-      description: 'Calculator',
-      parametersSchema: { strict: () => ({ parse: (args: any) => args }) },
-      execute: vi.fn().mockResolvedValue({ status: 'success', content: '42' }),
-    },
-  ],
+// The real tool factory supplies this execution double to the shared turn runner.
+vi.mock('../features/tools/calculator', () => ({
+  CalculatorTool: class {
+    name = 'calculator';
+    description = 'Calculator';
+    parametersSchema = z.object({ expression: z.string() });
+    execute = mockToolExecute;
+  },
 }));
 
 vi.mock('../features/tools/composables/useChatTools', () => ({
@@ -111,6 +115,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockToolExecute.mockReset().mockResolvedValue({ status: 'success', content: '42' });
+    mockLmChat.mockReset().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     __testOnlySetCurrentChat({ chat: null });
     chatStore.rootItems.value = [];
     mockRootItems.length = 0;
@@ -124,6 +136,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       return Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } })) as any;
     });
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
+  });
+
+  afterEach(async () => {
+    await vi.waitUntil(() => TEST_ONLY.activeGenerations.size === 0);
   });
 
   it('should chain multiple tool calls in the active thread', async () => {
@@ -142,59 +158,47 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
     __testOnlySetCurrentChat({ chat });
 
-    // Mock LM to return two tool calls
-    mockLmChat.mockImplementation(async (params) => {
-      const { onToolCall, onToolResult, onChunk, onAssistantMessageStart } = params;
-
-      // Iteration 1: Assistant makes tool calls
-      onAssistantMessageStart?.();
-      onToolCall({
-        id: 'call-1',
-        toolName: 'calculator',
-        modelVisibleArguments: '{"expression":"1+1"}',
-      });
-      await nextTick();
-      await onToolResult({ id: 'call-1', result: { status: 'success', content: '2' } });
-      await nextTick();
-
-      onToolCall({
-        id: 'call-2',
-        toolName: 'calculator',
-        modelVisibleArguments: '{"expression":"2+2"}',
-      });
-      await nextTick();
-      await onToolResult({ id: 'call-2', result: { status: 'success', content: '4' } });
-      await nextTick();
-
-      // Iteration 2: Assistant responds with final text
-      onAssistantMessageStart?.();
-      onChunk({ chunk: 'Final answer is 4.' });
-      await nextTick();
-    });
+    mockToolExecute
+      .mockResolvedValueOnce({ status: 'success', content: '2' })
+      .mockResolvedValueOnce({ status: 'success', content: '4' });
+    // Each provider call generates one assistant; the shared runner executes tools.
+    mockLmChat
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.call({ key: 0, toolCall: {
+            id: toToolCallId({ raw: 'call-1' }), type: 'function',
+            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+          } });
+          await writer.call({ key: 1, toolCall: {
+            id: toToolCallId({ raw: 'call-2' }), type: 'function',
+            function: { name: 'calculator', arguments: '{"expression":"2+2"}' },
+          } });
+          return { type: 'finished', next: 'tool_results' };
+        },
+      }))
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Final answer is 4.' });
+          return { type: 'finished', next: 'user' };
+        },
+      }));
 
     await sendMessage({ content: 'Calculate 1+1 and 2+2' });
-
-    // Wait for async generation to complete
-    for (let i = 0; i < 20; i++) {
-      await flushPromises();
-      await nextTick();
-      await new Promise(r => setTimeout(r, 50));
-      if (activeMessages.value.length >= 4) break;
-    }
-
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
+    expect(mockLmChat).toHaveBeenCalledTimes(2);
+    expect(mockToolExecute).toHaveBeenNthCalledWith(1, expect.objectContaining({ args: { expression: '1+1' } }));
+    expect(mockToolExecute).toHaveBeenNthCalledWith(2, expect.objectContaining({ args: { expression: '2+2' } }));
     const messages = activeMessages.value;
-    console.log('Active messages roles:', messages.map(m => m.role));
-    if (messages.length < 4) {
-      console.log('Chat structure:', JSON.stringify(chat.root, (key, value) => key === 'replies' ? { itemsCount: value.items.length } : value, 2));
-    }
 
     const { useChatDisplayFlow } = await import('./useChatDisplayFlow');
     const { chatFlow } = useChatDisplayFlow({
+      getToolCallDrafts: undefined,
       chat: computed(() => chat),
       isProcessing: () => false,
     });
     const displayMessages = chatFlow.value;
-    console.log('Display messages types:', displayMessages.map(d => d.type));
 
     // New structure: user, assistant1 (calls), tool (consolidated), assistant2 (final)
     expect(messages.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
@@ -217,7 +221,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const toolNode = messages[2]!;
     const assistant2 = messages[3]!;
 
-    expect(assistant1.toolCalls?.map((toolCall) => toolCall.function.arguments)).toEqual([
+    expect(assistant1.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall.function.arguments)).toEqual([
       '{"expression":"1+1"}',
       '{"expression":"2+2"}',
     ]);
@@ -241,64 +245,68 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
     __testOnlySetCurrentChat({ chat });
 
-    let generationNumber = 0;
-    mockLmChat.mockImplementation(async (params) => {
-      generationNumber += 1;
-      const { onToolCall, onToolResult, onChunk, onAssistantMessageStart } = params;
-
-      onAssistantMessageStart?.();
-      if (generationNumber === 1) {
-        onChunk({ chunk: '<think>tool-call reasoning</think>' });
-        onToolCall?.({
-          id: 'call-invalid',
-          toolName: 'calculator',
-          modelVisibleArguments: '{"expression":"1+1"}',
-        });
-        await onToolResult?.({
-          id: 'call-invalid',
-          result: {
-            status: 'error',
-            code: 'invalid_arguments',
-            message: 'Invalid arguments: test fixture',
-          },
-        });
-        onAssistantMessageStart?.();
-        onChunk({ chunk: 'Recovered from the tool error.' });
-      } else {
-        onChunk({ chunk: 'Second answer.' });
-      }
+    mockToolExecute.mockResolvedValueOnce({
+      status: 'error', code: 'invalid_arguments', message: 'Invalid arguments: test fixture',
     });
+    mockLmChat
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: '<think>tool-call reasoning</think>' });
+          await writer.call({ key: 0, toolCall: {
+            id: toToolCallId({ raw: 'call-invalid' }), type: 'function',
+            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+          } });
+          return { type: 'finished', next: 'tool_results' };
+        },
+      }))
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Recovered from the tool error.' });
+          return { type: 'finished', next: 'user' };
+        },
+      }))
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Second answer.' });
+          return { type: 'finished', next: 'user' };
+        },
+      }));
 
     await sendMessage({ content: 'First request' });
-    await flushPromises();
-    await nextTick();
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
     await sendMessage({ content: 'Second request' });
-    await flushPromises();
-    await nextTick();
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
 
-    expect(mockLmChat).toHaveBeenCalledTimes(2);
-    const secondGenerationMessages = mockLmChat.mock.calls[1]![0].messages;
-    expect(secondGenerationMessages).toEqual([
-      { role: 'user', content: 'First request', tool_calls: undefined },
-      {
-        role: 'assistant',
-        content: '<think>tool-call reasoning</think>',
-        tool_calls: [{
-          id: 'call-invalid',
-          type: 'function',
-          function: {
-            name: 'calculator',
-            arguments: '{"expression":"1+1"}',
-          },
-        }],
-      },
-      {
-        role: 'tool',
-        tool_call_id: 'call-invalid',
-        content: 'Error [invalid_arguments]: Invalid arguments: test fixture',
-      },
-      { role: 'assistant', content: 'Recovered from the tool error.', tool_calls: undefined },
-      { role: 'user', content: 'Second request', tool_calls: undefined },
+    expect(mockLmChat).toHaveBeenCalledTimes(3);
+    const continuationMessages = mockLmChat.mock.calls[1]![0].messages;
+    const secondTurnMessages = mockLmChat.mock.calls[2]![0].messages;
+    expect(secondTurnMessages.slice(0, continuationMessages.length)).toEqual(continuationMessages);
+    expect(secondTurnMessages).toEqual([
+      { id: expect.any(String), role: 'user', parts: [
+        { type: 'text', text: 'First request', completeness: 'complete' },
+      ] },
+      { id: expect.any(String), role: 'assistant', parts: [
+        { type: 'text', text: '<think>tool-call reasoning</think>', completeness: 'complete' },
+        { type: 'tool_call', toolCall: {
+          id: 'call-invalid', type: 'function',
+          function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+        } },
+      ] },
+      { id: expect.any(String), role: 'tool', parts: [
+        { type: 'tool_result', result: {
+          toolCallId: 'call-invalid', status: 'error',
+          error: { code: 'invalid_arguments', message: { type: 'text', text: 'Invalid arguments: test fixture' } },
+        } },
+      ] },
+      { id: expect.any(String), role: 'assistant', parts: [
+        { type: 'text', text: 'Recovered from the tool error.', completeness: 'complete' },
+      ] },
+      { id: expect.any(String), role: 'user', parts: [
+        { type: 'text', text: 'Second request', completeness: 'complete' },
+      ] },
     ]);
   });
 
@@ -320,11 +328,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Add first root item
     await sendMessage({ content: 'Message 1' });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
     await flushPromises();
     await nextTick();
 
     // Add second root item (new thread)
     await sendMessage({ content: 'Message 2', parentId: null });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
     await flushPromises();
     await nextTick();
 
@@ -332,7 +342,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Last leaf should be in the second thread
     const messages = activeMessages.value;
-    expect(messages[0]!.content).toBe('Message 2');
+    expect(getMessageText({ message: messages[0]! })).toBe('Message 2');
   });
 
   it('should not finish a generation before asynchronous tool-result persistence settles', async () => {
@@ -356,36 +366,43 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       releaseSave = resolve;
     }));
 
-    mockLmChat.mockImplementation(async (params) => {
-      const { onToolCall, onToolResult, onChunk, onAssistantMessageStart } = params;
-      onAssistantMessageStart?.();
-      onToolCall?.({
-        id: 'call-large-result',
-        toolName: 'calculator',
-        modelVisibleArguments: '{"expression":"1+1"}',
-      });
-      onToolResult?.({
-        id: 'call-large-result',
-        result: { status: 'success', content: 'x'.repeat(100 * 1024 + 1) },
-      });
-      onAssistantMessageStart?.();
-      onChunk({ chunk: 'Done.' });
-    });
+    mockToolExecute.mockResolvedValueOnce({ status: 'success', content: 'x'.repeat(100 * 1024 + 1) });
+    mockLmChat
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.call({ key: 0, toolCall: {
+            id: toToolCallId({ raw: 'call-large-result' }), type: 'function',
+            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+          } });
+          return { type: 'finished', next: 'tool_results' };
+        },
+      }))
+      .mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Done.' });
+          return { type: 'finished', next: 'user' };
+        },
+      }));
 
     await sendMessage({ content: 'Persist a large result' });
     await vi.waitUntil(() => vi.mocked(storageService.saveFile).mock.calls.length > 0);
     await flushPromises();
     expect(streaming.value).toBe(true);
+    expect(mockLmChat).toHaveBeenCalledTimes(1);
 
     releaseSave!();
-    await vi.waitUntil(() => !streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
+    expect(mockLmChat).toHaveBeenCalledTimes(2);
 
     const toolMessage = activeMessages.value.find((message) => message.role === 'tool');
     expect(toolMessage?.role).toBe('tool');
     if (toolMessage?.role !== 'tool') throw new Error('Expected a persisted Tool Result message.');
-    expect(toolMessage.results[0]?.status).toBe('success');
-    if (toolMessage.results[0]?.status !== 'success') throw new Error('Expected a successful Tool Result.');
-    expect(toolMessage.results[0].content.type).toBe('binary_object');
+    const result = toolMessage.parts[0]?.result;
+    expect(result?.status).toBe('success');
+    if (result?.status !== 'success') throw new Error('Expected a successful Tool Result.');
+    expect(result.content.type).toBe('binary_object');
   });
 
 });

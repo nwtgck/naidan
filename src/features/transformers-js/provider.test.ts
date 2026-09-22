@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
+import type { Tool } from '@/01-models/tool';
 import type { ToolCall } from '@/01-models/types';
 import { toToolCallId } from '@/01-models/ids';
+import { runProviderConversationForTest } from '@/features/lm/provider-test-support';
+import type { TransformersJsInferenceScope } from './inference-operation';
 import { runProviderTestInferenceOperation } from './provider-inference-test-scope';
 import type { TransformersJsInferenceOperation } from './inference-operation';
 
@@ -9,7 +12,8 @@ import type { TransformersJsInferenceOperation } from './inference-operation';
 const mockService = {
   getState: vi.fn(),
   loadDownloadedModel: vi.fn(),
-  generateText: vi.fn(),
+  generateText: vi.fn().mockRejectedValue(new Error('Legacy generation must not be used.')),
+  generateMessage: vi.fn<({ messages, onEvent, params, tools, continuationOwner, signal }: Parameters<TransformersJsInferenceScope['generateMessage']>[0] & { signal: AbortSignal }) => Promise<void>>(),
   listCachedModels: vi.fn(),
   runInferenceOperation(args: TransformersJsInferenceOperation) {
     return runProviderTestInferenceOperation({ ...args, service: mockService });
@@ -20,25 +24,18 @@ vi.mock('./index', () => ({
   transformersJsService: mockService,
 }));
 
-/**
- * Helper to set up a generateText mock that optionally fires tool calls on the first call.
- * - On the first call: calls onToolCalls with the given toolCalls (if any)
- * - On subsequent calls: no tool calls (simulates final text response)
- */
-function setupGenerateTextMock(toolCallsOnFirstCall: ToolCall[] = []) {
+// Synthetic generation events, not decoded text or model-output evidence.
+function setupGenerationMock({ toolCalls }: { toolCalls: ToolCall[] }) {
   let callCount = 0;
-  mockService.generateText.mockImplementation(
-    async ({ onToolCalls }: {
-      messages: unknown,
-      onChunk: (params: { chunk: string }) => void,
-      onToolCalls: (params: { toolCalls: ToolCall[] }) => void,
-    }) => {
-      callCount++;
-      if (callCount === 1 && toolCallsOnFirstCall.length > 0) {
-        onToolCalls({ toolCalls: toolCallsOnFirstCall });
-      }
-    },
-  );
+  mockService.generateMessage.mockImplementation(async ({ onEvent }) => {
+    callCount++;
+    const calls = callCount === 1 ? toolCalls : [];
+    for (const [index, toolCall] of calls.entries()) {
+      await onEvent({ event: { type: 'tool_start', index } });
+      await onEvent({ event: { type: 'tool_call', index, toolCall } });
+    }
+    await onEvent({ event: { type: 'result', result: { type: 'finished', next: calls.length ? 'tool_results' : 'user' } } });
+  });
 }
 
 describe('TransformersJsProvider', () => {
@@ -47,48 +44,51 @@ describe('TransformersJsProvider', () => {
   });
 
   it('should auto-load model if not already ready', async () => {
-    mockService.getState.mockReturnValue({ status: 'idle', activeModelId: null });
+    mockService.getState.mockReturnValue({ status: 'idle', activeModelId: undefined });
     mockService.loadDownloadedModel.mockResolvedValue(undefined);
-    setupGenerateTextMock();
+    setupGenerationMock({ toolCalls: [] });
 
     const { TransformersJsProvider } = await import('./provider');
     const provider = new TransformersJsProvider();
 
-    await provider.chat({
+    await runProviderConversationForTest({
+      provider,
       model: 'some-model',
       messages: [{ role: 'user', content: 'hello' }],
       onChunk: vi.fn(),
     });
 
     expect(mockService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'some-model' });
-    expect(mockService.generateText).toHaveBeenCalledOnce();
-    expect(mockService.generateText.mock.calls[0]![0].messages).toEqual([{ role: 'user', content: 'hello' }]);
+    expect(mockService.generateMessage).toHaveBeenCalledOnce();
+    expect(mockService.generateMessage.mock.calls[0]![0].messages).toEqual([{ role: 'user', content: 'hello' }]);
   });
 
   it('should not auto-load if model is already ready', async () => {
     mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'some-model' });
-    setupGenerateTextMock();
+    setupGenerationMock({ toolCalls: [] });
 
     const { TransformersJsProvider } = await import('./provider');
     const provider = new TransformersJsProvider();
 
-    await provider.chat({
+    await runProviderConversationForTest({
+      provider,
       model: 'some-model',
       messages: [],
       onChunk: () => {},
     });
 
     expect(mockService.loadDownloadedModel).not.toHaveBeenCalled();
-    expect(mockService.generateText).toHaveBeenCalledOnce();
+    expect(mockService.generateMessage).toHaveBeenCalledOnce();
   });
 
   it('should throw error if engine is already loading a model', async () => {
-    mockService.getState.mockReturnValue({ status: 'loading', activeModelId: null });
+    mockService.getState.mockReturnValue({ status: 'loading', activeModelId: undefined });
 
     const { TransformersJsProvider } = await import('./provider');
     const provider = new TransformersJsProvider();
 
-    await expect(provider.chat({
+    await expect(runProviderConversationForTest({
+      provider,
       model: 'some-model',
       messages: [],
       onChunk: () => {},
@@ -104,16 +104,16 @@ describe('TransformersJsProvider', () => {
     const { TransformersJsProvider } = await import('./provider');
     const provider = new TransformersJsProvider();
 
-    const models = await provider.listModels({});
+    const models = await provider.listModels({ signal: undefined });
     expect(models).toEqual(['model-1']);
   });
 
   describe('tool calling', () => {
-    const makeTool = (name: string) => ({
+    const makeTool = ({ name }: { name: string }) => ({
       name,
       description: `Does ${name}`,
       parametersSchema: z.object({ input: z.string() }),
-      execute: vi.fn().mockResolvedValue({ status: 'success' as const, content: `result of ${name}` }),
+      execute: vi.fn<Tool['execute']>().mockResolvedValue({ status: 'success' as const, content: `result of ${name}` }),
     });
 
     it('should execute a tool call and loop back for the final response', async () => {
@@ -124,16 +124,17 @@ describe('TransformersJsProvider', () => {
         type: 'function',
         function: { name: 'my_tool', arguments: '{"input":"hello"}' },
       };
-      setupGenerateTextMock([toolCall]);
+      setupGenerationMock({ toolCalls: [toolCall] });
 
-      const tool = makeTool('my_tool');
+      const tool = makeTool({ name: 'my_tool' });
       const onToolCall = vi.fn();
       const onToolResult = vi.fn();
 
       const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
-      await provider.chat({
+      await runProviderConversationForTest({
+        provider,
         model: 'model',
         messages: [{ role: 'user', content: 'test' }],
         onChunk: vi.fn(),
@@ -142,8 +143,8 @@ describe('TransformersJsProvider', () => {
         onToolResult,
       });
 
-      // Two generateText calls: first returns tool call, second returns final answer
-      expect(mockService.generateText).toHaveBeenCalledTimes(2);
+      // The shared runner performs two generations; the Provider never executes tools.
+      expect(mockService.generateMessage).toHaveBeenCalledTimes(2);
 
       // Tool was called with validated args
       expect(tool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { input: 'hello' }, signal: expect.any(AbortSignal) }));
@@ -155,7 +156,7 @@ describe('TransformersJsProvider', () => {
       expect(onToolResult).toHaveBeenCalledWith({ id: 'call_1', result: { status: 'success', content: 'result of my_tool' } });
 
       // Second call includes tool result message
-      const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
+      const secondCallMessages = mockService.generateMessage.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
         expect.objectContaining({ role: 'tool', tool_call_id: 'call_1', content: 'result of my_tool' }),
       );
@@ -176,7 +177,7 @@ describe('TransformersJsProvider', () => {
           function: { name: 'shell_execute', arguments: '{"shell_script":"ls -la /tmp"}' },
         },
       ];
-      setupGenerateTextMock(toolCalls);
+      setupGenerationMock({ toolCalls });
 
       const execute = vi.fn(async ({ args }: { args: { shell_script: string } }) => ({
         status: 'success' as const,
@@ -191,7 +192,8 @@ describe('TransformersJsProvider', () => {
 
       const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
-      await provider.chat({
+      await runProviderConversationForTest({
+        provider,
         model: 'model',
         messages: [{ role: 'user', content: 'Use shell tools.' }],
         onChunk: vi.fn(),
@@ -203,11 +205,11 @@ describe('TransformersJsProvider', () => {
         { shell_script: 'ls -la /workspace' },
         { shell_script: 'ls -la /tmp' },
       ]);
-      expect(mockService.generateText).toHaveBeenCalledTimes(2);
-      const continuationMessages = mockService.generateText.mock.calls[1]![0].messages as Array<Record<string, unknown>>;
-      const assistant = continuationMessages.find(message => message['role'] === 'assistant') as { tool_calls?: ToolCall[] } | undefined;
+      expect(mockService.generateMessage).toHaveBeenCalledTimes(2);
+      const continuationMessages = mockService.generateMessage.mock.calls[1]![0].messages;
+      const assistant = continuationMessages.find(message => message.role === 'assistant');
       expect(assistant?.tool_calls).toEqual(toolCalls);
-      expect(continuationMessages.filter(message => message['role'] === 'tool')).toEqual([
+      expect(continuationMessages.filter(message => message.role === 'tool')).toEqual([
         expect.objectContaining({ tool_call_id: 'call_workspace', content: 'result for ls -la /workspace' }),
         expect.objectContaining({ tool_call_id: 'call_tmp', content: 'result for ls -la /tmp' }),
       ]);
@@ -221,7 +223,7 @@ describe('TransformersJsProvider', () => {
         type: 'function',
         function: { name: 'nonexistent_tool', arguments: '{}' },
       };
-      setupGenerateTextMock([toolCall]);
+      setupGenerationMock({ toolCalls: [toolCall] });
 
       const onToolCall = vi.fn();
       const onToolResult = vi.fn();
@@ -229,7 +231,8 @@ describe('TransformersJsProvider', () => {
       const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
-      await provider.chat({
+      await runProviderConversationForTest({
+        provider,
         model: 'model',
         messages: [{ role: 'user', content: 'test' }],
         onChunk: vi.fn(),
@@ -248,7 +251,7 @@ describe('TransformersJsProvider', () => {
         result: { status: 'error', code: 'other', message: 'Tool "nonexistent_tool" not found.' },
       });
       // Error is sent back to the model
-      const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
+      const secondCallMessages = mockService.generateMessage.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
         expect.objectContaining({ role: 'tool', tool_call_id: 'call_unknown' }),
       );
@@ -262,16 +265,17 @@ describe('TransformersJsProvider', () => {
         type: 'function',
         function: { name: 'my_tool', arguments: 'not valid json' },
       };
-      setupGenerateTextMock([toolCall]);
+      setupGenerationMock({ toolCalls: [toolCall] });
 
-      const tool = makeTool('my_tool');
+      const tool = makeTool({ name: 'my_tool' });
       const onToolCall = vi.fn();
       const onToolResult = vi.fn();
 
       const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
-      await provider.chat({
+      await runProviderConversationForTest({
+        provider,
         model: 'model',
         messages: [{ role: 'user', content: 'test' }],
         onChunk: vi.fn(),
@@ -302,16 +306,17 @@ describe('TransformersJsProvider', () => {
         type: 'function',
         function: { name: 'failing_tool', arguments: '{"input":"x"}' },
       };
-      setupGenerateTextMock([toolCall]);
+      setupGenerationMock({ toolCalls: [toolCall] });
 
-      const tool = makeTool('failing_tool');
+      const tool = makeTool({ name: 'failing_tool' });
       tool.execute.mockResolvedValue({ status: 'error' as const, code: 'execution_failed' as const, message: 'something broke' });
       const onToolResult = vi.fn();
 
       const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
-      await provider.chat({
+      await runProviderConversationForTest({
+        provider,
         model: 'model',
         messages: [{ role: 'user', content: 'test' }],
         onChunk: vi.fn(),
@@ -323,7 +328,7 @@ describe('TransformersJsProvider', () => {
         id: 'call_err',
         result: { status: 'error', code: 'execution_failed', message: 'something broke' },
       });
-      const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
+      const secondCallMessages = mockService.generateMessage.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
         expect.objectContaining({ role: 'tool', content: 'Error [execution_failed]: something broke' }),
       );
@@ -339,27 +344,20 @@ describe('TransformersJsProvider', () => {
       };
 
       const controller = new AbortController();
-      let callCount = 0;
-      mockService.generateText.mockImplementation(
-        async ({ onToolCalls }: {
-          messages: unknown,
-          onChunk: (params: { chunk: string }) => void,
-          onToolCalls: (params: { toolCalls: ToolCall[] }) => void,
-        }) => {
-          callCount++;
-          if (callCount === 1) {
-            onToolCalls({ toolCalls: [toolCall] });
-            controller.abort(); // abort during tool execution phase
-          }
-        },
-      );
+      mockService.generateMessage.mockImplementation(async ({ onEvent }) => {
+        await onEvent({ event: { type: 'tool_start', index: 0 } });
+        await onEvent({ event: { type: 'tool_call', index: 0, toolCall } });
+        controller.abort();
+        await onEvent({ event: { type: 'result', result: { type: 'interrupted', reason: 'aborted' } } });
+      });
 
-      const tool = makeTool('my_tool');
+      const tool = makeTool({ name: 'my_tool' });
 
       const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
-      await expect(provider.chat({
+      await expect(runProviderConversationForTest({
+        provider,
         model: 'model',
         messages: [{ role: 'user', content: 'test' }],
         onChunk: vi.fn(),
@@ -367,7 +365,8 @@ describe('TransformersJsProvider', () => {
         signal: controller.signal,
       })).rejects.toThrow('Generation aborted');
 
-      expect(mockService.generateText).toHaveBeenCalledOnce();
+      expect(mockService.generateMessage).toHaveBeenCalledOnce();
+      expect(tool.execute).not.toHaveBeenCalled();
     });
   });
 });

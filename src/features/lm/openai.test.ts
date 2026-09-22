@@ -1,3 +1,4 @@
+import { runProviderConversationForTest } from './provider-test-support';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider } from './openai';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
@@ -73,7 +74,7 @@ describe('OpenAIProvider Integration Tests', () => {
 
       const provider = new OpenAIProvider({ endpoint: `${baseUrl}/v1` });
       let result = '';
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [{ role: 'user', content: 'Hi' }],
         model: 'gpt-4',
         onChunk: ({ chunk: chunk }) => {
@@ -99,7 +100,7 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: `${baseUrl}/` });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: () => {},
@@ -114,7 +115,7 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
-      await expect(provider.chat({
+      await expect(runProviderConversationForTest({ provider,
         messages: [],
         model: 'invalid',
         onChunk: () => {},
@@ -126,7 +127,7 @@ data: [DONE]
 
     it('should handle network errors gracefully', async () => {
       const provider = new OpenAIProvider({ endpoint: 'http://127.0.0.1:1' });
-      await expect(provider.chat({
+      await expect(runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: () => {},
@@ -147,7 +148,7 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
-      const models = await provider.listModels({});
+      const models = await provider.listModels({ signal: undefined });
       expect(models).toEqual(['gpt-4', 'gpt-3.5-turbo']);
     });
 
@@ -161,7 +162,7 @@ data: [DONE]
         endpoint: baseUrl,
         headers: [['Authorization', 'Bearer test-token']],
       });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: () => {},
@@ -176,7 +177,7 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
-      await expect(provider.listModels({})).rejects.toThrow(/Internal Server Error/);
+      await expect(provider.listModels({ signal: undefined })).rejects.toThrow(/Internal Server Error/);
       expect(errorCount.value).toBe(1);
     });
 
@@ -187,7 +188,7 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
-      await expect(provider.listModels({})).rejects.toThrow();
+      await expect(provider.listModels({ signal: undefined })).rejects.toThrow();
     });
 
     it('should handle various HTTP error status codes correctly in listModels', async () => {
@@ -200,7 +201,7 @@ data: [DONE]
         });
 
         const provider = new OpenAIProvider({ endpoint: baseUrl });
-        await expect(provider.listModels({})).rejects.toThrow(new RegExp(`${code}`));
+        await expect(provider.listModels({ signal: undefined })).rejects.toThrow(new RegExp(`${code}`));
 
         expect(capturedRequests[0]!.url).toBe('/models');
 
@@ -219,7 +220,7 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -241,15 +242,15 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await expect(runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
         },
-      });
+      })).rejects.toThrow();
 
-      expect(result).toBe('Valid');
+      expect(result).toBe('');
       expect(errorCount.value).toBe(1);
     });
 
@@ -262,7 +263,7 @@ data: [DONE]
       const provider = new OpenAIProvider({ endpoint: baseUrl });
 
       // Array version
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [], model: 'm', onChunk: () => {},
         parameters: { ...EMPTY_LM_PARAMETERS, stop: ['A', 'B'] },
       });
@@ -280,7 +281,7 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'test-model',
         onChunk: () => {},
@@ -309,7 +310,7 @@ data: [DONE]
       });
     });
 
-    it('should ignore malformed SSE lines but report them', async () => {
+    it('should fail malformed SSE events instead of skipping generated content', async () => {
       await startServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write('data: { "invalid": "json" }\n\n');
@@ -319,17 +320,17 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await expect(runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
         },
-      });
+      })).rejects.toThrow();
 
-      expect(result).toBe('Valid');
+      expect(result).toBe('');
       expect(errorCount.value).toBe(1);
-      expect(events.value[0]?.message).toContain('Failed to parse or validate SSE line');
+      expect(events.value[0]?.message).toContain('Failed to read or validate the generation stream');
     });
 
     it('should handle [DONE] message correctly', async () => {
@@ -343,7 +344,7 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -351,7 +352,7 @@ data: [DONE]
         },
       });
 
-      expect(result).toBe('AB');
+      expect(result).toBe('A');
     });
 
     it('should handle SSE with messy formatting', async () => {
@@ -368,7 +369,7 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -392,7 +393,7 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -416,7 +417,7 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -439,7 +440,7 @@ data: [DONE]
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
       try {
-        await provider.chat({
+        await runProviderConversationForTest({ provider,
           messages: [],
           model: 'any',
           onChunk: ({ chunk: chunk }) => {
@@ -462,7 +463,7 @@ data: [DONE]
       const controller = new AbortController();
       const provider = new OpenAIProvider({ endpoint: baseUrl });
 
-      const chatPromise = provider.chat({
+      const chatPromise = runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {

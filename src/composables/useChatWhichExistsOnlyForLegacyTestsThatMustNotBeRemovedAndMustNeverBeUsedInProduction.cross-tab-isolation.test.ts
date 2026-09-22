@@ -1,3 +1,7 @@
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { getMessageText } from '@/01-models/message-text';
+import type { AssistantMessageNode } from '@/01-models/types';
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
@@ -183,20 +187,19 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     vi.doMock('../features/lm/openai', () => ({
       OpenAIProvider: function() {
         return {
-          chat: vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void, signal?: AbortSignal }) => {
-            const { onChunk, signal } = params;
-            await Promise.resolve();
-            // Generate enough chunks for state verification but not so many that it times out
-            for (let i = 0; i < 10; i++) {
-              if (signal?.aborted) {
-                const err = new Error('Aborted');
-                err.name = 'AbortError';
-                throw err;
+          chat: vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({
+            signal,
+            run: async ({ writer, signal }) => {
+              await Promise.resolve();
+              // Generate enough chunks for state verification but not so many that it times out.
+              for (let i = 0; i < 10; i++) {
+                signal.throwIfAborted();
+                await writer.text({ type: 'text', text: `chunk ${i}` });
+                await new Promise(r => setTimeout(r, 100));
               }
-              onChunk({ chunk: `chunk ${i}` });
-              await new Promise(r => setTimeout(r, 100));
-            }
-          }),
+              return { type: 'finished', next: 'user' };
+            },
+          })),
           listModels: vi.fn().mockResolvedValue(['gpt-4']),
         };
       },
@@ -263,7 +266,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await nextTick();
 
     expect(tabB.activeMessages.value.length).toBe(2);
-    expect(tabB.activeMessages.value[0]?.content).toBe('Hello');
+    expect(getMessageText({ message: tabB.activeMessages.value[0]! })).toBe('Hello');
   });
 
   it('should reload sidebar when settings change (settings event)', async () => {
@@ -320,7 +323,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(tabA.streaming.value).toBe(false);
     expect(tabB.streaming.value).toBe(false);
 
-    expect(tabA.activeMessages.value[1]?.content).toContain('[Generation Aborted]');
+    expect(getMessageText({ message: tabA.activeMessages.value[1]! })).toBe('chunk 0');
+    expect((tabA.activeMessages.value[1] as AssistantMessageNode).interruption).toEqual({ type: 'cancelled' });
+    expect(tabA.activeMessages.value[1]?.parts).toEqual([
+      expect.objectContaining({ type: 'text', text: 'chunk 0', completeness: 'partial' }),
+    ]);
+    expect((tabB.activeMessages.value[1] as AssistantMessageNode).interruption).toEqual({ type: 'cancelled' });
   });
 
   it('should sync generation state for multiple chats across tabs and support remote abort', async () => {

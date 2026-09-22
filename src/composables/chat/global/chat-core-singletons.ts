@@ -55,7 +55,7 @@ export function getContextCompactProgress({
 }
 
 export const chatDataStore = createChatDataStore({
-  applyVolatileAssistantErrorsToChat: chatVolatileState.applyVolatileAssistantErrorsToChat,
+  pruneVolatileAssistantErrorsForChat: chatVolatileState.pruneVolatileAssistantErrorsForChat,
   hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
   isTaskRunning,
   onExternalGenerationStarted: ({ chatId }) => {

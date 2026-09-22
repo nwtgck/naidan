@@ -114,12 +114,12 @@ export interface ToolCall {
   },
 }
 
-export interface ChatMessage {
-  role: string,
-  content: string | MultimodalContent[],
-  tool_calls?: ToolCall[],
-  tool_call_id?: ToolCallId,
-}
+/** A selected conversation path, without storage metadata or tree structure. */
+export type ChatMessage =
+  | { id: MessageId, role: 'user', parts: readonly UserMessageNode['parts'][number][] }
+  | { id: MessageId, role: 'assistant', parts: readonly AssistantMessageNode['parts'][number][] }
+  | { id: MessageId, role: 'system', parts: readonly SystemMessageNode['parts'][number][] }
+  | { id: MessageId, role: 'tool', parts: readonly ToolMessageNode['parts'][number][] };
 
 export interface AttachmentBase {
   id: AttachmentId, // Attachment ID
@@ -137,57 +137,79 @@ export type Attachment =
 
 export type MessageNodeBase = {
   id: MessageId,
-  content: string | undefined,
-  timestamp: number,
+  // The time this history node was created, not the first or last generated token.
+  createdAt: number,
   replies: MessageBranch,
 };
 
 export type UserMessageNode = MessageNodeBase & {
   role: 'user',
-  content: string,
-  attachments?: Attachment[],
-  thinking?: undefined,
-  error?: undefined,
-  modelId?: undefined,
-  lmParameters?: LmParameters,
-  toolCalls?: undefined,
-  results?: undefined,
+  modelId: undefined,
+  lmParameters: LmParameters | undefined,
+  parts: (
+    | {
+        type: 'text',
+        text: string,
+        completeness: 'complete' | 'partial',
+      }
+    | {
+        type: 'attachment',
+        attachment: Attachment,
+      }
+  )[],
 };
 
 export type AssistantMessageNode = MessageNodeBase & {
   role: 'assistant',
-  content: string,
-  attachments?: undefined,
-  thinking?: string,
-  error?: string,
-  modelId?: string,
-  lmParameters?: LmParameters,
-  toolCalls?: ToolCall[],
-  results?: undefined,
+  modelId: string | undefined,
+  lmParameters: LmParameters | undefined,
+  parts: (
+    | {
+        type: 'reasoning',
+        text: string,
+        completeness: 'complete' | 'partial',
+      }
+    | {
+        type: 'text',
+        text: string,
+        completeness: 'complete' | 'partial',
+      }
+    | {
+        type: 'tool_call',
+        toolCall: ToolCall,
+      }
+  )[],
+  // Absence means no interruption was recorded, not proof of normal completion.
+  interruption:
+    | undefined
+    | { type: 'cancelled' }
+    | {
+        type: 'error',
+        // This text may contain the locale used when the error was recorded.
+        // Changing the UI locale later does not retranslate the saved message.
+        message: string,
+      },
 };
 
 export type SystemMessageNode = MessageNodeBase & {
   role: 'system',
-  content: string,
-  attachments?: undefined,
-  thinking?: undefined,
-  error?: undefined,
-  modelId?: undefined,
-  lmParameters?: undefined,
-  toolCalls?: undefined,
-  results?: undefined,
+  modelId: undefined,
+  lmParameters: undefined,
+  parts: {
+    type: 'text',
+    text: string,
+    completeness: 'complete' | 'partial',
+  }[],
 };
 
 export type ToolMessageNode = MessageNodeBase & {
   role: 'tool',
-  content: undefined,
-  attachments: undefined,
-  thinking: undefined,
-  error: undefined,
   modelId: undefined,
   lmParameters: undefined,
-  toolCalls: undefined,
-  results: ToolExecutionResult[],
+  parts: {
+    type: 'tool_result',
+    result: ToolExecutionResult,
+  }[],
 };
 
 export type MessageNode = UserMessageNode | AssistantMessageNode | SystemMessageNode | ToolMessageNode;

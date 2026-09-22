@@ -1,32 +1,28 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
-import type { ToolCallId } from '@/01-models/ids';
-import type { LmProvider } from '@/01-models/lm';
-import type { Tool, ToolExecutionOutcome } from '@/01-models/tool';
+import type { BinaryObjectId } from '@/01-models/ids';
+import type { ChatGenerationItem, JsonValue, LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 
 function createUnsupportedError(): Error {
   return new Error('Transformers.js is not available in standalone mode');
 }
 
 export class TransformersJsProvider implements LmProvider {
-  async chat({ messages: _messages, model: _model, onChunk: _onChunk, parameters: _parameters, tools: _tools, onToolCall: _onToolCall, onToolEvent: _onToolEvent, onToolResult: _onToolResult, onAssistantMessageStart: _onAssistantMessageStart, signal: _signal }: {
-    messages: ChatMessage[],
+  chat({ messages: _messages, model: _model, parameters: _parameters, tools: _tools, readBinaryObject: _readBinaryObject, signal }: {
+    messages: readonly ChatMessage[],
     model: string,
-    onChunk: ({ chunk }: { chunk: string }) => void,
-    parameters?: LmParameters,
-    tools?: Tool[],
-    onToolCall?: ({ id, toolName, modelVisibleArguments }: { id: ToolCallId, toolName: string, modelVisibleArguments: string }) => void,
-    onToolEvent?: ({ id, event }: { id: ToolCallId, event: import('@/01-models/tool').ToolExecutionEvent }) => void,
-    onToolResult?: ({ id, result }: {
-      id: ToolCallId,
-      result: ToolExecutionOutcome,
-    }) => void,
-    onAssistantMessageStart?: () => void,
-    signal?: AbortSignal,
-  }): Promise<void> {
-    throw createUnsupportedError();
+    parameters: LmParameters | undefined,
+    tools: readonly { name: string, description: string, parameters: { [keyword: string]: JsonValue } }[] | undefined,
+    readBinaryObject: (({ binaryObjectId, signal }: { binaryObjectId: BinaryObjectId, signal: AbortSignal | undefined }) => Promise<Blob>) | undefined,
+    signal: AbortSignal | undefined,
+  }): AsyncIterable<ChatGenerationItem> {
+    // Use the same local contract without importing or starting the hosted runtime.
+    return createChatGenerationStream({ signal, run: async () => {
+      throw createUnsupportedError();
+    } });
   }
 
-  async listModels({ signal: _signal }: { signal?: AbortSignal }): Promise<string[]> {
+  async listModels({ signal: _signal }: { signal: AbortSignal | undefined }): Promise<string[]> {
     return [];
   }
 }

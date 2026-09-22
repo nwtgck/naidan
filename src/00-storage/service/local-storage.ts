@@ -1,3 +1,4 @@
+import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import {
@@ -48,40 +49,36 @@ export class LocalStorageProvider extends IStorageProvider {
   private blobCache = new Map<AttachmentId, Blob>();
 
   private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
-    for (const node of nodes) {
-      if (node.attachments) {
-        for (const att of node.attachments) {
-          switch (att.status) {
-          case 'memory': {
-            const cached = this.blobCache.get(att.id);
-            if (cached) (att as unknown as { blob: Blob }).blob = cached;
-            break;
-          }
-          case 'persisted':
-          case 'missing':
-            break;
-          default: {
-            const _ex: never = att;
-            throw new Error(`Unhandled attachment status: ${_ex}`);
-          }
-          }
+    for (const part of iterateAttachmentParts({ nodes })) {
+      const att = part.attachment;
+      switch (att.status) {
+      case 'memory': {
+        const cached = this.blobCache.get(att.id);
+        if (cached) {
+          part.attachment = { ...att, blob: cached };
         }
+        break;
       }
-      this.restoreBlobs({ nodes: node.replies.items });
+      case 'persisted':
+      case 'missing':
+        break;
+      default: {
+        const _ex: never = att;
+        throw new Error(`Unhandled attachment status: ${_ex}`);
+      }
+      }
     }
   }
 
   private loadUnhydratedChatContent({ id }: { id: ChatId }): ChatContent | null {
     const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`);
-    if (!rawContent) return null;
+    if (rawContent === null) return null;
 
-    try {
-      return chatContentToDomain({
-        dto: ChatContentSchemaDto.parse(JSON.parse(rawContent)),
-      });
-    } catch {
-      return null;
-    }
+    // A stored but unreadable record must not become a new, empty conversation
+    // when a caller performs a read-update-write operation.
+    return chatContentToDomain({
+      dto: ChatContentSchemaDto.parse(JSON.parse(rawContent)),
+    });
   }
 
   async init(): Promise<void> {
@@ -135,21 +132,21 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
-    const findAndCacheBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
-      for (const node of nodes) {
-        if (node.attachments) {
-          for (const att of node.attachments) {
-            if (att.status === 'memory' && att.blob) {
-              this.blobCache.set(att.id, att.blob);
-            }
-          }
-        }
-        if (node.replies?.items) {
-          findAndCacheBlobs({ nodes: node.replies.items });
-        }
+    for (const part of iterateAttachmentParts({ nodes: content.root.items })) {
+      const att = part.attachment;
+      switch (att.status) {
+      case 'memory':
+        if (att.blob) this.blobCache.set(att.id, att.blob);
+        break;
+      case 'persisted':
+      case 'missing':
+        break;
+      default: {
+        const _ex: never = att;
+        throw new Error(`Unhandled attachment status: ${_ex}`);
       }
-    };
-    findAndCacheBlobs({ nodes: content.root.items });
+      }
+    }
 
     const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
@@ -159,43 +156,34 @@ export class LocalStorageProvider extends IStorageProvider {
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${idToRaw({ id })}`);
     const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`);
-    if (!rawMeta || !rawContent) return null;
+    const meta = rawMeta === null ? null : ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
+    const content = rawContent === null ? null : ChatContentSchemaDto.parse(JSON.parse(rawContent));
+    if (meta === null || content === null) return null;
+    const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
-    try {
-      const meta = ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
-      const content = ChatContentSchemaDto.parse(JSON.parse(rawContent));
-      const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
-
-      // Resolve groupId from hierarchy
-      const hierarchy = await this.loadHierarchy();
-      if (hierarchy) {
-        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-        if (group) chat.groupId = toChatGroupId({ raw: group.id });
-      }
-
-      this.restoreBlobs({ nodes: chat.root.items });
-
-      return chat;
-    } catch {
-      return null;
+    // Resolve groupId from hierarchy
+    const hierarchy = await this.loadHierarchy();
+    if (hierarchy) {
+      const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
+      if (group) chat.groupId = toChatGroupId({ raw: group.id });
     }
+
+    this.restoreBlobs({ nodes: chat.root.items });
+
+    return chat;
   }
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${idToRaw({ id })}`);
-    if (!rawMeta) return null;
-    try {
-      const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
-      // Resolve groupId from hierarchy
-      const hierarchy = await this.loadHierarchy();
-      if (hierarchy) {
-        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-        if (group) meta.groupId = toChatGroupId({ raw: group.id });
-      }
-      return meta;
-    } catch {
-      return null;
+    if (rawMeta === null) return null;
+    const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
+    // Resolve groupId from hierarchy
+    const hierarchy = await this.loadHierarchy();
+    if (hierarchy) {
+      const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
+      if (group) meta.groupId = toChatGroupId({ raw: group.id });
     }
+    return meta;
   }
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {

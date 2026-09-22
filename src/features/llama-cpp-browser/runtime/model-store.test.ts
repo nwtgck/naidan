@@ -84,7 +84,7 @@ let root: StoredDirectory;
 beforeEach(() => {
   root = makeDirectory(); failWrite = false; failModelWrite = false; committed = []; truncateOnClose = false; failMarker = false; failClose = false;
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, operation: () => Promise<unknown>) => operation() } });
-  vi.spyOn(console, 'debug').mockImplementation(() => {});
+  vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
@@ -151,7 +151,7 @@ describe("local GGUF model store", () => {
     failWrite = false;
     expect(await listStoredModels()).toEqual([]);
     expect((await userFolder()).children.size).toBe(0);
-    expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain("private");
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain("private");
   });
   it("leaves pending imports intact during discovery instead of repairing or deleting them", async () => {
     const folder = await putModelFile({ name: "interrupted.gguf" });
@@ -376,8 +376,8 @@ describe('directory model imports', () => {
     const name = 'private-model-folder';
     await expect(importModelDirectory({ signal: undefined, directory: { name, files: ['private-model.gguf', 'another-private-model.gguf', 'mmproj-first.gguf'].map(path => ({ path, file: fixture({ name: path }) })) }, onProgress: () => {} })).rejects.toThrow('unsupported-input');
     expect(root.children.has(name)).toBe(false); expect(committed).toEqual([]);
-    expect(readDiagnostics({ calls: vi.mocked(console.debug).mock.calls })).toContainEqual(expect.objectContaining({ stage: 'model-resolve', reason: 'model-directory-layout', code: 'unsupported-input' }));
-    expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain('private');
+    expect(readDiagnostics({ calls: vi.mocked(console.log).mock.calls })).toContainEqual(expect.objectContaining({ stage: 'model-resolve', reason: 'model-directory-layout', code: 'unsupported-input' }));
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private');
   });
   it('rediscovers projector additions in the imported user directory without layout metadata', async () => {
     await importModelDirectory({ signal: undefined, directory: { name: 'External', files: [{ path: 'model.gguf', file: fixture({ name: 'model.gguf' }) }] }, onProgress: () => {} });

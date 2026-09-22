@@ -89,15 +89,30 @@ function createDeepestLeafMap({ nodes }: { nodes: MessageNode[] }): Map<MessageN
   return deepestLeafByNode;
 }
 
-function matchesKeywords({ content, keywords }: {
-  content: string,
+function findMatchingBody({ node, keywords }: {
+  node: MessageNode,
   keywords: string[],
-}): { matches: boolean, lowerContent: string } {
-  const lowerContent = content.toLowerCase();
-  return {
-    matches: keywords.every(keyword => lowerContent.includes(keyword)),
-    lowerContent,
-  };
+}): { content: string, lowerContent: string } | undefined {
+  // Body search keeps its existing scope: structured reasoning, calls, results,
+  // and attachment metadata are not silently added to the searchable text.
+  const textParts = node.parts.flatMap(part => {
+    switch (part.type) {
+    case 'text': return [{ content: part.text, lowerContent: part.text.toLowerCase() }];
+    case 'reasoning':
+    case 'attachment':
+    case 'tool_call':
+    case 'tool_result': return [];
+    default: {
+      const unhandled: never = part;
+      throw new Error(`Unhandled search part: ${unhandled}`);
+    }
+    }
+  });
+  // Keywords may occur in different body parts, but a single keyword must not
+  // be invented by concatenating unrelated part boundaries.
+  if (!keywords.every(keyword => textParts.some(part => part.lowerContent.includes(keyword)))) return undefined;
+  const firstKeyword = keywords[0];
+  return firstKeyword === undefined ? undefined : textParts.find(part => part.lowerContent.includes(firstKeyword));
 }
 
 export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilter }: {
@@ -116,21 +131,21 @@ export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilte
   const matches: ContentMatch[] = [];
 
   for (const node of nodes) {
-    if (node.content === undefined || !matchesRoleFilter({ role: node.role, roleFilter: effectiveRoleFilter })) {
+    if (!matchesRoleFilter({ role: node.role, roleFilter: effectiveRoleFilter })) {
       continue;
     }
 
-    const result = matchesKeywords({ content: node.content, keywords });
-    if (!result.matches) continue;
+    const result = findMatchingBody({ node, keywords });
+    if (result === undefined) continue;
 
     const deepestLeaf = deepestLeafByNode.get(node) ?? node;
     matches.push({
       chatId,
       messageId: node.id,
-      excerpt: getExcerpt({ content: node.content, lowerContent: result.lowerContent, keywords }),
+      excerpt: getExcerpt({ content: result.content, lowerContent: result.lowerContent, keywords }),
       role: node.role,
       targetLeafId: deepestLeaf.id,
-      timestamp: node.timestamp,
+      timestamp: node.createdAt,
       isCurrentThread: activeBranchIds?.has(node.id) ?? false,
     });
   }
@@ -152,20 +167,20 @@ export function searchLinearBranch({ branch, query, chatId, targetLeafId, roleFi
   const matches: ContentMatch[] = [];
 
   for (const node of branch) {
-    if (node.content === undefined || !matchesRoleFilter({ role: node.role, roleFilter: effectiveRoleFilter })) {
+    if (!matchesRoleFilter({ role: node.role, roleFilter: effectiveRoleFilter })) {
       continue;
     }
 
-    const result = matchesKeywords({ content: node.content, keywords });
-    if (!result.matches) continue;
+    const result = findMatchingBody({ node, keywords });
+    if (result === undefined) continue;
 
     matches.push({
       chatId,
       messageId: node.id,
-      excerpt: getExcerpt({ content: node.content, lowerContent: result.lowerContent, keywords }),
+      excerpt: getExcerpt({ content: result.content, lowerContent: result.lowerContent, keywords }),
       role: node.role,
       targetLeafId: targetLeafId ?? node.id,
-      timestamp: node.timestamp,
+      timestamp: node.createdAt,
       isCurrentThread: true,
     });
   }

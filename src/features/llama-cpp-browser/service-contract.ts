@@ -1,6 +1,6 @@
 import type { ProfileCapabilities, ProfileState } from './runtime/profile-capabilities';
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
-import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult, LocalModel, RuntimeOptions } from './types';
+import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult, GenerationCallback, LocalModel, RuntimeOptions } from './types';
 
 export interface LlamaCppBrowserService {
   getProfileState(): ProfileState;
@@ -15,12 +15,20 @@ export interface LlamaCppBrowserService {
   importModel({ file, signal }: { file: File, signal: AbortSignal | undefined }): Promise<void>;
   importDirectory({ directory, signal }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined }): Promise<void>;
   removeModel({ plan, signal }: { plan: DeletionPlan, signal: AbortSignal | undefined }): Promise<DeletionResult>;
-  generate({ input, onChunk, signal }: {
-    onResult?: ({ result, signal }: { result: GenerationResult, signal: AbortSignal }) => Promise<Omit<GenerateInput, 'options'> | undefined>,
-    input: Omit<GenerateInput, 'options'>, onChunk: ({ chunk }: { chunk: string }) => void, signal: AbortSignal | undefined,
+  generate({ input, onEvent, signal }: {
+    input: Omit<GenerateInput, 'options'>, onEvent: GenerationCallback, signal: AbortSignal | undefined,
+  }): Promise<GenerationResult>;
+  runGenerationOperation({ signal, operation }: {
+    signal: AbortSignal | undefined,
+    operation: ({ scope }: { scope: LlamaCppGenerationScope }) => Promise<void>,
   }): Promise<void>;
   cancel(): void;
   release(): void;
+}
+/** A single lane owner, including tool waits outside the native runtime. */
+export interface LlamaCppGenerationScope {
+  readonly signal: AbortSignal;
+  generate: LlamaCppBrowserService['generate'];
 }
 export const TEST_ONLY = {
 };

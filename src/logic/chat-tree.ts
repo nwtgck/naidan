@@ -1,9 +1,8 @@
 import { generateId } from '@/01-models/id';
 import { toRaw } from 'vue';
-import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat, ChatContent } from '@/01-models/types';
-import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import type { MessageNode, SidebarItem, Chat, ChatContent } from '@/01-models/types';
 import type { MessageId } from '@/01-models/ids';
-import { splitAssistantThinking } from './assistant-thinking';
+import { copyMessageWithoutReplies } from '@/logic/copy-message-node';
 
 export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -108,16 +107,6 @@ export function getAllMessages({ chat }: { chat: Chat | Readonly<Chat> }): Messa
   return all;
 }
 
-export function processThinking({ node }: { node: MessageNode }) {
-  if (node.content === undefined) return;
-  const { content, thinking, ...unhandled } = splitAssistantThinking({ content: node.content });
-  unhandled satisfies Record<PropertyKey, never>;
-  if (thinking !== undefined) {
-    node.thinking = node.thinking ? `${node.thinking}\n\n---\n\n${thinking}` : thinking;
-    node.content = content;
-  }
-}
-
 function findRestorationIndex({ items, prevId, nextId }: { items: SidebarItem[], prevId: string | null, nextId: string | null }): number {
   if (items.length === 0) return 0;
   const prevIdx = prevId ? items.findIndex(item => item.id === prevId) : -1;
@@ -127,70 +116,15 @@ function findRestorationIndex({ items, prevId, nextId }: { items: SidebarItem[],
   return 0;
 }
 
-export interface HistoryItem {
-  role: 'user' | 'assistant' | 'system',
-  content: string,
-  modelId?: string,
-  thinking?: string,
-  attachments?: import('@/01-models/types').Attachment[],
-}
-
-export function createBranchFromMessages({ messages }: { messages: HistoryItem[] }): MessageNode[] {
-  const nodes: MessageNode[] = messages.map(m => {
-    const common = {
-      id: generateId<MessageId>(),
-      content: m.content,
-      timestamp: Date.now(),
-      replies: { items: [] },
-    };
-    switch (m.role) {
-    case 'user':
-      return {
-        ...common,
-        role: 'user',
-        attachments: m.attachments || [],
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: EMPTY_LM_PARAMETERS,
-        toolCalls: undefined,
-        results: undefined,
-      } as UserMessageNode;
-    case 'assistant':
-      return {
-        ...common,
-        role: 'assistant',
-        attachments: undefined,
-        thinking: m.thinking,
-        error: undefined,
-        modelId: m.modelId,
-        lmParameters: EMPTY_LM_PARAMETERS,
-        toolCalls: undefined,
-        results: undefined,
-      } as AssistantMessageNode;
-    case 'system':
-      return {
-        ...common,
-        role: 'system',
-        attachments: undefined,
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: undefined,
-        toolCalls: undefined,
-        results: undefined,
-      } as SystemMessageNode;
-    default: {
-      const _ex: never = m.role;
-      throw new Error(`Unhandled role: ${_ex}`);
-    }
-    }
-  });
-
-  for (let i = 0; i < nodes.length - 1; i++) {
-    nodes[i]!.replies.items.push(nodes[i + 1]!);
+/** Create an independent chain without flattening parts or importing other branches. */
+export function createBranchFromMessages({ messages }: { messages: readonly MessageNode[] }): MessageNode[] {
+  const nodes = messages.map(message => ({
+    ...copyMessageWithoutReplies({ message }),
+    id: generateId<MessageId>(),
+  }));
+  for (let index = 0; index < nodes.length - 1; index++) {
+    nodes[index]!.replies.items.push(nodes[index + 1]!);
   }
-
   return nodes;
 }
 

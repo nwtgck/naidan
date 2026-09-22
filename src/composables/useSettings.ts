@@ -87,6 +87,9 @@ interface UseSettingsApi {
   fetchModels: ({ overrides }: { overrides?: Endpoint }) => Promise<string[]>,
   updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>,
   updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>,
+  updateGlobalModelAndEndpoint: ({ endpoint, modelId, expected }: {
+    endpoint: Endpoint, modelId: string, expected: { endpoint: Endpoint, modelId: string | undefined },
+  }) => Promise<'applied' | 'changed'>,
   updateGlobalEndpoint: ({ endpoint }: { endpoint: Endpoint }) => Promise<void>,
   updateSystemPrompt: ({ prompt }: { prompt: string }) => Promise<void>,
   updateStorageType: ({ type }: { type: StorageType }) => Promise<void>,
@@ -412,7 +415,7 @@ export function useSettings(): UseSettingsApi {
         fakeLmDebugModeStatus: _settings.value.experimental?.fakeLm ?? 'disabled',
       });
 
-      const models = await provider.listModels({});
+      const models = await provider.listModels({ signal: undefined });
       if (requestId === latestModelFetchRequestId) {
         availableModels.value = models;
       }
@@ -522,6 +525,39 @@ export function useSettings(): UseSettingsApi {
   async function updateGlobalModel({ modelId }: { modelId: string }) {
     _settings.value.defaultModelId = modelId;
     await storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), defaultModelId: modelId }) });
+  }
+
+  /** Commit both default fields together, without optimistic half-updates. */
+  async function updateGlobalModelAndEndpoint({ endpoint, modelId, expected }: {
+    endpoint: Endpoint, modelId: string, expected: { endpoint: Endpoint, modelId: string | undefined },
+  }): Promise<'applied' | 'changed'> {
+    const matchesExpected = ({ current }: { current: Settings }): boolean => (
+      current.defaultModelId === expected.modelId && areEndpointsEqual({ left: current.endpoint, right: expected.endpoint })
+    );
+    if (!matchesExpected({ current: _settings.value })) return 'changed';
+    const nextEndpoint = cloneEndpoint({ endpoint });
+    let applied = false;
+    let observedDefault: { endpoint: Endpoint, modelId: string | undefined } | undefined;
+    await storageService.updateSettings({ updater: ({ current }) => {
+      const base = current ?? _settings.value;
+      // A dialog may be open while another settings action or browser tab saves.
+      if (!matchesExpected({ current: base })) {
+        observedDefault = { endpoint: cloneEndpoint({ endpoint: base.endpoint }), modelId: base.defaultModelId };
+        return base;
+      }
+      applied = true;
+      return { ...base, endpoint: nextEndpoint, defaultModelId: modelId };
+    } });
+    if (!applied) {
+      // Show the newly observed default before requesting another confirmation.
+      if (observedDefault) _settings.value = { ..._settings.value, endpoint: observedDefault.endpoint, defaultModelId: observedDefault.modelId };
+      return 'changed';
+    }
+    _settings.value = { ..._settings.value, endpoint: nextEndpoint, defaultModelId: modelId };
+    // Selection is already committed. A model-list failure must not report it
+    // as a failed settings write. The local-model caller only lists local files.
+    void fetchModels({}).catch(() => {});
+    return 'applied';
   }
 
   async function updateGlobalEndpoint({ endpoint }: { endpoint: Endpoint }) {
@@ -705,6 +741,7 @@ export function useSettings(): UseSettingsApi {
     updateProviderProfiles,
     updateGlobalModel,
     updateGlobalEndpoint,
+    updateGlobalModelAndEndpoint,
     updateSystemPrompt,
     updateStorageType,
     setIsOnboardingDismissed,

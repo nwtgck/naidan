@@ -16,7 +16,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   });
   const close = vi.fn(); const free = vi.fn();
   const core = { pointerBytes, api, module: { addFunction, removeFunction },
-    fieldLayout: ({ field }: { field: string }) => ({ offset: 0n, size: field === 'ne' ? 32 : 4, kind: field === 'ne' ? 'array' : 'signed' }),
+    fieldLayout: ({ field }: { field: string }) => ({ offset: 0n, size: field === 'ne' ? 32 : field === 'src' ? pointerBytes * 10 : 4, kind: field === 'ne' || field === 'src' ? 'array' : 'signed' }),
     enumValues: () => [{ name: 'GGML_OP_ADD', value: 2 }],
     allocRecord: () => ++allocation, utf8: () => ++allocation, free,
     setField: ({ field, value }: { field: string, value: number | bigint }) => fields.set(field, value),

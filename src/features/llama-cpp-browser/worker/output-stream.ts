@@ -3,6 +3,7 @@ export function createOutputStream({ stops, harmony, initialChannel }: {
   stops: string[], harmony: boolean, initialChannel: 'analysis' | 'final',
 }) {
   let pendingStop = ''; let pendingMarkup = ''; let header: string | undefined;
+  let matchedStop: string | undefined;
   let channel = initialChannel; let thinkingOpen = false; let stopped = false;
   function emitText({ text }: { text: string }): string {
     if (!text) return '';
@@ -60,7 +61,9 @@ export function createOutputStream({ stops, harmony, initialChannel }: {
       for (const stop of stops) {
         if (!stop) continue;
         const index = pendingStop.indexOf(stop);
-        if (index >= 0 && (stopIndex < 0 || index < stopIndex)) stopIndex = index;
+        if (index >= 0 && (stopIndex < 0 || index < stopIndex)) {
+          stopIndex = index; matchedStop = stop;
+        }
       }
       if (stopIndex >= 0) {
         const output = format({ text: pendingStop.slice(0, stopIndex), final: false });
@@ -77,6 +80,9 @@ export function createOutputStream({ stops, harmony, initialChannel }: {
       const safe = pendingStop.slice(0, pendingStop.length - held);
       pendingStop = held ? pendingStop.slice(-held) : '';
       return { text: format({ text: safe, final: false }), done: false };
+    },
+    getMatchedStop(): string | undefined {
+      return matchedStop;
     },
     finish(): string {
       let out = format({ text: pendingStop, final: true }); pendingStop = '';

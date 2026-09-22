@@ -72,6 +72,24 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
+  it('filters imported names without changing the underlying list and shares default-model confirmation', async () => {
+    const second = { ...storedModel, id: 'user/second', name: 'Qwen-Q8_0.gguf' };
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel, second]);
+    const applyDefaultModel = vi.fn(async () => 'applied' as const);
+    const wrapper = mount(LlamaCppBrowserManager, { props: { defaultModel: { endpoint: { type: 'ollama', url: 'http://localhost:11434' }, modelId: 'old' }, applyDefaultModel }, global: { stubs: { Teleport: true } } }); wrappers.push(wrapper);
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-imported-model-search"]').setValue('QWEN');
+    expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('Qwen-Q8_0.gguf');
+    expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).not.toContain('local.gguf');
+    await wrapper.get('[data-testid="llama-cpp-browser-model-list"] [data-testid="llama-default-model-action"]').trigger('click');
+    expect(applyDefaultModel).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="llama-default-confirm"]').trigger('click'); await flushPromises();
+    expect(applyDefaultModel).toHaveBeenCalledWith(expect.objectContaining({ model: second }));
+    await wrapper.get('[data-testid="llama-imported-model-search"]').setValue('no match');
+    expect(wrapper.find('[data-testid="llama-imported-model-no-results"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="llama-imported-model-clear-search"]').trigger('click');
+    expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').findAll('li')).toHaveLength(2);
+  });
   it('shows the resolved automatic profile and disables unavailable choices without disabling model storage', async () => {
     vi.mocked(llamaCppBrowserService.probeProfiles).mockImplementation(async () => {
       const capabilities: ProfileCapabilities = { recommended: 'webgpu-wasm32-jspi', profiles: [

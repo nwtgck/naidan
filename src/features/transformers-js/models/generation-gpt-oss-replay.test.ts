@@ -36,6 +36,7 @@ describe('GPT-OSS Production generation replay', () => {
     const chunks: string[] = [];
     const strategy = selectGenerationStrategy({ modelType: 'gpt_oss', activeModelId: modelId });
     await strategy.generate({
+      onGenerationEvent: undefined,
       // Only native model execution is instrumented; tokenizer, streamer,
       // strategy selection and output interpretation are the actual code.
       model: { config: { model_type: 'gpt_oss' }, generate } as unknown as PreTrainedModel,

@@ -56,7 +56,7 @@ function createChat(): Chat {
 
 function createStore() {
   return createChatDataStore({
-    applyVolatileAssistantErrorsToChat: vi.fn(),
+    pruneVolatileAssistantErrorsForChat: vi.fn(),
     hasActiveGeneration: vi.fn().mockReturnValue(false),
     isTaskRunning: vi.fn().mockReturnValue(false),
     onExternalGenerationStarted: vi.fn(),

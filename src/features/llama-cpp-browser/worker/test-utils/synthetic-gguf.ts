@@ -1,5 +1,14 @@
 /** A deterministic, untrained one-layer F32 fixture. Never used by application code. */
 export function createSyntheticGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
+  return createFixtureGguf({ chatTemplate, weights: 'constant-output' });
+}
+
+/** Uniform causal attention makes logits depend on the complete decoded prefix. */
+export function createInputSensitiveGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
+  return createFixtureGguf({ chatTemplate, weights: 'input-sensitive' });
+}
+
+function createFixtureGguf({ chatTemplate, weights }: { chatTemplate: string, weights: 'constant-output' | 'input-sensitive' }): Uint8Array {
   function join({ parts }: { parts: Uint8Array[] }): Uint8Array {
     const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
     let offset = 0; for (const part of parts) {
@@ -50,12 +59,33 @@ export function createSyntheticGguf({ chatTemplate }: { chatTemplate: string }):
     if (name.includes('norm.weight')) {
       const view = new DataView(data.buffer); for (let i = 0; i < data.length; i += 4) view.setFloat32(i, 1, true);
     }
-    // Keep inference deterministic while emitting an ordinary byte token ('A').
+    // Keep the original fixture's constant ordinary byte token ('A').
     if (name === 'token_embd.weight') {
       const view = new DataView(data.buffer);
       for (let offset = 0; offset < data.length; offset += 32 * 4) view.setFloat32(offset, 1, true);
     }
     if (name === 'output.weight') new DataView(data.buffer).setFloat32((3 + 65) * 32 * 4, 1, true);
+    switch (weights) {
+    case 'constant-output': break;
+    case 'input-sensitive': {
+      // Odd/even bytes have opposite embeddings. Uniform causal attention
+      // carries earlier values into the final-token logits for A and B.
+      const view = new DataView(data.buffer);
+      if (name === 'token_embd.weight') {
+        for (let token = 3; token < vocab.length; token++) view.setFloat32((token * 32 + 1) * 4, (token - 3) % 2 === 1 ? 0.5 : -0.5, true);
+      }
+      if (name === 'output.weight') {
+        view.setFloat32(((3 + 65) * 32 + 1) * 4, 1, true);
+        view.setFloat32((3 + 66) * 32 * 4, 1, true);
+        view.setFloat32(((3 + 66) * 32 + 1) * 4, -1, true);
+      }
+      if (name === 'blk.0.attn_v.weight' || name === 'blk.0.attn_output.weight') {
+        for (let i = 0; i < 32; i++) view.setFloat32((i * 32 + i) * 4, 1, true);
+      }
+      break;
+    }
+    default: { const exhaustive: never = weights; throw new Error(`Unknown fixture weights: ${exhaustive}`); }
+    }
     payload.push(data); offset += data.length;
   }
   const header = join({ parts: [new TextEncoder().encode('GGUF'), u32({ value: 3 }), u64({ value: shapes.length }), u64({ value: metadata.length }), ...metadata, ...descriptors] });

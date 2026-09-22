@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { ref, nextTick, toRaw } from 'vue';
 import { idToRaw } from '@/01-models/ids';
@@ -53,7 +55,7 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-const mockLmChat = vi.fn();
+const mockLmChat = vi.fn<LmProvider['chat']>();
 const mockListModels = vi.fn();
 
 vi.mock('../features/lm/openai', () => ({
@@ -75,7 +77,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   beforeEach(() => {
     vi.clearAllMocks();
     chats.clear();
-    mockLmChat.mockReset().mockResolvedValue(undefined);
+    mockLmChat.mockReset().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => ({ type: 'finished', next: 'user' }),
+    }));
     mockListModels.mockReset().mockResolvedValue(['gpt-4']);
   });
 
@@ -106,7 +111,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 2. Start sendMessage({ content: which also awaits fetchAvailableModels })
     let resolveChat: () => void;
     const chatPromise = new Promise<void>(r => resolveChat = r);
-    mockLmChat.mockReturnValue(chatPromise);
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => {
+        await chatPromise;
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const sendTask = sendMessage({ content: 'Hello' });
 
@@ -116,16 +127,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Give sendMessage time to reach generateResponse
     await vi.waitUntil(() => activeGenerations.has(chatId!), { timeout: 1000 });
+    expect(liveChatRegistry.has(chatId!)).toBe(true);
 
     // 4. Resolve generation
     resolveChat!();
 
-    // Title gen also uses mockLmChat, make it resolve immediately
-    mockLmChat.mockResolvedValue(undefined);
-
     await sendTask;
 
     // Wait for everything to settle
+    await vi.waitUntil(() => !chatStore.isTaskRunning({ chatId: chatId! }));
     await flushPromises();
     await nextTick();
 

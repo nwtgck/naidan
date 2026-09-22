@@ -28,6 +28,9 @@ vi.mock('@/features/transformers-js/worker/client', () => ({
     generateText: async () => {
       throw new Error('Generation is outside revision fixture scope');
     },
+    generateMessage: async () => {
+      throw new Error('Generation is outside revision fixture scope');
+    },
   }),
 }));
 vi.mock('@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted', () => ({

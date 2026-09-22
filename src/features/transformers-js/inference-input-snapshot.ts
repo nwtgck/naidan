@@ -1,19 +1,26 @@
-import type { ChatMessage, LmParameters, MultimodalContent, ToolCall } from '@/01-models/types';
+import type { LmParameters, MultimodalContent, ToolCall } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import { exactObject } from '@/utils/exact-object';
 import type { WorkerToolDefinition, WorkerToolJsonObject } from './types';
 
 export function cloneLmParameters({ params }: { params: LmParameters | undefined }): LmParameters | undefined {
   if (!params) return undefined;
+  const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = params;
+  unhandled satisfies Record<PropertyKey, never>;
+  if (reasoning !== undefined) {
+    const { effort: _effort, ...unhandledReasoning } = reasoning;
+    unhandledReasoning satisfies Record<PropertyKey, never>;
+  }
 
   return {
-    temperature: params.temperature,
-    topP: params.topP,
-    maxCompletionTokens: params.maxCompletionTokens,
-    presencePenalty: params.presencePenalty,
-    frequencyPenalty: params.frequencyPenalty,
-    stop: params.stop ? [...params.stop] : undefined,
+    temperature,
+    topP,
+    maxCompletionTokens,
+    presencePenalty,
+    frequencyPenalty,
+    stop: stop ? [...stop] : undefined,
     reasoning: {
-      effort: params.reasoning?.effort,
+      effort: reasoning?.effort,
     },
   };
 }
@@ -21,24 +28,23 @@ export function cloneLmParameters({ params }: { params: LmParameters | undefined
 function cloneToolCalls({ toolCalls }: { toolCalls: ToolCall[] | undefined }): ToolCall[] | undefined {
   if (!toolCalls) return undefined;
 
-  return toolCalls.map(toolCall => ({
-    id: toolCall.id,
-    type: 'function',
-    function: {
-      name: toolCall.function.name,
-      arguments: toolCall.function.arguments,
-    },
-  }));
+  return toolCalls.map(toolCall => {
+    const { id, type, function: fn, ...unhandled } = toolCall;
+    unhandled satisfies Record<PropertyKey, never>;
+    const { name, arguments: args, ...unhandledFunction } = fn;
+    unhandledFunction satisfies Record<PropertyKey, never>;
+    return exactObject<ToolCall>()({ id, type, function: exactObject<ToolCall['function']>()({ name, arguments: args }) });
+  });
 }
 
-export function cloneChatMessages({ messages }: { messages: ChatMessage[] }): ChatMessage[] {
+export function cloneChatMessages({ messages }: { messages: readonly InferenceMessage[] }): InferenceMessage[] {
   return messages.map(message => {
-    const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+    const { role, content, tool_calls, tool_call_id, reasoning, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
     // This is a detached native-template input, not a lossless JavaScript
     // object clone. Undefined optional tool fields mean absence; creating
     // their keys can select a template's tool-call branch. Keep empty lists.
-    return exactObject<ChatMessage>()({
+    return exactObject<InferenceMessage>()({
       role,
       content: Array.isArray(content)
         ? content.map((part): MultimodalContent => {
@@ -66,6 +72,11 @@ export function cloneChatMessages({ messages }: { messages: ChatMessage[] }): Ch
         : content,
       ...(tool_calls === undefined ? {} : { tool_calls: cloneToolCalls({ toolCalls: tool_calls }) }),
       ...(tool_call_id === undefined ? {} : { tool_call_id }),
+      ...(reasoning === undefined ? {} : { reasoning: (() => {
+        const { text, completeness, ...unhandledReasoning } = reasoning;
+        unhandledReasoning satisfies Record<PropertyKey, never>;
+        return { text, completeness };
+      })() }),
     });
   });
 }

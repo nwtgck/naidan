@@ -6,14 +6,14 @@ import {
   normalizeQwen3_5ProcessorInputs,
 } from './qwen3_5';
 import { toToolCallId } from '@/01-models/ids';
-import type { ChatMessage } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 
 // Historical comparisons only: neither helper is part of current Production.
 // Real-path tests separately require one full native render and no retry.
 function historicalRetryDecision({ error, isQwen3_5ToolContinuation }: { error: unknown; isQwen3_5ToolContinuation: boolean }): boolean {
   return isQwen3_5ToolContinuation && error instanceof Error && error.message.includes("Cannot read properties of undefined (reading 'inputNames')");
 }
-function historicalToolContinuation({ promptHistory, messages }: { promptHistory: string; messages: ChatMessage[] }): string {
+function historicalToolContinuation({ promptHistory, messages }: { promptHistory: string; messages: InferenceMessage[] }): string {
   const history = promptHistory.endsWith('\n') ? promptHistory.slice(0, -1) : promptHistory;
   const results = messages.filter(message => message.role === 'tool').map(message => `<tool_response>\n${typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}\n</tool_response>`).join('\n');
   return `${history}\n${results}\n<|im_start|>assistant\n<think>\n`;

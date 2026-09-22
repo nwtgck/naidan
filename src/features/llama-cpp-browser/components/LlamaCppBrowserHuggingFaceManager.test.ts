@@ -1,3 +1,5 @@
+import { getDownloadQueue, TEST_ONLY as queueTest } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { DownloadConflictError } from '@/features/llama-cpp-browser/hugging-face/types';
@@ -23,10 +25,13 @@ function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserHuggingFaceManager, { props: { disabled: false } }); wrappers.push(wrapper); return wrapper;
 }
 beforeEach(async () => {
+  queueTest.reset(); metadataTest.reset();
   vi.resetAllMocks(); vi.mocked(installedSelection).mockResolvedValue(undefined); confirm.mockResolvedValue(true); vi.mocked(prepareModelRemoval).mockResolvedValue({ plan, sharedPlan: undefined, affectedVariants: 0 }); vi.mocked(cancelDownload).mockResolvedValue('deleted'); vi.mocked(listPendingDownloads).mockResolvedValue([]); await ensureAllStringsForTest({ locale: 'en' });
 });
-afterEach(() => {
+afterEach(async () => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  for (const job of getDownloadQueue().jobs.value) getDownloadQueue().cancel({ id: job.id });
+  await flushPromises();
   vi.useRealTimers();
 });
 describe('Hugging Face download controls', () => {
@@ -119,8 +124,8 @@ describe('Hugging Face download controls', () => {
     await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/repo'); await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click'); await flushPromises();
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toBe('model-Q4_K_M.gguf');
-    expect(wrapper.get('[data-testid="llama-hf-model"]').text()).toContain('model-Q4_K_M · 0.1 KiB');
-    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('model-Q4_K_M');
+    expect(wrapper.get('[data-testid="llama-hf-model"]').text()).toContain('Q4_K_M · model · 0.1 KiB');
+    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('Q4_K_M · model');
     expect(wrapper.get('[data-testid="llama-hf-multimodal"]').attributes('aria-checked')).toBe('true');
     expect(wrapper.get('[data-testid="llama-hf-details"]').text()).toContain('mmproj-F16.gguf');
     expect(wrapper.get('[data-testid="llama-hf-projector"]').text()).toContain('F16 · 0.1 KiB');
@@ -138,7 +143,7 @@ describe('Hugging Face download controls', () => {
     await wrapper.get('[data-testid="llama-hf-model"]').setValue('model-Q8_0.gguf'); await wrapper.get('[data-testid="llama-hf-multimodal"]').trigger('click');
     await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click'); await flushPromises();
     expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toBe('model-Q8_0.gguf');
-    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('model-Q8_0');
+    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('Q8_0 · model');
     expect(wrapper.get('[data-testid="llama-hf-multimodal"]').attributes('aria-checked')).toBe('false');
     await wrapper.get('[data-testid="llama-hf-download"]').trigger('click'); await flushPromises();
     expect(vi.mocked(downloadRepository).mock.calls[0]?.[0].selection.files).toEqual([{ path: 'model-Q8_0.gguf', size: 128 }]);
@@ -175,7 +180,7 @@ describe('Hugging Face download controls', () => {
     vi.mocked(discoverRepository).mockResolvedValue({ repository: selection.repository, revision: selection.revision, models, projectors: [] });
     const wrapper = render(); await flushPromises();
     await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/repo'); await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click'); await flushPromises();
-    expect(wrapper.get('[data-testid="llama-hf-model"]').text()).toContain('base-Q4_K_M · 0.1 KiB');
+    expect(wrapper.get('[data-testid="llama-hf-model"]').text()).toContain('Q4_K_M · base · 0.1 KiB');
     expect(wrapper.find('[data-testid="llama-hf-selection-required"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.find('[data-testid="llama-hf-multimodal"]').exists()).toBe(false);
@@ -235,7 +240,7 @@ describe('Hugging Face download controls', () => {
     expect(vi.getTimerCount()).toBe(1);
     switch (ending) {
     case 'complete': gate.resolve(); break;
-    case 'pause': await wrapper.get('[data-testid="llama-hf-pause"]').trigger('click'); break;
+    case 'pause': await wrapper.get('[data-testid="llama-download-pause"]').trigger('click'); break;
     case 'unmount': wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1); break;
     default: { const exhaustive: never = ending; throw new Error(String(exhaustive)); }
     }
@@ -249,9 +254,9 @@ describe('Hugging Face download controls', () => {
     const wrapper = render(); await flushPromises();
     expect(wrapper.get('[data-testid="llama-hf-pending"]').text()).toContain('hf.co/owner/repo');
     await wrapper.get('[data-testid="llama-hf-resume"]').trigger('click'); await flushPromises();
-    expect(wrapper.get('[data-testid="llama-hf-active-progress"]').text()).toContain('50%');
+    expect(wrapper.get('[data-testid="llama-download-progress"]').text()).toContain('50%');
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('50');
-    await wrapper.get('[data-testid="llama-hf-pause"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="llama-download-pause"]').trigger('click'); await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     await wrapper.get('[data-testid="llama-hf-delete"]').trigger('click'); await flushPromises();
     expect(wrapper.get('[data-testid="llama-delete-details"]').text()).toContain('model-Q4_K_M.gguf');

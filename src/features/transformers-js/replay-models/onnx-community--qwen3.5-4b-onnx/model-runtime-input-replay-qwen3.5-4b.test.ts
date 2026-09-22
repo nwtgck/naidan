@@ -1,8 +1,9 @@
+import { buildQwen3_5Prompt } from '@/features/transformers-js/models/qwen3_5';
 import parsedMetadata from './model-parsed-metadata.evidence.json';
 import { assertParsedMetadataModelRequest, cleanupParsedMetadataRequests, parsedMetadataFixtureSchema } from '@/features/transformers-js/replay-models/support/model-parsed-metadata-requests';
 // @vitest-environment node
-import { afterEach, describe, it } from 'vitest';
-import { assertRawModelSelection, assertRawTokenizer, installRawReplay } from '@/features/transformers-js/replay-models/support/model-runtime-input-harness';
+import { afterEach, describe, expect, it } from 'vitest';
+import { archiveFor, start, assertRawModelSelection, assertRawTokenizer, installRawReplay } from '@/features/transformers-js/replay-models/support/model-runtime-input-harness';
 
 const modelId = 'onnx-community/Qwen3.5-4B-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
@@ -43,5 +44,57 @@ describe('parsed metadata candidate requests', () => {
       expected: { modelId: 'onnx-community/Qwen3.5-4B-ONNX', chunks: { q4f16: { decoder_model_merged: 2, embed_tokens: 1, vision_encoder: 1 }, q4: { decoder_model_merged: 2, embed_tokens: 1, vision_encoder: 1 } }, registryExtra: [], missing: [] },
       dtype, expectedAutoClass: 'AutoModelForImageTextToText',
     });
+  });
+});
+
+// These controls describe the pinned template, not an inference recording.
+describe('Qwen structured reasoning in native model inputs', () => {
+  it('delegates thinking formatting to the template without losing literal body tags', async () => {
+    const archive = await archiveFor({ modelId });
+    const { harness } = await start({ archive, bodyPaths: [] });
+    const processor = await harness.runtime.AutoProcessor.from_pretrained(modelId, {
+      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+    });
+    const renderer = {
+      // Mirrors the external template method, whose message type is wider than this replay fixture.
+      apply_chat_template: (messages: Parameters<Parameters<typeof buildQwen3_5Prompt>[0]['tokenizer']['apply_chat_template']>[0], options: { tokenize: false; add_generation_prompt: true }) => processor.apply_chat_template(messages.map(message => {
+        if (typeof message.content !== 'string') throw new Error('Expected a string-only native fixture');
+        return { ...message, content: message.content };
+      }), options),
+    };
+    const messages = [
+      { role: 'user', content: 'Question.' },
+      { role: 'assistant', content: '<think>literal</think>Answer', reasoning: { text: '  Reason\n', completeness: 'complete' as const } },
+    ];
+    const prompt = buildQwen3_5Prompt({ messages, tools: undefined, reasoningMode: 'default', tokenizer: renderer });
+    const expected = `<|im_start|>user
+Question.<|im_end|>
+<|im_start|>assistant
+<think>
+Reason
+</think>
+
+<think>literal</think>Answer<|im_end|>
+<|im_start|>assistant
+<think>
+`;
+    expect(prompt).toBe(expected);
+    expect(processor.tokenizer.encode(prompt, { add_special_tokens: false }))
+      .toEqual(processor.tokenizer.encode(expected, { add_special_tokens: false }));
+    const followUp = buildQwen3_5Prompt({ messages: [...messages, { role: 'user', content: 'Next.' }], tools: undefined, reasoningMode: 'default', tokenizer: renderer });
+    const expectedFollowUp = `<|im_start|>user
+Question.<|im_end|>
+<|im_start|>assistant
+<think>literal</think>Answer<|im_end|>
+<|im_start|>user
+Next.<|im_end|>
+<|im_start|>assistant
+<think>
+`;
+    expect(followUp).toBe(expectedFollowUp);
+    expect(messages[1]?.reasoning?.text).toBe('  Reason\n');
+    expect(harness.sessions).not.toHaveBeenCalled();
+    expect(harness.bodyReads).toEqual([]);
+    expect(harness.transport).not.toHaveBeenCalled();
   });
 });

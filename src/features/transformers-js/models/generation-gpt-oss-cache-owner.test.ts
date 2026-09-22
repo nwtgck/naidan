@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { toToolCallId } from '@/01-models/ids';
+import { toMessageId, toToolCallId } from '@/01-models/ids';
 import type { Tool } from '@/01-models/tool';
 import { createProviderReplayTestRuntime } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
+import { runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 const revision = '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7';
@@ -57,12 +58,23 @@ describe('GPT-OSS public conversation cache ownership', () => {
       },
     });
     const request = {
-      model: modelId, tools: [tool],
+      model: modelId, debug: undefined, readBinaryObject: undefined,
       parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-      onChunk: vi.fn(), onToolCall: vi.fn(), onToolEvent: vi.fn(), onToolResult: vi.fn(),
     };
     try {
-      await harness.provider.chat({ ...request, messages: [{ role: 'user', content: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.' }] });
+      const first = await runProviderReplayTurn({
+        provider: harness.provider,
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
+        request: {
+          ...request, messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
+            { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
+          ] }],
+        },
+      });
+      expect(first.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+      expect(first.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
       expect(seenPast).toHaveLength(2);
       expect(seenPast[0]).toBeNull();
       expect(seenPast[1]).toBe(failCacheRendering ? null : firstCache);
@@ -71,14 +83,39 @@ describe('GPT-OSS public conversation cache ownership', () => {
         expect(secondInput!.length).toBeGreaterThan(firstSequence!.length);
       }
       const id = toToolCallId({ raw: 'synthetic-separate-history' });
-      await harness.provider.chat({ ...request, messages: [
-        { role: 'user', content: 'Use the weather tool for Tokyo.' },
-        { role: 'assistant', content: '', tool_calls: [{ id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }] },
-        { role: 'tool', tool_call_id: id, content: '{"city":"Tokyo","condition":"sunny"}' },
-      ] });
+      const separate = await runProviderReplayTurn({
+        provider: harness.provider,
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
+        request: {
+          ...request, messages: [
+            { id: toMessageId({ raw: 'separate-user' }), role: 'user', parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'separate-assistant' }), role: 'assistant', parts: [
+              { type: 'text', text: '', completeness: 'complete' },
+              { type: 'tool_call', toolCall: { id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+            ] },
+            { id: toMessageId({ raw: 'separate-tool' }), role: 'tool', parts: [{ type: 'tool_result', result: {
+              toolCallId: id, status: 'success', content: { type: 'text', text: '{"city":"Tokyo","condition":"sunny"}' },
+            } }] },
+          ],
+        },
+      });
+      expect(separate.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(seenPast).toHaveLength(3);
       expect(seenPast[2], 'Another public chat must not inherit the previous conversation cache').toBeNull();
-      await harness.provider.chat({ ...request, messages: [{ role: 'user', content: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.' }] });
+      const repeated = await runProviderReplayTurn({
+        provider: harness.provider,
+        tools: [tool],
+        abortController: new AbortController(),
+        onChange: undefined,
+        request: {
+          ...request, messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
+            { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
+          ] }],
+        },
+      });
+      expect(repeated.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(seenPast).toHaveLength(4);
       expect(seenPast[3], 'Even identical public request text starts a new operation').toBeNull();
       expect(harness.observations.forbiddenTransport).toEqual([]);

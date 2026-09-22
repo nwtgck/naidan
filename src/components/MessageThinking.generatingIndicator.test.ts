@@ -23,10 +23,12 @@ const withInSequence = { global: { provide: { inSequence: true } } };
 const createMessage = (content: string, thinking?: string): MessageNode => ({
   id: toMessageId({ raw: 'test-id' }),
   role: 'assistant',
-  content,
-  thinking,
-  timestamp: Date.now(),
   replies: { items: [] },
+  parts: [...(thinking !== undefined ? [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+  createdAt: Date.now(),
+  modelId: undefined,
+  lmParameters: undefined,
+  interruption: undefined,
 });
 
 describe('MessageThinking — trailingInline (GeneratingIndicator integration)', () => {
@@ -35,7 +37,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
       // Unclosed <think> tag → collapsed-active mode
       const message = createMessage('<think>Streaming thought...');
       const wrapper = mount(MessageThinking, {
-        props: { message, trailingInline: TrailingStub },
+        props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')), trailingInline: TrailingStub },
       });
 
       expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(true);
@@ -44,7 +46,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
 
     it('does not render trailingInline when prop is omitted', () => {
       const message = createMessage('<think>Streaming thought...');
-      const wrapper = mount(MessageThinking, { props: { message } });
+      const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) } });
 
       expect(wrapper.find('[data-testid="trailing-stub"]').exists()).toBe(false);
     });
@@ -52,7 +54,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
     it('trailing stub is inside the content container, not outside it', () => {
       const message = createMessage('<think>Streaming thought...');
       const wrapper = mount(MessageThinking, {
-        props: { message, trailingInline: TrailingStub },
+        props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')), trailingInline: TrailingStub },
       });
 
       const content = wrapper.find('[data-testid="thinking-content"]');
@@ -65,7 +67,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
       // closed <think> tag → collapsed-finished, then toggle to expanded
       const message = createMessage('Final answer', 'Completed thought');
       const wrapper = mount(MessageThinking, {
-        props: { message, trailingInline: TrailingStub },
+        props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')), trailingInline: TrailingStub },
       });
 
       // Initially collapsed-finished, no content container
@@ -81,7 +83,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
     it('trailing stub is inside the content container when expanded', async () => {
       const message = createMessage('Final answer', 'Completed thought');
       const wrapper = mount(MessageThinking, {
-        props: { message, trailingInline: TrailingStub },
+        props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')), trailingInline: TrailingStub },
       });
 
       await wrapper.find('[data-testid="toggle-thinking"]').trigger('click');
@@ -95,7 +97,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
     it('renders trailingInline AFTER the pill wrapper when collapsed-finished', () => {
       const message = createMessage('Final answer', 'Completed thought');
       const wrapper = mount(MessageThinking, {
-        props: { message, trailingInline: TrailingStub },
+        props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')), trailingInline: TrailingStub },
       });
 
       // No content container (v-if false)
@@ -107,7 +109,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
     it('trailing stub is NOT inside the toggle-thinking container in collapsed-finished', () => {
       const message = createMessage('Final answer', 'Completed thought');
       const wrapper = mount(MessageThinking, {
-        props: { message, trailingInline: TrailingStub },
+        props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')), trailingInline: TrailingStub },
       });
 
       const toggle = wrapper.find('[data-testid="toggle-thinking"]');
@@ -116,7 +118,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
 
     it('does not render trailingInline when prop is omitted in collapsed-finished', () => {
       const message = createMessage('Final answer', 'Completed thought');
-      const wrapper = mount(MessageThinking, { props: { message } });
+      const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) } });
 
       expect(wrapper.find('[data-testid="trailing-stub"]').exists()).toBe(false);
     });
@@ -124,7 +126,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
     it('renders trailingInline after pill in collapsed-finished when inSequence', () => {
       const message = createMessage('Final answer', 'Completed thought');
       const wrapper = mount(MessageThinking, {
-        props: { message, trailingInline: TrailingStub },
+        props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')), trailingInline: TrailingStub },
         ...withInSequence,
       });
 
@@ -144,7 +146,7 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
 Line two
 `);
       const wrapper = mount(MessageThinking, {
-        props: { message, trailingInline: TrailingStub },
+        props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')), trailingInline: TrailingStub },
       });
 
       const contentEl = wrapper.find('[data-testid="thinking-content"]');

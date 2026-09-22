@@ -1,3 +1,5 @@
+import type { InferenceGenerationCallback, InferenceGenerationEvent } from '@/features/transformers-js/generation-events';
+import { createInferenceEventDelivery } from './inference-event-delivery';
 /* eslint-disable no-restricted-imports -- Dedicated worker entry intentionally imports transformers.js runtime directly. */
 import { generationContinuationOwnerSchema } from './generation-continuation-owner';
 import * as bundledRuntime from '@huggingface/transformers';
@@ -16,7 +18,8 @@ import {
   type PreTrainedTokenizer,
   type ProgressCallback as TransformersProgressCallback,
 } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import type { LmParameters, ToolCall } from '@/01-models/types';
+import type { InferenceMessage } from '@/features/transformers-js/types';
 import { exposeWorkerRemote, type WorkerServerApi } from '@/utils/worker-transport';
 import { createGenerationDelivery } from './generation-delivery';
 import { splitAssistantThinking } from '@/logic/assistant-thinking';
@@ -969,7 +972,7 @@ async function runObservedProductionTurn({
   loadedModel: PreTrainedModel,
   loadedTokenizer: PreTrainedTokenizer,
   strategy: GenerationStrategy,
-  messages: ChatMessage[],
+  messages: InferenceMessage[],
   maxNewTokens: 1 | 16,
   isEncoderDecoder: boolean,
   tools: WorkerToolDefinition[] | undefined,
@@ -1020,6 +1023,7 @@ async function runObservedProductionTurn({
 
   stoppingCriteria.reset();
   await strategy.generate({
+    onGenerationEvent: undefined,
     model: loadedModel,
     tokenizer: loadedTokenizer,
     messages,
@@ -1490,7 +1494,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
             reason: `First Production turn failed: ${firstTurn.error.name}: ${firstTurn.error.message}`,
           };
         case 'passed': {
-          const assistantMessage: ChatMessage = {
+          const assistantMessage: InferenceMessage = {
             role: 'assistant',
             // Reconstruct ordinary stored chat from settled strategy output.
             // Native decoded text remains separate evidence, even when the
@@ -1945,7 +1949,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   async generateText(
-    messages: ChatMessage[],
+    messages: InferenceMessage[],
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onChunk: (chunk: string) => void,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
@@ -1954,6 +1958,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     tools?: WorkerToolDefinition[],
     capture?: GenerationCaptureRequest,
     continuationOwner?: string,
+    onGenerationEvent?: InferenceGenerationCallback,
   ): Promise<void> {
     const cacheGeneration = {};
     generationRuntimeState.generationStateOwner = cacheGeneration;
@@ -1994,17 +1999,23 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           },
         });
         const pendingToolCalls: ToolCall[] = [];
-        const delivery = createGenerationDelivery({ onFailure: () => {
+        const onDeliveryFailure = () => {
           if (generationRuntimeState.generationStateOwner === cacheGeneration) {
             invalidateGenerationState();
           }
           // This criterion belongs only to this request, even after a newer
           // request has taken ownership of shared continuation state.
           requestStoppingCriteria.interrupt();
-        } });
+        };
+        const delivery = createGenerationDelivery({ onFailure: onDeliveryFailure });
+        const eventDelivery = onGenerationEvent === undefined ? undefined
+          : createInferenceEventDelivery({ onEvent: onGenerationEvent, onFailure: onDeliveryFailure });
         let generationFailure: { error: unknown } | undefined;
         try {
           await strategy.generate({
+            onGenerationEvent: eventDelivery === undefined ? undefined : ({ event }: { event: InferenceGenerationEvent }) => {
+              eventDelivery.enqueue({ event });
+            },
             continuationOwner: validatedContinuationOwner,
             model,
             tokenizer,
@@ -2048,12 +2059,11 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         } catch (error) {
           generationFailure = { error };
         }
-        try {
-          await delivery.finish();
-        } catch (error) {
-          // Preserve an inference failure when delivery also failed while
-          // settling its already emitted output.
-          if (generationFailure === undefined) throw error;
+        // A failure in one transport must not detach a still-pending callback
+        // owned by the other path, even if a malformed strategy used both.
+        const acknowledgements = await Promise.allSettled([delivery.finish(), eventDelivery?.finish()]);
+        for (const acknowledgement of acknowledgements) {
+          if (acknowledgement.status === 'rejected' && generationFailure === undefined) throw acknowledgement.reason;
         }
         if (generationFailure !== undefined) throw generationFailure.error;
         debugLog({

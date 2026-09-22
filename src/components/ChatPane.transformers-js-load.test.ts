@@ -1,5 +1,7 @@
+import { getMessageText } from '@/01-models/message-text';
+import type { MessageNode } from '@/01-models/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
-import { toChatId } from '@/01-models/ids';
+import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
@@ -89,7 +91,7 @@ const mockCurrentChat = ref<any>({
   debugEnabled: false,
   endpoint: { type: 'transformers_js' },
 });
-const mockActiveMessages = ref<any[]>([]);
+const mockActiveMessages = ref<MessageNode[]>([]);
 const mockResolvedSettings = ref<any>({
   endpoint: { type: 'transformers_js' },
   modelId: 'm',
@@ -142,8 +144,9 @@ vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemoved
     getLiveChat: vi.fn().mockImplementation((c) => c),
     chatFlow: computed(() => mockActiveMessages.value.map(m => ({
       type: 'message',
+      key: `${idToRaw({ id: m.id })}:body`,
       node: m,
-      mode: m.role === 'assistant' && !m.content ? 'waiting' : 'content',
+      mode: m.role === 'assistant' && !getMessageText({ message: m }) ? 'waiting' : 'content',
       flow: { position: 'standalone', nesting: 'none' },
       isFirstInNode: true,
       isLastInNode: true,
@@ -203,8 +206,9 @@ vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
     chatFlow: computed(() => mockActiveMessages.value.map(m => ({
       type: 'message',
+      key: `${idToRaw({ id: m.id })}:body`,
       node: m,
-      mode: m.role === 'assistant' && !m.content ? 'waiting' : 'content',
+      mode: m.role === 'assistant' && !getMessageText({ message: m }) ? 'waiting' : 'content',
       flow: { position: 'standalone', nesting: 'none' },
       isFirstInNode: true,
       isLastInNode: true,
@@ -331,8 +335,8 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     setupScrollToMock();
     vi.clearAllMocks();
     mockActiveMessages.value = [
-      { id: 'msg-1', role: 'user', content: 'hello', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'msg-2', role: 'assistant', content: '', timestamp: Date.now(), modelId: 'hf.co/model', replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }], createdAt: Date.now(), modelId: undefined, lmParameters: undefined, replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-2' }), role: 'assistant', parts: [], createdAt: Date.now(), modelId: 'hf.co/model', lmParameters: undefined, interruption: undefined, replies: { items: [] } },
     ];
     mockCurrentChat.value.currentLeafId = 'msg-2';
     (transformersJsService as any).__triggerStateChange({ status: 'idle', progress: 0 });

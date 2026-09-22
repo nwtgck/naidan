@@ -1,9 +1,8 @@
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
-import { z } from 'zod';
 import { workerProxy, type WorkerRemote } from '@/utils/worker-transport';
-import { errorCode, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema } from '@/features/llama-cpp-browser/types';
+import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema } from '@/features/llama-cpp-browser/types';
 import { workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
 // Both transports share cancellation, validation and callback lifetime rules.
@@ -145,15 +144,15 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     removeModel: async ({ plan, signal }) => {
       return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined }));
     },
-    generate: async ({ request, onChunk, onProgress, signal }) => {
+    generate: async ({ request, onEvent, onProgress, signal }) => {
       const accepted = workerGenerateCallSchema.parse({ ...request, generationId: ++nextGenerationId,
         assetBaseURL: getAssetBaseURL(),
       });
       let acceptingEvents = true;
       try {
         const result = await invoke({ call: () => remote.generate(accepted,
-          workerProxy({ value: ({ ...event }) => {
-            if (acceptingEvents && !disposed && !signal?.aborted) onChunk({ chunk: z.object({ text: z.string() }).strict().parse(event).text });
+          workerProxy({ value: async ({ event }) => {
+            if (acceptingEvents && !disposed) await onEvent({ event: generationEventSchema.parse(event) });
           } }),
           workerProxy({ value: ({ ...event }) => {
             if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });

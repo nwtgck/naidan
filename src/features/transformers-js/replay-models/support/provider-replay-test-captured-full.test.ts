@@ -7,6 +7,8 @@ const source = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog
 import { parseCapturedFullReplay, replayCapturedFullInvocation, verifyCapturedFullReplay, verifyCapturedGapInputs, verifyCapturedProviderPrefix, TEST_ONLY, type ReviewedProviderReplayContract } from './provider-replay-test-captured-full';
 import type { ProductionProviderTraceEvent } from '@/features/transformers-js/model-support-investigation/logic/production-provider-trace';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from './provider-replay-test-runtime';
+import { captureProviderChat } from './capture-provider-chat';
+import { toMessageId } from '@/01-models/ids';
 
 describe('reviewed public contracts remain separate from immutable capture', () => {
   const evidence = parseCapturedFullReplay({ value: source });
@@ -74,6 +76,36 @@ describe('reviewed public contracts remain separate from immutable capture', () 
     expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
       correctedEvents: [], invalidatedOutputs: [{ ...invalidated, requestInput: structuredClone(original.input) }],
     } })).toThrow('changed public input');
+  });
+  it('keeps current pre-native rejection separate from historical fulfillment and native output', () => {
+    const before = structuredClone(evidence);
+    const result = TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [],
+      preNativeRejections: [{ scenario: 'natural-tool-minimal', reason: 'No reviewed structured tool adapter' }],
+    } });
+    expect([...result.preNativeRejections]).toEqual(['natural-tool-minimal']);
+    expect(result.gaps).toEqual([]);
+    expect(result.correctedEvents.size).toBe(0);
+    expect(evidence).toEqual(before);
+    expect(evidence.invocations.some(call => call.scenario === 'natural-tool-minimal')).toBe(true);
+  });
+  it.each([
+    { name: 'missing rejection rationale', rejections: [{ scenario: 'image' as const, reason: '' }], error: 'reason' },
+    { name: 'duplicate rejection', rejections: [{ scenario: 'image' as const, reason: 'Image' }, { scenario: 'image' as const, reason: 'Image' }], error: 'Duplicate' },
+    { name: 'unrecorded rejection', rejections: [{ scenario: 'missing' as never, reason: 'Missing' }], error: 'one recorded request' },
+  ])('rejects $name', ({ rejections, error }) => {
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [], preNativeRejections: rejections,
+    } })).toThrow(error);
+  });
+  it('cannot use a native output gap or an unmigrated observation contract as a pre-native rejection', () => {
+    const preNativeRejections = [{ scenario: 'first-turn' as const, reason: 'Explicit rejection' }];
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
+      correctedEvents: [], invalidatedOutputs: [], preNativeRejections,
+    } })).toThrow('structured parts');
+    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [invalidated], reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [], preNativeRejections,
+    } })).toThrow('conflicting');
   });
 });
 
@@ -189,13 +221,14 @@ describe('captured Full native inference gate', () => {
       },
     });
     try {
-      const chunks: string[] = [];
-      await harness.provider.chat({ model: evidence.modelId, messages: [{ role: 'user', content: 'Template probe user message.' }], tools: [],
-        parameters,
-        onChunk: ({ chunk }) => chunks.push(chunk),
-      });
+      const observed = captureProviderChat({ provider: harness.provider, request: {
+        model: evidence.modelId, messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
+        tools: [], parameters, debug: undefined, readBinaryObject: undefined, signal: undefined,
+      } });
+      await observed.completion;
       expect(verified).toBe(13);
-      expect(chunks.length).toBeGreaterThan(0);
+      expect(observed.snapshot().result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(observed.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks).join('').length).toBeGreaterThan(0);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
     } finally {

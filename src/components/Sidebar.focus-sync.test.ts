@@ -221,6 +221,9 @@ describe('Sidebar Focus Sync', () => {
     await nextTick();
 
     await vi.runAllTimersAsync();
+    // Include lazy modal initialization before checking the click's focus update.
+    await vi.dynamicImportSettled();
+    await vi.runAllTimersAsync();
     mockScrollIntoViewSafe.mockClear();
 
     await wrapper.getComponent(CurrentChatPane).trigger('click');

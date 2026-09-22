@@ -4,12 +4,19 @@ import { createTransformersJsService } from './index-hosted';
 import type { TransformersJsWorkerClient } from './types';
 import { createTransformersJsProvider } from './provider-hosted';
 import type { ChatMessage, LmParameters } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { toMessageId } from '@/01-models/ids';
+import { collectChatGeneration } from '@/logic/collect-chat-generation';
+import type { InferenceMessage } from './types';
 
 function createClientFixture() {
   return {
     loadDownloadedModel: vi.fn<TransformersJsWorkerClient['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
     unloadModel: vi.fn<TransformersJsWorkerClient['unloadModel']>().mockResolvedValue(undefined),
     generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockResolvedValue(undefined),
+    generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+    }),
     interrupt: vi.fn<TransformersJsWorkerClient['interrupt']>().mockResolvedValue(undefined),
     resetCache: vi.fn<TransformersJsWorkerClient['resetCache']>().mockResolvedValue(undefined),
     dispose: vi.fn<TransformersJsWorkerClient['dispose']>().mockResolvedValue(undefined),
@@ -119,25 +126,29 @@ describe('Transformers.js service runtime serialization', () => {
     const provider = createTransformersJsProvider({ service: owner.service });
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    client.generateText.mockImplementationOnce(async () => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       entered.resolve(); await release.promise;
+      await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
     const operations: Promise<unknown>[] = [];
     try {
-      operations.push(provider.chat({ model: 'fixture/model', messages: [], onChunk: vi.fn() }));
+      const first = new AbortController();
+      operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: first.signal }), abortController: first }));
       await entered.promise;
-      const messages: ChatMessage[] = [{ role: 'user', content: 'Accepted Provider input.' }];
-      const parameters: LmParameters = {
+      const body = { type: 'text' as const, text: 'Accepted Provider input.', completeness: 'complete' as const };
+      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [body] }];
+      const parameters: LmParameters = { ...EMPTY_LM_PARAMETERS,
         temperature: 0.25, topP: undefined, maxCompletionTokens: undefined,
         presencePenalty: undefined, frequencyPenalty: undefined,
         reasoning: { effort: undefined }, stop: ['accepted-stop'],
       };
-      operations.push(provider.chat({ model: 'fixture/model', messages, parameters, onChunk: vi.fn() }));
-      messages[0]!.content = 'Changed while queued.';
+      const second = new AbortController();
+      operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages, parameters, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: second.signal }), abortController: second }));
+      body.text = 'Changed while queued.';
       parameters.stop!.push('changed-stop');
       release.resolve(); await Promise.all(operations);
-      expect(client.generateText.mock.calls[1]![0].messages).toEqual([{ role: 'user', content: 'Accepted Provider input.' }]);
-      expect(client.generateText.mock.calls[1]![0].params?.stop).toEqual(['accepted-stop']);
+      expect(client.generateMessage.mock.calls[1]![0].messages).toEqual([{ role: 'user', content: 'Accepted Provider input.' }]);
+      expect(client.generateMessage.mock.calls[1]![0].params?.stop).toEqual(['accepted-stop']);
       expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
     } finally {
       release.resolve(); await Promise.allSettled(operations); await owner.dispose();
@@ -157,8 +168,8 @@ describe('Transformers.js service runtime serialization', () => {
       await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
       operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
       await entered.promise;
-      const messages: ChatMessage[] = [{ role: 'user', content: 'Accepted input.' }];
-      const params: LmParameters = {
+      const messages: InferenceMessage[] = [{ role: 'user', content: 'Accepted input.' }];
+      const params: LmParameters = { ...EMPTY_LM_PARAMETERS,
         temperature: 0.25, stop: ['accepted-stop'], topP: undefined,
         maxCompletionTokens: undefined, presencePenalty: undefined,
         frequencyPenalty: undefined, reasoning: { effort: undefined },
@@ -219,7 +230,7 @@ describe('Transformers.js service runtime serialization', () => {
     const disposalStarted = Promise.withResolvers<void>();
     const releaseDisposal = Promise.withResolvers<void>();
     const abort = new AbortController();
-    original.generateText.mockRejectedValueOnce(new Error('RuntimeError: Aborted()'));
+    original.generateMessage.mockRejectedValueOnce(new Error('RuntimeError: Aborted()'));
     original.dispose.mockImplementationOnce(async () => {
       disposalStarted.resolve(); await releaseDisposal.promise;
     });
@@ -229,16 +240,18 @@ describe('Transformers.js service runtime serialization', () => {
     const operations: Promise<unknown>[] = [];
     try {
       await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      const generation = provider.chat({ model: 'fixture/model', messages: [], onChunk: vi.fn(), signal: abort.signal });
-      operations.push(generation.catch(error => error));
+      const generation = collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: abort.signal }), abortController: abort });
+      operations.push(generation);
       await disposalStarted.promise;
       abort.abort();
       releaseDisposal.resolve();
-      await expect(operations[0]).resolves.toMatchObject({ name: 'AbortError' });
-      await provider.chat({ model: 'fixture/model', messages: [], onChunk: vi.fn() });
+      await expect(generation).resolves.toMatchObject({ result: { type: 'interrupted', reason: 'aborted' } });
+      const next = new AbortController();
+      const ready = await collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: next.signal }), abortController: next });
+      expect(ready.result).toEqual({ type: 'finished', next: 'user' });
       expect(replacement.loadDownloadedModel).toHaveBeenCalledTimes(1);
-      expect(replacement.generateText).toHaveBeenCalledTimes(1);
-      expect(replacement.loadDownloadedModel.mock.invocationCallOrder[0]).toBeLessThan(replacement.generateText.mock.invocationCallOrder[0]!);
+      expect(replacement.generateMessage).toHaveBeenCalledTimes(1);
+      expect(replacement.loadDownloadedModel.mock.invocationCallOrder[0]).toBeLessThan(replacement.generateMessage.mock.invocationCallOrder[0]!);
       expect(factory).toHaveBeenCalledTimes(2);
     } finally {
       releaseDisposal.resolve(); await Promise.allSettled(operations); await owner.dispose();

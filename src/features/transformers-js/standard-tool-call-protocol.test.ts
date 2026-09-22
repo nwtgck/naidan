@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatMessage } from '@/01-models/types';
+import type { InferenceMessage } from './types';
 import type { ToolCallId } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
 import {
@@ -96,7 +96,7 @@ The documentation says <|tool_call_start|>[other_tool(value='x')]<|tool_call_end
   });
 
   it('converts stored JSON argument strings back to mappings only for Pythonic templates', () => {
-    const messages: ChatMessage[] = [
+    const messages: InferenceMessage[] = [
       {
         role: 'assistant',
         content: '',
@@ -126,12 +126,12 @@ The documentation says <|tool_call_start|>[other_tool(value='x')]<|tool_call_end
         arguments: { shell_script: 'ls -la /tmp', timeout_ms: 1000 },
       },
     })]);
-    expect((jsonTagged[0]?.['tool_calls'] as ChatMessage['tool_calls'])?.[0]?.function.arguments)
+    expect((jsonTagged[0]?.['tool_calls'] as InferenceMessage['tool_calls'])?.[0]?.function.arguments)
       .toBe(JSON.stringify({ shell_script: 'ls -la /tmp', timeout_ms: 1000 }));
   });
 
   it('rejects non-object stored arguments for a template that requires mappings', () => {
-    const messages: ChatMessage[] = [{
+    const messages: InferenceMessage[] = [{
       role: 'assistant',
       content: '',
       tool_calls: [{
@@ -215,11 +215,11 @@ describe('verified standard tool content history', () => {
   });
 
   const handling = { outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: [10, 11] } as const;
-  const call: NonNullable<ChatMessage['tool_calls']>[number] = {
+  const call: NonNullable<InferenceMessage['tool_calls']>[number] = {
     id: toToolCallId({ raw: 'content-call' }), type: 'function',
     function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
   };
-  const messages: ChatMessage[] = [
+  const messages: InferenceMessage[] = [
     { role: 'user', content: 'Weather?' },
     { role: 'assistant', content: '', tool_calls: [call] },
     { role: 'tool', content: 'clear', tool_call_id: call.id },
@@ -255,7 +255,7 @@ describe('verified standard tool content history', () => {
   });
 
   it('rejects orphan, mismatched, duplicated and out-of-order results', () => {
-    const invalid: ChatMessage[][] = [
+    const invalid: InferenceMessage[][] = [
       [messages[2]!],
       [messages[1]!, { ...messages[2]!, tool_call_id: toToolCallId({ raw: 'other' }) }],
       [messages[1]!, messages[2]!, messages[2]!],
@@ -263,5 +263,42 @@ describe('verified standard tool content history', () => {
       [messages[1]!, messages[2]!, messages[1]!, messages[2]!],
     ];
     for (const input of invalid) expect(() => formatStandardMessagesForToolHandling({ messages: input, handling })).toThrow(/tool result|tool history/);
+  });
+});
+
+describe('unreviewed standard reasoning input', () => {
+  it('does not silently omit a structured reasoning field under a generic template', () => {
+    const messages = [{ role: 'assistant', content: 'answer', reasoning: { text: '', completeness: 'complete' as const } }];
+    for (const protocol of ['json-tagged', 'delimited-pythonic'] as const) {
+      expect(() => formatStandardMessagesForToolCallProtocol({ messages, protocol })).toThrow('model-specific');
+    }
+  });
+});
+
+// Common parts may produce text arrays even in a text-only standard model.
+describe('standard text content projection', () => {
+  it('joins all text fragments without changing whitespace, Unicode or literal tags', () => {
+    const content: InferenceMessage['content'] = [{ type: 'text', text: '  <think>R</think>\r\n' }, { type: 'text', text: '🙂 ' }];
+    const message: InferenceMessage = { role: 'assistant', content };
+    const result = formatStandardMessagesForToolCallProtocol({ messages: [message], protocol: 'json-tagged' });
+    expect(result).toEqual([{ role: 'assistant', content: `\
+  <think>R</think>${'\r\n'}🙂 ` }]);
+    expect(message.content).toBe(content);
+  });
+  it('keeps absent and explicit empty call arrays distinct', () => {
+    const messages: InferenceMessage[] = [{ role: 'assistant', content: [] }, { role: 'assistant', content: [], tool_calls: [] }];
+    const result = formatStandardMessagesForToolCallProtocol({ messages, protocol: 'json-tagged' });
+    expect(Object.hasOwn(result[0]!, 'tool_calls')).toBe(false);
+    expect(Object.hasOwn(result[0]!, 'tool_call_id')).toBe(false);
+    expect(result[1]!['tool_calls']).toEqual([]);
+  });
+  it('refuses an image instead of silently replacing the entire content with empty text', () => {
+    expect(() => formatStandardMessagesForToolCallProtocol({ messages: [{ role: 'user', content: [{ type: 'text', text: 'caption' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }], protocol: 'json-tagged' })).toThrow(/image/);
+  });
+  it('preserves multi-text assistant content on a verified tool-history route', () => {
+    const id = toToolCallId({ raw: 'c1' });
+    const messages: InferenceMessage[] = [{ role: 'assistant', content: [{ type: 'text', text: 'checking' }, { type: 'text', text: ' ' }], tool_calls: [{ id, type: 'function', function: { name: 'f', arguments: '{}' } }] }, { role: 'tool', tool_call_id: id, content: 'done' }];
+    const rendered = formatStandardMessagesForToolHandling({ messages, handling: { outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: [] } });
+    expect(rendered[0]).toEqual({ role: 'assistant', content: 'checking <|tool_call_start|>[f()]<|tool_call_end|>' });
   });
 });

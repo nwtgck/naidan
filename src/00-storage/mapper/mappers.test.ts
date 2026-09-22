@@ -25,6 +25,7 @@ import {
   SettingsSchemaDto,
   type ChatDto,
   type MessageNodeDto,
+  type MessageNodeDtoV2,
   type SettingsDto,
 } from '@/00-storage/00-dto/dto';
 import {
@@ -64,13 +65,13 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
 
     const domain = messageNodeToDomain({ dto }) as UserMessageNode;
     expect(domain.role).toBe('user');
-    expect(domain.thinking).toBeUndefined();
+    expect(domain.parts.map(part => part.type)).not.toContain('reasoning');
     expect(domain.modelId).toBeUndefined();
     expect(domain.lmParameters?.reasoning.effort).toBe('low');
 
-    const backToDto = messageNodeToDto({ domain }) as Extract<MessageNodeDto, { role: 'user' }>;
+    const backToDto = messageNodeToDto({ domain }) as Extract<MessageNodeDtoV2, { role: 'user' }>;
     expect(backToDto.role).toBe('user');
-    expect(backToDto.thinking).toBeUndefined();
+    expect(Object.hasOwn(backToDto, 'thinking')).toBe(false);
     expect(backToDto.lmParameters?.reasoning?.effort).toBe('low');
   });
 
@@ -99,12 +100,12 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
 
     const domain = messageNodeToDomain({ dto }) as AssistantMessageNode;
     expect(domain.role).toBe('assistant');
-    expect(domain.thinking).toBe('Thinking...');
+    expect(domain.parts[0]).toMatchObject({ type: 'reasoning', text: 'Thinking...', completeness: 'complete' });
     expect(domain.modelId).toBe('gpt-4');
     expect(domain.lmParameters?.reasoning.effort).toBe('high');
 
-    const backToDto = messageNodeToDto({ domain }) as Extract<MessageNodeDto, { role: 'assistant' }>;
-    expect(backToDto.thinking).toBe('Thinking...');
+    const backToDto = messageNodeToDto({ domain }) as Extract<MessageNodeDtoV2, { role: 'assistant' }>;
+    expect(backToDto.parts[0]).toMatchObject({ type: 'reasoning', text: 'Thinking...', completeness: undefined });
     expect(backToDto.modelId).toBe('gpt-4');
     expect(backToDto.lmParameters?.reasoning?.effort).toBe('high');
   });
@@ -126,14 +127,14 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
 
     const domain = messageNodeToDomain({ dto }) as SystemMessageNode;
     expect(domain.role).toBe('system');
-    expect(domain.attachments).toBeUndefined();
-    expect(domain.thinking).toBeUndefined();
+    expect(domain.parts.map(part => part.type)).toEqual(['text']);
+    expect(domain.parts.map(part => part.type)).not.toContain('reasoning');
     expect(domain.modelId).toBeUndefined();
     expect(domain.lmParameters).toBeUndefined();
 
     const backToDto = messageNodeToDto({ domain });
     expect(backToDto.role).toBe('system');
-    expect(backToDto.thinking).toBeUndefined();
+    expect(Object.hasOwn(backToDto, 'thinking')).toBe(false);
   });
 });
 
@@ -173,82 +174,33 @@ describe('Chat Mapping', () => {
       groupId,
       root: {
         items: [
-          {
-            id: toMessageId({ raw: 'message-user' }),
-            role: 'user',
-            content: 'Hello',
-            timestamp: 100,
-            attachments: [{
-              id: toAttachmentId({ raw: 'attachment-1' }),
-              binaryObjectId,
-              originalName: 'attachment.txt',
-              mimeType: 'text/plain',
-              size: 123,
-              uploadedAt: 456,
-              status: 'persisted',
-            }],
-            lmParameters,
-            replies: {
-              items: [{
-                id: toMessageId({ raw: 'message-assistant' }),
-                role: 'assistant',
-                content: 'Assistant response',
-                timestamp: 200,
-                thinking: 'Thinking trace',
-                modelId: 'assistant-model',
-                lmParameters,
-                toolCalls: [{
-                  id: toolCallId,
-                  type: 'function',
-                  function: {
-                    name: 'calculator',
-                    arguments: '{"expression":"1+1"}',
-                  },
-                }],
-                replies: { items: [] },
-              }],
-            },
-          },
-          {
-            id: toMessageId({ raw: 'message-system' }),
-            role: 'system',
-            content: 'System message',
-            timestamp: 150,
-            attachments: undefined,
-            thinking: undefined,
-            error: undefined,
-            modelId: undefined,
-            lmParameters: undefined,
-            toolCalls: undefined,
-            results: undefined,
-            replies: { items: [] },
-          },
-          {
-            id: currentLeafId,
-            role: 'tool',
-            content: undefined,
-            timestamp: 300,
-            attachments: undefined,
-            thinking: undefined,
-            error: undefined,
-            modelId: undefined,
-            lmParameters: undefined,
-            toolCalls: undefined,
-            results: [
-              { toolCallId, status: 'executing' },
-              { toolCallId, status: 'success', content: { type: 'text', text: '2' } },
-              { toolCallId: secondToolCallId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } },
-              {
-                toolCallId: secondToolCallId,
-                status: 'error',
-                error: {
-                  code: 'execution_failed',
-                  message: { type: 'binary_object', id: binaryObjectId },
-                },
+          { id: toMessageId({ raw: 'message-user' }), role: 'user', createdAt: 100, modelId: undefined, lmParameters: lmParameters, parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }, { type: 'attachment', attachment: {
+            id: toAttachmentId({ raw: 'attachment-1' }),
+            binaryObjectId,
+            originalName: 'attachment.txt',
+            mimeType: 'text/plain',
+            size: 123,
+            uploadedAt: 456,
+            status: 'persisted',
+          } }], replies: {
+            items: [{ id: toMessageId({ raw: 'message-assistant' }), role: 'assistant', createdAt: 200, modelId: 'assistant-model', lmParameters: lmParameters, parts: [{ type: 'reasoning', text: 'Thinking trace', completeness: 'complete' }, { type: 'text', text: 'Assistant response', completeness: 'complete' }, { type: 'tool_call', toolCall: {
+              id: toolCallId,
+              type: 'function',
+              function: {
+                name: 'calculator',
+                arguments: '{"expression":"1+1"}',
               },
-            ],
-            replies: { items: [] },
-          },
+            } }], interruption: undefined, replies: { items: [] } }],
+          } },
+          { id: toMessageId({ raw: 'message-system' }), role: 'system', createdAt: 150, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'System message', completeness: 'complete' }], replies: { items: [] } },
+          { id: currentLeafId, role: 'tool', createdAt: 300, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId, status: 'executing' } }, { type: 'tool_result', result: { toolCallId, status: 'success', content: { type: 'text', text: '2' } } }, { type: 'tool_result', result: { toolCallId: secondToolCallId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } }, { type: 'tool_result', result: {
+            toolCallId: secondToolCallId,
+            status: 'error',
+            error: {
+              code: 'execution_failed',
+              message: { type: 'binary_object', id: binaryObjectId },
+            },
+          } }], replies: { items: [] } },
         ],
       },
       currentLeafId,
@@ -300,83 +252,30 @@ describe('Chat Mapping', () => {
       }],
       root: {
         items: [
-          {
-            id: 'message-user',
-            role: 'user',
-            content: 'Hello',
-            timestamp: 100,
-            attachments: [{
-              id: 'attachment-1',
-              binaryObjectId: 'binary-result',
-              name: 'attachment.txt',
-              status: 'persisted',
-            }],
-            thinking: undefined,
-            modelId: undefined,
-            lmParameters,
-            toolCalls: undefined,
-            results: undefined,
-            replies: {
-              items: [{
-                id: 'message-assistant',
-                role: 'assistant',
-                content: 'Assistant response',
-                timestamp: 200,
-                attachments: undefined,
-                thinking: 'Thinking trace',
-                modelId: 'assistant-model',
-                lmParameters,
-                toolCalls: [{
-                  id: 'tool-call-primary',
-                  type: 'function',
-                  function: {
-                    name: 'calculator',
-                    arguments: '{"expression":"1+1"}',
-                  },
-                }],
-                results: undefined,
-                replies: { items: [] },
-              }],
-            },
-          },
-          {
-            id: 'message-system',
-            role: 'system',
-            content: 'System message',
-            timestamp: 150,
-            attachments: undefined,
-            thinking: undefined,
-            modelId: undefined,
-            lmParameters: undefined,
-            toolCalls: undefined,
-            results: undefined,
-            replies: { items: [] },
-          },
-          {
-            id: 'message-tool',
-            role: 'tool',
-            content: undefined,
-            timestamp: 300,
-            attachments: undefined,
-            thinking: undefined,
-            modelId: undefined,
-            lmParameters: undefined,
-            toolCalls: undefined,
-            results: [
-              { toolCallId: 'tool-call-primary', status: 'executing' },
-              { toolCallId: 'tool-call-primary', status: 'success', content: { type: 'text', text: '2' } },
-              { toolCallId: 'tool-call-secondary', status: 'success', content: { type: 'binary_object', id: 'binary-result' } },
-              {
-                toolCallId: 'tool-call-secondary',
-                status: 'error',
-                error: {
-                  code: 'execution_failed',
-                  message: { type: 'binary_object', id: 'binary-result' },
-                },
+          { id: 'message-user', role: 'user', createdAt: 100, modelId: undefined, lmParameters: lmParameters, parts: [{ type: 'text', text: 'Hello', completeness: undefined }, { type: 'attachment', attachment: {
+            id: 'attachment-1',
+            binaryObjectId: 'binary-result',
+            name: 'attachment.txt',
+            status: 'persisted',
+          } }], replies: {
+            items: [{ id: 'message-assistant', role: 'assistant', createdAt: 200, modelId: 'assistant-model', lmParameters: lmParameters, parts: [{ type: 'reasoning', text: 'Thinking trace', completeness: undefined }, { type: 'text', text: 'Assistant response', completeness: undefined }, { type: 'tool_call', toolCall: {
+              id: 'tool-call-primary',
+              type: 'function',
+              function: {
+                name: 'calculator',
+                arguments: '{"expression":"1+1"}',
               },
-            ],
-            replies: { items: [] },
-          },
+            } }], interruption: undefined, replies: { items: [] } }],
+          } },
+          { id: 'message-system', role: 'system', createdAt: 150, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'System message', completeness: undefined }], replies: { items: [] } },
+          { id: 'message-tool', role: 'tool', createdAt: 300, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId: 'tool-call-primary', status: 'executing' } }, { type: 'tool_result', result: { toolCallId: 'tool-call-primary', status: 'success', content: { type: 'text', text: '2' } } }, { type: 'tool_result', result: { toolCallId: 'tool-call-secondary', status: 'success', content: { type: 'binary_object', id: 'binary-result' } } }, { type: 'tool_result', result: {
+            toolCallId: 'tool-call-secondary',
+            status: 'error',
+            error: {
+              code: 'execution_failed',
+              message: { type: 'binary_object', id: 'binary-result' },
+            },
+          } }], replies: { items: [] } },
         ],
         experimental: undefined,
       },

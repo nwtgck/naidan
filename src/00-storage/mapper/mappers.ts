@@ -7,9 +7,13 @@ import type {
   ExperimentalToolConfigsDto,
 } from '@/00-storage/00-dto/experimental.dto';
 
+import { MessageNodeSchemaDtoV1 } from '@/00-storage/00-dto/dto';
 import type {
   RoleDto,
   MessageNodeDto,
+  MessageNodeDtoV1,
+  MessageNodeDtoV2,
+  MessageBranchDtoV2,
   TextOrBinaryObjectDto,
   ToolCallDto,
   ToolExecutionResultDto,
@@ -1040,7 +1044,7 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
   }
 };
 
-const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
+const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDtoV2 => {
   const toDto = ({ id, binaryObjectId, originalName, status }: {
     id: Attachment['id'],
     binaryObjectId: Attachment['binaryObjectId'],
@@ -1372,399 +1376,405 @@ const toolExecutionResultToDto = ({ domain }: { domain: ToolExecutionResult }): 
 };
 
 const messageNodeRepliesToDomain = ({ replies }: { replies: MessageNodeDto['replies'] }): MessageBranch => {
-  const {
-    items,
-    ...unhandled
-  } = replies;
-
+  const { items, experimental: _experimental, ...unhandled } = replies;
   unhandled satisfies Record<PropertyKey, never>;
-
-  return exactObject<MessageBranch>()({
-    items: items.map(dto => messageNodeToDomain({ dto })),
-  });
+  return exactObject<MessageBranch>()({ items: items.map(dto => messageNodeToDomain({ dto })) });
 };
 
-const messageNodeRepliesToDto = ({ replies }: { replies: MessageBranch }): MessageNodeDto['replies'] => {
-  const {
-    items,
-    ...unhandled
-  } = replies;
-
+const messageNodeRepliesToDto = ({ replies }: { replies: MessageBranch }): MessageBranchDtoV2 => {
+  const { items, ...unhandled } = replies;
   unhandled satisfies Record<PropertyKey, never>;
-
-  return exactObject<MessageNodeDto['replies']>()({
+  return exactObject<MessageBranchDtoV2>()({
     items: items.map(domain => messageNodeToDto({ domain })),
+    experimental: undefined,
   });
 };
 
-export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNode => {
+// Legacy records remain readable without rewriting them until the ordinary save path.
+const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageNode => {
   switch (dto.role) {
   case 'user': {
-    const {
-      id,
-      role,
-      content,
-      attachments,
-      timestamp,
-      thinking: _thinking,
-      modelId: _modelId,
-      lmParameters,
-      toolCalls: _toolCalls,
-      results: _results,
-      replies,
-      ...unhandled
-    } = dto;
-
+    const { id, role, content, attachments, timestamp, thinking: _thinking, modelId: _modelId, lmParameters, toolCalls: _toolCalls, results: _results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-
+    const parts: UserMessageNode['parts'] = [];
+    parts.push({ type: 'text', text: content, completeness: 'complete' });
+    attachments?.forEach(attachment => parts.push({ type: 'attachment', attachment: attachmentToDomain({ dto: attachment }) }));
     return exactObject<UserMessageNode>()({
-      id: toMessageId({ raw: id }),
-      role,
-      content,
-      attachments: attachments?.map(dto => attachmentToDomain({ dto })),
-      thinking: undefined,
-      error: undefined,
+      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
       modelId: undefined,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
-      toolCalls: undefined,
-      results: undefined,
-      timestamp,
       replies: messageNodeRepliesToDomain({ replies }),
     });
   }
   case 'assistant': {
-    const {
-      id,
-      role,
-      content,
-      attachments: _attachments,
-      timestamp,
-      thinking,
-      modelId,
-      lmParameters,
-      toolCalls,
-      results: _results,
-      replies,
-      ...unhandled
-    } = dto;
-
+    const { id, role, content, attachments: _attachments, timestamp, thinking, modelId, lmParameters, toolCalls, results: _results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-
+    const parts: AssistantMessageNode['parts'] = [];
+    if (thinking !== undefined) parts.push({ type: 'reasoning', text: thinking, completeness: 'complete' });
+    parts.push({ type: 'text', text: content, completeness: 'complete' });
+    toolCalls?.forEach(call => parts.push({ type: 'tool_call', toolCall: toolCallToDomain({ dto: call }) }));
     return exactObject<AssistantMessageNode>()({
-      id: toMessageId({ raw: id }),
-      role,
-      content,
-      attachments: undefined,
-      thinking,
-      error: undefined,
-      modelId,
+      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      modelId: modelId,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
-      toolCalls: toolCalls?.map(dto => toolCallToDomain({ dto })),
-      results: undefined,
-      timestamp,
+      interruption: undefined,
       replies: messageNodeRepliesToDomain({ replies }),
     });
   }
   case 'system': {
-    const {
-      id,
-      role,
-      content,
-      attachments: _attachments,
-      timestamp,
-      thinking: _thinking,
-      modelId: _modelId,
-      lmParameters: _lmParameters,
-      toolCalls: _toolCalls,
-      results: _results,
-      replies,
-      ...unhandled
-    } = dto;
-
+    const { id, role, content, attachments: _attachments, timestamp, thinking: _thinking, modelId: _modelId, lmParameters: _lmParameters, toolCalls: _toolCalls, results: _results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-
+    const parts: SystemMessageNode['parts'] = [];
+    parts.push({ type: 'text', text: content, completeness: 'complete' });
     return exactObject<SystemMessageNode>()({
-      id: toMessageId({ raw: id }),
-      role,
-      content,
-      attachments: undefined,
-      thinking: undefined,
-      error: undefined,
+      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
       modelId: undefined,
       lmParameters: undefined,
-      toolCalls: undefined,
-      results: undefined,
-      timestamp,
       replies: messageNodeRepliesToDomain({ replies }),
     });
   }
   case 'tool': {
-    const {
-      id,
-      role,
-      content: _content,
-      attachments: _attachments,
-      timestamp,
-      thinking: _thinking,
-      modelId: _modelId,
-      lmParameters: _lmParameters,
-      toolCalls: _toolCalls,
-      results,
-      replies,
-      ...unhandled
-    } = dto;
-
+    const { id, role, content: _content, attachments: _attachments, timestamp, thinking: _thinking, modelId: _modelId, lmParameters: _lmParameters, toolCalls: _toolCalls, results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-
+    const parts: ToolMessageNode['parts'] = [];
+    results.forEach(result => parts.push({ type: 'tool_result', result: toolExecutionResultToDomain({ dto: result }) }));
     return exactObject<ToolMessageNode>()({
-      id: toMessageId({ raw: id }),
-      role,
-      content: undefined,
-      attachments: undefined,
-      thinking: undefined,
-      error: undefined,
+      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
       modelId: undefined,
       lmParameters: undefined,
-      toolCalls: undefined,
-      results: results.map(dto => toolExecutionResultToDomain({ dto })),
-      timestamp,
       replies: messageNodeRepliesToDomain({ replies }),
     });
   }
   default: {
     const _ex: never = dto;
-    throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    throw new Error(`Unhandled legacy message: ${_ex}`);
   }
   }
 };
 
-export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNodeDto => {
-  switch (domain.role) {
+export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNode => {
+  // The schema rejects a present but invalid parts key before this boundary.
+  if (dto.parts === undefined) return legacyMessageNodeToDomain({ dto });
+  switch (dto.role) {
   case 'user': {
-    const {
-      id,
-      role,
-      content,
-      attachments,
-      thinking: _thinking,
-      error: _error,
-      modelId: _modelId,
-      lmParameters,
-      toolCalls: _toolCalls,
-      results: _results,
-      timestamp,
-      replies,
-      ...unhandled
-    } = domain;
-
+    const { id, role, createdAt, modelId: _modelId, lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-
-    return exactObject<Extract<MessageNodeDto, { role: 'user' }>>()({
-      id: idToRaw({ id }),
-      role,
-      content,
-      attachments: attachments?.map(domain => attachmentToDto({ domain })),
-      thinking: undefined,
+    return exactObject<UserMessageNode>()({
+      id: toMessageId({ raw: id }), role, createdAt,
       modelId: undefined,
-      lmParameters: lmParametersToDto({ domain: lmParameters }),
-      toolCalls: undefined,
-      results: undefined,
-      timestamp,
-      replies: messageNodeRepliesToDto({ replies }),
+      lmParameters: lmParametersToDomain({ dto: lmParameters }),
+      parts: parts.map((part): UserMessageNode['parts'][number] => {
+        switch (part.type) {
+        case 'text': {
+          const { type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<UserMessageNode['parts'][number], { type: 'text' }>>()({ type, text, completeness: completeness ?? 'complete' });
+        }
+        case 'attachment': {
+          const { type, attachment, experimental: _partExperimental, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<UserMessageNode['parts'][number], { type: 'attachment' }>>()({ type, attachment: attachmentToDomain({ dto: attachment }) });
+        }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled message part: ${_ex}`);
+        }
+        }
+      }),
+      replies: messageNodeRepliesToDomain({ replies }),
     });
   }
   case 'assistant': {
-    const {
-      id,
-      role,
-      content,
-      attachments: _attachments,
-      thinking,
-      error: _error,
-      modelId,
-      lmParameters,
-      toolCalls,
-      results: _results,
-      timestamp,
-      replies,
-      ...unhandled
-    } = domain;
-
+    const { id, role, createdAt, modelId, lmParameters, parts, interruption, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-
-    return exactObject<Extract<MessageNodeDto, { role: 'assistant' }>>()({
-      id: idToRaw({ id }),
-      role,
-      content,
-      attachments: undefined,
-      thinking,
-      modelId,
-      lmParameters: lmParametersToDto({ domain: lmParameters }),
-      toolCalls: toolCalls?.map(domain => toolCallToDto({ domain })),
-      results: undefined,
-      timestamp,
-      replies: messageNodeRepliesToDto({ replies }),
+    let recordedInterruption: AssistantMessageNode['interruption'];
+    if (interruption !== undefined) {
+      switch (interruption.type) {
+      case 'cancelled': {
+        const { type, experimental: _interruptionExperimental, ...unhandledInterruption } = interruption;
+        unhandledInterruption satisfies Record<PropertyKey, never>;
+        recordedInterruption = { type };
+        break;
+      }
+      case 'error': {
+        const { type, message, experimental: _interruptionExperimental, ...unhandledInterruption } = interruption;
+        unhandledInterruption satisfies Record<PropertyKey, never>;
+        recordedInterruption = { type, message };
+        break;
+      }
+      default: {
+        const _ex: never = interruption;
+        throw new Error(`Unhandled interruption: ${_ex}`);
+      }
+      }
+    }
+    return exactObject<AssistantMessageNode>()({
+      id: toMessageId({ raw: id }), role, createdAt,
+      modelId: modelId,
+      lmParameters: lmParametersToDomain({ dto: lmParameters }),
+      interruption: recordedInterruption,
+      parts: parts.map((part): AssistantMessageNode['parts'][number] => {
+        switch (part.type) {
+        case 'reasoning': {
+          const { type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'reasoning' }>>()({ type, text, completeness: completeness ?? 'complete' });
+        }
+        case 'text': {
+          const { type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'text' }>>()({ type, text, completeness: completeness ?? 'complete' });
+        }
+        case 'tool_call': {
+          const { type, toolCall, experimental: _partExperimental, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'tool_call' }>>()({ type, toolCall: toolCallToDomain({ dto: toolCall }) });
+        }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled message part: ${_ex}`);
+        }
+        }
+      }),
+      replies: messageNodeRepliesToDomain({ replies }),
     });
   }
   case 'system': {
-    const {
-      id,
-      role,
-      content,
-      attachments: _attachments,
-      thinking: _thinking,
-      error: _error,
-      modelId: _modelId,
-      lmParameters: _lmParameters,
-      toolCalls: _toolCalls,
-      results: _results,
-      timestamp,
-      replies,
-      ...unhandled
-    } = domain;
-
+    const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-
-    return exactObject<Extract<MessageNodeDto, { role: 'system' }>>()({
-      id: idToRaw({ id }),
-      role,
-      content,
-      attachments: undefined,
-      thinking: undefined,
+    return exactObject<SystemMessageNode>()({
+      id: toMessageId({ raw: id }), role, createdAt,
       modelId: undefined,
       lmParameters: undefined,
-      toolCalls: undefined,
-      results: undefined,
-      timestamp,
-      replies: messageNodeRepliesToDto({ replies }),
+      parts: parts.map((part): SystemMessageNode['parts'][number] => {
+        switch (part.type) {
+        case 'text': {
+          const { type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<SystemMessageNode['parts'][number], { type: 'text' }>>()({ type, text, completeness: completeness ?? 'complete' });
+        }
+        default: {
+          const _ex: never = part.type;
+          throw new Error(`Unhandled message part: ${_ex}`);
+        }
+        }
+      }),
+      replies: messageNodeRepliesToDomain({ replies }),
     });
   }
   case 'tool': {
-    const {
-      id,
-      role,
-      content: _content,
-      attachments: _attachments,
-      thinking: _thinking,
-      error: _error,
-      modelId: _modelId,
-      lmParameters: _lmParameters,
-      toolCalls: _toolCalls,
-      results,
-      timestamp,
-      replies,
-      ...unhandled
-    } = domain;
-
+    const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-
-    return exactObject<Extract<MessageNodeDto, { role: 'tool' }>>()({
-      id: idToRaw({ id }),
-      role,
-      content: undefined,
-      attachments: undefined,
-      thinking: undefined,
+    return exactObject<ToolMessageNode>()({
+      id: toMessageId({ raw: id }), role, createdAt,
       modelId: undefined,
       lmParameters: undefined,
-      toolCalls: undefined,
-      results: results.map(domain => toolExecutionResultToDto({ domain })),
-      timestamp,
+      parts: parts.map((part): ToolMessageNode['parts'][number] => {
+        switch (part.type) {
+        case 'tool_result': {
+          const { type, result, experimental: _partExperimental, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<ToolMessageNode['parts'][number], { type: 'tool_result' }>>()({ type, result: toolExecutionResultToDomain({ dto: result }) });
+        }
+        default: {
+          const _ex: never = part.type;
+          throw new Error(`Unhandled message part: ${_ex}`);
+        }
+        }
+      }),
+      replies: messageNodeRepliesToDomain({ replies }),
+    });
+  }
+  default: {
+    const _ex: never = dto;
+    throw new Error(`Unhandled message: ${_ex}`);
+  }
+  }
+};
+
+const messagePartCompletenessToDto = ({ completeness }: {
+  completeness: 'complete' | 'partial',
+}): undefined | 'partial' => {
+  switch (completeness) {
+  case 'complete': return undefined;
+  case 'partial': return 'partial';
+  default: {
+    const _ex: never = completeness;
+    throw new Error(`Unhandled completeness: ${_ex}`);
+  }
+  }
+};
+
+// Writes always use V2, including unselected descendants of the saved chat.
+export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNodeDtoV2 => {
+  switch (domain.role) {
+  case 'user': {
+    const { id, role, createdAt, modelId: _modelId, lmParameters, parts, replies, ...unhandled } = domain;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<MessageNodeDtoV2, { role: 'user' }>>()({
+      id: idToRaw({ id }), role, createdAt,
+      modelId: undefined,
+      lmParameters: lmParametersToDto({ domain: lmParameters }),
+      parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number] => {
+        switch (part.type) {
+        case 'text': {
+          const { type, text, completeness, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number], { type: 'text' }>>()({ type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
+        }
+        case 'attachment': {
+          const { type, attachment, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number], { type: 'attachment' }>>()({ type, attachment: attachmentToDto({ domain: attachment }), experimental: undefined });
+        }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled message part: ${_ex}`);
+        }
+        }
+      }),
       replies: messageNodeRepliesToDto({ replies }),
+      experimental: undefined,
+    });
+  }
+  case 'assistant': {
+    const { id, role, createdAt, modelId, lmParameters, parts, interruption, replies, ...unhandled } = domain;
+    unhandled satisfies Record<PropertyKey, never>;
+    let recordedInterruption: Extract<MessageNodeDtoV2, { role: 'assistant' }>['interruption'];
+    if (interruption !== undefined) {
+      switch (interruption.type) {
+      case 'cancelled': {
+        const { type, ...unhandledInterruption } = interruption;
+        unhandledInterruption satisfies Record<PropertyKey, never>;
+        recordedInterruption = { type, experimental: undefined };
+        break;
+      }
+      case 'error': {
+        const { type, message, ...unhandledInterruption } = interruption;
+        unhandledInterruption satisfies Record<PropertyKey, never>;
+        // Persist the recorded text; a later UI locale does not retranslate it.
+        recordedInterruption = { type, message, experimental: undefined };
+        break;
+      }
+      default: {
+        const _ex: never = interruption;
+        throw new Error(`Unhandled interruption: ${_ex}`);
+      }
+      }
+    }
+    return exactObject<Extract<MessageNodeDtoV2, { role: 'assistant' }>>()({
+      id: idToRaw({ id }), role, createdAt,
+      modelId: modelId,
+      lmParameters: lmParametersToDto({ domain: lmParameters }),
+      interruption: recordedInterruption,
+      parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number] => {
+        switch (part.type) {
+        case 'reasoning': {
+          const { type, text, completeness, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'reasoning' }>>()({ type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
+        }
+        case 'text': {
+          const { type, text, completeness, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'text' }>>()({ type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
+        }
+        case 'tool_call': {
+          const { type, toolCall, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'tool_call' }>>()({ type, toolCall: toolCallToDto({ domain: toolCall }), experimental: undefined });
+        }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled message part: ${_ex}`);
+        }
+        }
+      }),
+      replies: messageNodeRepliesToDto({ replies }),
+      experimental: undefined,
+    });
+  }
+  case 'system': {
+    const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, ...unhandled } = domain;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<MessageNodeDtoV2, { role: 'system' }>>()({
+      id: idToRaw({ id }), role, createdAt,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'system' }>['parts'][number] => {
+        switch (part.type) {
+        case 'text': {
+          const { type, text, completeness, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'system' }>['parts'][number], { type: 'text' }>>()({ type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
+        }
+        default: {
+          const _ex: never = part.type;
+          throw new Error(`Unhandled message part: ${_ex}`);
+        }
+        }
+      }),
+      replies: messageNodeRepliesToDto({ replies }),
+      experimental: undefined,
+    });
+  }
+  case 'tool': {
+    const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, ...unhandled } = domain;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<MessageNodeDtoV2, { role: 'tool' }>>()({
+      id: idToRaw({ id }), role, createdAt,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'tool' }>['parts'][number] => {
+        switch (part.type) {
+        case 'tool_result': {
+          const { type, result, ...unhandledPart } = part;
+          unhandledPart satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'tool' }>['parts'][number], { type: 'tool_result' }>>()({ type, result: toolExecutionResultToDto({ domain: result }), experimental: undefined });
+        }
+        default: {
+          const _ex: never = part.type;
+          throw new Error(`Unhandled message part: ${_ex}`);
+        }
+        }
+      }),
+      replies: messageNodeRepliesToDto({ replies }),
+      experimental: undefined,
     });
   }
   default: {
     const _ex: never = domain;
-    throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    throw new Error(`Unhandled message: ${_ex}`);
   }
   }
 };
 
-interface LegacyMessage {
-  id: string,
-  role: Role,
-  content: string,
-  timestamp: number,
-  thinking?: string,
-  modelId?: string,
-}
-
 function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): MessageBranch {
-  if (!messages || messages.length === 0) return { items: [] };
-  const legacyMsgs = messages as LegacyMessage[];
-  const nodes: MessageNode[] = legacyMsgs.map(m => {
-    const common = {
-      id: toMessageId({ raw: m.id }),
-      content: m.content,
-      timestamp: m.timestamp,
-      replies: { items: [] },
-    };
-    switch (m.role) {
-    case 'assistant':
-      return {
-        ...common,
-        role: 'assistant',
-        attachments: undefined,
-        thinking: m.thinking,
-        modelId: m.modelId,
-        lmParameters: {
-          temperature: undefined,
-          topP: undefined,
-          maxCompletionTokens: undefined,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: { effort: undefined },
-        },
-        toolCalls: undefined,
-        results: undefined,
-      } as AssistantMessageNode;
+  const nodes = messages.map(message => {
+    if (typeof message !== 'object' || message === null || Array.isArray(message)) {
+      throw new Error('Invalid legacy flat message');
+    }
+    // Validate the old payload instead of casting unknown input to a message type.
+    const dto = MessageNodeSchemaDtoV1.parse({ ...message, replies: { items: [] } });
+    const node = legacyMessageNodeToDomain({ dto });
+    switch (node.role) {
+    case 'tool': throw new Error('Tool role migration not implemented for legacy messages');
+    case 'system': break;
     case 'user':
-      return {
-        ...common,
-        role: 'user',
-        attachments: [],
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: {
-          temperature: undefined,
-          topP: undefined,
-          maxCompletionTokens: undefined,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: { effort: undefined },
-        },
-        toolCalls: undefined,
-        results: undefined,
-      } as UserMessageNode;
-    case 'system':
-      return {
-        ...common,
-        role: 'system',
-        attachments: undefined,
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: undefined,
-        toolCalls: undefined,
-        results: undefined,
-      } as SystemMessageNode;
-    case 'tool':
-      throw new Error('Tool role migration not implemented for legacy messages');
+    case 'assistant':
+      if (node.lmParameters === undefined) node.lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } };
+      break;
     default: {
-      const _ex: never = m.role;
-      throw new Error(`Unhandled role: ${_ex}`);
+      const _ex: never = node;
+      throw new Error(`Unhandled legacy message: ${_ex}`);
     }
     }
+    return node;
   });
-
   for (let i = 0; i < nodes.length - 1; i++) {
     const current = nodes[i];
-    const next = nodes[i+1];
-    if (current && next) {
-      current.replies.items.push(next);
-    }
+    const next = nodes[i + 1];
+    if (current && next) current.replies.items.push(next);
   }
   return { items: nodes[0] ? [nodes[0]] : [] };
 }

@@ -1,9 +1,36 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { toMessageId, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
+import type { ChatMessage } from '@/01-models/types';
+import type { LmProvider } from '@/01-models/lm';
+import { collectChatGeneration } from '@/logic/collect-chat-generation';
+
 import { BROWSER_PROVIDED_LM_MODEL_ID } from './constants';
 import type { PromptApiPrompt, PromptApiPromptOptions } from './language-model';
 import { PromptApiProvider } from './provider';
 import { TEST_ONLY as RUNTIME_TEST_ONLY } from './runtime';
+
+function message({ role, content }: { role: 'user' | 'assistant' | 'system', content: string }): ChatMessage {
+  return { id: toMessageId({ raw: `${role}-history` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] };
+}
+function userImage({ withText }: { withText: boolean }): ChatMessage {
+  return { id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
+    ...(withText ? [{ type: 'text' as const, text: 'Describe this image.', completeness: 'complete' as const }] : []),
+    { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image.png', mimeType: 'image/png', size: 5, uploadedAt: 1, status: 'memory', blob: new Blob(['hello'], { type: 'image/png' }) } },
+  ] };
+}
+async function generate({ provider, messages, model, parameters, tools }: {
+  provider: PromptApiProvider,
+  messages: ChatMessage[],
+  model: string,
+  parameters: Parameters<LmProvider['chat']>[0]['parameters'],
+  tools: Parameters<LmProvider['chat']>[0]['tools'],
+}) {
+  const abortController = new AbortController();
+  const value = await collectChatGeneration({ items: provider.chat({ debug: undefined, messages, model, parameters, tools, signal: abortController.signal, readBinaryObject: undefined }), abortController });
+  if (value.result.type === 'error') throw value.result.error;
+  return value;
+}
 
 function createTextStream({ chunks }: { chunks: string[] }): ReadableStream<string> {
   return new ReadableStream<string>({
@@ -29,20 +56,16 @@ describe('PromptApiProvider', () => {
       create,
     });
 
-    const chunks: string[] = [];
-    const onAssistantMessageStart = vi.fn();
     const provider = new PromptApiProvider();
 
-    await provider.chat({
+    const generated = await generate({ provider, parameters: undefined, tools: undefined,
       messages: [
-        { role: 'system', content: 'Be helpful.' },
-        { role: 'user', content: 'Previous question' },
-        { role: 'assistant', content: 'Previous answer' },
-        { role: 'user', content: 'Current question' },
+        message({ role: 'system', content: 'Be helpful.' }),
+        message({ role: 'user', content: 'Previous question' }),
+        message({ role: 'assistant', content: 'Previous answer' }),
+        message({ role: 'user', content: 'Current question' }),
       ],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
-      onChunk: ({ chunk }) => chunks.push(chunk),
-      onAssistantMessageStart,
     });
 
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
@@ -54,9 +77,9 @@ describe('PromptApiProvider', () => {
         { role: 'assistant', content: 'Previous answer' },
       ],
     }));
-    expect(promptStreaming).toHaveBeenCalledWith('Current question', { signal: undefined });
-    expect(onAssistantMessageStart).toHaveBeenCalledTimes(1);
-    expect(chunks).toEqual(['hello', ' world']);
+    expect(promptStreaming).toHaveBeenCalledWith('Current question', { signal: expect.any(AbortSignal) });
+    expect(generated.text).toBe('hello world');
+    expect(generated.result).toEqual({ type: 'finished', next: 'user' });
     expect(destroy).toHaveBeenCalledTimes(1);
   });
 
@@ -72,19 +95,9 @@ describe('PromptApiProvider', () => {
     vi.stubGlobal('LanguageModel', { availability, create });
 
     const provider = new PromptApiProvider();
-    await provider.chat({
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Describe this image.' },
-          {
-            type: 'image_url',
-            image_url: { url: 'data:image/png;base64,aGVsbG8=' },
-          },
-        ],
-      }],
+    await generate({ provider, parameters: undefined, tools: undefined,
+      messages: [userImage({ withText: true })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
-      onChunk: vi.fn(),
     });
 
     expect(availability).toHaveBeenCalledWith({
@@ -126,16 +139,9 @@ describe('PromptApiProvider', () => {
     vi.stubGlobal('LanguageModel', { availability, create });
 
     const provider = new PromptApiProvider();
-    await expect(provider.chat({
-      messages: [{
-        role: 'user',
-        content: [{
-          type: 'image_url',
-          image_url: { url: 'data:image/png;base64,aGVsbG8=' },
-        }],
-      }],
+    await expect(generate({ provider, parameters: undefined, tools: undefined,
+      messages: [userImage({ withText: false })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
-      onChunk: vi.fn(),
     })).rejects.toMatchObject({ code: 'unsupported_input' });
 
     expect(create).not.toHaveBeenCalled();
@@ -155,10 +161,9 @@ describe('PromptApiProvider', () => {
     });
 
     const provider = new PromptApiProvider();
-    await expect(provider.chat({
-      messages: [{ role: 'user', content: 'hello' }],
+    await expect(generate({ provider, parameters: undefined, tools: undefined,
+      messages: [message({ role: 'user', content: 'hello' })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
-      onChunk: vi.fn(),
     })).rejects.toThrow('stream failed');
 
     expect(destroy).toHaveBeenCalledTimes(1);
@@ -172,10 +177,9 @@ describe('PromptApiProvider', () => {
     });
 
     const provider = new PromptApiProvider();
-    await expect(provider.chat({
-      messages: [{ role: 'user', content: 'hello' }],
+    await expect(generate({ provider, parameters: undefined, tools: undefined,
+      messages: [message({ role: 'user', content: 'hello' })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
-      onChunk: vi.fn(),
     })).rejects.toMatchObject({ code: 'preparation_required' });
 
     expect(create).not.toHaveBeenCalled();
@@ -184,22 +188,19 @@ describe('PromptApiProvider', () => {
   it('rejects tools and configured LM parameters', async () => {
     const provider = new PromptApiProvider();
 
-    await expect(provider.chat({
-      messages: [{ role: 'user', content: 'hello' }],
+    await expect(generate({ provider, parameters: undefined,
+      messages: [message({ role: 'user', content: 'hello' })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
-      onChunk: vi.fn(),
       tools: [{
         name: 'example',
         description: 'Example',
-        parametersSchema: {} as never,
-        execute: vi.fn(),
+        parameters: {},
       }],
     })).rejects.toThrow('tools are not supported');
 
-    await expect(provider.chat({
-      messages: [{ role: 'user', content: 'hello' }],
+    await expect(generate({ provider, tools: undefined,
+      messages: [message({ role: 'user', content: 'hello' })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
-      onChunk: vi.fn(),
       parameters: {
         temperature: 0.5,
         topP: undefined,

@@ -1,470 +1,173 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider } from '@/features/lm/openai';
 import { OllamaProvider } from '@/features/lm/ollama';
-import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type LmParameters } from '@/01-models/types';
+import type { LmProvider } from '@/01-models/lm';
+import type { LmFetch } from './fetch';
+import { toMessageId } from '@/01-models/ids';
+import { consumeProviderGenerationForTest } from './provider-test-support';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
-// Mock useGlobalEvents
-vi.mock('../../composables/useGlobalEvents', () => ({
-  useGlobalEvents: vi.fn(() => ({
-    addErrorEvent: vi.fn(),
-  })),
-}));
+const fetchMock = vi.fn<LmFetch>();
+const finishedOpenAi = 'data: [DONE]\n\n';
+const finishedOllama = '{"done":true}\n';
+function request({ parameters }: { parameters: LmParameters | undefined }): Parameters<LmProvider['chat']>[0] {
+  return {
+    debug: undefined,
+    messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }] }],
+    model: 'test-model', parameters, tools: undefined, readBinaryObject: undefined, signal: undefined,
+  };
+}
+function body({ index }: { index: number }): Record<string, unknown> {
+  const raw = fetchMock.mock.calls[index]?.[1]?.body;
+  expect(typeof raw).toBe('string');
+  if (typeof raw !== 'string') throw new Error('Expected a serialized request.');
+  return JSON.parse(raw);
+}
+function failure({ message }: { message: string }): Response {
+  return Response.json({ error: message }, { status: 400 });
+}
 
 describe('LM Providers Reasoning', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    global.fetch = vi.fn();
+    fetchMock.mockReset();
+    useGlobalEvents().clearEvents();
   });
+  afterEach(() => useGlobalEvents().clearEvents());
 
   describe('OpenAIProvider reasoning', () => {
     it('should include reasoning_effort in the request', async () => {
-      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockResolvedValueOnce({ done: true }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
-
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'gpt-4o',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'medium' },
-        },
-      });
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/chat/completions'),
-        expect.objectContaining({
-          body: expect.stringContaining('"reasoning_effort":"medium"'),
-        }),
-      );
+      fetchMock.mockResolvedValueOnce(new Response(finishedOpenAi));
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1', fetcher: fetchMock });
+      const { result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } } }) });
+      expect(body({ index: 0 }).reasoning_effort).toBe('medium');
+      expect(result).toEqual({ type: 'finished', next: 'user' });
     });
 
     it('should NOT include reasoning_effort when effort is undefined', async () => {
-      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockResolvedValueOnce({ done: true }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
-
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'gpt-4o',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: undefined },
-        },
-      });
-
-      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-      expect(body.reasoning_effort).toBeUndefined();
+      fetchMock.mockResolvedValueOnce(new Response(finishedOpenAi));
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1', fetcher: fetchMock });
+      await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } } }) });
+      expect(Object.hasOwn(body({ index: 0 }), 'reasoning_effort')).toBe(false);
     });
 
     it('should NOT include any optional parameters when parameters is undefined (title gen)', async () => {
-      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockResolvedValueOnce({ done: true }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
-
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'gpt-4o',
-        onChunk: () => {},
-        parameters: undefined,
-      });
-
-      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-      expect(body.temperature).toBeUndefined();
-      expect(body.reasoning_effort).toBeUndefined();
+      fetchMock.mockResolvedValueOnce(new Response(finishedOpenAi));
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1', fetcher: fetchMock });
+      const { result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: undefined }) });
+      expect(body({ index: 0 })).toEqual({ model: 'test-model', messages: [{ role: 'user', content: 'Hi' }], stream: true });
+      expect(result).toEqual({ type: 'finished', next: 'user' });
     });
 
-    it('should wrap reasoning tokens in <think> tags', async () => {
-      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
-      const chunks = [
-        'data: {"choices":[{"delta":{"reasoning_content":"Thinking hard"}}]}',
-        'data: {"choices":[{"delta":{"content":"Hello!"}}]}',
-        'data: [DONE]',
-      ];
-      let chunkIndex = 0;
+    it('keeps reasoning separate instead of wrapping it in synthetic think tags', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(`\
+data: {"choices":[{"delta":{"reasoning_content":"Thinking hard"}}]}
 
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockImplementation(async () => {
-              if (chunkIndex >= chunks.length) return { done: true };
-              const value = new TextEncoder().encode(chunks[chunkIndex++] + '\n');
-              return { done: false, value };
-            }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
+data: {"choices":[{"delta":{"content":"Hello!"}}]}
 
-      const receivedChunks: string[] = [];
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'gpt-4o',
-        onChunk: ({ chunk: c }) => receivedChunks.push(c),
-      });
+data: [DONE]
 
-      expect(receivedChunks).toContain('<think>');
-      expect(receivedChunks).toContain('Thinking hard');
-      expect(receivedChunks).toContain('</think>');
-      expect(receivedChunks).toContain('Hello!');
-      // Verify order
-      const full = receivedChunks.join('');
-      expect(full).toBe('<think>Thinking hard</think>Hello!');
+`));
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1', fetcher: fetchMock });
+      const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: undefined }) });
+      expect(node.parts).toMatchObject([{ type: 'reasoning', text: 'Thinking hard', completeness: 'complete' }, { type: 'text', text: 'Hello!', completeness: 'complete' }]);
+      expect(node.parts).toHaveLength(2);
+      expect(result).toEqual({ type: 'finished', next: 'user' });
     });
 
-    it('should support "reasoning" field (Ollama/DeepSeek style)', async () => {
-      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
-      const chunks = [
-        'data: {"choices":[{"delta":{"reasoning":"Alternative field"}}]}',
-        'data: {"choices":[{"delta":{"content":"Done"}}]}',
-        'data: [DONE]',
-      ];
-      let chunkIndex = 0;
+    it('should support the reasoning field without changing its representation', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(`\
+data: {"choices":[{"delta":{"reasoning":"Alternative field"}}]}
 
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockImplementation(async () => {
-              if (chunkIndex >= chunks.length) return { done: true };
-              const value = new TextEncoder().encode(chunks[chunkIndex++] + '\n');
-              return { done: false, value };
-            }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
+data: {"choices":[{"delta":{"content":"Done"}}]}
 
-      const receivedChunks: string[] = [];
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'gpt-4o',
-        onChunk: ({ chunk: c }) => receivedChunks.push(c),
-      });
+data: [DONE]
 
-      expect(receivedChunks.join('')).toBe('<think>Alternative field</think>Done');
+`));
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1', fetcher: fetchMock });
+      const { node } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: undefined }) });
+      expect(node.parts).toMatchObject([{ type: 'reasoning', text: 'Alternative field' }, { type: 'text', text: 'Done' }]);
+      expect(node.parts).toHaveLength(2);
     });
 
-    it('should close <think> tag if stream ends abruptly', async () => {
-      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
-      const chunks = [
-        'data: {"choices":[{"delta":{"reasoning_content":"Unfinished thoughts"}}]}',
-      ];
-      let chunkIndex = 0;
-
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockImplementation(async () => {
-              if (chunkIndex >= chunks.length) return { done: true };
-              const value = new TextEncoder().encode(chunks[chunkIndex++] + '\n');
-              return { done: false, value };
-            }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
-
-      const receivedChunks: string[] = [];
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'gpt-4o',
-        onChunk: ({ chunk: c }) => receivedChunks.push(c),
-      });
-
-      expect(receivedChunks.join('')).toBe('<think>Unfinished thoughts</think>');
+    it('keeps unfinished reasoning partial on abrupt EOF instead of appending a closing tag', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('data: {"choices":[{"delta":{"reasoning_content":"Unfinished thoughts"}}]}\n\n'));
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1', fetcher: fetchMock });
+      const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: undefined }) });
+      expect(node.parts).toMatchObject([{ type: 'reasoning', text: 'Unfinished thoughts', completeness: 'partial' }]);
+      expect(node.parts).toHaveLength(1);
+      expect(result).toEqual({ type: 'interrupted', reason: 'unknown' });
     });
   });
 
   describe('OllamaProvider reasoning & retry logic', () => {
     it('should include think effort string in the request', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockResolvedValueOnce({ done: true }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
-
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'medium' },
-        },
-      });
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/chat'),
-        expect.objectContaining({
-          body: expect.stringContaining('"think":"medium"'),
-        }),
-      );
+      fetchMock.mockResolvedValueOnce(new Response(finishedOllama));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } } }) });
+      expect(body({ index: 0 }).think).toBe('medium');
     });
 
-    it('should map effort: "none" to think: false', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockResolvedValueOnce({ done: true }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
-
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'none' },
-        },
-      });
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/chat'),
-        expect.objectContaining({
-          body: expect.stringContaining('"think":false'),
-        }),
-      );
+    it('should map effort none to think false', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(finishedOllama));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } } }) });
+      expect(body({ index: 0 }).think).toBe(false);
     });
 
     it('should NOT include think when effort is undefined (Default)', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockResolvedValueOnce({ done: true }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
-
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: undefined },
-        },
-      });
-
-      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-      expect(body.think).toBeUndefined();
+      fetchMock.mockResolvedValueOnce(new Response(finishedOllama));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } } }) });
+      expect(Object.hasOwn(body({ index: 0 }), 'think')).toBe(false);
     });
 
     it('should NOT include think when parameters is undefined (title gen)', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockResolvedValueOnce({ done: true }),
-          }),
-        },
-      };
-      (global.fetch as any).mockResolvedValue(mockResponse);
-
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: undefined,
-      });
-
-      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-      expect(body.think).toBeUndefined();
+      fetchMock.mockResolvedValueOnce(new Response(finishedOllama));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      await consumeProviderGenerationForTest({ provider, request: request({ parameters: undefined }) });
+      expect(body({ index: 0 })).toEqual({ model: 'test-model', messages: [{ role: 'user', content: 'Hi' }], stream: true });
     });
 
-    it('should retry with think: true when model does not support string effort level', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-
-      const mockErrorResponse = {
-        ok: false,
-        status: 400,
-        clone: () => mockErrorResponse,
-        json: vi.fn().mockResolvedValue({
-          error: 'think value "medium" is not supported for this model',
-        }),
-      };
-
-      const mockSuccessResponse = {
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi.fn().mockResolvedValueOnce({ done: true }),
-          }),
-        },
-      };
-
-      (global.fetch as any)
-        .mockResolvedValueOnce(mockErrorResponse)
-        .mockResolvedValueOnce(mockSuccessResponse);
-
-      await provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'medium' },
-        },
-      });
-
-      // Verification
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-      expect((global.fetch as any).mock.calls[0][1].body).toContain('"think":"medium"');
-      expect((global.fetch as any).mock.calls[1][1].body).toContain('"think":true');
+    it('should retry with think true when the model does not support string effort', async () => {
+      fetchMock.mockResolvedValueOnce(failure({ message: 'think value "medium" is not supported' }))
+        .mockResolvedValueOnce(new Response('{"message":{"content":"Success"},"done":true}\n'));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } } }) });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(body({ index: 0 }).think).toBe('medium'); expect(body({ index: 1 }).think).toBe(true);
+      expect(node.parts).toMatchObject([{ type: 'text', text: 'Success', completeness: 'complete' }]);
+      expect(result).toEqual({ type: 'finished', next: 'user' });
     });
 
-    it('should FAIL and NOT retry if the fallback request (think: true) also fails', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-
-      const mockErrorResponse1 = {
-        ok: false,
-        status: 400,
-        clone: () => mockErrorResponse1,
-        json: vi.fn().mockResolvedValue({
-          error: 'think value "medium" is not supported for this model',
-        }),
-      };
-
-      const mockErrorResponse2 = {
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        clone: () => mockErrorResponse2,
-        json: vi.fn().mockResolvedValue({ error: 'Crash' }),
-      };
-
-      (global.fetch as any)
-        .mockResolvedValueOnce(mockErrorResponse1)
-        .mockResolvedValueOnce(mockErrorResponse2);
-
-      await expect(provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'medium' },
-        },
-      })).rejects.toThrow('Ollama API Error (500): Crash');
-
-      expect(global.fetch).toHaveBeenCalledTimes(2); // Attempted original + 1 retry
+    it('should FAIL and NOT retry again if the fallback request also fails', async () => {
+      fetchMock.mockResolvedValueOnce(failure({ message: 'think value "medium" is not supported' }))
+        .mockResolvedValueOnce(failure({ message: 'think is not supported' }));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } } }) });
+      expect(fetchMock).toHaveBeenCalledTimes(2); expect(node.parts).toEqual([]);
+      expect(result).toMatchObject({ type: 'error', error: { message: expect.stringContaining('Ollama API Error (400)') } });
     });
 
-    it('should NOT fallback to think: true when original think was false (Off)', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-
-      const mockErrorResponse = {
-        ok: false,
-        status: 400,
-        clone: () => mockErrorResponse,
-        json: vi.fn().mockResolvedValue({
-          error: 'think value "false" is not supported', // Should not trigger retry because think is not a string
-        }),
-      };
-
-      (global.fetch as any).mockResolvedValue(mockErrorResponse);
-
-      await expect(provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'none' },
-        },
-      })).rejects.toThrow('Ollama API Error (400)');
-
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+    it('should NOT fallback to think true when original think was false (Off)', async () => {
+      fetchMock.mockResolvedValueOnce(failure({ message: 'think value "false" is not supported' }));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      const { result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } } }) });
+      expect(result.type).toBe('error'); expect(fetchMock).toHaveBeenCalledOnce();
     });
 
     it('should NOT fallback when parameters is missing (title gen)', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-
-      const mockErrorResponse = {
-        ok: false,
-        status: 400,
-        clone: () => mockErrorResponse,
-        json: vi.fn().mockResolvedValue({
-          error: 'some error',
-        }),
-      };
-
-      (global.fetch as any).mockResolvedValue(mockErrorResponse);
-
-      await expect(provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: undefined,
-      })).rejects.toThrow('Ollama API Error (400)');
-
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      fetchMock.mockResolvedValueOnce(failure({ message: 'some error' }));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      const { result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: undefined }) });
+      expect(result.type).toBe('error'); expect(fetchMock).toHaveBeenCalledOnce();
     });
 
-    it('should NOT retry when error message does not match "not supported"', async () => {
-      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-
-      const mockErrorResponse = {
-        ok: false,
-        status: 400,
-        clone: () => mockErrorResponse,
-        json: vi.fn().mockResolvedValue({
-          error: 'Invalid parameter: temperature',
-        }),
-      };
-
-      (global.fetch as any).mockResolvedValue(mockErrorResponse);
-
-      await expect(provider.chat({
-        messages: [{ role: 'user', content: 'Hi' }],
-        model: 'qwen3.5',
-        onChunk: () => {},
-        parameters: {
-          ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'medium' },
-        },
-      })).rejects.toThrow('Ollama API Error (400)');
-
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+    it('should NOT retry when the error does not match not supported', async () => {
+      fetchMock.mockResolvedValueOnce(failure({ message: 'Invalid parameter: temperature' }));
+      const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
+      const { result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } } }) });
+      expect(result.type).toBe('error'); expect(fetchMock).toHaveBeenCalledOnce();
     });
   });
 });

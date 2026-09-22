@@ -24,11 +24,15 @@ function captureFixture({ runId, workerEpoch, getActiveRequest }: Parameters<Own
   const issuedCalls: GenerationCaptureRequest['context'][] = [];
   const client = {
     loadDownloadedModel: vi.fn<TransformersJsWorkerClient['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
-    generateText: vi.fn<TransformersJsWorkerClient['generateText']>(async ({ onChunk }) => {
+    generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockRejectedValue(new Error('Unexpected legacy callback capture')),
+    generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>(async ({ onEvent }) => {
       const request = getActiveRequest();
       if (request === undefined) throw new Error('Expected active synthetic Provider request');
       issuedCalls.push({ runId, workerEpoch, requestId: request.requestId, generationCallId: issuedCalls.length + 1 });
-      onChunk({ chunk: 'Synthetic reply.' });
+      await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'Synthetic reply.' } });
+      await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+      await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     }),
     interrupt: vi.fn<TransformersJsWorkerClient['interrupt']>().mockResolvedValue(undefined),
     unloadModel: vi.fn<TransformersJsWorkerClient['unloadModel']>().mockResolvedValue(undefined),
@@ -142,8 +146,9 @@ describe('Provider native generation collection ownership', () => {
     createCaptureClient.mockImplementationOnce(input => {
       const capture = captureFixture(input);
       captures.push(capture);
-      capture.client.generateText.mockImplementation(async () => {
+      capture.client.generateMessage.mockImplementation(async ({ onEvent }) => {
         entered.resolve(); await pending.promise;
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
     });
@@ -168,7 +173,7 @@ describe('Provider native generation collection ownership', () => {
     createCaptureClient.mockImplementationOnce(input => {
       const capture = captureFixture(input);
       captures.push(capture);
-      capture.client.generateText.mockRejectedValueOnce(new Error('Synthetic allocation failed'));
+      capture.client.generateMessage.mockRejectedValueOnce(new Error('Synthetic allocation failed'));
       const disposeClient = capture.client.dispose.getMockImplementation()!;
       capture.client.dispose.mockImplementationOnce(async () => {
         disposalEntered.resolve();
@@ -201,7 +206,7 @@ describe('Provider native generation collection ownership', () => {
       expect(owner.snapshot().native).toEqual({ status: 'released', cutoff });
       expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
       expect(unrecorded.loadDownloadedModel).not.toHaveBeenCalled();
-      expect(unrecorded.generateText).not.toHaveBeenCalled();
+      expect(unrecorded.generateMessage).not.toHaveBeenCalled();
       await owner.dispose();
       expect(unrecorded.dispose).toHaveBeenCalledOnce();
     } finally {
@@ -283,7 +288,7 @@ describe('Provider native generation collection ownership', () => {
     createCaptureClient.mockImplementationOnce(input => {
       const capture = captureFixture(input);
       captures.push(capture);
-      capture.client.generateText.mockRejectedValue(new Error('Synthetic allocation failed'));
+      capture.client.generateMessage.mockRejectedValue(new Error('Synthetic allocation failed'));
       // This adversarial host boundary reports an old epoch as still active.
       // The service's original eager restart/disposal behavior is unchanged.
       capture.getCaptureLifetime.mockImplementation(() => ({ runId: input.runId, workerEpoch: input.workerEpoch, session: 'active', issuedCalls: [], loadRequests: [], incompleteReasons: [] }));
@@ -311,7 +316,7 @@ describe('Provider native generation collection ownership', () => {
     createCaptureClient.mockImplementationOnce(input => {
       const capture = captureFixture(input);
       captures.push(capture);
-      capture.client.generateText.mockRejectedValue(new Error('Synthetic allocation failed'));
+      capture.client.generateMessage.mockRejectedValue(new Error('Synthetic allocation failed'));
       capture.getCaptureLifetime.mockImplementation(() => ({ runId: input.runId, workerEpoch: input.workerEpoch, session: 'active', issuedCalls: [], loadRequests: [], incompleteReasons: [] }));
       return capture;
     });
@@ -360,8 +365,9 @@ describe('Provider native generation collection ownership', () => {
     createCaptureClient.mockImplementationOnce(input => {
       const capture = captureFixture(input);
       captures.push(capture);
-      capture.client.generateText.mockImplementation(async () => {
+      capture.client.generateMessage.mockImplementation(async ({ onEvent }) => {
         entered.resolve(); await pending.promise;
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
     });
@@ -399,8 +405,9 @@ describe('Provider native generation collection ownership', () => {
     createCaptureClient.mockImplementationOnce(input => {
       const capture = captureFixture(input);
       captures.push(capture);
-      capture.client.generateText.mockImplementation(async () => {
+      capture.client.generateMessage.mockImplementation(async ({ onEvent }) => {
         entered.resolve(); await release.promise;
+        await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
     });
@@ -420,11 +427,11 @@ describe('Provider native generation collection ownership', () => {
     const { owner, captures, createCaptureClient } = createOwner({ maximumWorkerEpochs: 8, plan: 'first-continuity-independent' });
     const provider = await owner.run();
     expect(createCaptureClient).toHaveBeenCalledOnce();
-    expect(captures[0]!.client.generateText).toHaveBeenCalledTimes(3);
+    expect(captures[0]!.client.generateMessage).toHaveBeenCalledTimes(3);
     expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
     expect(provider.requests[1]!.input!.messages).toEqual([
       { role: 'user', content: 'Template probe user message.' },
-      { role: 'assistant', content: 'Synthetic reply.' },
+      { role: 'assistant', parts: [{ id: 'part_0', type: 'text', text: 'Synthetic reply.', completeness: 'complete' }] },
       { role: 'user', content: 'Continue the synthetic conversation with a short response.' },
     ]);
     const collecting = owner.collectNative();
@@ -467,14 +474,14 @@ describe('Provider native generation collection ownership', () => {
     createCaptureClient.mockImplementationOnce(input => {
       const capture = captureFixture(input);
       captures.push(capture);
-      capture.client.generateText.mockRejectedValue(new Error('Synthetic allocation failed'));
+      capture.client.generateMessage.mockRejectedValue(new Error('Synthetic allocation failed'));
       return capture;
     });
     const provider = await owner.run();
     expect(provider.run).toEqual({ status: 'stopped', reason: 'provider-rejected' });
     expect(captures).toHaveLength(2);
     expect(captures[0]!.client.dispose).toHaveBeenCalledOnce();
-    expect(captures[1]!.client.generateText).not.toHaveBeenCalled();
+    expect(captures[1]!.client.generateMessage).not.toHaveBeenCalled();
     await owner.collectNative();
     expect(retainedNative({ owner }).epochs.map(epoch => ({ workerEpoch: epoch.workerEpoch, collection: epoch.collection }))).toEqual([
       { workerEpoch: 1, collection: { status: 'unavailable', reason: 'session-inactive' } },
@@ -489,7 +496,7 @@ describe('Provider native generation collection ownership', () => {
     createCaptureClient.mockImplementationOnce(input => {
       const capture = captureFixture(input);
       captures.push(capture);
-      capture.client.generateText.mockRejectedValue(new Error('Synthetic allocation failed'));
+      capture.client.generateMessage.mockRejectedValue(new Error('Synthetic allocation failed'));
       return capture;
     });
     await owner.run();

@@ -132,12 +132,15 @@ export abstract class IStorageProvider {
    */
   abstract saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void>;
 
+  // Missing records return null; malformed or unreadable records reject.
+  // Callers must not treat a read failure as permission to create new content.
   abstract loadChat({ id }: { id: ChatId }): Promise<Chat | null>;
   abstract loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null>;
   abstract loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null>;
   /**
    * Loads chat content without hydrating attachment-backed data.
    * Attachment descriptors may remain on the returned messages.
+   * Missing content returns null; parsing and I/O errors reject.
    */
   abstract loadChatContentWithoutAttachments({ id }: { id: ChatId }): Promise<ChatContent | null>;
   abstract deleteChat({ id }: { id: ChatId }): Promise<void>;

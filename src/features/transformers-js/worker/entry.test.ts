@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ITransformersJsWorker, TransformersJsPrefetchResult, WorkerToolDefinition } from '@/features/transformers-js/types';
+import type { ITransformersJsWorker, InferenceMessage, TransformersJsPrefetchResult, WorkerToolDefinition } from '@/features/transformers-js/types';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { MissingDownloadedModelArtifactError } from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
@@ -14,7 +14,7 @@ import { initializeProductionEntryFixture, installProductionRuntimeStartupPlatfo
 import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { generationCaptureReadResultSchema, type GenerationCaptureRequest } from './generation-capture-protocol';
 import { toToolCallId } from '@/01-models/ids';
-import type { ChatMessage } from '@/01-models/types';
+import type { GenerationStrategy } from '@/features/transformers-js/generation-strategies';
 import { applyTransformersJsFixes } from '../../../../build/transformers-js-fixes/transform';
 import { bundledJinjaTemplate } from '../../../../build/transformers-js-fixes/jinja-template-fixture';
 
@@ -3680,6 +3680,62 @@ Use shell tools.<|im_end|>
       ]);
     });
 
+    it.each<GenerationStrategy['kind']>(['standard', 'gpt-oss', 'qwen3_5', 'gemma4'])('delivers %s structured generation in order and awaits the host before settling', async kind => {
+      const module = await import('@/features/transformers-js/generation-strategies');
+      const started = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
+      const received: import('@/features/transformers-js/generation-events').InferenceGenerationEvent[] = [];
+      const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({ kind, generate: async ({ onGenerationEvent }) => {
+        if (onGenerationEvent === undefined) throw new Error('Expected structured event sink');
+        onGenerationEvent({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
+        onGenerationEvent({ event: { type: 'text_delta', index: 0, text: '  R\n' } });
+        onGenerationEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+        onGenerationEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+      } });
+      const chunk = vi.fn(); const calls = vi.fn(); let settled = false;
+      try {
+        const pending = workerObj.generateText([], chunk, calls, undefined, undefined, undefined, undefined,
+          async ({ event }: { event: import('@/features/transformers-js/generation-events').InferenceGenerationEvent }) => {
+            received.push(event); if (received.length === 1) {
+              started.resolve(); await release.promise;
+            }
+          }).then(() => {
+          settled = true;
+        });
+        await started.promise; expect(received).toHaveLength(1); expect(settled).toBe(false);
+        release.resolve(); await pending;
+        expect(received.map(e => e.type)).toEqual(['part_start', 'text_delta', 'part_end', 'result']);
+        expect(chunk).not.toHaveBeenCalled(); expect(calls).not.toHaveBeenCalled();
+      } finally {
+        release.resolve(); select.mockRestore();
+      }
+    });
+
+    it.each<GenerationStrategy['kind']>(['standard', 'gpt-oss', 'qwen3_5', 'gemma4'])('propagates a failed %s structured acknowledgement instead of reporting generation success', async kind => {
+      const module = await import('@/features/transformers-js/generation-strategies'); const fault = new Error('host failed');
+      const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({ kind, generate: async ({ onGenerationEvent }) => {
+        onGenerationEvent?.({ event: { type: 'part_start', index: 0, kind: 'text' } });
+        onGenerationEvent?.({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+      } });
+      const sink = vi.fn(async () => {
+        throw fault;
+      });
+      try {
+        await expect(workerObj.generateText([], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toBe(fault);
+        expect(sink).toHaveBeenCalledOnce(); expect(mockInterruptFn).toHaveBeenCalled();
+      } finally {
+        select.mockRestore();
+      }
+    });
+
+    it('retains the strategy-specific rejection for unsupported structured tool history before native inference', async () => {
+      const sink = vi.fn();
+      await expect(workerObj.generateText([
+        { role: 'assistant', content: '', tool_calls: [{ id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'weather', arguments: '{}' } }] },
+        { role: 'tool', content: 'Sunny', tool_call_id: toToolCallId({ raw: 'call' }) },
+      ], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toThrow('This standard tool history has no reviewed structured input adapter.');
+      expect(sink).not.toHaveBeenCalled(); expect(mockGenerate).not.toHaveBeenCalled();
+    });
+
     it('passes tools to apply_chat_template for standard models', async () => {
       tokensToEmit = [];
       const tools: WorkerToolDefinition[] = [
@@ -3965,7 +4021,7 @@ Use shell tools.<|im_end|>
       const secondGrid = { data: BigInt64Array.of(1n, 1n, 1n, 1n, 1n, 1n), dims: [2, 3] };
       mockProcessor.mockResolvedValueOnce({ input_ids: [7, 8, 9], pixel_values: firstPixels, image_grid_thw: firstGrid });
       mockProcessor.mockResolvedValueOnce({ input_ids: [7, 8, 9], pixel_values: secondPixels, image_grid_thw: secondGrid });
-      const messages: ChatMessage[] = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: firstUrl } }] }];
+      const messages: InferenceMessage[] = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: firstUrl } }] }];
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
       await worker.generateText(messages, vi.fn(), vi.fn(), undefined, undefined);
       messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: secondUrl } }] });

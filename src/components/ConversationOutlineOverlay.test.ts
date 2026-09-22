@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { computed, nextTick } from 'vue';
 import ConversationOutlineOverlay from './ConversationOutlineOverlay.vue';
-import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
-import type { MessageNode } from '@/01-models/types';
+import { useChatDisplayFlow, type ChatFlowItem } from '@/composables/useChatDisplayFlow';
+import type { AssistantMessageNode, Chat, MessageNode } from '@/01-models/types';
 import { toMessageId, toChatId } from '@/01-models/ids';
 
 beforeEach(async () => {
@@ -15,7 +15,7 @@ vi.mock('./MessageItem.vue', () => ({
   default: {
     name: 'MessageItem',
     props: ['message', 'chatId', 'partContent'],
-    template: '<div data-testid="message-content">{{ partContent || message.content }}</div>',
+    template: '<div data-testid="message-content">{{ partContent }}</div>',
   },
 }));
 
@@ -28,7 +28,13 @@ function messageFlowItem({ id, role, content }: {
 }): ChatFlowItem {
   return {
     type: 'message',
-    node: { id: toMessageId({ raw: id }), role, content, timestamp: 0, replies: { items: [] } },
+    key: JSON.stringify([id, 'p1']),
+    partContent: content,
+    node: {
+      id: toMessageId({ raw: id }), role, createdAt: 0, replies: { items: [] },
+      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      parts: [{ type: 'text', text: content, completeness: 'complete' }],
+    },
     mode: 'content',
     flow: { position: 'standalone', nesting: 'none' },
     isFirstInNode: true,
@@ -231,5 +237,139 @@ describe('ConversationOutlineOverlay', () => {
     await nextTick();
 
     expect(scrollTo).not.toHaveBeenCalled();
+  });
+});
+
+
+function structuredFlow({ parts }: { parts: AssistantMessageNode['parts'] }) {
+  const node: AssistantMessageNode = {
+    id: toMessageId({ raw: 'parts-assistant' }), role: 'assistant', createdAt: 0,
+    modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' },
+    parts, replies: { items: [] },
+  };
+  const chat: Chat = { id: toChatId({ raw: 'parts-chat' }), title: 'Parts', createdAt: 0, updatedAt: 0,
+    debugEnabled: false, root: { items: [node] }, currentLeafId: node.id,
+  };
+  return { node, chat, ...useChatDisplayFlow({ getToolCallDrafts: undefined, chat: computed(() => chat), isProcessing: () => false }) };
+}
+
+describe('outline navigation over message parts', () => {
+  it('keeps one navigation row and one peek for several text parts of the same assistant', async () => {
+    const { node, chat, chatFlow } = structuredFlow({ parts: [
+      { type: 'text', text: 'First ', completeness: 'complete' },
+      { type: 'reasoning', text: 'Do not put this in the outline.', completeness: 'complete' },
+      { type: 'text', text: 'second', completeness: 'partial' },
+    ] });
+    const before = structuredClone(node);
+    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });
+    expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(1);
+    expect(wrapper.text()).toContain('First second');
+    expect(wrapper.text()).not.toContain('Do not put this');
+    await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
+    expect(wrapper.findAll('[data-testid="conversation-outline-peek"]')).toHaveLength(1);
+    expect(wrapper.findComponent({ name: 'MessageItem' }).props('partContent')).toBe('First second');
+    await wrapper.find('[data-testid="conversation-outline-jump-button"]').trigger('click');
+    expect(wrapper.emitted('select-message')).toEqual([[node.id]]);
+    expect(node).toEqual(before);
+    wrapper.unmount();
+  });
+
+  it('does not preserve an old peek across a chat change, even when the message id is reused', async () => {
+    const item = messageFlowItem({ id: 'reused', role: 'assistant', content: 'First chat' });
+    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: toChatId({ raw: 'first' }), visibility: 'visible', flowItems: [item] } });
+    await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
+    expect(wrapper.findAll('[data-testid="conversation-outline-peek"]')).toHaveLength(1);
+    await wrapper.setProps({ chatId: toChatId({ raw: 'second' }), flowItems: [messageFlowItem({ id: 'reused', role: 'assistant', content: 'Second chat' })] });
+    expect(wrapper.find('[data-testid="conversation-outline-peek"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="conversation-outline-panel"]').classes()).toContain('max-h-[55vh]');
+    wrapper.unmount();
+  });
+
+  it('forgets a removed or hidden peek instead of reviving it with a later row', async () => {
+    const item = messageFlowItem({ id: 'removed', role: 'assistant', content: 'Original' });
+    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: toChatId({ raw: 'c' }), visibility: 'visible', flowItems: [item] } });
+    await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
+    await wrapper.setProps({ flowItems: [] });
+    await wrapper.setProps({ flowItems: [item] });
+    expect(wrapper.find('[data-testid="conversation-outline-peek"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
+    await wrapper.setProps({ visibility: 'hidden' });
+    await wrapper.setProps({ visibility: 'visible' });
+    expect(wrapper.find('[data-testid="conversation-outline-peek"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('shortens only the preview and keeps literal-tag source text and partial state intact', async () => {
+    const raw = `<think>Displayed separately</think> A
+
+B `;
+    const { node, chat, chatFlow } = structuredFlow({ parts: [
+      { type: 'text', text: raw, completeness: 'partial' },
+    ] });
+    const before = structuredClone(node);
+    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });
+    expect(wrapper.text()).toContain('A B');
+    expect(wrapper.text()).not.toContain('Displayed separately');
+    await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
+    expect(wrapper.findComponent({ name: 'MessageItem' }).props('partContent')).toBe(` A
+
+B `);
+    expect(node).toEqual(before);
+    wrapper.unmount();
+  });
+
+  it('keeps identical text in distinct messages as separate navigation rows', () => {
+    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: toChatId({ raw: 'c' }), visibility: 'visible', flowItems: [
+      messageFlowItem({ id: 'first', role: 'assistant', content: 'Same' }),
+      messageFlowItem({ id: 'second', role: 'assistant', content: 'Same' }),
+    ] } });
+    expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(2);
+    wrapper.unmount();
+  });
+});
+
+
+describe('outline identity during generation and history changes', () => {
+  it('retains the row and its open peek when an earlier empty part starts emitting text', async () => {
+    const initial = structuredFlow({ parts: [
+      { type: 'text', text: '', completeness: 'partial' },
+      { type: 'text', text: 'B', completeness: 'complete' },
+    ] });
+    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: initial.chat.id, visibility: 'visible', flowItems: initial.chatFlow.value } });
+    const row = wrapper.find('[data-testid="conversation-outline-item"]').element;
+    await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
+    const updated = structuredFlow({ parts: [
+      { type: 'text', text: 'A ', completeness: 'partial' },
+      { type: 'text', text: 'B', completeness: 'complete' },
+    ] });
+    await wrapper.setProps({ flowItems: updated.chatFlow.value });
+    expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="conversation-outline-item"]').element).toBe(row);
+    expect(wrapper.findAll('[data-testid="conversation-outline-peek"]')).toHaveLength(1);
+    expect(wrapper.findComponent({ name: 'MessageItem' }).props('partContent')).toBe('A B');
+    wrapper.unmount();
+  });
+
+  it('keeps an empty cancelled assistant navigable without treating partial as live generation', () => {
+    const { node, chat, chatFlow } = structuredFlow({ parts: [
+      { type: 'text', text: '', completeness: 'partial' },
+      { type: 'text', text: '', completeness: 'complete' },
+    ] });
+    const before = structuredClone(node);
+    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });
+    expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(1);
+    expect(wrapper.text()).toContain('(empty message)');
+    expect(node).toEqual(before);
+    wrapper.unmount();
+  });
+
+  it('retains the explicit tool-results placeholder without exposing the result in the outline', async () => {
+    const node: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 0, modelId: undefined, lmParameters: undefined, parts: [], replies: { items: [] } };
+    const item: ChatFlowItem = { type: 'message', key: 'tool-placeholder', node, partContent: '[Tool Results]', mode: 'content', flow: { position: 'standalone', nesting: 'none' }, isFirstInNode: true, isLastInNode: true, isFirstInTurn: false };
+    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: toChatId({ raw: 'c' }), visibility: 'visible', flowItems: [item] } });
+    expect(wrapper.text()).toContain('[Tool Results]');
+    await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
+    expect(wrapper.findComponent({ name: 'MessageItem' }).props('partContent')).toBe('[Tool Results]');
+    wrapper.unmount();
   });
 });

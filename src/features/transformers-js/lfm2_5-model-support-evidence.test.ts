@@ -1,6 +1,7 @@
 import { Template } from '@huggingface/jinja';
 import { toToolCallId } from '@/01-models/ids';
-import type { ChatMessage } from '@/01-models/types';
+import type { ToolCall } from '@/01-models/types';
+import { exactObject } from '@/utils/exact-object';
 import { describe, expect, it, vi } from 'vitest';
 import { resolveGenerationBudget } from './generation-budget';
 import {
@@ -12,7 +13,7 @@ import {
   detectStandardToolCallProtocol,
   formatStandardMessagesForToolCallProtocol,
 } from './standard-tool-call-protocol';
-import type { WorkerToolDefinition } from './types';
+import type { InferenceMessage, WorkerToolDefinition } from './types';
 import { TEST_ONLY as evidenceFixtureTestOnly } from './model-support-investigation/fixtures/lfm2_5-model-support-evidence';
 
 const { LFM2_5_MODEL_SUPPORT_EVIDENCE: evidence } = evidenceFixtureTestOnly;
@@ -64,24 +65,30 @@ function templateCase({ caseId }: { caseId: string }): EvidenceTemplateCase {
   return found;
 }
 
-function evidenceMessagesToChatMessages({ messages }: {
+function evidenceMessagesToInferenceMessages({ messages }: {
   messages: readonly EvidenceMessage[],
-}): ChatMessage[] {
-  return messages.map(message => ({
-    role: message.role,
-    content: message.content,
-    tool_calls: message.tool_calls?.map(toolCall => ({
-      id: toToolCallId({ raw: toolCall.id }),
-      type: toolCall.type,
-      function: {
-        name: toolCall.function.name,
-        arguments: toolCall.function.arguments,
-      },
-    })),
-    tool_call_id: message.tool_call_id === undefined
-      ? undefined
-      : toToolCallId({ raw: message.tool_call_id }),
-  }));
+}): InferenceMessage[] {
+  return messages.map(message => {
+    const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<InferenceMessage>()({
+      role,
+      content,
+      reasoning: undefined,
+      tool_calls: tool_calls?.map(toolCall => {
+        const { id, type, function: fn, ...unhandledCall } = toolCall;
+        unhandledCall satisfies Record<PropertyKey, never>;
+        const { name, arguments: args, ...unhandledFunction } = fn;
+        unhandledFunction satisfies Record<PropertyKey, never>;
+        return exactObject<ToolCall>()({
+          id: toToolCallId({ raw: id }),
+          type,
+          function: exactObject<ToolCall['function']>()({ name, arguments: args }),
+        });
+      }),
+      tool_call_id: tool_call_id === undefined ? undefined : toToolCallId({ raw: tool_call_id }),
+    });
+  });
 }
 
 function renderEvidenceTemplate({
@@ -286,7 +293,7 @@ Use the weather tool for Tokyo.`);
     it.each(FAILED_TOOL_HISTORY_CASE_IDS)('repairs the recorded %s failure by mapping stored JSON arguments before render', (caseId) => {
       const testCase = templateCase({ caseId });
       const formatted = formatStandardMessagesForToolCallProtocol({
-        messages: evidenceMessagesToChatMessages({ messages: testCase.messages }),
+        messages: evidenceMessagesToInferenceMessages({ messages: testCase.messages }),
         protocol: 'delimited-pythonic',
       });
       const rendered = renderEvidenceTemplate({
@@ -308,7 +315,7 @@ Use the weather tool for Tokyo.`);
       const testCase = templateCase({ caseId: 'assistant-tool-call-history' });
       if (!testCase.tools) throw new Error('Expected tools in Evidence case.');
       const formatted = formatStandardMessagesForToolCallProtocol({
-        messages: evidenceMessagesToChatMessages({ messages: testCase.messages }),
+        messages: evidenceMessagesToInferenceMessages({ messages: testCase.messages }),
         protocol: 'delimited-pythonic',
       });
       const rendered = renderEvidenceTemplate({

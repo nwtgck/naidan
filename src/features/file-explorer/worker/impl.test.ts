@@ -7,7 +7,12 @@ import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFil
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
 import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 import { renderChatMetadataMarkdown } from '@/features/wesh/naidan-sysfs/render/metadata-markdown';
-import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+import {
+  naidanSysfsRemoteChatContentPayloadSchema,
+  naidanSysfsRemoteChatGroupPayloadSchema,
+  naidanSysfsRemoteChatMetaPayloadSchema,
+} from '@/features/wesh/naidan-sysfs/remote-reader-schema';
+import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 describe('file-explorer.worker.impl', () => {
   let worker: ReturnType<typeof createFileExplorerWorker>;
@@ -495,15 +500,19 @@ describe('file-explorer.worker.impl', () => {
         items: [{
           id: toMessageId({ raw: 'user-1' }),
           role: 'user',
-          content: 'Hello',
-          timestamp: 1000,
+          parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }],
+          createdAt: 1000,
+          modelId: undefined,
+          lmParameters: undefined,
           replies: {
             items: [{
               id: toMessageId({ raw: 'assistant-1' }),
               role: 'assistant',
-              content: 'Hi',
-              timestamp: 1001,
+              parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }],
+              createdAt: 1001,
               modelId: 'gpt-5',
+              lmParameters: undefined,
+              interruption: undefined,
               replies: { items: [] },
             }],
           },
@@ -683,6 +692,15 @@ describe('file-explorer.worker.impl', () => {
     };
     const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) });
     expectedMetadata.groupId = toChatGroupId({ raw: 'chat-group-1' });
+    const remoteMetadata = naidanSysfsRemoteChatMetaPayloadSchema.parse({
+      dto: chatMetaToDto({ domain: chatMeta }),
+      groupId: 'chat-group-1',
+    });
+    const remoteContent = naidanSysfsRemoteChatContentPayloadSchema.parse(chatContentToDto({ domain: chatContent }));
+    const remoteGroup = naidanSysfsRemoteChatGroupPayloadSchema.parse({
+      dto: chatGroupToDto({ domain: chatGroup }),
+      items: chatGroup.items,
+    });
 
     const { sessionId } = await worker.prepareSession({
       request: {
@@ -707,14 +725,7 @@ describe('file-explorer.worker.impl', () => {
         return [{
           id: 'chat-group:chat-group-1',
           type: 'chat_group',
-          chatGroup: {
-            dto: chatGroupToDto({ domain: chatGroup }),
-            items: chatGroup.items.map(item => ({
-              id: item.id,
-              type: 'chat',
-              chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-            })),
-          },
+          chatGroup: remoteGroup,
         }];
       },
       async listChats() {
@@ -726,48 +737,19 @@ describe('file-explorer.worker.impl', () => {
         }];
       },
       async listChatGroups() {
-        return [{
-          dto: chatGroupToDto({ domain: chatGroup }),
-          items: chatGroup.items.map(item => ({
-            id: item.id,
-            type: 'chat',
-            chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-          })),
-        }];
+        return [remoteGroup];
       },
       async loadChatMeta({ chatId }: { chatId: string }) {
-        return chatId === 'chat-1'
-          ? {
-            dto: chatMetaToDto({ domain: chatMeta }),
-            groupId: 'chat-group-1',
-          }
-          : undefined;
+        return chatId === 'chat-1' ? remoteMetadata : undefined;
       },
       async loadChatContent({ chatId }: { chatId: string }) {
-        return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined;
+        return chatId === 'chat-1' ? remoteContent : undefined;
       },
       async loadChat({ chatId }: { chatId: string }) {
-        return chatId === 'chat-1'
-          ? {
-            metadata: {
-              dto: chatMetaToDto({ domain: chatMeta }),
-              groupId: 'chat-group-1',
-            },
-            content: chatContentToDto({ domain: chatContent }),
-          }
-          : undefined;
+        return chatId === 'chat-1' ? { metadata: remoteMetadata, content: remoteContent } : undefined;
       },
       async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
-        return chatGroupId === 'chat-group-1'
-          ? {
-            dto: chatGroupToDto({ domain: chatGroup }),
-            items: chatGroup.items.map(item => ({
-              id: item.id,
-              type: 'chat',
-              chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-            })),
-          }
-          : undefined;
+        return chatGroupId === 'chat-group-1' ? remoteGroup : undefined;
       },
       async listBinaryObjects() {
         return [];

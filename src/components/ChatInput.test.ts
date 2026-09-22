@@ -530,6 +530,41 @@ describe('ChatInput Integration', () => {
     }));
   });
 
+  it('auto-sends a prompt released after chat loading exactly once', async () => {
+    const wrapper = getWrapper();
+    await flushPromises();
+    await wrapper.find('[data-testid="chat-input"]').setValue('Existing draft');
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ autoSendPrompt: 'Hello after loading' });
+    await flushPromises();
+    expect(mockSendMessageForChat).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      chatId: toChatId({ raw: 'chat-1' }),
+      content: 'Hello after loading',
+    }));
+
+    await wrapper.setProps({ autoSendPrompt: undefined });
+    await wrapper.setProps({ autoSendPrompt: 'Hello after loading' });
+    await flushPromises();
+    expect(mockSendMessageForChat).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it('does not send a delayed route prompt withdrawn before scheduled interaction', async () => {
+    const wrapper = getWrapper();
+    await flushPromises();
+    await wrapper.find('[data-testid="chat-input"]').setValue('Existing draft');
+
+    const pending = wrapper.setProps({ autoSendPrompt: 'Wrong route' });
+    void wrapper.setProps({ autoSendPrompt: undefined });
+    await pending;
+    await flushPromises();
+
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect((wrapper.find('[data-testid="chat-input"]').element as HTMLTextAreaElement).value).toBe('Existing draft');
+    wrapper.unmount();
+  });
+
   it('does not focus or auto-send when onboarding reopens before scheduled interaction', async () => {
     let resolveModels!: (models: string[]) => void;
     const models = new Promise<string[]>((resolve) => {

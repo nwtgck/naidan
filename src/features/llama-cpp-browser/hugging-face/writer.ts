@@ -6,7 +6,7 @@ import { releaseWorkerRemote, type WorkerRemote, type WorkerCapability, type Wor
 import { z } from 'zod';
 import { readModelFiles, resolveModelFiles, validGguf } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { isMissing, readJournal, repositoryFolder, selectedFile, writeJournal } from './storage';
-import { journalSchema, sharedProjectorConflictMessage, pendingName, selectionSchema, type BeginDownloadResult, type DownloadJournal, type DownloadSelection } from './types';
+import { journalSchema, sharedProjectorConflictMessage, existingModelConflictMessage, pendingName, selectionSchema, type BeginDownloadResult, type DownloadJournal, type DownloadSelection } from './types';
 
 export type DownloadWriterApi = {
   verifyStorage({ probeId }: { probeId: string }): Promise<boolean>,
@@ -56,7 +56,17 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
         if (requestedProjector && projectors.some(file => file.path !== requestedProjector.path)) return { status: 'conflict', reason: 'projector-conflict' };
         if (requestedProjector && existing.has(requestedProjector.path) && existing.get(requestedProjector.path)!.size !== requestedProjector.size) return { status: 'conflict', reason: 'projector-conflict' };
         const reused = selection.files.map(file => existing.has(file.path));
-        if (selection.files.some((file, index) => reused[index] && (!isProjector({ path: file.path }) || existing.get(file.path)!.size !== file.size))) return { status: 'conflict', reason: 'existing-files' };
+        // Multimodal is opt-in: adding its file after a text-only install must
+        // not overwrite (or trust by size alone) the already installed model.
+        // Only allow this upgrade when the complete main file set is present.
+        // Reuse the existing read-only, byte-for-byte comparison path below:
+        // it still transfers the pinned main bytes, but never allocates another
+        // model-sized buffer or writes/truncates the installed weights.
+        const addsProjector = requestedProjector !== undefined && !existing.has(requestedProjector.path);
+        const mainFiles = selection.files.filter(file => !isProjector({ path: file.path }));
+        const hasCompleteMainSet = mainFiles.every(file => existing.get(file.path)?.size === file.size);
+        const comparesInstalledMain = addsProjector && hasCompleteMainSet;
+        if (selection.files.some((file, index) => reused[index] && (existing.get(file.path)!.size !== file.size || (!isProjector({ path: file.path }) && !comparesInstalledMain)))) return { status: 'conflict', reason: 'existing-files' };
         if (!contents.files.length) await pruneEmptyDirectories({ folder, directories: contents.directories });
         journal = { version: 1, selection, reused, bytes: selection.files.map(() => 0), complete: selection.files.map(() => false) };
         await writeJournal({ folder, journal });
@@ -90,7 +100,7 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
       if (journal.reused?.[fileIndex]) {
         if (start !== 0) throw new Error('Shared file verification must start at zero');
         comparison = await handle.getFile();
-        if (comparison.size !== journal.selection.files[fileIndex]!.size) throw new Error(sharedProjectorConflictMessage);
+        if (comparison.size !== journal.selection.files[fileIndex]!.size) throw new Error(isProjector({ path: journal.selection.files[fileIndex]!.path }) ? sharedProjectorConflictMessage : existingModelConflictMessage);
       } else access = await openSyncAccess({ handle });
       stopped = false; index = fileIndex; position = start; checkpointPosition = start; checkpointTime = performance.now();
       access?.truncate(start); journal.complete[fileIndex] = false; await checkpoint();
@@ -100,7 +110,7 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
       if (position + bytes.byteLength > journal.selection.files[index]!.size) throw new Error('Download exceeds expected size');
       if (comparison) {
         const stored = new Uint8Array(await comparison.slice(position, position + bytes.length).arrayBuffer());
-        if (stored.length !== bytes.length || stored.some((byte, offset) => byte !== bytes[offset])) throw new Error(sharedProjectorConflictMessage);
+        if (stored.length !== bytes.length || stored.some((byte, offset) => byte !== bytes[offset])) throw new Error(isProjector({ path: journal.selection.files[index]!.path }) ? sharedProjectorConflictMessage : existingModelConflictMessage);
         position += bytes.length;
       }
       let offset = 0;

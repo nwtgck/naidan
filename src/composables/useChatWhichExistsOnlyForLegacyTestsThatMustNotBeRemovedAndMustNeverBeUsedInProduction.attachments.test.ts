@@ -1,10 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { LmProvider } from '@/01-models/lm';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
+import { exactObject } from '@/utils/exact-object';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { useSettings } from './useSettings';
 import { storageService } from '@/00-storage/service';
 import { ref, reactive } from 'vue';
-import type { Attachment } from '@/01-models/types';
+import type { Attachment, Chat } from '@/01-models/types';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId } from '@/01-models/ids';
 
 // Mock dependencies
@@ -82,20 +85,26 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
-    chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'Response' });
-      return Promise.resolve();
-    });
+    chat = vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     listModels = vi.fn().mockResolvedValue(['test-model']);
   },
 }));
 
 vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
-    chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'Response' });
-      return Promise.resolve();
-    });
+    chat = vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     listModels = vi.fn().mockResolvedValue(['test-model']);
   },
 }));
@@ -142,6 +151,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     (storageService as any).canPersistBinary = false;
   });
 
+  afterEach(async () => {
+    await vi.waitUntil(() => chatStore.TEST_ONLY.activeGenerations.size === 0);
+  });
+
   it('should keep attachments in memory status when using LocalStorage', async () => {
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
@@ -162,8 +175,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const chat = await storageService.loadChat({ id: newChat!.id });
     const message = chat?.root.items[0];
-    expect(message?.attachments).toHaveLength(1);
-    const attachments = message!.attachments!;
+    const attachments = message!.parts.filter(part => part.type === 'attachment').map(part => part.attachment);
+    expect(attachments).toHaveLength(1);
     expect(attachments[0]!.status).toBe('memory');
     expect(storageService.saveFile).not.toHaveBeenCalled();
   });
@@ -191,26 +204,24 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const chat = await storageService.loadChat({ id: newChat!.id });
     const message = chat?.root.items[0];
-    expect(message?.attachments).toBeDefined();
-    if (message?.attachments) {
-      const attachments = message.attachments;
-      expect(attachments[0]!.status).toBe('persisted');
-    }
+    const attachments = message!.parts.filter(part => part.type === 'attachment').map(part => part.attachment);
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]!.status).toBe('persisted');
     expect(storageService.saveFile).toHaveBeenCalled();
   });
 
   it('should rescue memory blobs during migration from LocalStorage to OPFS', async () => {
     const { sendMessage, TEST_ONLY, registerLiveInstance } = chatStore;
     const { __testOnlySetCurrentChat } = TEST_ONLY;
-    const chatObj = reactive({
-      id: 'rescue-chat',
+    const chatObj = reactive<Chat>({
+      id: toChatId({ raw: 'rescue-chat' }),
       title: 'Rescue',
       root: { items: [] },
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
       modelId: 'm1',
-    }) as any;
+    });
     __testOnlySetCurrentChat({ chat: chatObj });
     registerLiveInstance({ chat: chatObj });
 
@@ -228,9 +239,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 1. Send in LocalStorage mode
     await sendMessage({ content: 'Initial message', parentId: null, attachments: [mockAttachment], chatTarget: chatObj });
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chatObj.id }));
     const initialMsg = chatObj.root.items[0];
-    expect(initialMsg?.attachments).toBeDefined();
-    const initialAtts = initialMsg!.attachments!;
+    const initialAtts = initialMsg!.parts.filter(part => part.type === 'attachment').map(part => part.attachment);
+    expect(initialAtts).toHaveLength(1);
     expect(initialAtts[0]!.status).toBe('memory');
 
     // 2. Prepare for OPFS
@@ -240,21 +252,21 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Mock switchProvider to simulate rescue and status update
     (storageService.switchProvider as any).mockImplementation(async () => {
       const msg = chatObj.root.items[0];
-      if (msg && msg.attachments) {
-        for (let i = 0; i < msg.attachments.length; i++) {
-          const att = msg.attachments[i];
-          if (att && att.status === 'memory') {
-            const blob = (att as any).blob;
-            await storageService.saveFile({ blob, binaryObjectId: att.binaryObjectId, name: att.originalName });
-            msg.attachments[i] = {
-              id: att.id,
-              binaryObjectId: att.binaryObjectId,
-              originalName: att.originalName,
-              mimeType: att.mimeType,
-              size: att.size,
-              uploadedAt: att.uploadedAt,
+      if (msg) {
+        for (const part of msg.parts) {
+          if (part.type === 'attachment' && part.attachment.status === 'memory') {
+            const { id, binaryObjectId, originalName, mimeType, size, uploadedAt, blob, status: _status, ...unhandled } = part.attachment;
+            unhandled satisfies Record<PropertyKey, never>;
+            await storageService.saveFile({ blob, binaryObjectId, name: originalName });
+            part.attachment = exactObject<Extract<Attachment, { status: 'persisted' | 'missing' }>>()({
+              id,
+              binaryObjectId,
+              originalName,
+              mimeType,
+              size,
+              uploadedAt,
               status: 'persisted',
-            };
+            });
           }
         }
       }
@@ -271,8 +283,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const chat = await storageService.loadChat({ id: toChatId({ raw: 'rescue-chat' }) });
     const finalMsg = chat!.root.items[0];
-    expect(finalMsg?.attachments).toBeDefined();
-    const finalAtts = finalMsg!.attachments!;
+    const finalAtts = finalMsg!.parts.filter(part => part.type === 'attachment').map(part => part.attachment);
+    expect(finalAtts).toHaveLength(1);
     expect(finalAtts[0]!.status).toBe('persisted');
   });
 });

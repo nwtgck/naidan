@@ -113,9 +113,9 @@ describe('independent HF variants in one repository', () => {
     const paths = ['Model-Q4_K_M.gguf', 'Model-AWQ-Q4_K_M.gguf', 'Model-QAD-Q4_0.gguf', 'Model-Q4_0.gguf', 'Model-UD-Q4_K_XL-00001-of-00002.gguf', 'Model-UD-Q4_K_XL-00002-of-00002.gguf'];
     const models = groupModelFiles({ files: paths.map(path => ({ path, size: 128 })) }).models;
     const choices = quantizationChoices({ repository, models });
-    expect(choices.map(choice => choice.label)).toEqual(['Q4_K_M', 'AWQ-Q4_K_M', 'Q4_0', 'QAD-Q4_0', 'UD-Q4_K_XL']);
+    expect(choices.map(choice => choice.label)).toEqual(['Q4_K_M', 'Q4_K_M · AWQ', 'Q4_0', 'Q4_0 · QAD', 'Q4_K_XL · UD']);
     const alone = quantizationChoices({ repository, models: [models[0]!] })[0]!;
     expect(choices.find(choice => choice.id === alone.id)?.label).toBe(alone.label);
-    expect(quantizationChoices({ repository, models: groupModelFiles({ files: [{ path: 'Model-UD-Q4_K_XL.gguf', size: 128 }] }).models })[0]?.label).toBe('UD-Q4_K_XL');
+    expect(quantizationChoices({ repository, models: groupModelFiles({ files: [{ path: 'Model-UD-Q4_K_XL.gguf', size: 128 }] }).models })[0]?.label).toBe('Q4_K_XL · UD');
   });
 });

@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { LmProvider } from '@/01-models/lm';
 import { toToolCallId } from '@/01-models/ids';
 import { createProductionProviderTrace } from './production-provider-trace';
 
 const toolCallId = toToolCallId({ raw: 'synthetic-call' });
+// These sources exercise the frozen callback-era evidence sink. They do not
+// implement today's iterable LmProvider.chat contract or model inference.
+type CallbackSource = (callbacks: ReturnType<typeof createProductionProviderTrace>['callbacks']) => Promise<void>;
 
 describe('bounded synchronous Production Provider trace', () => {
   it('records the actual configured limits without retaining the caller configuration', () => {
@@ -39,19 +41,13 @@ describe('bounded synchronous Production Provider trace', () => {
 
   it('records callback order synchronously and separates callbacks after the direct await', async () => {
     const trace = createProductionProviderTrace({ requestId: 'synthetic-request', limits: { maximumEvents: 20, maximumCharacters: 1024 } });
-    // This fixture checks the LmProvider callback boundary, not real service or Comlink timing.
-    const provider: LmProvider = {
-      async chat({ onChunk, onAssistantMessageStart }) {
-        expect(onAssistantMessageStart?.()).toBeUndefined();
-        expect(onChunk({ chunk: '' })).toBeUndefined();
-        expect(onChunk({ chunk: 'first' })).toBeUndefined();
-        expect(trace.snapshot().events.map(event => event.kind)).toEqual(['assistant-start', 'chunk', 'chunk']);
-      },
-      async listModels() {
-        return [];
-      },
+    const emitCallbacks: CallbackSource = async ({ onChunk, onAssistantMessageStart }) => {
+      expect(onAssistantMessageStart()).toBeUndefined();
+      expect(onChunk({ chunk: '' })).toBeUndefined();
+      expect(onChunk({ chunk: 'first' })).toBeUndefined();
+      expect(trace.snapshot().events.map(event => event.kind)).toEqual(['assistant-start', 'chunk', 'chunk']);
     };
-    await provider.chat({ model: 'synthetic/model', messages: [], ...trace.callbacks });
+    await emitCallbacks(trace.callbacks);
     const settled = trace.settle({ outcome: 'fulfilled', error: undefined });
     trace.callbacks.onChunk({ chunk: '-late' });
     const snapshot = trace.snapshot();
@@ -104,16 +100,11 @@ describe('bounded synchronous Production Provider trace', () => {
 
   it('latches event overflow without growing further or losing fulfilled settlement', async () => {
     const trace = createProductionProviderTrace({ requestId: 'event-overflow', limits: { maximumEvents: 1, maximumCharacters: 100 } });
-    const provider: LmProvider = {
-      async chat({ onChunk }) {
-        onChunk({ chunk: 'kept' });
-        for (let index = 0; index < 100; index += 1) onChunk({ chunk: 'dropped' });
-      },
-      async listModels() {
-        return [];
-      },
+    const emitCallbacks: CallbackSource = async ({ onChunk }) => {
+      onChunk({ chunk: 'kept' });
+      for (let index = 0; index < 100; index += 1) onChunk({ chunk: 'dropped' });
     };
-    await expect(provider.chat({ model: 'synthetic/model', messages: [], ...trace.callbacks })).resolves.toBeUndefined();
+    await expect(emitCallbacks(trace.callbacks)).resolves.toBeUndefined();
     const settled = trace.settle({ outcome: 'fulfilled', error: undefined });
     expect(settled.outcome.status).toBe('fulfilled');
     expect(settled.completeness).toBe('incomplete');
@@ -140,17 +131,12 @@ describe('bounded synchronous Production Provider trace', () => {
   it('retains a public rejection after exhausting the recording budget', async () => {
     const trace = createProductionProviderTrace({ requestId: 'rejected-overflow', limits: { maximumEvents: 0, maximumCharacters: 0 } });
     const original = new Error('Synthetic provider rejection');
-    const provider: LmProvider = {
-      async chat({ onChunk }) {
-        onChunk({ chunk: 'not retained' }); throw original;
-      },
-      async listModels() {
-        return [];
-      },
+    const emitCallbacks: CallbackSource = async ({ onChunk }) => {
+      onChunk({ chunk: 'not retained' }); throw original;
     };
     let caught: unknown;
     try {
-      await provider.chat({ model: 'synthetic/model', messages: [], ...trace.callbacks });
+      await emitCallbacks(trace.callbacks);
       trace.settle({ outcome: 'fulfilled', error: undefined });
     } catch (error) {
       trace.settle({ outcome: 'rejected', error });
@@ -188,15 +174,10 @@ describe('bounded synchronous Production Provider trace', () => {
     });
     const trace = createProductionProviderTrace({ requestId: 'getter', limits: { maximumEvents: 10, maximumCharacters: 100 } });
     const input = Object.defineProperty({}, 'chunk', { get: getter }) as { chunk: string };
-    const provider: LmProvider = {
-      async chat({ onChunk }) {
-        onChunk(input);
-      },
-      async listModels() {
-        return [];
-      },
+    const emitCallbacks: CallbackSource = async ({ onChunk }) => {
+      onChunk(input);
     };
-    await expect(provider.chat({ model: 'synthetic/model', messages: [], ...trace.callbacks })).resolves.toBeUndefined();
+    await expect(emitCallbacks(trace.callbacks)).resolves.toBeUndefined();
     expect(getter).not.toHaveBeenCalled();
     expect(trace.settle({ outcome: 'fulfilled', error: undefined })).toMatchObject({ completeness: 'incomplete', outcome: { status: 'fulfilled' } });
   });
@@ -214,20 +195,15 @@ describe('bounded synchronous Production Provider trace', () => {
   it('contains descriptor-trap sink failure while preserving the original public rejection', async () => {
     const original = new Error('Original provider failure');
     const trace = createProductionProviderTrace({ requestId: 'sink-failure', limits: { maximumEvents: 10, maximumCharacters: 100 } });
-    const provider: LmProvider = {
-      async chat({ onChunk }) {
-        onChunk(new Proxy({ chunk: 'fixture' }, { getOwnPropertyDescriptor() {
-          throw new Error('Observer failure');
-        } }));
-        throw original;
-      },
-      async listModels() {
-        return [];
-      },
+    const emitCallbacks: CallbackSource = async ({ onChunk }) => {
+      onChunk(new Proxy({ chunk: 'fixture' }, { getOwnPropertyDescriptor() {
+        throw new Error('Observer failure');
+      } }));
+      throw original;
     };
     let caught: unknown;
     try {
-      await provider.chat({ model: 'synthetic/model', messages: [], ...trace.callbacks });
+      await emitCallbacks(trace.callbacks);
       trace.settle({ outcome: 'fulfilled', error: undefined });
     } catch (error) {
       trace.settle({ outcome: 'rejected', error });

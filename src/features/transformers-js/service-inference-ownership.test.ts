@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { runProviderConversationForTest } from '@/features/lm/provider-test-support';
+import type { ToolCall } from '@/01-models/types';
+import type { InferenceGenerationCallback } from './generation-events';
 import { toToolCallId } from '@/01-models/ids';
 import type { Tool } from '@/01-models/tool';
 import { createTransformersJsService } from './index-hosted';
@@ -16,10 +19,21 @@ function createClientFixture() {
     loadDownloadedModel: vi.fn<TransformersJsWorkerClient['loadDownloadedModel']>().mockResolvedValue({ device: 'webgpu' }),
     unloadModel: vi.fn<TransformersJsWorkerClient['unloadModel']>().mockResolvedValue(undefined),
     generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockResolvedValue(undefined),
+    generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>(publishFinished),
     interrupt: vi.fn<TransformersJsWorkerClient['interrupt']>().mockResolvedValue(undefined),
     resetCache: vi.fn<TransformersJsWorkerClient['resetCache']>().mockResolvedValue(undefined),
     dispose: vi.fn<TransformersJsWorkerClient['dispose']>().mockResolvedValue(undefined),
   } satisfies TransformersJsWorkerClient;
+}
+
+// Synthetic structured controls; no model-output facts are inferred from old callbacks.
+async function publishFinished({ onEvent }: { onEvent: InferenceGenerationCallback }): Promise<void> {
+  await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+}
+async function publishCompletedCall({ onEvent, toolCall }: { onEvent: InferenceGenerationCallback, toolCall: ToolCall }): Promise<void> {
+  await onEvent({ event: { type: 'tool_start', index: 0 } });
+  await onEvent({ event: { type: 'tool_call', index: 0, toolCall } });
+  await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'tool_results' } } });
 }
 
 function generationArgs({ continuationOwner }: { continuationOwner: string }) {
@@ -29,7 +43,7 @@ function generationArgs({ continuationOwner }: { continuationOwner: string }) {
   } satisfies Parameters<TransformersJsInferenceScope['generateText']>[0];
 }
 
-function observe({ promise }: { promise: Promise<void> }) {
+function observe({ promise }: { promise: Promise<unknown> }) {
   return promise.then(
     () => ({ status: 'fulfilled' as const }),
     (error: unknown) => ({ status: 'rejected' as const, error }),
@@ -342,24 +356,24 @@ describe('Transformers.js inference scope ownership', () => {
         return { status: 'success', content: 'retired tool result' };
       },
     };
-    oldClient.generateText.mockImplementationOnce(async ({ onToolCalls }) => {
-      onToolCalls({ toolCalls: [{ id: toToolCallId({ raw: 'synthetic-owned-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } }] });
+    oldClient.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await publishCompletedCall({ onEvent, toolCall: { id: toToolCallId({ raw: 'synthetic-owned-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } } });
     });
-    const oldChat = observe({ promise: provider.chat({ model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult }) });
+    const oldChat = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult }) });
     try {
       const toolSignal = await toolEntered.promise;
       await owner.service.restart();
       expect(await oldChat).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
       expect(toolSignal?.aborted).toBe(true);
-      await provider.chat({ model: 'fixture/fresh', messages: [{ role: 'user', content: 'Independent synthetic request.' }], onChunk: vi.fn() });
+      await runProviderConversationForTest({ provider, model: 'fixture/fresh', messages: [{ role: 'user', content: 'Independent synthetic request.' }], onChunk: vi.fn() });
       releaseTool.resolve();
       await toolReturned.promise;
       await Promise.resolve();
       await Promise.resolve();
       expect(onToolEvent).not.toHaveBeenCalled();
-      expect(onToolResult).not.toHaveBeenCalled();
-      expect(oldClient.generateText).toHaveBeenCalledTimes(1);
-      expect(freshClient.generateText).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-owned-tool', result: { status: 'success', content: 'retired tool result' } }));
+      expect(oldClient.generateMessage).toHaveBeenCalledTimes(1);
+      expect(freshClient.generateMessage).toHaveBeenCalledTimes(1);
       expect(freshClient.dispose).not.toHaveBeenCalled();
       expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
     } finally {
@@ -368,7 +382,7 @@ describe('Transformers.js inference scope ownership', () => {
     }
   });
 
-  it('revokes a noncooperative Provider tool rejecting after restart without leaking an error result to the replacement', async () => {
+  it('revokes a noncooperative Provider tool rejecting after restart while retaining its failure only in the original history', async () => {
     const oldClient = createClientFixture();
     const freshClient = createClientFixture();
     const createWorkerClient = vi.fn().mockReturnValueOnce(oldClient).mockReturnValue(freshClient);
@@ -389,24 +403,24 @@ describe('Transformers.js inference scope ownership', () => {
         throw new Error('Synthetic retired tool failure');
       },
     };
-    oldClient.generateText.mockImplementationOnce(async ({ onToolCalls }) => {
-      onToolCalls({ toolCalls: [{ id: toToolCallId({ raw: 'synthetic-owned-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } }] });
+    oldClient.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
+      await publishCompletedCall({ onEvent, toolCall: { id: toToolCallId({ raw: 'synthetic-owned-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } } });
     });
-    const oldChat = observe({ promise: provider.chat({ model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult }) });
+    const oldChat = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult }) });
     try {
       const toolSignal = await toolEntered.promise;
       await owner.service.restart();
       expect(await oldChat).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
       expect(toolSignal?.aborted).toBe(true);
-      await provider.chat({ model: 'fixture/fresh', messages: [{ role: 'user', content: 'Independent synthetic request.' }], onChunk: vi.fn() });
+      await runProviderConversationForTest({ provider, model: 'fixture/fresh', messages: [{ role: 'user', content: 'Independent synthetic request.' }], onChunk: vi.fn() });
       releaseTool.resolve();
       await toolReturned.promise;
       await Promise.resolve();
       await Promise.resolve();
       expect(onToolEvent).not.toHaveBeenCalled();
-      expect(onToolResult).not.toHaveBeenCalled();
-      expect(oldClient.generateText).toHaveBeenCalledTimes(1);
-      expect(freshClient.generateText).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-owned-tool', result: { status: 'error', code: 'other', message: 'Tool execution was interrupted before completion.' } }));
+      expect(oldClient.generateMessage).toHaveBeenCalledTimes(1);
+      expect(freshClient.generateMessage).toHaveBeenCalledTimes(1);
       expect(freshClient.dispose).not.toHaveBeenCalled();
       expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
     } finally {
@@ -445,15 +459,16 @@ describe('Transformers.js inference scope ownership', () => {
       trace.push(`fresh:load:${modelId}`);
       return { device: 'webgpu' };
     });
-    replacement.generateText.mockImplementation(async () => {
+    replacement.generateMessage.mockImplementation(async ({ onEvent }) => {
       trace.push('fresh:generate');
+      await publishFinished({ onEvent });
     });
     const factory = vi.fn<() => TransformersJsWorkerClient>().mockReturnValueOnce(original).mockReturnValue(replacement);
     const owner = createOwner({ createWorkerClient: factory });
     const provider = createTransformersJsProvider({ service: owner.service });
-    const first = observe({ promise: provider.chat({ model: 'fixture/old', messages: [], onChunk: vi.fn(), signal: abort.signal }) });
+    const first = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [], onChunk: vi.fn(), signal: abort.signal }) });
     await loadEntered.promise;
-    const second = observe({ promise: provider.chat({ model: 'fixture/next', messages: [], onChunk: vi.fn() }) });
+    const second = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/next', messages: [], onChunk: vi.fn() }) });
     let firstSettled = false;
     void first.then(() => {
       firstSettled = true;
@@ -468,15 +483,15 @@ describe('Transformers.js inference scope ownership', () => {
       expect(firstSettled).toBe(false);
       expect(factory).toHaveBeenCalledTimes(1);
       expect(original.interrupt).not.toHaveBeenCalled();
-      expect(original.generateText).not.toHaveBeenCalled();
+      expect(original.generateMessage).not.toHaveBeenCalled();
       expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
-      expect(replacement.generateText).not.toHaveBeenCalled();
+      expect(replacement.generateMessage).not.toHaveBeenCalled();
       releaseDisposal.resolve();
-      expect(await first).toMatchObject({ status: 'rejected', error: { name: 'AbortError' } });
+      expect(await first).toMatchObject({ status: 'rejected', error: { message: 'Generation aborted' } });
       expect(await second).toEqual({ status: 'fulfilled' });
       expect(trace).toEqual(['old:load', 'old:dispose-start', 'old:dispose-complete', 'fresh:load:fixture/next', 'fresh:generate']);
       expect(factory).toHaveBeenCalledTimes(2);
-      expect(original.generateText).not.toHaveBeenCalled();
+      expect(original.generateMessage).not.toHaveBeenCalled();
       expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next' });
     } finally {
       releaseDisposal.resolve();
@@ -508,9 +523,9 @@ describe('Transformers.js inference scope ownership', () => {
     const factory = vi.fn<() => TransformersJsWorkerClient>().mockReturnValueOnce(original).mockReturnValue(replacement);
     const owner = createOwner({ createWorkerClient: factory });
     const provider = createTransformersJsProvider({ service: owner.service });
-    const first = observe({ promise: provider.chat({ model: 'fixture/old', messages: [], onChunk: vi.fn(), signal: abort.signal }) });
+    const first = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [], onChunk: vi.fn(), signal: abort.signal }) });
     await loadEntered.promise;
-    const waiting = observe({ promise: provider.chat({ model: 'fixture/waiting', messages: [], onChunk: vi.fn() }) });
+    const waiting = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/waiting', messages: [], onChunk: vi.fn() }) });
     try {
       abort.abort();
       await disposalEntered.promise;
@@ -519,13 +534,13 @@ describe('Transformers.js inference scope ownership', () => {
       releaseDisposal.resolve();
       expect(await first).toEqual({ status: 'rejected', error: disposalError });
       expect(await waiting).toEqual({ status: 'rejected', error: disposalError });
-      expect(await observe({ promise: provider.chat({ model: 'fixture/later', messages: [], onChunk: vi.fn() }) })).toEqual({ status: 'rejected', error: disposalError });
+      expect(await observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/later', messages: [], onChunk: vi.fn() }) })).toEqual({ status: 'rejected', error: disposalError });
       expect(factory).toHaveBeenCalledTimes(1);
       expect(original.dispose).toHaveBeenCalledTimes(1);
-      expect(original.generateText).not.toHaveBeenCalled();
+      expect(original.generateMessage).not.toHaveBeenCalled();
       expect(original.interrupt).not.toHaveBeenCalled();
       expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
-      expect(replacement.generateText).not.toHaveBeenCalled();
+      expect(replacement.generateMessage).not.toHaveBeenCalled();
       expect(owner.service.getState()).toMatchObject({ status: 'error', activeModelId: undefined });
     } finally {
       releaseDisposal.resolve();
@@ -557,29 +572,31 @@ describe('Transformers.js inference scope ownership', () => {
       trace.push(`load:${modelId}`);
       return { device: 'webgpu' };
     });
-    client.generateText.mockImplementationOnce(async ({ onToolCalls }) => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       trace.push('old:initial');
-      onToolCalls({ toolCalls: [{ id: toolId, type: 'function', function: { name: tool.name, arguments: '{}' } }] });
-    }).mockImplementationOnce(async () => {
+      await publishCompletedCall({ onEvent, toolCall: { id: toolId, type: 'function', function: { name: tool.name, arguments: '{}' } } });
+    }).mockImplementationOnce(async ({ onEvent }) => {
       trace.push('old:continuation');
-    }).mockImplementationOnce(async () => {
+      await publishFinished({ onEvent });
+    }).mockImplementationOnce(async ({ onEvent }) => {
       trace.push('next:initial');
+      await publishFinished({ onEvent });
     });
     const onToolResult = vi.fn();
-    const first = observe({ promise: provider.chat({ model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolResult }) });
+    const first = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolResult }) });
     await toolEntered.promise;
-    const second = observe({ promise: provider.chat({ model: 'fixture/next', messages: [{ role: 'user', content: 'Independent next request.' }], onChunk: vi.fn() }) });
+    const second = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/next', messages: [{ role: 'user', content: 'Independent next request.' }], onChunk: vi.fn() }) });
     try {
       expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered']);
       expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
-      expect(client.generateText).toHaveBeenCalledTimes(1);
+      expect(client.generateMessage).toHaveBeenCalledTimes(1);
       releaseTool.resolve();
       expect(await first).toEqual({ status: 'fulfilled' });
       expect(await second).toEqual({ status: 'fulfilled' });
       expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered', 'tool:completed', 'old:continuation', 'load:fixture/next', 'next:initial']);
       expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: toolId, result: { status: 'success', content: 'Synthetic tool result.' } });
-      expect(client.generateText.mock.calls[1]?.[0].messages.at(-1)).toEqual({ role: 'tool', content: 'Synthetic tool result.', tool_call_id: toolId });
-      expect(client.generateText.mock.calls[2]?.[0].messages).toEqual([{ role: 'user', content: 'Independent next request.' }]);
+      expect(client.generateMessage.mock.calls[1]?.[0].messages.at(-1)).toEqual({ role: 'tool', content: 'Synthetic tool result.', tool_call_id: toolId });
+      expect(client.generateMessage.mock.calls[2]?.[0].messages).toEqual([{ role: 'user', content: 'Independent next request.' }]);
       expect(client.interrupt).not.toHaveBeenCalled();
       expect(client.dispose).not.toHaveBeenCalled();
     } finally {
@@ -614,15 +631,16 @@ describe('Transformers.js inference scope ownership', () => {
       trace.push(`load:${modelId}`);
       return { device: 'webgpu' };
     });
-    client.generateText.mockImplementationOnce(async ({ onToolCalls }) => {
+    client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       trace.push('old:initial');
-      onToolCalls({ toolCalls: [{ id: toToolCallId({ raw: 'synthetic-canceled-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } }] });
-    }).mockImplementationOnce(async () => {
+      await publishCompletedCall({ onEvent, toolCall: { id: toToolCallId({ raw: 'synthetic-canceled-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } } });
+    }).mockImplementationOnce(async ({ onEvent }) => {
       trace.push('next:initial');
+      await publishFinished({ onEvent });
     });
-    const first = observe({ promise: provider.chat({ model: 'fixture/old', messages: [], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult, signal: abort.signal }) });
+    const first = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult, signal: abort.signal }) });
     const toolSignal = await toolEntered.promise;
-    const second = observe({ promise: provider.chat({ model: 'fixture/next', messages: [{ role: 'user', content: 'Independent request after cancellation.' }], onChunk: vi.fn() }) });
+    const second = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/next', messages: [{ role: 'user', content: 'Independent request after cancellation.' }], onChunk: vi.fn() }) });
     let firstSettled = false;
     let secondSettled = false;
     void first.then(() => {
@@ -642,13 +660,13 @@ describe('Transformers.js inference scope ownership', () => {
       expect(client.dispose).not.toHaveBeenCalled();
       expect(client.interrupt).not.toHaveBeenCalled();
       releaseTool.resolve();
-      expect(await first).toMatchObject({ status: 'rejected', error: { name: 'AbortError' } });
+      expect(await first).toMatchObject({ status: 'rejected', error: { message: 'Generation aborted' } });
       expect(await second).toEqual({ status: 'fulfilled' });
       expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered', 'tool:completed', 'load:fixture/next', 'next:initial']);
       expect(onToolEvent).not.toHaveBeenCalled();
-      expect(onToolResult).not.toHaveBeenCalled();
-      expect(client.generateText).toHaveBeenCalledTimes(2);
-      expect(client.generateText.mock.calls[1]?.[0].messages).toEqual([{ role: 'user', content: 'Independent request after cancellation.' }]);
+      expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-canceled-tool', result: { status: 'success', content: 'Canceled tool result.' } });
+      expect(client.generateMessage).toHaveBeenCalledTimes(2);
+      expect(client.generateMessage.mock.calls[1]?.[0].messages).toEqual([{ role: 'user', content: 'Independent request after cancellation.' }]);
       expect(client.dispose).not.toHaveBeenCalled();
       expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next' });
     } finally {
@@ -814,4 +832,72 @@ describe('Transformers.js inference scope ownership', () => {
     }
     expect(harness.observations.cleanupErrors).toEqual([]);
   }, 30_000);
+});
+
+describe('structured message operations keep the existing inference lane', () => {
+  it('keeps the lane during a tool wait and a second generation, not only one RPC', async () => {
+    const client = createClientFixture(); const owner = createOwner({ createWorkerClient: () => client });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    const toolWait = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>(); const trace: string[] = [];
+    client.generateMessage.mockImplementation(async ({ onEvent }) => {
+      trace.push('generation'); await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+    });
+    const first = owner.service.runInferenceOperation({ signal: undefined, operation: async ({ scope }) => {
+      const request = { messages: [], onEvent: vi.fn(), params: undefined, tools: undefined, continuationOwner: 'one-scope' };
+      await scope.generateMessage(request); toolWait.resolve(); await release.promise;
+      scope.assertActive(); await scope.generateMessage(request); trace.push('first-complete');
+    } });
+    await toolWait.promise;
+    const next = owner.service.runInferenceOperation({ signal: undefined, operation: async () => {
+      trace.push('next-scope');
+    } });
+    await Promise.resolve(); expect(trace).toEqual(['generation']);
+    release.resolve(); await first; await next;
+    expect(trace).toEqual(['generation', 'generation', 'first-complete', 'next-scope']);
+    expect(client.generateMessage).toHaveBeenCalledTimes(2);
+    expect(client.generateMessage.mock.calls.every(([args]) => args.continuationOwner === 'one-scope')).toBe(true);
+  });
+
+  it('drains accepted native events after ordinary abort before the next owner starts', async () => {
+    const client = createClientFixture(); const owner = createOwner({ createWorkerClient: () => client });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    const entered = Promise.withResolvers<void>(); const stopSeen = Promise.withResolvers<void>(); const drain = Promise.withResolvers<void>();
+    const delivered: string[] = []; const controller = new AbortController();
+    client.interrupt.mockImplementation(async () => {
+      stopSeen.resolve();
+    });
+    client.generateMessage.mockImplementation(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'A' } }); entered.resolve();
+      await stopSeen.promise; await onEvent({ event: { type: 'text_delta', index: 0, text: 'B' } }); await drain.promise;
+    });
+    const first = observe({ promise: owner.service.runInferenceOperation({ signal: controller.signal, operation: async ({ scope }) => {
+      await scope.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: undefined,
+        onEvent: ({ event }) => {
+          if (event.type === 'text_delta') delivered.push(event.text);
+        },
+      });
+    } }) });
+    await entered.promise; controller.abort(); await stopSeen.promise;
+    let nextEntered = false; const next = owner.service.runInferenceOperation({ signal: undefined, operation: async () => {
+      nextEntered = true;
+    } });
+    await vi.waitFor(() => expect(delivered).toEqual(['A', 'B'])); expect(nextEntered).toBe(false);
+    drain.resolve(); expect((await first).status).toBe('rejected'); await next; expect(nextEntered).toBe(true);
+  });
+
+  it('revokes the structured method after scope exit and rejects overlapping children', async () => {
+    const client = createClientFixture(); const owner = createOwner({ createWorkerClient: () => client });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    const entered = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
+    client.generateMessage.mockImplementation(async () => {
+      entered.resolve(); await release.promise;
+    });
+    let escaped: TransformersJsInferenceScope | undefined;
+    const request = { messages: [], onEvent: vi.fn(), params: undefined, tools: undefined, continuationOwner: undefined };
+    await owner.service.runInferenceOperation({ signal: undefined, operation: async ({ scope }) => {
+      escaped = scope; const first = scope.generateMessage(request); await entered.promise;
+      await expect(scope.generateMessage(request)).rejects.toThrow('active operation'); release.resolve(); await first;
+    } });
+    await expect(escaped!.generateMessage(request)).rejects.toThrow(); expect(client.generateMessage).toHaveBeenCalledOnce();
+  });
 });

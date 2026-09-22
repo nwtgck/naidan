@@ -104,7 +104,7 @@ export type ChatDataStore = {
 };
 
 export function createChatDataStore({
-  applyVolatileAssistantErrorsToChat,
+  pruneVolatileAssistantErrorsForChat,
   hasActiveGeneration,
   isTaskRunning,
   onExternalGenerationStarted,
@@ -112,7 +112,7 @@ export function createChatDataStore({
   onExternalGenerationAbortRequest,
   onMigration,
 }: {
-  applyVolatileAssistantErrorsToChat: ({ chat }: { chat: Chat }) => void,
+  pruneVolatileAssistantErrorsForChat: ({ chat }: { chat: Chat }) => void,
   hasActiveGeneration: ({ chatId }: { chatId: ChatId }) => boolean,
   isTaskRunning: ({ chatId }: { chatId: ChatId }) => boolean,
   onExternalGenerationStarted: ({ chatId }: { chatId: ChatId }) => void,
@@ -506,7 +506,7 @@ export function createChatDataStore({
           void storageService.updateChatContent({ id: id, updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
         }
       }
-      applyVolatileAssistantErrorsToChat({ chat: loaded });
+      pruneVolatileAssistantErrorsForChat({ chat: loaded });
       const reactiveChat = reactive(loaded);
       registerLiveInstance({ chat: reactiveChat });
       currentChatGroupRef.value = null;
@@ -579,7 +579,7 @@ export function createChatDataStore({
         const chatId = toChatId({ raw: event.id });
         const fresh = await storageService.loadChat({ id: chatId });
         if (fresh && currentChatRef.value) {
-          applyVolatileAssistantErrorsToChat({ chat: fresh });
+          pruneVolatileAssistantErrorsForChat({ chat: fresh });
           Object.assign(currentChatRef.value, fresh);
           triggerRef(currentChatRef);
         } else if (!hasActiveGeneration({ chatId })) {
@@ -620,7 +620,7 @@ export function createChatDataStore({
         if (!hasActiveGeneration({ chatId })) {
           const fresh = await storageService.loadChat({ id: chatId });
           if (fresh && currentChatRef.value) {
-            applyVolatileAssistantErrorsToChat({ chat: fresh });
+            pruneVolatileAssistantErrorsForChat({ chat: fresh });
             currentChatRef.value.root = fresh.root;
             currentChatRef.value.currentLeafId = fresh.currentLeafId;
             triggerRef(currentChatRef);

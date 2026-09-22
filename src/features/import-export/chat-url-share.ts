@@ -4,7 +4,8 @@ import { ImportExportService, type IImportExportStorage } from './service';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import { hierarchyToDomain, hierarchyToDto } from '@/00-storage/mapper/mappers';
 import type { MessageNode, Settings } from '@/01-models/types';
-import type { BinaryObjectId, ChatId } from '@/01-models/ids';
+import { toBinaryObjectId, type BinaryObjectId, type ChatId } from '@/01-models/ids';
+import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 /**
  * Generates a URL that contains a zipped version of the current chat.
@@ -54,32 +55,74 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
     items: [{ type: 'chat', id: chat.id }],
   } }) });
 
-  // 4. Attachments
+  // 4. Copy binaries referenced anywhere in the exported tree. Model text and
+  // reasoning stay unchanged; only known image markers describe binary references.
   const binaryObjectIds = new Set<BinaryObjectId>();
-  const collectBinaryIds = ({ nodes }: { nodes: MessageNode[] }) => {
-    for (const node of nodes) {
-      if (node.role === 'user' && node.attachments) {
-        for (const att of node.attachments) {
-          binaryObjectIds.add(att.binaryObjectId);
+  const memoryFiles = new Map<BinaryObjectId, { blob: Blob; name: string; mimeType: string }>();
+  const nodes: MessageNode[] = [...chat.root.items];
+  while (nodes.length > 0) {
+    const node = nodes.pop()!;
+    nodes.push(...node.replies.items);
+    for (const part of node.parts) {
+      switch (part.type) {
+      case 'attachment': {
+        const attachment = part.attachment;
+        binaryObjectIds.add(attachment.binaryObjectId);
+        switch (attachment.status) {
+        case 'memory': memoryFiles.set(attachment.binaryObjectId, { blob: attachment.blob, name: attachment.originalName, mimeType: attachment.mimeType }); break;
+        case 'persisted':
+        case 'missing': break;
+        default: { const _ex: never = attachment; throw new Error(`Unhandled attachment: ${_ex}`); }
         }
+        break;
       }
-      if (node.replies?.items) {
-        collectBinaryIds({ nodes: node.replies.items });
+      case 'text': {
+        const blocks = new RegExp('```' + IMAGE_BLOCK_LANG + '[^\\n]*\\n([\\s\\S]*?)\\n```', 'g');
+        for (const match of part.text.matchAll(blocks)) {
+          if (match[1] === undefined) continue;
+          try {
+            const parsed = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1]));
+            if (parsed.success) binaryObjectIds.add(toBinaryObjectId({ raw: parsed.data.binaryObjectId }));
+          } catch { /* Invalid marker text is preserved, not treated as a reference. */ }
+        }
+        break;
+      }
+      case 'tool_result': {
+        const result = part.result;
+        const content = (() => {
+          switch (result.status) {
+          case 'executing': return undefined;
+          case 'success': return result.content;
+          case 'error': return result.error.message;
+          default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+          }
+        })();
+        if (content !== undefined) {
+          switch (content.type) {
+          case 'text': break;
+          case 'binary_object': binaryObjectIds.add(content.id); break;
+          default: { const _ex: never = content; throw new Error(`Unhandled result content: ${_ex}`); }
+          }
+        }
+        break;
+      }
+      case 'reasoning':
+      case 'tool_call': break;
+      default: { const _ex: never = part; throw new Error(`Unhandled message part: ${_ex}`); }
       }
     }
-  };
-  collectBinaryIds({ nodes: chat.root.items });
+  }
 
-  for (const bId of binaryObjectIds) {
-    const blob = await storageService.getFile({ binaryObjectId: bId });
-    const meta = await storageService.getBinaryObject({ binaryObjectId: bId });
+  for (const binaryObjectId of binaryObjectIds) {
+    const memory = memoryFiles.get(binaryObjectId);
+    if (memory !== undefined) {
+      await memoryProvider.saveFile({ ...memory, binaryObjectId });
+      continue;
+    }
+    const blob = await storageService.getFile({ binaryObjectId });
+    const meta = await storageService.getBinaryObject({ binaryObjectId });
     if (blob && meta) {
-      await memoryProvider.saveFile({
-        blob,
-        binaryObjectId: bId,
-        name: meta.name ?? 'file',
-        mimeType: meta.mimeType,
-      });
+      await memoryProvider.saveFile({ blob, binaryObjectId, name: meta.name ?? 'file', mimeType: meta.mimeType });
     }
   }
 

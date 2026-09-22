@@ -1,3 +1,6 @@
+import type { LmProvider } from '@/01-models/lm';
+import { getMessageText } from '@/01-models/message-text';
+import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { flushPromises } from '@vue/test-utils';
@@ -68,11 +71,15 @@ vi.mock('./useSettings', () => ({
 }));
 
 // Mock LM Provider
-const mockLmChat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-  params.onChunk({ chunk: 'Hello' });
-  await new Promise(r => setTimeout(r, 10)); // Simulate network delay
-  params.onChunk({ chunk: ' World' });
-});
+const mockLmChat = vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({
+  signal,
+  run: async ({ writer }) => {
+    await writer.text({ type: 'text', text: 'Hello' });
+    await new Promise(r => setTimeout(r, 10)); // Simulate network delay
+    await writer.text({ type: 'text', text: ' World' });
+    return { type: 'finished', next: 'user' };
+  },
+}));
 
 vi.mock('../features/lm/openai', () => {
   return {
@@ -147,7 +154,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await vi.waitUntil(() => chatStore.TEST_ONLY.activeGenerations.size === 0);
     expect(errorCount.value).toBe(0);
   });
 
@@ -165,12 +173,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const sendPromise = sendMessage({ content: 'Ping' });
     await new Promise(r => setTimeout(r, 20));
     triggerRef(currentChat);
-    expect(['Hello', 'Hello World']).toContain(activeMessages.value[1]?.content);
+    expect(['Hello', 'Hello World']).toContain(getMessageText({ message: activeMessages.value[1]! }));
     await sendPromise;
     // Wait for streaming to finish since sendMessage is now fire-and-forget
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
     triggerRef(currentChat);
-    expect(activeMessages.value[1]?.content).toBe('Hello World');
+    expect(getMessageText({ message: activeMessages.value[1]! })).toBe('Hello World');
   });
 
   it('should return true from sendMessage immediately while generation continues in background (Regression Test)', async () => {
@@ -182,12 +190,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Mock a slow LM response
     let resolveGen: () => void;
     const genStarted = new Promise<void>(resolve => resolveGen = resolve);
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'Started...' });
-      resolveGen();
-      await new Promise(r => setTimeout(r, 100)); // Simulate slow generation
-      params.onChunk({ chunk: ' Finished' });
-    });
+    const finishGeneration = Promise.withResolvers<void>();
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Started...' });
+        resolveGen();
+        await finishGeneration.promise;
+        await writer.text({ type: 'text', text: ' Finished' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const result = await sendMessage({ content: 'Start background generation' });
 
@@ -196,12 +209,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Generation should still be running
     await genStarted;
-    expect(chatStore.streaming.value).toBe(true);
-    expect(activeMessages.value[1]?.content).toContain('Started...');
+    await flushPromises();
+    try {
+      expect(chatStore.streaming.value).toBe(true);
+      expect(getMessageText({ message: activeMessages.value[1]! })).toContain('Started...');
+    } finally {
+      finishGeneration.resolve();
+    }
 
     // Wait for it to finish to clean up
-    await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(activeMessages.value[1]?.content).toBe('Started... Finished');
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
+    expect(getMessageText({ message: activeMessages.value[1]! })).toBe('Started... Finished');
   });
 
   it('should rename a chat and update storage', async () => {
@@ -223,8 +241,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const { forkChat, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
     // Create a tree: m1 -> m2
-    const m2: MessageNode = { id: toMessageId({ raw: 'm2' }), role: 'assistant', content: 'Msg 2', replies: { items: [] }, timestamp: 0 };
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Msg 1', replies: { items: [m2] }, timestamp: 0 };
+    const m2: MessageNode = { id: toMessageId({ raw: 'm2' }), role: 'assistant', parts: [{ type: 'text', text: 'Msg 2', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, createdAt: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Msg 1', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [m2] }, createdAt: 0 };
 
     const mockChat: Chat = {
       id: toChatId({ raw: 'old-chat' }),
@@ -298,7 +316,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       { type: 'chat', id: toChatId({ raw: 'c1' }) },
     ];
 
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
     __testOnlySetCurrentChat({ chat: reactive({
       id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [m1] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null,
@@ -321,13 +339,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const m1: MessageNode = {
       id: toMessageId({ raw: 'm1' }),
       role: 'user',
-      content: 'Msg 1',
-      attachments: [att],
+      parts: [{ type: 'text', text: 'Msg 1', completeness: 'complete' }, { type: 'attachment', attachment: att }],
       modelId: undefined,
-      thinking: undefined,
-      error: undefined,
       replies: { items: [] },
-      timestamp: 0,
+      createdAt: 0,
       lmParameters: EMPTY_LM_PARAMETERS,
     };
 
@@ -355,7 +370,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const contentUpdater = updaterCall?.[0].updater;
     const savedContent = await (contentUpdater as any)(null);
     const clonedNode = savedContent?.root.items[0];
-    expect(clonedNode?.attachments).toEqual([att]);
+    expect(clonedNode?.parts.filter((part: { type: string }) => part.type === 'attachment')).toEqual([
+      { type: 'attachment', attachment: att },
+    ]);
 
     const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId)?.[0].updater;
     const savedMeta = await (updater as any)({});
@@ -375,13 +392,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const m1: MessageNode = {
       id: toMessageId({ raw: 'm1' }),
       role: 'user',
-      content: 'Original Content',
-      attachments: [att],
-      thinking: undefined,
-      error: undefined,
+      parts: [{ type: 'text', text: 'Original Content', completeness: 'complete' }, { type: 'attachment', attachment: att }],
       modelId: undefined,
       replies: { items: [] },
-      timestamp: 0,
+      createdAt: 0,
       lmParameters: EMPTY_LM_PARAMETERS,
     };
 
@@ -399,8 +413,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     expect(currentChat.value?.root.items).toHaveLength(2);
     const newMsg = currentChat.value?.root.items[1];
-    expect(newMsg?.content).toBe('New Content');
-    expect(newMsg?.attachments).toEqual([att]);
+    expect(getMessageText({ message: newMsg! })).toBe('New Content');
+    expect(newMsg?.parts.filter(part => part.type === 'attachment')).toEqual([
+      { type: 'attachment', attachment: att },
+    ]);
   });
 
   it('should support rewriting the very first message', async () => {
@@ -421,7 +437,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 1. Send first message
     await sendMessage({ content: 'First version' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
     triggerRef(currentChat);
     expect(currentChat.value?.root.items).toHaveLength(1);
     const firstId = currentChat.value?.root.items[0]?.id;
@@ -433,8 +449,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 3. Verify
     expect(currentChat.value?.root.items).toHaveLength(2);
-    expect(currentChat.value?.root.items[0]?.content).toBe('First version');
-    expect(currentChat.value?.root.items[1]?.content).toBe('Second version');
+    expect(getMessageText({ message: currentChat.value!.root.items[0]! })).toBe('First version');
+    expect(getMessageText({ message: currentChat.value!.root.items[1]! })).toBe('Second version');
   });
 
   it('should support manual editing of assistant messages', async () => {
@@ -455,7 +471,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 1. Send first message pair
     await sendMessage({ content: 'Hello' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
     triggerRef(currentChat);
     const userMsg = currentChat.value?.root.items[0];
     const assistantMsg = userMsg?.replies.items[0];
@@ -471,7 +487,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const userMsgAfter = currentChat.value?.root.items[0];
     expect(userMsgAfter?.replies.items).toHaveLength(2);
     expect(activeMessages.value).toHaveLength(2);
-    expect(activeMessages.value[1]?.content).toBe('Manually corrected answer');
+    expect(getMessageText({ message: activeMessages.value[1]! })).toBe('Manually corrected answer');
   });
 
   it('should branch into a new version when regenerateMessage is called', async () => {
@@ -483,43 +499,51 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     }) as any });
 
     // 1. Send first message and get first response
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'First Response' });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'First Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     await sendMessage({ content: 'Hello' });
-    await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first generation to complete
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id })); // Wait for first generation to complete
     triggerRef(currentChat);
 
     const userMsg = currentChat.value?.root.items[0];
     const firstAssistantMsg = userMsg?.replies.items[0];
     expect(userMsg?.replies.items).toHaveLength(1);
-    expect(firstAssistantMsg?.content).toBe('First Response');
+    expect(getMessageText({ message: firstAssistantMsg! })).toBe('First Response');
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
 
     // 2. Regenerate
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'Second Response' });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Second Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     await regenerateMessage({ failedMessageId: idToRaw({ id: firstAssistantMsg!.id }) });
     await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2);
-    await vi.waitUntil(() => !chatStore.streaming.value); // Also wait for content to be fully there
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id })); // Also wait for content to be fully there
     triggerRef(currentChat);
 
     // 3. Verify branching
     expect(userMsg?.replies.items).toHaveLength(2);
     const secondAssistantMsg = userMsg?.replies.items[1];
-    expect(secondAssistantMsg?.content).toBe('Second Response');
+    expect(getMessageText({ message: secondAssistantMsg! })).toBe('Second Response');
     expect(secondAssistantMsg?.id).not.toBe(firstAssistantMsg?.id);
 
     // 4. Verify current view points to the new version
     expect(currentChat.value?.currentLeafId).toBe(secondAssistantMsg?.id);
-    expect(activeMessages.value[1]?.content).toBe('Second Response');
+    expect(getMessageText({ message: activeMessages.value[1]! })).toBe('Second Response');
 
     await switchVersion({ messageId: idToRaw({ id: firstAssistantMsg!.id }) });
     triggerRef(currentChat);
 
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
-    expect(activeMessages.value[1]?.content).toBe('First Response');
+    expect(getMessageText({ message: activeMessages.value[1]! })).toBe('First Response');
     expect(storageService.updateChatContent).toHaveBeenCalledWith({
       id: 'regen-test',
       updater: expect.any(Function),
@@ -540,7 +564,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     };
 
     await sendMessage({ content: 'Test message', parentId: null, attachments: [], chatTarget: undefined, lmParameters: customParams });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
     triggerRef(currentChat);
 
     const userMsg = currentChat.value?.root.items[0] as UserMessageNode;
@@ -781,7 +805,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       // Fallback: if root is empty, something is wrong with sendMessage mock synchronization
       // but we can still test the logic by manually inserting a node
       const manualId = 'manual-u1';
-      liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] }, thinking: undefined, modelId: undefined });
+      liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], lmParameters: undefined, createdAt: Date.now(), replies: { items: [] },  modelId: undefined });
       await editMessage({ messageId: manualId, newContent: 'Updated Hello', lmParameters: newParams });
     } else {
       mockLmChat.mockClear();
@@ -806,47 +830,58 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     }) as any });
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockLmChat.mockImplementationOnce(async () => {
-      throw new Error('Could not be cloned');
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => {
+        throw new Error('Could not be cloned');
+      },
+    }));
 
     const result = await sendMessage({ content: 'Ping' });
     expect(result).toBe(true);
 
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
     triggerRef(currentChat);
 
     const assistantMessage = activeMessages.value.find(message => message.role === 'assistant') as AssistantMessageNode | undefined;
-    expect(assistantMessage?.error).toBe('Could not be cloned');
+    expect(assistantMessage?.interruption).toEqual({ type: 'error', message: 'Could not be cloned' });
+    expect(getMessageText({ message: assistantMessage! })).toBe('');
     consoleError.mockRestore();
   });
 
-  it('should reapply volatile assistant errors after chat content reloads from storage', async () => {
+  it('should preserve persisted assistant errors after chat content reloads from storage', async () => {
     __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-error-reload', title: 'Test', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any });
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockLmChat.mockImplementationOnce(async () => {
-      throw new Error('Could not be cloned');
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => {
+        throw new Error('Could not be cloned');
+      },
+    }));
 
     const result = await sendMessage({ content: 'Ping' });
     expect(result).toBe(true);
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
 
-    const fresh = JSON.parse(JSON.stringify(toRaw(currentChat.value!))) as Chat;
-    const userNode = fresh.root.items[0] as UserMessageNode;
-    const assistantNode = userNode.replies.items[0] as AssistantMessageNode;
-    assistantNode.error = undefined;
+    const { updater } = vi.mocked(storageService.updateChatContent).mock.calls.at(-1)![0];
+    const savedContent = await updater({ current: null });
+    const savedAssistant = savedContent.root.items[0]!.replies.items[0] as AssistantMessageNode;
+    expect(savedAssistant.interruption).toEqual({ type: 'error', message: 'Could not be cloned' });
+    expect(getMessageText({ message: savedAssistant })).toBe('');
+
+    const fresh = JSON.parse(JSON.stringify({ ...toRaw(currentChat.value!), ...savedContent })) as Chat;
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(fresh);
 
     await simulateExternalEvent({ type: 'chat_content', id: fresh.id });
     triggerRef(currentChat);
 
     const reloadedAssistantMessage = activeMessages.value.find(message => message.role === 'assistant') as AssistantMessageNode | undefined;
-    expect(reloadedAssistantMessage?.error).toBe('Could not be cloned');
+    expect(reloadedAssistantMessage?.interruption).toEqual({ type: 'error', message: 'Could not be cloned' });
+    expect(getMessageText({ message: reloadedAssistantMessage! })).toBe('');
     consoleError.mockRestore();
   });
 
@@ -1026,7 +1061,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Note: Position is updated synchronously in sendMessage({ content: create/update meta }),
     // so we don't necessarily need to wait for streaming to verify position,
     // but waiting ensures clean state.
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
     expect(mockHierarchy.items[2]?.id).toBe('c2');
   });
 
@@ -1042,7 +1077,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
     await sendMessage({ content: 'Hello' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
 
     expect(mockHierarchy.items.map(i => i.id)).toEqual(['g1', 'c2', 'c1']);
   });
@@ -1058,7 +1093,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
     await sendMessage({ content: 'Hello' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id }));
 
     const group = mockHierarchy.items[0];
     expect(group?.type).toBe('chat_group');
@@ -1070,7 +1105,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should generate a chat title based on the first message', async () => {
     const { generateChatTitle } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'What is the capital of France?', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'What is the capital of France?', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
     const chatObj = reactive({
       id: 'title-test-chat',
       title: null,
@@ -1082,10 +1117,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
     // Mock the LM provider for title generation
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'Paris' });
-      params.onChunk({ chunk: ' Title' });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Paris' });
+        await writer.text({ type: 'text', text: ' Title' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
@@ -1102,21 +1141,25 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatA = reactive({
       id: 'chat-A',
       title: null,
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Msg A', replies: { items: [] }, timestamp: 0 }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Msg A', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
     const chatB = reactive({
       id: 'chat-B',
       title: null,
-      root: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'user', content: 'Msg B', replies: { items: [] }, timestamp: 0 }] },
+      root: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'user', parts: [{ type: 'text', text: 'Msg B', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
 
     // Start generating title for Chat A
     __testOnlySetCurrentChat({ chat: chatA });
-    mockLmChat.mockImplementationOnce(async () => {
-      await new Promise(resolve => setTimeout(resolve, 50));
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const promiseA = generateChatTitle({ chatId: chatA.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
@@ -1173,7 +1216,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should update the title even if it is already set when generateChatTitle is called', async () => {
     const { generateChatTitle } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Original message', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
     const chatObj = reactive<Chat>({
       id: toChatId({ raw: 'chat-1' }),
       title: 'Old Title',
@@ -1184,9 +1227,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
-    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
-      params.onChunk({ chunk: 'New Better Title' });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'New Better Title' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     chatObj.title = null; // Clear title to allow auto-generation to proceed
     await generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
@@ -1198,7 +1245,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should allow aborting title generation', async () => {
     const { generateChatTitle, abortTitleGeneration, TEST_ONLY: { __testOnlySetCurrentChat } } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Original message', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
     const chatObj = reactive<Chat>({
       id: toChatId({ raw: 'chat-abort-test' }),
       title: null,
@@ -1209,14 +1256,18 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
-    mockLmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
-      params.signal?.throwIfAborted();
-      await new Promise((_resolve, reject) => {
-        params.signal?.addEventListener('abort', () => {
-          reject(params.signal?.reason ?? new DOMException('Aborted', 'AbortError'));
-        }, { once: true });
-      });
-    });
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ signal }) => {
+        signal?.throwIfAborted();
+        await new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => {
+            reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     const promise = generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
@@ -1250,29 +1301,29 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           {
             id: toMessageId({ raw: 'user-1' }),
             role: 'user',
-            content: 'Question',
-            timestamp: 1,
+            parts: [{ type: 'text', text: 'Question', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+            createdAt: 1,
             replies: {
               items: [
                 {
                   id: toMessageId({ raw: 'assistant-1' }),
                   role: 'assistant',
-                  content: 'Target answer',
-                  timestamp: 2,
+                  parts: [{ type: 'text', text: 'Target answer', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                  createdAt: 2,
                   replies: {
                     items: [
                       {
                         id: toMessageId({ raw: 'user-followup' }),
                         role: 'user',
-                        content: 'Follow up',
-                        timestamp: 3,
+                        parts: [{ type: 'text', text: 'Follow up', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+                        createdAt: 3,
                         replies: {
                           items: [
                             {
                               id: toMessageId({ raw: 'target-leaf' }),
                               role: 'assistant',
-                              content: 'Target leaf',
-                              timestamp: 4,
+                              parts: [{ type: 'text', text: 'Target leaf', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                              createdAt: 4,
                               replies: { items: [] },
                             },
                           ],
@@ -1284,8 +1335,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
                 {
                   id: toMessageId({ raw: 'assistant-2' }),
                   role: 'assistant',
-                  content: 'Saved answer',
-                  timestamp: 5,
+                  parts: [{ type: 'text', text: 'Saved answer', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                  createdAt: 5,
                   replies: { items: [] },
                 },
               ],
