@@ -8,12 +8,15 @@ import { profileSchema, type LlamaCppProfile } from './types';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed browser variant artifact commit: 8eb01e7aa8ad0968a6dfba26d938817d4a441b31.
+// Browser variant artifact commit: 95408a1192a7979b234a976662a240e463950b5c.
+// Pins identify the published build, not proof of adapter compatibility. Review
+// the generated sources and run the adapter tests against this exact artifact
+// before accepting an update; do not substitute an older node_modules package.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 const coreHashes = {
   'webgpu-wasm64-jspi': 'ff3786e68fa11050df3950980116e19988ef790da382b3eb3abd7ef2c5424921',
   'webgpu-wasm32-jspi': 'c676739632d85c50ab7798df591d7fe4b59a5dedfb068756837bf775e9a6f785',
-  'webgpu-wasm32-asyncify': '0bef53602f8502b81779f460e28770057f48d1665238b3537fb943a0fc0cc532',
+  'webgpu-wasm32-asyncify': '77fa9a52ec1305caf8e585109cc14287b579b608d60bbab0577534323d8c24c5',
   'cpu-wasm64': '6e499ce22b0eea54a204713d3c8fa99b5971ac9ccf44edc4d7767f50ef7de298',
   'cpu-wasm32': 'd5dc3e3115cacaff3e7dab6122b96b4c77f1a69cc7aee21b8b2844ff31a6bc86',
 } as const satisfies Record<LlamaCppProfile, string>;
@@ -21,8 +24,8 @@ const coreHashes = {
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
 const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: 'e492f5b73ed75ea70f330e18febe90d43a624e3ae2bc2e67e97e10f686fcb507' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '8ea80cff58eb529a31f166628c7797f83142300f01941cf8e0bfb9d2c07589ee' },
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: 'a0cc6a4b9d884097b1c31f536e25f53dde0957eb81202f49c80c381f96dd386c' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '7a48f553273127f0092bf11d03c17aa625cc88dd5d050cdbcdb818de9405ba5e' },
 } as const;
 const manifestSchema = z.object({ formatVersion: z.literal(2), files: z.array(z.object({
   path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
