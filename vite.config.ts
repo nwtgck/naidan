@@ -1,4 +1,5 @@
 /// <reference types="vitest" />
+import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core';
 import VueRouter from 'vue-router/vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 import type { Alias } from 'vite';
@@ -157,6 +158,8 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone';
+  const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
+  const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode });
   const isHosted = mode === 'hosted';
   const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: __dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted
@@ -229,6 +232,10 @@ export default defineConfig(({ mode }) => {
       ],
     },
     ...transformersJsFixes,
+    worker: {
+      ...transformersJsFixes.worker,
+      plugins: () => [...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
+    },
     plugins: [
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
@@ -273,6 +280,7 @@ export default defineConfig(({ mode }) => {
       }),
       isHosted && createHostedTransformersRuntimeAssetsPlugin({ rootDir: __dirname }),
       !isStandalone && createLlamaCppRuntimeAssetsPlugin({ rootDir: __dirname }),
+      llamaCppBuild.corePlugin,
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
         onBuildDependenciesCollected({ dependencies }) {
@@ -282,6 +290,7 @@ export default defineConfig(({ mode }) => {
       !isStandalone && manualGzipWasmPlugin({ outDir }),
       isStandalone && createNaidanStandalonePlugin({
         workers: standaloneWorkerDefinitions,
+        embeddedBinaries: llamaCppBuild.embeddedBinaries,
         systemRuntimePath: standaloneSystemJsRuntimePath,
         systemRuntimeSourceMapPath: standaloneSystemJsSourceMapPath,
         diagnostics: standaloneWorkerDiagnostics,
@@ -291,7 +300,9 @@ export default defineConfig(({ mode }) => {
           // policy assumptions change; output-level guards remain enabled below.
           mode: 'external',
           evidence: 'Reviewed the configured standalone Worker source graph for Worker-reachable UI-only globals '
-            + 'and source-candidate Raw Worker constructors; renew when the Worker/source graph or these assumptions change.',
+            + 'and source-candidate Raw Worker constructors. build/llama-cpp-browser-standalone.test.ts additionally '
+            + 'builds the real llama inference/download Workers with the inline source audit and verifies their lazy native graph '
+            + 'in all eight release ZIP variants; renew when the Worker/source graph or these assumptions change.',
         },
         releaseValidation: {
           outputDirectory: path.resolve(__dirname, outDir),

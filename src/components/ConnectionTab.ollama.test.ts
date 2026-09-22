@@ -314,4 +314,27 @@ describe('ConnectionTab Ollama management integration', () => {
     wrapper.unmount();
   });
 
+  it.each([false, true])('propagates standalone=%s to both chat and title endpoint choices without hiding features', async standalone => {
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
+    const wrapper = mount(ConnectionTab, { props: { modelValue: createSettings({ endpointType: 'ollama' }), availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
+    try {
+      await flushPromises();
+      const transformers = wrapper.findAll('select option[value="transformers_js"]');
+      const llama = wrapper.findAll('select option[value="llama_cpp_browser"]');
+      expect(transformers).toHaveLength(2);
+      expect(llama).toHaveLength(2);
+      for (const option of transformers) {
+        expect(option.element).toBeInstanceOf(HTMLOptionElement);
+        expect(option.attributes('disabled') !== undefined).toBe(standalone);
+        expect(option.text()).toContain('Transformers.js');
+      }
+      for (const option of llama) {
+        expect(option.attributes('disabled')).toBeUndefined();
+        expect(option.text()).toContain('llama.cpp');
+      }
+    } finally {
+      wrapper.unmount(); vi.unstubAllGlobals();
+    }
+  });
+
 });

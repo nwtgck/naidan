@@ -1,10 +1,10 @@
 import { logDiagnostic, logFailure, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
-import type { common_chat_params } from 'llama-cpp-browser-core/profiles/cpu-wasm64/core.mjs';
+import type { ChatParams } from '@/features/llama-cpp-browser/runtime/chat-bindings';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { createGrammarSampler, preservedTokenIds, tokenizeChatText } from './native-chat';
 
 /** Own the sampling chain and native grammar/reasoning state for one generation. */
-export async function createChatSampler({ core, vocab, chain, params }: { core: Core, vocab: bigint, chain: bigint, params: common_chat_params }) {
+export async function createChatSampler({ core, vocab, chain, params }: { core: Core, vocab: bigint, chain: bigint, params: ChatParams }) {
   const api = core.api; const native = core.module;
   let grammar = 0n; let budget = 0n; let outer = 0n;
   let grammarAttached = false; let chainAttached = false;

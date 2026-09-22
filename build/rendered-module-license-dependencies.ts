@@ -86,7 +86,10 @@ export async function collectRenderedModuleLicenseDependencies({ moduleIds }: {
     const found = await findOwningPackageJson({ moduleId, expectedName: packageName });
     if (found === undefined) throw new Error(`Unable to locate package.json for rendered module: ${moduleId}`);
     const canonicalPackageJsonPath = await fs.realpath(found.packageJsonPath);
-    if (byPackageJson.has(canonicalPackageJsonPath) || found.packageJson.private === true) continue;
+    // "private" prevents npm publication; it does not remove an installed
+    // dependency from the shipped code. Only rendered IDs reach this collector;
+    // the node_modules filter above excludes the application's own package.
+    if (byPackageJson.has(canonicalPackageJsonPath)) continue;
     if (typeof found.packageJson.name !== 'string' || typeof found.packageJson.version !== 'string') {
       throw new Error(`Rendered package has an incomplete identity: ${canonicalPackageJsonPath}`);
     }

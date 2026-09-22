@@ -84,6 +84,7 @@ import { useChatWeshPreferences } from '@/features/tools/composables/useChatWesh
 import { loadChatWorkerMountsModule, prefetchChatWorkerMountsModule } from '@/features/wesh/chat-worker-mounts-loader';
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { hasChatOverrides } from '@/logic/chat-settings-resolver';
+import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { tw } from 'virtual:naidan-tailwind';
@@ -772,22 +773,34 @@ const resolvedEndpointType = computed(() => {
 
 const isChatSubmissionEnabled = computed(() => {
   const endpoint = resolvedSettings.value?.endpoint;
-  if (endpoint === undefined || !isConfiguredEndpoint({ endpoint })) return false;
+  const type = resolvedEndpointType.value;
+  if (endpoint === undefined || type === undefined || !isConfiguredEndpoint({ endpoint })) return false;
 
-  switch (endpoint.type) {
+  // Selection and submission must follow the same distribution policy, even
+  // when the effective endpoint comes from saved settings or a chat override.
+  const buildAvailability = getEndpointBuildAvailability({ type });
+  switch (buildAvailability) {
+  case 'unavailable-in-standalone':
+    return false;
+  case 'available':
+    break;
+  default: {
+    const _ex: never = buildAvailability;
+    throw new Error(`Unhandled endpoint build availability: ${_ex}`);
+  }
+  }
+
+  switch (type) {
   case 'openai':
   case 'ollama':
   case 'transformers_js':
-    return true;
   case 'llama_cpp_browser':
-    return !__BUILD_MODE_IS_STANDALONE__;
+    return true;
   case 'browser_provided_lm':
     return promptApiRuntimeState.value.status === 'ready';
-  case 'unsupported_experimental_endpoint':
-    return false;
   default: {
-    const _ex: never = endpoint;
-    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+    const _ex: never = type;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
   }
   }
 });

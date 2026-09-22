@@ -1,7 +1,11 @@
+import type { ProfileCapabilities, ProfileState } from './runtime/profile-capabilities';
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult, LocalModel, RuntimeOptions } from './types';
 
 export interface LlamaCppBrowserService {
+  getProfileState(): ProfileState;
+  subscribeProfiles({ listener }: { listener: ({ state }: { state: ProfileState }) => void }): () => void;
+  probeProfiles({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;
   getState(): EngineState;
   getOptions(): RuntimeOptions;
   setOptions({ options }: { options: RuntimeOptions }): void;

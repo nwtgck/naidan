@@ -1762,6 +1762,11 @@ import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBro
 import { llamaCppBrowser__drop_model_folders_or_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_model_folders_or_gguf_files_here/zh-Hans';
 import { llamaCppBrowser__or_choose_files_from_your_device } from '@/strings/messages/llamaCppBrowser__or_choose_files_from_your_device/zh-Hans';
 import { llamaCppBrowser__inference_settings } from '@/strings/messages/llamaCppBrowser__inference_settings/zh-Hans';
+import { llamaCppBrowser__automatic_profile } from '@/strings/messages/llamaCppBrowser__automatic_profile/zh-Hans';
+import { llamaCppBrowser__checking_browser_support } from '@/strings/messages/llamaCppBrowser__checking_browser_support/zh-Hans';
+import { llamaCppBrowser__check_browser_support } from '@/strings/messages/llamaCppBrowser__check_browser_support/zh-Hans';
+import { llamaCppBrowser__unavailable_feature } from '@/strings/messages/llamaCppBrowser__unavailable_feature/zh-Hans';
+import { llamaCppBrowser__no_compatible_runtime } from '@/strings/messages/llamaCppBrowser__no_compatible_runtime/zh-Hans';
 import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/zh-Hans';
 import { llamaCppBrowser__automatic_profile_description } from '@/strings/messages/llamaCppBrowser__automatic_profile_description/zh-Hans';
 import { llamaCppBrowser__imported_models } from '@/strings/messages/llamaCppBrowser__imported_models/zh-Hans';
@@ -3547,6 +3552,11 @@ export const catalog = {
   llamaCppBrowser__drop_model_folders_or_gguf_files_here,
   llamaCppBrowser__or_choose_files_from_your_device,
   llamaCppBrowser__inference_settings,
+  llamaCppBrowser__automatic_profile,
+  llamaCppBrowser__checking_browser_support,
+  llamaCppBrowser__check_browser_support,
+  llamaCppBrowser__unavailable_feature,
+  llamaCppBrowser__no_compatible_runtime,
   llamaCppBrowser__automatic_recommended,
   llamaCppBrowser__automatic_profile_description,
   llamaCppBrowser__imported_models,

@@ -1,3 +1,6 @@
+import { probeRuntimeProfiles } from '@/features/llama-cpp-browser/runtime/detect-profile';
+import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
+import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { deletionPlanSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { logFailure, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
@@ -5,7 +8,7 @@ import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
 import { errorCode, modelDirectoryInputSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema } from "@/features/llama-cpp-browser/types";
 import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreLock } from "@/features/llama-cpp-browser/runtime/model-store";
-import { invalidateStoredModel } from "./session";
+import { invalidateStoredModel, releaseSession } from "./session";
 import { generate } from "./generation";
 import { workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
 
@@ -46,6 +49,15 @@ function eventQueue() {
 export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
   let active: { generationId: number, controller: AbortController } | undefined;
   return {
+    verifyStorage,
+    async probeProfiles() {
+      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      return profileCapabilitiesSchema.parse(await probeRuntimeProfiles());
+    },
+    async release() {
+      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      await releaseSession({ releaseRuntime: true });
+    },
     listModels: () => guarded({ operation: async () => modelsSchema.parse(await listStoredModels()) }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, callback is a top-level argument.
     importModel: (request, onProgress) => guarded({ operation: async () => {

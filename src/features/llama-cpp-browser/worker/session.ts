@@ -13,7 +13,7 @@ export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid' };
 
 type ResidentModel = { model: bigint, context: bigint, cache: PromptCache, name: string,
   id: string, files: ModelFile[], projector: ResidentProjector | undefined };
-let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string } | undefined;
+let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string | undefined } | undefined;
 let resident: ResidentModel | undefined;
 
 /** Keep one model resident. Storage locks/handles are only needed while reading,
