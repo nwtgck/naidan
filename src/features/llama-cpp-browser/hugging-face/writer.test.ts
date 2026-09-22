@@ -1,3 +1,5 @@
+import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
+import { deleteRepository } from './storage';
 import { openSyncAccess } from './sync-access';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadWriter } from './writer';
@@ -43,6 +45,54 @@ describe('resumable GGUF storage writer', () => {
     await expect(createDownloadWriter().begin({ selection: { ...selection, revision: 'b'.repeat(40) } })).resolves.toEqual({ status: 'conflict', reason: 'different-download' });
     await writer.open({ fileIndex: 0, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile(); await writer.finish();
     await expect(createDownloadWriter().begin({ selection })).resolves.toEqual({ status: 'conflict', reason: 'existing-files' });
+  });
+  it('adds a projector after a text-only install using read-only source comparison', async () => {
+    let writer = createDownloadWriter(); await writer.begin({ selection });
+    await writer.open({ fileIndex: 0, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile(); await writer.finish();
+    const folder = await repositoryFolder({ repository: selection.repository, create: false });
+    const handle = await selectedFile({ folder, path: selection.files[0]!.path, create: false });
+    const before = new Uint8Array(await (await handle.getFile()).arrayBuffer());
+    const upgrade = { ...selection, files: [...selection.files, { path: 'mmproj-F16.gguf', size: 128 }] };
+    writer = createDownloadWriter();
+    expect(await writer.begin({ selection: upgrade })).toMatchObject({ status: 'ready', journal: { reused: [true, false] } });
+    await writer.open({ fileIndex: 0, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile();
+    expect(new Uint8Array(await (await handle.getFile()).arrayBuffer())).toEqual(before);
+    await writer.open({ fileIndex: 1, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile(); await writer.finish();
+    expect(await listPendingDownloads()).toEqual([]);
+    expect(await listHuggingFaceModels()).toHaveLength(1);
+  });
+  it('never truncates an installed main model when a multimodal upgrade source differs', async () => {
+    let writer = createDownloadWriter(); await writer.begin({ selection });
+    await writer.open({ fileIndex: 0, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile(); await writer.finish();
+    const folder = await repositoryFolder({ repository: selection.repository, create: false });
+    const handle = await selectedFile({ folder, path: selection.files[0]!.path, create: false });
+    writer = createDownloadWriter(); await writer.begin({ selection: { ...selection, files: [...selection.files, { path: 'mmproj-F16.gguf', size: 128 }] } });
+    await writer.open({ fileIndex: 0, start: 0 });
+    const changed = ggufBytes(); changed[80] = 12;
+    await expect(writer.append({ bytes: changed })).rejects.toThrow('Existing model differs');
+    await writer.pause();
+    expect(new Uint8Array(await (await handle.getFile()).arrayBuffer())).toEqual(ggufBytes());
+    expect((await listPendingDownloads())[0]?.reused).toEqual([true, false]);
+  });
+  it('keeps an installed main model when a paused multimodal upgrade is cancelled and deleted', async () => {
+    let writer = createDownloadWriter(); await writer.begin({ selection });
+    await writer.open({ fileIndex: 0, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile(); await writer.finish();
+    const folder = await repositoryFolder({ repository: selection.repository, create: false });
+    const handle = await selectedFile({ folder, path: selection.files[0]!.path, create: false });
+    const upgrade = { ...selection, files: [...selection.files, { path: 'mmproj-F16.gguf', size: 128 }] };
+    writer = createDownloadWriter(); await writer.begin({ selection: upgrade });
+    await writer.open({ fileIndex: 0, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile();
+    await writer.open({ fileIndex: 1, start: 0 }); await writer.append({ bytes: ggufBytes().slice(0, 48) }); await writer.pause();
+    vi.stubGlobal('navigator', { ...navigator, locks: {
+      request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
+    } });
+    const { plan } = await prepareModelRemoval({ id: 'hf.co/owner/repo' });
+    expect(plan.files.some(file => file.path === selection.files[0]!.path)).toBe(false);
+    expect(await deleteRepository({ repository: selection.repository, plan })).toBe('deleted');
+    expect(new Uint8Array(await (await handle.getFile()).arrayBuffer())).toEqual(ggufBytes());
+    expect(await listPendingDownloads()).toEqual([]);
+    expect(await listHuggingFaceModels()).toHaveLength(1);
+    await expect(folder.getFileHandle('mmproj-F16.gguf')).rejects.toMatchObject({ name: 'NotFoundError' });
   });
   it('allows empty nested directories but preserves any existing file', async () => {
     const folder = await repositoryFolder({ repository: selection.repository, create: true });

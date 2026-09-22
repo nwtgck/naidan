@@ -17,6 +17,7 @@ export const beginDownloadResultSchema = z.discriminatedUnion('status', [
 ]);
 export type BeginDownloadResult = z.infer<typeof beginDownloadResultSchema>;
 export const sharedProjectorConflictMessage = 'Shared projector differs from the pinned source';
+export const existingModelConflictMessage = 'Existing model differs from the pinned source';
 export class DownloadConflictError extends Error {
   readonly reason: DownloadConflict;
   constructor({ reason }: { reason: DownloadConflict }) {
