@@ -42,7 +42,7 @@ async function createFixture() {
     systemPrompt: undefined, lmParameters: undefined, mounts: [], currentLeafId: toMessageId({ raw: 'user' }),
     root: { items: [{
       id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'text', type: 'text', text: 'Original saved message', completeness: 'complete' }],
+      parts: [{ type: 'text', text: 'Original saved message', completeness: 'complete' }],
       replies: { items: [] },
     }] },
   };

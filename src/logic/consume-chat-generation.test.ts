@@ -36,9 +36,9 @@ describe('consume nested chat generation', () => {
       part({ id: 't', index: 2, type: 'text', text: ['<thi', 'nk>literal</think>', '\ud83d', '\ude42'], completeness: 'complete' }), completed(),
     ] }), abortController: new AbortController(), onChange: () => {} });
     expect(createChatMessageSnapshot({ node }).parts).toEqual([
-      { id: 'r', type: 'reasoning', text: '  理由\n ', completeness: 'complete' },
-      { id: 'e', type: 'text', text: '', completeness: 'complete' },
-      { id: 't', type: 'text', text: '<think>literal</think>🙂', completeness: 'complete' },
+      { type: 'reasoning', text: '  理由\n ', completeness: 'complete' },
+      { type: 'text', text: '', completeness: 'complete' },
+      { type: 'text', text: '<think>literal</think>🙂', completeness: 'complete' },
     ]);
   });
 
@@ -212,6 +212,6 @@ describe('consume nested chat generation', () => {
       yield item; item.partId = 'mutated'; item.index = 99; yield completed();
     })();
     const node = fresh(); await consume({ node, items, abortController: new AbortController(), onChange: vi.fn() });
-    expect(node.parts[0]?.id).toBe('p');
+    expect(node.parts).toEqual([{ type: 'text', text: 'A', completeness: 'complete' }]);
   });
 });

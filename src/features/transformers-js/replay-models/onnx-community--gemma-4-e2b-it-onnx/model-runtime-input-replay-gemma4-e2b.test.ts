@@ -153,12 +153,12 @@ describe('Gemma structured history after persistence', () => {
   it('builds the same native token input from parts before and after saving a complete tool history', async () => {
     const callId = toToolCallId({ raw: 'persisted-call' });
     const result: ToolMessageNode = { id: toMessageId({ raw: 'result' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'result-part', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '391' } } }], replies: { items: [] } };
+      parts: [{ type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '391' } } }], replies: { items: [] } };
     const assistant: AssistantMessageNode = { id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 2, modelId, lmParameters: undefined, interruption: undefined,
-      parts: [{ id: 'reason', type: 'reasoning', text: '  Reason\n', completeness: 'complete' }, { id: 'text', type: 'text', text: '', completeness: 'complete' },
-        { id: 'call', type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'calculator', arguments: ' { } ' } } }], replies: { items: [result] } };
+      parts: [{ type: 'reasoning', text: '  Reason\n', completeness: 'complete' }, { type: 'text', text: '', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'calculator', arguments: ' { } ' } } }], replies: { items: [result] } };
     const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'question', type: 'text', text: 'Question.', completeness: 'complete' }], replies: { items: [assistant] } };
+      parts: [{ type: 'text', text: 'Question.', completeness: 'complete' }], replies: { items: [assistant] } };
     const chat: ChatContent = { root: { items: [user] }, currentLeafId: result.id };
     const store = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'memory-history' });
     const before = buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] });

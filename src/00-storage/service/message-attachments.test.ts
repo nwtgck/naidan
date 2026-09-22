@@ -9,7 +9,7 @@ import { STORAGE_KEY_PREFIX } from '@/constants';
 function user({ id, replies }: { id: string, replies: MessageNode[] }): UserMessageNode {
   return {
     id: toMessageId({ raw: id }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-    parts: [{ id: 'attachment', type: 'attachment', attachment: {
+    parts: [{ type: 'attachment', attachment: {
       id: toAttachmentId({ raw: `${id}-attachment` }), binaryObjectId: toBinaryObjectId({ raw: `${id}-binary` }),
       originalName: `${id}.txt`, mimeType: 'text/plain', size: 1, uploadedAt: 1, status: 'persisted',
     } }], replies: { items: replies },
@@ -55,7 +55,7 @@ describe('attachment parts in storage', () => {
     if (attachment?.type !== 'attachment') throw new Error('Fixture attachment is missing');
     const blob = new Blob(['original']);
     attachment.attachment = { ...attachment.attachment, status: 'memory', blob };
-    const root: MessageNode = { id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' }, parts: [{ id: 't', type: 'text', text: 'partial', completeness: 'partial' }], replies: { items: [leaf] } };
+    const root: MessageNode = { id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' }, parts: [{ type: 'text', text: 'partial', completeness: 'partial' }], replies: { items: [leaf] } };
     const id = toChatId({ raw: 'chat' });
     await provider.saveChatContent({ id, content: { root: { items: [root] }, currentLeafId: leaf.id } });
     const loaded = await provider.loadChatContent({ id });
@@ -86,7 +86,7 @@ describe('attachment parts in storage', () => {
     await provider.saveChatContent({ id, content: loaded! });
     const saved = JSON.parse(localStorage.getItem(key)!);
     expect(saved.root.items[0].parts.map((part: { type: string }) => part.type)).toEqual(['reasoning', 'text']);
-    expect(saved.root.items[0].replies.items[0].parts).toEqual([{ id: 'legacy_text', type: 'text', text: '' }]);
+    expect(saved.root.items[0].replies.items[0].parts).toEqual([{ type: 'text', text: '' }]);
     expect(saved.root.items[0]).not.toHaveProperty('content');
     expect(saved.root.items[0].replies.items[0]).not.toHaveProperty('timestamp');
   });

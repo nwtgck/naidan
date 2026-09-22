@@ -40,8 +40,8 @@ export function renderMessageMarkdown({ node }: { node: MessageNode }): string {
   default: { const _ex: never = node; throw new Error(`Unhandled message: ${_ex}`); }
   }
   if (node.parts.length === 0) lines.push('parts: []');
-  for (const part of node.parts) {
-    lines.push('', `## Part ${part.id} (${part.type})`);
+  for (const [index, part] of node.parts.entries()) {
+    lines.push('', `## Part ${index + 1} (${part.type})`);
     switch (part.type) {
     case 'text':
     case 'reasoning':

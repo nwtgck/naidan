@@ -107,8 +107,8 @@ export async function generateChatTitleForChat({
     const { language } = getTitleLanguage({ content });
     const systemPrompt = getTitleSystemPrompt({ language });
     const promptMessages: ChatMessage[] = [
-      { id: toMessageId({ raw: 'title-system' }), role: 'system', parts: [{ id: 'text', type: 'text', text: systemPrompt, completeness: 'complete' }] },
-      { id: toMessageId({ raw: 'title-user' }), role: 'user', parts: [{ id: 'text', type: 'text', text: `Message content to summarize: "${content.slice(0, 1000)}"`, completeness: 'complete' }] },
+      { id: toMessageId({ raw: 'title-system' }), role: 'system', parts: [{ type: 'text', text: systemPrompt, completeness: 'complete' }] },
+      { id: toMessageId({ raw: 'title-user' }), role: 'user', parts: [{ type: 'text', text: `Message content to summarize: "${content.slice(0, 1000)}"`, completeness: 'complete' }] },
     ];
     const { text: generatedTitle, result } = await collectChatGeneration({
       items: provider.chat({ debug: undefined, messages: promptMessages, model: titleModelId,

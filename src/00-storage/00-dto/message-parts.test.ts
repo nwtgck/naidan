@@ -37,16 +37,16 @@ describe('message DTO versions', () => {
     const parsed = MessageNodeSchemaDtoV2.parse({
       id: 'assistant', role: 'assistant', createdAt: 0,
       parts: [
-        { id: 'r', type: 'reasoning', text: '' },
-        { id: 't', type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+        { type: 'reasoning', text: '' },
+        { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
       ],
       interruption: { type: 'error', message: '接続が切れました: offline' },
       replies: { items: [] },
     });
     expect(parsed).toMatchObject({
       parts: [
-        { id: 'r', type: 'reasoning', text: '', completeness: undefined },
-        { id: 't', type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+        { type: 'reasoning', text: '', completeness: undefined },
+        { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
       ],
       interruption: { type: 'error', message: '接続が切れました: offline' },
     });

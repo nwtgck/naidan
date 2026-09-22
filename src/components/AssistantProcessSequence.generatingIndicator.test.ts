@@ -22,7 +22,7 @@ const CursorStub = defineComponent({
 const makeMessage = (): MessageNode => ({
   id: toMessageId({ raw: 'msg-1' }),
   role: 'assistant',
-  parts: [{ id: 'text', type: 'text', text: 'Hello', completeness: 'complete' }],
+  parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }],
   createdAt: Date.now(),
   modelId: undefined,
   lmParameters: undefined,

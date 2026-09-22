@@ -68,12 +68,16 @@ describe('production capture using the parts generation contract', () => {
     expect(f.operation).toHaveBeenCalledOnce(); expect(f.calls).toHaveBeenCalledOnce();
     const settled = recorded.settle({ outcome: 'fulfilled', error: undefined });
     expect(captureSettledAssistantParts({ settled })).toEqual([
-      { id: 'r', type: 'reasoning', text: '  R\n', completeness: 'complete' },
-      { id: 't', type: 'text', text: '<think>literal</think>🙂\r\n', completeness: 'partial' },
+      { id: 'part_0', type: 'reasoning', text: '  R\n', completeness: 'complete' },
+      { id: 'part_1', type: 'text', text: '<think>literal</think>🙂\r\n', completeness: 'partial' },
     ]);
     const next = captureScenarioInput({ scenario: 'continuity', firstSettled: settled });
     const history = captureProviderMessages({ input: next });
-    expect(history[1]).toMatchObject({ role: 'assistant', parts: captureSettledAssistantParts({ settled }) });
+    expect(history[1]).toMatchObject({ role: 'assistant', parts: [
+      { type: 'reasoning', text: '  R\n', completeness: 'complete' },
+      { type: 'text', text: '<think>literal</think>🙂\r\n', completeness: 'partial' },
+    ] });
+    for (const part of history[1]?.parts ?? []) expect(part).not.toHaveProperty('id');
     expect(history[2]).toMatchObject({ role: 'user', parts: [{ text: 'Continue the synthetic conversation with a short response.' }] });
     const first = history[1]?.parts[0];
     if (first?.type !== 'reasoning') throw new Error('Expected reasoning part');
@@ -97,16 +101,16 @@ describe('production capture using the parts generation contract', () => {
     await generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'natural-tool-minimal', firstSettled: undefined }), abortController: new AbortController(), trace: recorded });
     expect(f.operation).toHaveBeenCalledOnce(); expect(f.calls).toHaveBeenCalledTimes(2);
     expect(f.calls.mock.calls[1]?.[0].messages).toEqual([
-      { id: 'capture_input_0', role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
+      { id: 'capture_input_0', role: 'user', parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
       { id: 'capture_assistant_0', role: 'assistant', parts: [
-        { id: 'r', type: 'reasoning', text: 'R\n', completeness: 'complete' },
-        { id: 'c', type: 'tool_call', toolCall: { id: 'call-fixed', type: 'function', function: { name: 'lookup_weather', arguments: ' {"city":"Tokyo"} ' } } },
+        { type: 'reasoning', text: 'R\n', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { id: 'call-fixed', type: 'function', function: { name: 'lookup_weather', arguments: ' {"city":"Tokyo"} ' } } },
       ] },
-      { id: 'capture_tool_1', role: 'tool', parts: [{ id: 'tool_result_0', type: 'tool_result', result: { toolCallId: 'call-fixed', status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } } }] },
+      { id: 'capture_tool_1', role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: 'call-fixed', status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } } }] },
     ]);
     expect(recorded.snapshot().events.filter(event => event.kind === 'tool-success')).toHaveLength(1);
     const settled = recorded.settle({ outcome: 'fulfilled', error: undefined });
-    expect(captureSettledAssistantParts({ settled })).toEqual([{ id: 'answer', type: 'text', text: '20°C', completeness: 'complete' }]);
+    expect(captureSettledAssistantParts({ settled })).toEqual([{ id: 'part_0', type: 'text', text: '20°C', completeness: 'complete' }]);
   });
 
   it('keeps observed partial content on a thrown generation error but omits its private message', async () => {
@@ -119,7 +123,7 @@ describe('production capture using the parts generation contract', () => {
     })() });
     await expect(generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), abortController: new AbortController(), trace: recorded })).rejects.toBe(error);
     const settled = recorded.settle({ outcome: 'rejected', error });
-    expect(captureSettledAssistantParts({ settled })).toEqual([{ id: 't', type: 'text', text: 'received', completeness: 'partial' }]);
+    expect(captureSettledAssistantParts({ settled })).toEqual([{ id: 'part_0', type: 'text', text: 'received', completeness: 'partial' }]);
     expect(recorded.snapshot().events).toContainEqual(expect.objectContaining({ kind: 'generation_error', errorName: 'SyntaxError' }));
     expect(JSON.stringify(recorded.snapshot())).not.toMatch(/private|SECRET/u);
   });
@@ -139,34 +143,38 @@ describe('production capture using the parts generation contract', () => {
   it('does not conflate empty parts, absent text, or adjacent same-kind part boundaries', () => {
     const recorded = trace();
     const parts: AssistantMessageNode['parts'] = [
-      { id: 'r1', type: 'reasoning', text: '', completeness: 'complete' },
-      { id: 'r2', type: 'reasoning', text: 'R', completeness: 'complete' },
-      { id: 't', type: 'text', text: '', completeness: 'partial' },
+      { type: 'reasoning', text: '', completeness: 'complete' },
+      { type: 'reasoning', text: 'R', completeness: 'complete' },
+      { type: 'text', text: '', completeness: 'partial' },
     ];
     recorded.observeAssistant({ message: message({ parts }) });
     recorded.observeResult({ result: { type: 'interrupted', reason: 'limit' } });
     const settled = recorded.settle({ outcome: 'fulfilled', error: undefined });
     const before = JSON.stringify(settled);
-    parts[1] = { id: 'r2', type: 'reasoning', text: 'late change', completeness: 'complete' };
+    parts[1] = { type: 'reasoning', text: 'late change', completeness: 'complete' };
     recorded.observeAssistant({ message: message({ parts }) });
     expect(JSON.stringify(settled)).toBe(before);
     expect(captureSettledAssistantParts({ settled })).toEqual([
-      { id: 'r1', type: 'reasoning', text: '', completeness: 'complete' },
-      { id: 'r2', type: 'reasoning', text: 'R', completeness: 'complete' },
-      { id: 't', type: 'text', text: '', completeness: 'partial' },
+      { id: 'part_0', type: 'reasoning', text: '', completeness: 'complete' },
+      { id: 'part_1', type: 'reasoning', text: 'R', completeness: 'complete' },
+      { id: 'part_2', type: 'text', text: '', completeness: 'partial' },
     ]);
     expect(recorded.snapshot().lateEvents.length).toBeGreaterThan(0);
   });
 
   it('uses logical applied order when a later-declared part is inserted before another', () => {
     const recorded = trace();
-    const later: AssistantMessageNode['parts'][number] = { id: 'later', type: 'text', text: 'B', completeness: 'partial' };
+    const later: AssistantMessageNode['parts'][number] = { type: 'text', text: 'B', completeness: 'partial' };
     recorded.observeAssistant({ message: message({ parts: [later] }) });
-    const earlier: AssistantMessageNode['parts'][number] = { id: 'earlier', type: 'reasoning', text: 'A', completeness: 'complete' };
-    recorded.observeAssistant({ message: message({ parts: [earlier, { ...later, completeness: 'complete' }] }) });
+    const earlier: AssistantMessageNode['parts'][number] = { type: 'reasoning', text: 'A', completeness: 'complete' };
+    later.completeness = 'complete';
+    recorded.observeAssistant({ message: message({ parts: [earlier, later] }) });
     recorded.observeResult({ result: { type: 'finished', next: 'user' } });
     const settled = recorded.settle({ outcome: 'fulfilled', error: undefined });
-    expect(captureSettledAssistantParts({ settled })?.map(part => part.id)).toEqual(['earlier', 'later']);
+    expect(captureSettledAssistantParts({ settled })).toEqual([
+      { id: 'part_1', type: 'reasoning', text: 'A', completeness: 'complete' },
+      { id: 'part_0', type: 'text', text: 'B', completeness: 'complete' },
+    ]);
   });
 
   it('marks an over-budget observation incomplete without controlling production generation', async () => {

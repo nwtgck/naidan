@@ -32,7 +32,7 @@ function textMessage({ id, role, text }: {
   return {
     id: toMessageId({ raw: id }),
     role,
-    parts: [{ id: `${id}_text`, type: 'text', text, completeness: 'complete' }],
+    parts: [{ type: 'text', text, completeness: 'complete' }],
   };
 }
 
@@ -51,7 +51,7 @@ function reasoningMessage({ id, text, completeness }: {
   return {
     id: toMessageId({ raw: id }),
     role: 'assistant',
-    parts: [{ id: `${id}_reasoning`, type: 'reasoning', text, completeness }],
+    parts: [{ type: 'reasoning', text, completeness }],
   };
 }
 
@@ -1626,11 +1626,11 @@ type lookup_weather = (_: {
     const messages: ChatMessage[] = [
       textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." }),
       { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
-        { id: 'message_1_text', type: 'text', text: '', completeness: 'complete' },
-        { id: 'message_1_call', type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" } } },
+        { type: 'text', text: '', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" } } },
       ] },
       { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
-        { id: 'message_2_result', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } },
+        { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } },
       ] },
     ];
     // This is the separately specified current Naidan projection, NOT a browser
@@ -1841,8 +1841,8 @@ describe('GPT-OSS 20B Provider / images', () => {
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
             messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-              { id: 'message_0_text', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { id: 'message_0_image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) },
+              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) },
             ] }],
             parameters,
             tools: [],
@@ -2013,15 +2013,15 @@ describe('GPT-OSS 20B Provider / sequences', () => {
           messages: [
             textMessage({ id: 'history_user', role: 'user', text: 'Use the weather tool for Tokyo.' }),
             { id: toMessageId({ raw: 'history_assistant' }), role: 'assistant', parts: [
-              { id: 'history_text', type: 'text', text: '', completeness: 'complete' },
-              { id: 'history_call', type: 'tool_call', toolCall: {
+              { type: 'text', text: '', completeness: 'complete' },
+              { type: 'tool_call', toolCall: {
                 id: toToolCallId({ raw: 'call_model_support_probe_1' }),
                 type: 'function',
                 function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
               } },
             ] },
             { id: toMessageId({ raw: 'history_tool' }), role: 'tool', parts: [
-              { id: 'history_result', type: 'tool_result', result: {
+              { type: 'tool_result', result: {
                 toolCallId: toToolCallId({ raw: 'call_model_support_probe_1' }),
                 status: 'success',
                 content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },

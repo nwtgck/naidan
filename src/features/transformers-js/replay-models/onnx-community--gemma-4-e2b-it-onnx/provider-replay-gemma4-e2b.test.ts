@@ -32,7 +32,7 @@ function textMessage({ id, role, text }: {
   return {
     id: toMessageId({ raw: id }),
     role,
-    parts: [{ id: `${id}_text`, type: 'text', text, completeness: 'complete' }],
+    parts: [{ type: 'text', text, completeness: 'complete' }],
   };
 }
 
@@ -1364,8 +1364,8 @@ Reason<channel|>Answer<turn|>` });
         messages: [
           textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' }),
           { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
-            { id: 'message_1_reasoning', type: 'reasoning', text: 'Reason', completeness: 'complete' },
-            { id: 'message_1_text', type: 'text', text: 'Answer', completeness: 'complete' },
+            { type: 'reasoning', text: 'Reason', completeness: 'complete' },
+            { type: 'text', text: 'Answer', completeness: 'complete' },
           ] },
           textMessage({ id: 'message_2', role: 'user', text: 'Continue.' }),
         ],
@@ -1481,14 +1481,14 @@ describe('Gemma4 E2B Provider / tools', () => {
     const publicMessages: ChatMessage[] = [
       textMessage({ id: 'message_0', role: 'user', text: scenario.messages[0].content }),
       { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
-        { id: 'message_1_text', type: 'text', text: '', completeness: 'complete' },
-        { id: 'message_1_call', type: 'tool_call', toolCall: {
+        { type: 'text', text: '', completeness: 'complete' },
+        { type: 'tool_call', toolCall: {
           id: toToolCallId({ raw: 'call_template_probe_1' }), type: 'function',
           function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
         } },
       ] },
       { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
-        { id: 'message_2_result', type: 'tool_result', result: {
+        { type: 'tool_result', result: {
           toolCallId: toToolCallId({ raw: 'call_template_probe_1' }), status: 'success',
           content: { type: 'text', text: scenario.messages[2].content },
         } },
@@ -1994,14 +1994,14 @@ describe('Gemma4 E2B Provider / tools', () => {
           messages: [
             textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." }),
             { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
-              { id: 'message_1_text', type: 'text', text: '', completeness: 'complete' },
-              { id: 'message_1_call', type: 'tool_call', toolCall: {
+              { type: 'text', text: '', completeness: 'complete' },
+              { type: 'tool_call', toolCall: {
                 id: toToolCallId({ raw: "call_model_support_probe_1" }), type: 'function',
                 function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" },
               } },
             ] },
             { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
-              { id: 'message_2_result', type: 'tool_result', result: {
+              { type: 'tool_result', result: {
                 toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success',
                 content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" },
               } },
@@ -2244,8 +2244,8 @@ describe('Gemma4 E2B Provider / images', () => {
           request: {
             model: "onnx-community/gemma-4-E2B-it-ONNX",
             messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-              { id: 'message_0_text', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { id: 'message_0_image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
             ] }],
             tools: [],
             parameters: {
@@ -2294,8 +2294,8 @@ describe('Gemma4 E2B Provider / images', () => {
           request: {
             model: "onnx-community/gemma-4-E2B-it-ONNX",
             messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-              { id: 'message_0_text', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { id: 'message_0_image', type: 'attachment', attachment: createReplayImageAttachment({
+              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({
                 dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
               }) },
             ] }],
@@ -2359,8 +2359,8 @@ describe('Gemma4 E2B Provider / images', () => {
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
           messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-            { id: 'message_0_text', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-            { id: 'message_0_image', type: 'attachment', attachment: createReplayImageAttachment({
+            { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+            { type: 'attachment', attachment: createReplayImageAttachment({
               dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
             }) },
           ] }],

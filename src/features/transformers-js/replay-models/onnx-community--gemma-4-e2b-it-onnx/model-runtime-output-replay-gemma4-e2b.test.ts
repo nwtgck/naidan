@@ -171,10 +171,10 @@ describe('Gemma native output with the Production streamer and original tokenize
     expect(await operation).toEqual({ type: 'finished', next: 'tool_results' });
     const callPart = node.parts.find(p => p.type === 'tool_call'); if (!callPart) throw new Error('Expected a completed call.');
     const tool: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'result', type: 'tool_result', result: { toolCallId: callPart.toolCall.id, status: 'success', content: { type: 'text', text: '391' } } }], replies: { items: [] } };
+      parts: [{ type: 'tool_result', result: { toolCallId: callPart.toolCall.id, status: 'success', content: { type: 'text', text: '391' } } }], replies: { items: [] } };
     node.replies.items.push(tool);
     const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'question', type: 'text', text: 'Calculate.', completeness: 'complete' }], replies: { items: [node] } };
+      parts: [{ type: 'text', text: 'Calculate.', completeness: 'complete' }], replies: { items: [node] } };
     const chat: ChatContent = { root: { items: [user] }, currentLeafId: tool.id };
     const chatId = toChatId({ raw: 'gemma-native' }); const storage = new MemoryStorageProvider();
     await storage.saveChatContent({ id: chatId, content: chat }); const restored = await storage.loadChatContent({ id: chatId }); if (!restored) throw new Error('Expected stored content.');

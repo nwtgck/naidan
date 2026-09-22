@@ -111,7 +111,7 @@ function textMessages({ messages }: {
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<ChatMessage>()({
       id: toMessageId({ raw: `message_${index}` }), role,
-      parts: [{ id: `text_${index}`, type: 'text', text: content, completeness: 'complete' }],
+      parts: [{ type: 'text', text: content, completeness: 'complete' }],
     });
   });
 }
@@ -1018,10 +1018,10 @@ A separate synthetic LFM conversation.<|im_end|>
             messages: [
               ...textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
               { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{
-                id: 'reasoning_1', type: 'reasoning', text: firstReasoning, completeness: 'partial',
+                type: 'reasoning', text: firstReasoning, completeness: 'partial',
               }] },
               { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{
-                id: 'text_2', type: 'text', text: 'Continue the synthetic conversation with a short response.', completeness: 'complete',
+                type: 'text', text: 'Continue the synthetic conversation with a short response.', completeness: 'complete',
               }] },
             ],
             parameters,
@@ -1369,16 +1369,16 @@ describe('LFM2.5 2.6B Provider / tools', () => {
     const replay = await createLfm26ToolInputReplay();
     const publicMessages: ChatMessage[] = [
       { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{
-        id: 'text_0', type: 'text', text: scenario.messages[0].content, completeness: 'complete',
+        type: 'text', text: scenario.messages[0].content, completeness: 'complete',
       }] },
       { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{
-        id: 'call_1_0', type: 'tool_call', toolCall: {
+        type: 'tool_call', toolCall: {
           id: toToolCallId({ raw: 'call_template_probe_1' }), type: 'function',
           function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
         },
       }] },
       { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{
-        id: 'result_2_0', type: 'tool_result', result: {
+        type: 'tool_result', result: {
           toolCallId: toToolCallId({ raw: 'call_template_probe_1' }), status: 'success',
           content: { type: 'text', text: scenario.messages[2].content },
         },
@@ -1573,7 +1573,7 @@ Use the weather tool for Tokyo.<|im_end|>
       if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
       expect(executions[0]!.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
-        { id: toolNode.id, role: 'tool', parts: [{ id: toolNode.parts[0]!.id, type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
+        { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
       ]);
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
       settled = structuredClone(turn);
@@ -1644,7 +1644,7 @@ Let me first call the lookup_weather function with city "Tokyo".`, 'The tool ret
       if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
       expect(executions[0]!.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
-        { id: toolNode.id, role: 'tool', parts: [{ id: toolNode.parts[0]!.id, type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
+        { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
       ]);
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
       settled = structuredClone(turn);
@@ -1668,15 +1668,15 @@ Let me first call the lookup_weather function with city "Tokyo".`, 'The tool ret
       const callId = toToolCallId({ raw: 'call_model_support_probe_1' });
       const messages: ChatMessage[] = [
         { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{
-          id: 'text_0', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete',
+          type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete',
         }] },
         { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{
-          id: 'call_1_0', type: 'tool_call', toolCall: {
+          type: 'tool_call', toolCall: {
             id: callId, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
           },
         }] },
         { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{
-          id: 'result_2_0', type: 'tool_result', result: {
+          type: 'tool_result', result: {
             toolCallId: callId, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
           },
         }] },
@@ -1745,8 +1745,8 @@ describe('LFM2.5 2.6B Provider / images', () => {
           request: {
             model: "LiquidAI/LFM2.5-2.6B-ONNX",
             messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-              { id: 'text_0_0', type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-              { id: 'attachment_0_1', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
+              { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
             ] }],
             parameters,
             tools: [],
@@ -1919,13 +1919,13 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
             model: "LiquidAI/LFM2.5-2.6B-ONNX",
             messages: [
               { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{
-                id: 'text_0', type: 'text', text: 'Template probe user message.', completeness: 'complete',
+                type: 'text', text: 'Template probe user message.', completeness: 'complete',
               }] },
               { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{
-                id: 'reasoning_1', type: 'reasoning', text: firstReasoning, completeness: 'partial',
+                type: 'reasoning', text: firstReasoning, completeness: 'partial',
               }] },
               { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{
-                id: 'text_2', type: 'text', text: 'Continue the synthetic conversation with a short response.', completeness: 'complete',
+                type: 'text', text: 'Continue the synthetic conversation with a short response.', completeness: 'complete',
               }] },
             ],
             parameters,

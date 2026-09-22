@@ -6,9 +6,9 @@ import { copyMessageWithoutReplies } from './copy-message-node';
 describe('copying one history node', () => {
   it('copies assistant parts and recorded metadata without sharing mutable state', () => {
     const source: AssistantMessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 123, parts: [
-      { id: 'r', type: 'reasoning', text: '  R\n', completeness: 'complete' },
-      { id: 't', type: 'text', text: '<think>literal</think>A', completeness: 'partial' },
-      { id: 'c', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
+      { type: 'reasoning', text: '  R\n', completeness: 'complete' },
+      { type: 'text', text: '<think>literal</think>A', completeness: 'partial' },
+      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
     ], modelId: 'm', lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['STOP'], reasoning: { effort: 'high' } }, interruption: { type: 'error', message: '日本語' }, replies: { items: [] } };
     const copied = copyMessageWithoutReplies({ message: source });
     expect(copied).toEqual(source); expect(copied).not.toBe(source);
@@ -23,7 +23,7 @@ describe('copying one history node', () => {
   });
   it('preserves immutable Blobs but copies attachment metadata', () => {
     const blob = new Blob(['abc']);
-    const source: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, parts: [{ id: 'attachment', type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'name', size: 3, mimeType: 'text/plain', uploadedAt: 2, status: 'memory', blob } }], modelId: undefined, lmParameters: undefined, replies: { items: [] } };
+    const source: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, parts: [{ type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'name', size: 3, mimeType: 'text/plain', uploadedAt: 2, status: 'memory', blob } }], modelId: undefined, lmParameters: undefined, replies: { items: [] } };
     const copied = copyMessageWithoutReplies({ message: source });
     const part = copied.parts[0]; if (part?.type !== 'attachment' || part.attachment.status !== 'memory') throw new Error('Wrong attachment');
     expect(part.attachment.blob).toBe(blob); part.attachment.originalName = 'changed';
@@ -31,7 +31,7 @@ describe('copying one history node', () => {
   });
   it('copies tool result content without copying descendants or flattening binary references', () => {
     const child: MessageNode = { id: toMessageId({ raw: 's' }), role: 'system', createdAt: 2, parts: [], modelId: undefined, lmParameters: undefined, replies: { items: [] } };
-    const source: MessageNode = { id: toMessageId({ raw: 't' }), role: 'tool', createdAt: 1, parts: [{ id: 'r', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'b' }) } } }], modelId: undefined, lmParameters: undefined, replies: { items: [child] } };
+    const source: MessageNode = { id: toMessageId({ raw: 't' }), role: 'tool', createdAt: 1, parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'b' }) } } }], modelId: undefined, lmParameters: undefined, replies: { items: [child] } };
     const copied = copyMessageWithoutReplies({ message: source });
     expect(copied.replies.items).toEqual([]); expect(source.replies.items).toEqual([child]);
     expect(copied.parts).toEqual(source.parts); expect(copied.parts[0]).not.toBe(source.parts[0]);

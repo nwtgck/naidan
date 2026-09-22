@@ -1,6 +1,7 @@
 import type { MessageNode } from '@/01-models/types';
 import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 import type { GeneratedImageBlock } from '@/utils/image-generation';
+import { getMessagePartDisplayKey } from './message-part-display-key';
 
 /** Inspect body parts independently: a debug projection must not invent image blocks. */
 export function inspectDebugImages({ message }: { message: Readonly<MessageNode> }): {
@@ -15,7 +16,7 @@ export function inspectDebugImages({ message }: { message: Readonly<MessageNode>
       const pattern = new RegExp('```' + IMAGE_BLOCK_LANG + '[^\\n]*\\n([\\s\\S]*?)\\n```', 'g');
       let occurrence = 0;
       for (const match of part.text.matchAll(pattern)) {
-        const key = JSON.stringify([part.id, occurrence++]);
+        const key = JSON.stringify([getMessagePartDisplayKey({ part }), occurrence++]);
         try {
           const result = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1] ?? ''));
           if (result.success) images.push({ key, image: result.data });

@@ -101,7 +101,7 @@ describe('parts archive boundaries', () => {
         currentLeafId: 'origin-message',
         root: { items: [{
           id: 'origin-message', role: 'assistant', createdAt: 1,
-          parts: [{ id: 'text', type: 'text', text: '  <think>literal</think> [Aborted]\n' }],
+          parts: [{ type: 'text', text: '  <think>literal</think> [Aborted]\n' }],
           replies: { items: [] },
         }] },
       }));
@@ -134,7 +134,7 @@ describe('parts archive boundaries', () => {
     { origin: 'imported', parentContent: 'absent' },
   ] as const)('preserves append origin semantics for $origin with $parentContent content', async ({ origin, parentContent }) => {
     const f = fixture();
-    const content = chat({ root: { items: [modernAssistant({ parts: [{ id: 'text', type: 'text', text: 'Fork contents' }] })] } });
+    const content = chat({ root: { items: [modernAssistant({ parts: [{ type: 'text', text: 'Fork contents' }] })] } });
     content.originChatId = origin === 'self' ? 'chat' : 'parent';
     content.originMessageId = 'a';
     const zip = await archive({ content });
@@ -175,20 +175,20 @@ describe('parts archive boundaries', () => {
     expect(f.storage.restore).not.toHaveBeenCalled(); expect(f.storage.clearAll).not.toHaveBeenCalled();
   });
   it('keeps empty and repeated parts, partial state, time, and recorded error language', async () => {
-    const a = modernAssistant({ parts: [{ id: 'r', type: 'reasoning', text: '' }, { id: 't1', type: 'text', text: '' }, { id: 't2', type: 'text', text: '  🙂\r\n', completeness: 'partial' }] });
+    const a = modernAssistant({ parts: [{ type: 'reasoning', text: '' }, { type: 'text', text: '' }, { type: 'text', text: '  🙂\r\n', completeness: 'partial' }] });
     const original = chat({ root: { items: [a] } }); const before = JSON.stringify(original); const f = fixture();
     dump({ storage: f.storage, content: original, binaries: [] });
     const content = await exportedContent({ zip: await readExport(await f.service.exportData({})) });
     expect(content.root.items).toEqual(original.root?.items); expect(JSON.stringify(original)).toBe(before);
   });
   it('filters current-thread binary references from text and success/error tool results', async () => {
-    const root = { items: [modernAssistant({ parts: [{ id: 't', type: 'text', text: marker({ id: 'image' }) }] })] };
+    const root = { items: [modernAssistant({ parts: [{ type: 'text', text: marker({ id: 'image' }) }] })] };
     const content = chat({ root: { items: [{ ...root.items[0], replies: { items: [
       { id: 'tool', role: 'tool', createdAt: 1, parts: [
-        { id: 'r1', type: 'tool_result', result: { toolCallId: 'c1', status: 'success', content: { type: 'binary_object', id: 'good' } } },
-        { id: 'r2', type: 'tool_result', result: { toolCallId: 'c2', status: 'error', error: { code: 'other', message: { type: 'binary_object', id: 'error' } } } },
+        { type: 'tool_result', result: { toolCallId: 'c1', status: 'success', content: { type: 'binary_object', id: 'good' } } },
+        { type: 'tool_result', result: { toolCallId: 'c2', status: 'error', error: { code: 'other', message: { type: 'binary_object', id: 'error' } } } },
       ], replies: { items: [] } },
-      { id: 'other', role: 'assistant', createdAt: 2, parts: [{ id: 'p', type: 'text', text: marker({ id: 'other-image' }) }], replies: { items: [] } },
+      { id: 'other', role: 'assistant', createdAt: 2, parts: [{ type: 'text', text: marker({ id: 'other-image' }) }], replies: { items: [] } },
     ] } }] } }); content.currentLeafId = 'tool';
     const f = fixture(); dump({ storage: f.storage, content, binaries: ['image', 'good', 'error', 'other-image'] });
     const zip = await readExport(await f.service.exportData({ exclude: ['chat_history'] }));
@@ -196,15 +196,15 @@ describe('parts archive boundaries', () => {
     expect(Object.keys(zip.files).some(name => name.endsWith('/other-image.bin'))).toBe(false);
     const saved = await exportedContent({ zip }); expect(saved.root.items[0]!.replies.items).toHaveLength(1);
   });
-  it('appends V2 with stable part IDs, all binary reference forms, and no call re-execution', async () => {
+  it('appends V2 with ordered parts, all binary reference forms, and no call re-execution', async () => {
     const parts = [
-      { id: 'r', type: 'reasoning', text: marker({ id: 'image' }) },
-      { id: 't', type: 'text', text: `leading\n${marker({ id: 'image' })}\ntrailing` },
-      { id: 'c', type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'f', arguments: '{"binaryObjectId":"image"}' } } },
+      { type: 'reasoning', text: marker({ id: 'image' }) },
+      { type: 'text', text: `leading\n${marker({ id: 'image' })}\ntrailing` },
+      { type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'f', arguments: '{"binaryObjectId":"image"}' } } },
     ];
     const dto = chat({ root: { items: [{ ...modernAssistant({ parts }), replies: { items: [{ id: 'tool', role: 'tool', createdAt: 1, parts: [
-      { id: 'ok', type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'image' } } },
-      { id: 'bad', type: 'tool_result', result: { toolCallId: 'call', status: 'error', error: { code: 'other', message: { type: 'binary_object', id: 'error' } } } },
+      { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'image' } } },
+      { type: 'tool_result', result: { toolCallId: 'call', status: 'error', error: { code: 'other', message: { type: 'binary_object', id: 'error' } } } },
     ], replies: { items: [] } }] } }] } }); dto.currentLeafId = 'tool';
     const zip = await archive({ content: dto }); addBinary({ zip, id: 'image' }); addBinary({ zip, id: 'error' });
     const f = fixture(); await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
@@ -212,7 +212,8 @@ describe('parts archive boundaries', () => {
     const assistant = imported.data.root?.items[0]; if (assistant?.role !== 'assistant' || !assistant.parts) throw new Error('No assistant.');
     const binaries = f.received.filter(chunk => chunk.type === 'binary_object');
     expect(binaries).toHaveLength(2); expect(binaries.map(b => b.id)).not.toContain('image');
-    expect(assistant.parts.map(p => p.id)).toEqual(['r', 't', 'c']);
+    expect(assistant.parts.map(part => part.type)).toEqual(['reasoning', 'text', 'tool_call']);
+    for (const part of assistant.parts) expect(part).not.toHaveProperty('id');
     const image = binaries.find(b => b.name === 'image')!;
     expect(assistant.parts[0]).toMatchObject({ text: marker({ id: 'image' }) });
     expect(assistant.parts[1]).toMatchObject({ text: `leading\n${marker({ id: image.id })}\ntrailing` });
@@ -224,7 +225,7 @@ describe('parts archive boundaries', () => {
   });
   it('remaps escaped top-level image keys while leaving nested metadata and invalid blocks alone', async () => {
     const raw = marker({ id: 'image' }).replace('"binaryObjectId"', '"binary\\u004fbjectId"') + `\n\`\`\`${IMAGE_BLOCK_LANG}\nnot-json\n\`\`\``;
-    const zip = await archive({ content: chat({ root: { items: [modernAssistant({ parts: [{ id: 't', type: 'text', text: raw }] })] } }) }); addBinary({ zip, id: 'image' });
+    const zip = await archive({ content: chat({ root: { items: [modernAssistant({ parts: [{ type: 'text', text: raw }] })] } }) }); addBinary({ zip, id: 'image' });
     const f = fixture(); await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
     const imported = f.received.find(c => c.type === 'chat'); const binary = f.received.find(c => c.type === 'binary_object');
     if (imported?.type !== 'chat' || binary?.type !== 'binary_object') throw new Error('Missing restored chunks.');
@@ -239,11 +240,11 @@ describe('parts archive boundaries', () => {
       expect(f.storage.clearAll).not.toHaveBeenCalled(); expect(f.storage.updateSettings).not.toHaveBeenCalled(); expect(f.storage.restore).not.toHaveBeenCalled();
     });
     it(`restores valid V2 in ${mode} without interpreting a literal think block`, async () => {
-      const dto = chat({ root: { items: [modernAssistant({ parts: [{ id: 'p', type: 'text', text: '<think> literal </think>', completeness: 'partial' }] })] } });
+      const dto = chat({ root: { items: [modernAssistant({ parts: [{ type: 'text', text: '<think> literal </think>', completeness: 'partial' }] })] } });
       const zip = await archive({ content: dto }); const f = fixture();
       await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode }) });
       const imported = f.received.find(c => c.type === 'chat'); if (imported?.type !== 'chat') throw new Error('No chat.');
-      expect(imported.data.root?.items[0]).toMatchObject({ createdAt: 0, interruption: { type: 'error', message: '接続が切れました: offline' }, parts: [{ id: 'p', type: 'text', text: '<think> literal </think>', completeness: 'partial' }] });
+      expect(imported.data.root?.items[0]).toMatchObject({ createdAt: 0, interruption: { type: 'error', message: '接続が切れました: offline' }, parts: [{ type: 'text', text: '<think> literal </think>', completeness: 'partial' }] });
     });
   }
 });

@@ -11,6 +11,9 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { Attachment, Chat, MessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { cloneLmParameters } from '@/utils/lm-parameters';
+const { mockSetActiveFocusArea } = vi.hoisted(() => ({
+  mockSetActiveFocusArea: vi.fn(),
+}));
 // Mock vuedraggable
 vi.mock('vuedraggable', () => ({
   default: {
@@ -28,7 +31,7 @@ vi.mock('../composables/chat/chat-scoped/chat-history-flow', () => ({
 // Mock useLayout
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
-    setActiveFocusArea: vi.fn(),
+    setActiveFocusArea: mockSetActiveFocusArea,
   }),
 }));
 describe('HistoryManipulationModal', () => {
@@ -94,6 +97,24 @@ describe('HistoryManipulationModal', () => {
     await nextTick();
     return wrapper;
   };
+  it('preserves focus on a closed mount and restores chat focus only after closing', async () => {
+    const wrapper = mount(HistoryManipulationModal, {
+      props: { isOpen: false },
+    });
+    wrappers.push(wrapper);
+    await nextTick();
+
+    expect(mockSetActiveFocusArea).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ isOpen: true });
+    expect(mockSetActiveFocusArea.mock.calls).toEqual([[{ area: 'dialog' }]]);
+
+    await wrapper.setProps({ isOpen: false });
+    expect(mockSetActiveFocusArea.mock.calls).toEqual([
+      [{ area: 'dialog' }],
+      [{ area: 'chat' }],
+    ]);
+  });
   it('renders messages when open', async () => {
     const wrapper = await mountModal();
     // System prompt textarea might not be present if behavior is 'inherit' (it shows info div)
@@ -374,19 +395,19 @@ describe('HistoryManipulationModal', () => {
       role: 'assistant', createdAt: 0,
       interruption: { type: 'error', message: '保存された日本語' },
       parts: [
-        { id: 'r1', type: 'reasoning', text: '  R\n', completeness: 'complete' },
-        { id: 'empty', type: 'text', text: '', completeness: 'complete' },
-        { id: 'body', type: 'text', text: '<think>literal</think>A ', completeness: 'partial' },
-        { id: 'call', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call-1' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
+        { type: 'reasoning', text: '  R\n', completeness: 'complete' },
+        { type: 'text', text: '', completeness: 'complete' },
+        { type: 'text', text: '<think>literal</think>A ', completeness: 'partial' },
+        { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call-1' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
       ],
     };
-    const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined, parts: [{ id: 'result', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call-1' }), status: 'success', content: { type: 'text', text: '  done\n' } } }], replies: { items: [] } };
+    const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call-1' }), status: 'success', content: { type: 'text', text: '  done\n' } } }], replies: { items: [] } };
     mockActiveMessages.value = [mockActiveMessages.value[0]!, assistant, tool];
     const original = mockActiveMessages.value.map(message => copyMessageWithoutReplies({ message }));
     const wrapper = await mountModal();
     expect(wrapper.findAll('[data-testid="role-label"]').map(label => label.text())).toEqual(['User', 'Assistant', 'Tool']);
     expect(wrapper.findAll('[data-testid="history-parts"]')).toHaveLength(3);
-    const callElement = wrapper.get('[data-testid="history-part-call"]');
+    const callElement = wrapper.get('[data-testid="history-part-tool_call"]');
     expect(callElement.text()).toContain('tool_call');
     const roleButtons = wrapper.findAll('button[title="Switch Role"]');
     expect(roleButtons[1]!.attributes('disabled')).toBeDefined();
@@ -401,9 +422,9 @@ describe('HistoryManipulationModal', () => {
       ...messageFixture({ id: '2', role: 'assistant', content: '', attachments: undefined }), role: 'assistant',
       interruption: { type: 'cancelled' },
       parts: [
-        { id: 'r', type: 'reasoning', text: 'R', completeness: 'complete' },
-        { id: 'a', type: 'text', text: 'first', completeness: 'complete' },
-        { id: 'b', type: 'text', text: 'second', completeness: 'partial' },
+        { type: 'reasoning', text: 'R', completeness: 'complete' },
+        { type: 'text', text: 'first', completeness: 'complete' },
+        { type: 'text', text: 'second', completeness: 'partial' },
       ],
     }];
     const wrapper = await mountModal();
@@ -416,10 +437,10 @@ describe('HistoryManipulationModal', () => {
     await wrapper.findAll('button').find(button => button.text().includes('Apply Changes'))!.trigger('click');
     const saved = mockCommit.mock.calls[0]![0].messages[0];
     expect(saved.parts).toEqual([
-      { id: 'r', type: 'reasoning', text: 'R', completeness: 'complete' },
-      { id: 'a', type: 'text', text: 'first', completeness: 'complete' },
+      { type: 'reasoning', text: 'R', completeness: 'complete' },
+      { type: 'text', text: 'first', completeness: 'complete' },
       // HTML textareas normalize CRLF on input; the application does not trim the resulting value.
-      { id: 'b', type: 'text', text: edited.replace('\r\n', '\n'), completeness: 'partial' },
+      { type: 'text', text: edited.replace('\r\n', '\n'), completeness: 'partial' },
     ]);
     expect(saved.interruption).toEqual({ type: 'cancelled' });
     expect(mockActiveMessages.value[0]!.parts[2]).toMatchObject({ text: 'second' });
@@ -438,6 +459,19 @@ describe('HistoryManipulationModal', () => {
     expect(saved[0].parts).toHaveLength(2); expect(saved[1].parts).toHaveLength(1);
     expect(saved[0].parts[0].text).toBe('A'); expect(saved[1].parts[0].text).toBe('B');
     expect(mockActiveMessages.value[0]!.parts).toHaveLength(2);
+  });
+  it('removes only the selected occurrence when attachments share the same binary and identity', async () => {
+    const attachment: Attachment = { id: toAttachmentId({ raw: 'att' }), binaryObjectId: toBinaryObjectId({ raw: 'bin' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) };
+    const message = messageFixture({ id: '1', role: 'user', content: 'A', attachments: [attachment, attachment] });
+    if (message.role !== 'user') throw new Error('Expected user fixture.');
+    message.parts.splice(2, 0, { type: 'text', text: 'between', completeness: 'complete' });
+    mockActiveMessages.value = [message];
+    const wrapper = await mountModal();
+    await wrapper.findAll('[data-testid="remove-history-attachment"]')[1]!.trigger('click');
+    await wrapper.findAll('button').find(button => button.text().includes('Apply Changes'))!.trigger('click');
+    const saved = mockCommit.mock.calls[0]![0].messages[0];
+    expect(saved.parts).toEqual(message.parts.slice(0, 3));
+    expect(message.parts).toHaveLength(4);
   });
   it('saves to the chat whose draft was opened rather than the newly selected chat', async () => {
     const wrapper = await mountModal();
@@ -481,9 +515,9 @@ describe('HistoryManipulationModal', () => {
 
 function messageFixture({ id, role, content, attachments }: { id: string; role: 'user' | 'assistant'; content: string; attachments: Attachment[] | undefined }): MessageNode {
   const common = { id: toMessageId({ raw: id }), createdAt: 1, replies: { items: [] }, modelId: undefined, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }) };
-  const body = { id: 'text', type: 'text', text: content, completeness: 'complete' } as const;
+  const body = { type: 'text', text: content, completeness: 'complete' } as const;
   switch (role) {
-  case 'user': return { ...common, role, parts: [body, ...(attachments ?? []).map((attachment,index) => ({ id: 'attachment_' + index, type: 'attachment' as const, attachment }))] };
+  case 'user': return { ...common, role, parts: [body, ...(attachments ?? []).map(attachment => ({ type: 'attachment' as const, attachment }))] };
   case 'assistant': return { ...common, role, parts: [body], interruption: undefined };
   default: { const _ex: never = role; throw new Error('Unexpected role: ' + _ex); }
   }

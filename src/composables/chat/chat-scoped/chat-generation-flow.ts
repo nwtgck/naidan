@@ -309,8 +309,8 @@ export async function sendMessageToTargetChat({
     const userMessage: UserMessageNode = {
       id: generateId<MessageId>(), role: 'user', createdAt: Date.now(),
       parts: [
-        { id: 'text', type: 'text', text: finalContent, completeness: 'complete' },
-        ...processedAttachments.map((attachment, index) => ({ id: `attachment_${index}`, type: 'attachment' as const, attachment })),
+        { type: 'text', text: finalContent, completeness: 'complete' },
+        ...processedAttachments.map(attachment => ({ type: 'attachment' as const, attachment })),
       ],
       replies: { items: [] }, modelId: undefined,
       lmParameters: effectiveLmParameters || EMPTY_LM_PARAMETERS,
@@ -318,7 +318,7 @@ export async function sendMessageToTargetChat({
 
     const assistantMessage: AssistantMessageNode = {
       id: generateId<MessageId>(), role: 'assistant', createdAt: Date.now(),
-      parts: imageModeEnabled ? [{ id: 'text', type: 'text', text: createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING, completeness: 'partial' }] : [],
+      parts: imageModeEnabled ? [{ type: 'text', text: createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING, completeness: 'partial' }] : [],
       modelId: imageModel || resolvedModel, replies: { items: [] },
       lmParameters: effectiveLmParameters || EMPTY_LM_PARAMETERS,
       interruption: undefined,

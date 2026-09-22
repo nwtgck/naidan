@@ -10,7 +10,7 @@ const contentKey = `${STORAGE_KEY_PREFIX}lsp:chat_content:${rawId}`;
 const metaKey = `${STORAGE_KEY_PREFIX}lsp:chat_meta:${rawId}`;
 const meta = JSON.stringify({ id: rawId, title: 'Saved chat', createdAt: 0, updatedAt: 1, debugEnabled: false });
 const content = JSON.stringify({ root: { items: [{ id: 'answer', role: 'assistant', createdAt: 0,
-  parts: [{ id: 'p', type: 'text', text: `\
+  parts: [{ type: 'text', text: `\
   <think>原文</think>\\r
 🙂`, completeness: 'partial' }],
   interruption: { type: 'cancelled' }, replies: { items: [] } }] }, currentLeafId: 'answer' });

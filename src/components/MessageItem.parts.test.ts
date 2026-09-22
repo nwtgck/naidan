@@ -26,15 +26,15 @@ describe('message parts UI boundaries', () => {
     expect(message.parts).toEqual([]); wrapper.unmount();
   });
   it('a cancelled native partial is displayed without a running border or a fabricated tag', () => {
-    const message = assistant({ parts: [{ id: 'r', type: 'reasoning', text: '  途中の理由', completeness: 'partial' }], interruption: { type: 'cancelled' } });
+    const message = assistant({ parts: [{ type: 'reasoning', text: '  途中の理由', completeness: 'partial' }], interruption: { type: 'cancelled' } });
     const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message, mode: 'thinking' } });
     expect(wrapper.findComponent(MessageThinking).exists()).toBe(true);
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(false);
-    expect(message.parts[0]).toEqual({ id: 'r', type: 'reasoning', text: '  途中の理由', completeness: 'partial' }); wrapper.unmount();
+    expect(message.parts[0]).toEqual({ type: 'reasoning', text: '  途中の理由', completeness: 'partial' }); wrapper.unmount();
   });
   it('copy raw uses the original text instead of the read-only thinking projection', async () => {
     const raw = '<think> R </think> Answer\n';
-    const message = assistant({ parts: [{ id: 't', type: 'text', text: raw, completeness: 'complete' }], interruption: undefined });
+    const message = assistant({ parts: [{ type: 'text', text: raw, completeness: 'complete' }], interruption: undefined });
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     const wrapper = mount(MessageActions, { props: { chatId: toChatId({ raw: 'c' }), message, isImageResponse: false, isUser: false, isGenerating: false, speechText: 'Answer', displayContent: 'Answer', showExtensions: false }, attachTo: document.body });
@@ -46,7 +46,7 @@ describe('message parts UI boundaries', () => {
     expect(message.parts[0]).toMatchObject({ text: raw }); wrapper.unmount();
   });
   it('empty earlier text becoming visible does not change the later reasoning identity', () => {
-    const message = assistant({ parts: [{ id: 't', type: 'text', text: '', completeness: 'partial' }, { id: 'r', type: 'reasoning', text: 'R', completeness: 'partial' }], interruption: undefined });
+    const message = assistant({ parts: [{ type: 'text', text: '', completeness: 'partial' }, { type: 'reasoning', text: 'R', completeness: 'partial' }], interruption: undefined });
     const chat = ref({ id: toChatId({ raw: 'c' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
     const { chatFlow } = useChatDisplayFlow({ chat: computed(() => chat.value), isProcessing: () => true });
     const first = chatFlow.value[0];
@@ -58,7 +58,7 @@ describe('message parts UI boundaries', () => {
   });
   it('edit emits the complete raw body with whitespace instead of its rendered projection', async () => {
     const raw = '<think>Reason</think> Body \n';
-    const message = assistant({ parts: [{ id: 't', type: 'text', text: raw, completeness: 'complete' }], interruption: undefined });
+    const message = assistant({ parts: [{ type: 'text', text: raw, completeness: 'complete' }], interruption: undefined });
     const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message } });
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="edit-textarea"]');

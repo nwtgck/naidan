@@ -241,8 +241,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const { forkChat, rootItems } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
     // Create a tree: m1 -> m2
-    const m2: MessageNode = { id: toMessageId({ raw: 'm2' }), role: 'assistant', parts: [{ id: 'text', type: 'text', text: 'Msg 2', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, createdAt: 0 };
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Msg 1', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [m2] }, createdAt: 0 };
+    const m2: MessageNode = { id: toMessageId({ raw: 'm2' }), role: 'assistant', parts: [{ type: 'text', text: 'Msg 2', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, createdAt: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Msg 1', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [m2] }, createdAt: 0 };
 
     const mockChat: Chat = {
       id: toChatId({ raw: 'old-chat' }),
@@ -316,7 +316,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       { type: 'chat', id: toChatId({ raw: 'c1' }) },
     ];
 
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
     __testOnlySetCurrentChat({ chat: reactive({
       id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [m1] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null,
@@ -339,7 +339,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const m1: MessageNode = {
       id: toMessageId({ raw: 'm1' }),
       role: 'user',
-      parts: [{ id: 'text', type: 'text', text: 'Msg 1', completeness: 'complete' }, { id: 'attachment_0', type: 'attachment', attachment: att }],
+      parts: [{ type: 'text', text: 'Msg 1', completeness: 'complete' }, { type: 'attachment', attachment: att }],
       modelId: undefined,
       replies: { items: [] },
       createdAt: 0,
@@ -371,7 +371,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const savedContent = await (contentUpdater as any)(null);
     const clonedNode = savedContent?.root.items[0];
     expect(clonedNode?.parts.filter((part: { type: string }) => part.type === 'attachment')).toEqual([
-      { id: 'attachment_0', type: 'attachment', attachment: att },
+      { type: 'attachment', attachment: att },
     ]);
 
     const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId)?.[0].updater;
@@ -392,7 +392,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const m1: MessageNode = {
       id: toMessageId({ raw: 'm1' }),
       role: 'user',
-      parts: [{ id: 'text', type: 'text', text: 'Original Content', completeness: 'complete' }, { id: 'attachment_0', type: 'attachment', attachment: att }],
+      parts: [{ type: 'text', text: 'Original Content', completeness: 'complete' }, { type: 'attachment', attachment: att }],
       modelId: undefined,
       replies: { items: [] },
       createdAt: 0,
@@ -415,7 +415,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const newMsg = currentChat.value?.root.items[1];
     expect(getMessageText({ message: newMsg! })).toBe('New Content');
     expect(newMsg?.parts.filter(part => part.type === 'attachment')).toEqual([
-      { id: 'attachment_0', type: 'attachment', attachment: att },
+      { type: 'attachment', attachment: att },
     ]);
   });
 
@@ -805,7 +805,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       // Fallback: if root is empty, something is wrong with sendMessage mock synchronization
       // but we can still test the logic by manually inserting a node
       const manualId = 'manual-u1';
-      liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Hello', completeness: 'complete' }], lmParameters: undefined, createdAt: Date.now(), replies: { items: [] },  modelId: undefined });
+      liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], lmParameters: undefined, createdAt: Date.now(), replies: { items: [] },  modelId: undefined });
       await editMessage({ messageId: manualId, newContent: 'Updated Hello', lmParameters: newParams });
     } else {
       mockLmChat.mockClear();
@@ -1105,7 +1105,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should generate a chat title based on the first message', async () => {
     const { generateChatTitle } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'What is the capital of France?', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'What is the capital of France?', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
     const chatObj = reactive({
       id: 'title-test-chat',
       title: null,
@@ -1141,13 +1141,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatA = reactive({
       id: 'chat-A',
       title: null,
-      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Msg A', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Msg A', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
     const chatB = reactive({
       id: 'chat-B',
       title: null,
-      root: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Msg B', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
+      root: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'user', parts: [{ type: 'text', text: 'Msg B', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
 
@@ -1216,7 +1216,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should update the title even if it is already set when generateChatTitle is called', async () => {
     const { generateChatTitle } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Original message', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Original message', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
     const chatObj = reactive<Chat>({
       id: toChatId({ raw: 'chat-1' }),
       title: 'Old Title',
@@ -1245,7 +1245,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should allow aborting title generation', async () => {
     const { generateChatTitle, abortTitleGeneration, TEST_ONLY: { __testOnlySetCurrentChat } } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
-    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Original message', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Original message', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
     const chatObj = reactive<Chat>({
       id: toChatId({ raw: 'chat-abort-test' }),
       title: null,
@@ -1301,28 +1301,28 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           {
             id: toMessageId({ raw: 'user-1' }),
             role: 'user',
-            parts: [{ id: 'text', type: 'text', text: 'Question', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+            parts: [{ type: 'text', text: 'Question', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
             createdAt: 1,
             replies: {
               items: [
                 {
                   id: toMessageId({ raw: 'assistant-1' }),
                   role: 'assistant',
-                  parts: [{ id: 'text', type: 'text', text: 'Target answer', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                  parts: [{ type: 'text', text: 'Target answer', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
                   createdAt: 2,
                   replies: {
                     items: [
                       {
                         id: toMessageId({ raw: 'user-followup' }),
                         role: 'user',
-                        parts: [{ id: 'text', type: 'text', text: 'Follow up', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+                        parts: [{ type: 'text', text: 'Follow up', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
                         createdAt: 3,
                         replies: {
                           items: [
                             {
                               id: toMessageId({ raw: 'target-leaf' }),
                               role: 'assistant',
-                              parts: [{ id: 'text', type: 'text', text: 'Target leaf', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                              parts: [{ type: 'text', text: 'Target leaf', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
                               createdAt: 4,
                               replies: { items: [] },
                             },
@@ -1335,7 +1335,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
                 {
                   id: toMessageId({ raw: 'assistant-2' }),
                   role: 'assistant',
-                  parts: [{ id: 'text', type: 'text', text: 'Saved answer', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                  parts: [{ type: 'text', text: 'Saved answer', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
                   createdAt: 5,
                   replies: { items: [] },
                 },

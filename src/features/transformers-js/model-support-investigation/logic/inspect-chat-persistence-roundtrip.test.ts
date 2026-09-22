@@ -22,12 +22,12 @@ describe('inspectChatPersistenceRoundTrip', () => {
     expect(assistant).toEqual({
       id: 'model-support-investigation-assistant', role: 'assistant',
       parts: [
-        { id: 'reasoning', type: 'reasoning', text: `\
+        { type: 'reasoning', text: `\
   Check the forecast.
 `, completeness: 'complete' },
-        { id: 'empty', type: 'text', text: '', completeness: 'complete' },
-        { id: 'literal', type: 'text', text: '<think>preserve this exact model-visible tool-call prefix</think>', completeness: 'complete' },
-        { id: 'call', type: 'tool_call', toolCall: {
+        { type: 'text', text: '', completeness: 'complete' },
+        { type: 'text', text: '<think>preserve this exact model-visible tool-call prefix</think>', completeness: 'complete' },
+        { type: 'tool_call', toolCall: {
           id: 'model-support-investigation-tool-call-1', type: 'function',
           function: { name: 'lookup_weather', arguments: `\
 {
@@ -40,14 +40,14 @@ describe('inspectChatPersistenceRoundTrip', () => {
     const tool = result.restoredMessages.find(message => message.role === 'tool');
     expect(tool).toEqual({
       id: 'model-support-investigation-tool-result', role: 'tool',
-      parts: [{ id: 'result', type: 'tool_result', result: {
+      parts: [{ type: 'tool_result', result: {
         toolCallId: 'model-support-investigation-tool-call-1', status: 'success',
         content: { type: 'text', text: `\
 {"temperatureC":20,"condition":"clear"}
 source=fixture` },
       } }],
     });
-    expect(result.restoredMessages[4]?.parts).toEqual([{ id: 'partial', type: 'text', text: `\
+    expect(result.restoredMessages[4]?.parts).toEqual([{ type: 'text', text: `\
   Tokyo 🙂
 `, completeness: 'partial' }]);
   });

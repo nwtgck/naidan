@@ -30,7 +30,7 @@ describe('explicit Provider native request ownership', () => {
       const capture = captureProviderChat({ provider: replay.provider, request: {
         model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
         messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
-          { id: 'text', type: 'text', text: 'Template probe user message.', completeness: 'complete' },
+          { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
         ] }],
         parameters, tools: [], signal: new AbortController().signal,
         debug: undefined, readBinaryObject: undefined,

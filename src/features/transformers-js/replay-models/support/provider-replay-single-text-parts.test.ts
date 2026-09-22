@@ -109,6 +109,11 @@ describe('continuation input observation', () => {
     expect(() => projectSingleTextReplayInput({ input: { ...input, messages: [{ role: 'assistant', parts: [part, part] }] }, precedingEvents: observedEvents })).toThrow();
   });
 
+  it('rejects a stale part revision mixed into the immediately preceding request', () => {
+    const preceding = observedEvents.map(event => event.kind === 'part_text' && event.sequence === 3 ? { ...event, partId: 'older-part' } : event);
+    expect(() => projectSingleTextReplayInput({ input, precedingEvents: preceding })).toThrow('immediately preceding');
+  });
+
   it('rejects an older part when the immediately preceding request produced the same text under another identity', () => {
     const preceding = observedEvents.map(event => event.kind === 'part_text' ? { ...event, partId: 'new-part' } : event);
     expect(() => projectSingleTextReplayInput({ input, precedingEvents: preceding })).toThrow('immediately preceding');

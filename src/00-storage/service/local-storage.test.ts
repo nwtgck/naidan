@@ -66,7 +66,7 @@ describe('LocalStorageProvider', () => {
     const chatId = toChatId({ raw: '123e4567-e89b-12d3-a456-426614174000' });
     const content: ChatContent = {
       root: {
-        items: [{ id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'hello', completeness: 'complete' }, { id: 'test_attachment_0', type: 'attachment', attachment: {
+        items: [{ id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, { type: 'attachment', attachment: {
           id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
           binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
           originalName: 'attachment.txt',

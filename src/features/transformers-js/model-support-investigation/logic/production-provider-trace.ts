@@ -220,7 +220,7 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
   // Keep only the latest revision for each part. A text snapshot records the
   // consumer's applied content, not raw token chunks or a normalized transcript.
   let assistantId: string | undefined;
-  const partRevisions = new Map<string, { index: number; part: CaptureAssistantPart }>();
+  const partRevisions = new Map<AssistantMessageNode['parts'][number], { index: number; part: CaptureAssistantPart }>();
   function observeAssistant({ message }: { message: AssistantMessageNode }): void {
     switch (format) {
     case 'production-provider-trace-v3': break;
@@ -236,24 +236,27 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
     }
     for (const [index, part] of message.parts.entries()) {
       if (failure !== undefined) break;
-      const previous = partRevisions.get(part.id);
+      const previous = partRevisions.get(part);
+      // Capture IDs identify revisions within this observation. They are not
+      // history fields, and remain stable if another part is inserted earlier.
+      const id = previous?.part.id ?? `part_${partRevisions.size}`;
       switch (part.type) {
       case 'text': case 'reasoning': {
-        const { id, type, text: value, completeness, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+        const { type, text: value, completeness, ...rest } = part; rest satisfies Record<PropertyKey, never>;
         if (previous?.index === index && previous.part.type === type && previous.part.text === value && previous.part.completeness === completeness) break;
         append({ project: ({ text }) => ({ kind: 'part_text', messageId: text({ value: messageId }), partId: text({ value: id }), index, partType: type, text: text({ value }), completeness }) });
-        if (failure === undefined) partRevisions.set(id, { index, part: Object.freeze({ id, type, text: value, completeness }) });
+        if (failure === undefined) partRevisions.set(part, { index, part: Object.freeze({ id, type, text: value, completeness }) });
         break;
       }
       case 'tool_call': {
-        const { id, type, toolCall, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+        const { type, toolCall, ...rest } = part; rest satisfies Record<PropertyKey, never>;
         const { id: callId, type: callType, function: fn, ...restCall } = toolCall; restCall satisfies Record<PropertyKey, never>;
         const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
         const rawId = idToRaw({ id: callId });
         if (previous?.index === index && previous.part.type === type && previous.part.toolCall.id === rawId && previous.part.toolCall.function.name === name && previous.part.toolCall.function.arguments === args) break;
         append({ project: ({ text }) => ({ kind: 'part_call', messageId: text({ value: messageId }), partId: text({ value: id }), index,
           toolCallId: text({ value: rawId }), toolName: text({ value: name }), modelVisibleArguments: text({ value: args }) }) });
-        if (failure === undefined) partRevisions.set(id, { index, part: Object.freeze({ id, type, toolCall: Object.freeze({ id: rawId, type: callType, function: Object.freeze({ name, arguments: args }) }) }) });
+        if (failure === undefined) partRevisions.set(part, { index, part: Object.freeze({ id, type, toolCall: Object.freeze({ id: rawId, type: callType, function: Object.freeze({ name, arguments: args }) }) }) });
         break;
       }
       default: { const exhaustive: never = part; throw new Error('Unhandled assistant part: ' + exhaustive); }

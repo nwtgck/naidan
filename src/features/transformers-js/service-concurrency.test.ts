@@ -135,7 +135,7 @@ describe('Transformers.js service runtime serialization', () => {
       const first = new AbortController();
       operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: first.signal }), abortController: first }));
       await entered.promise;
-      const body = { id: 'p', type: 'text' as const, text: 'Accepted Provider input.', completeness: 'complete' as const };
+      const body = { type: 'text' as const, text: 'Accepted Provider input.', completeness: 'complete' as const };
       const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [body] }];
       const parameters: LmParameters = { ...EMPTY_LM_PARAMETERS,
         temperature: 0.25, topP: undefined, maxCompletionTokens: undefined,

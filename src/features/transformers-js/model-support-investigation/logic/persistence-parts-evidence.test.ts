@@ -14,11 +14,11 @@ describe('persistence parts evidence', () => {
     const raw = '🙂'.slice(0, 1);
     const message: ChatMessage = {
       id: toMessageId({ raw: 'm' }), role: 'assistant', parts: [
-        { id: 'r1', type: 'reasoning', text: '', completeness: 'complete' },
-        { id: 'r2', type: 'reasoning', text: ' ', completeness: 'partial' },
-        { id: 't1', type: 'text', text: '', completeness: 'complete' },
-        { id: 't2', type: 'text', text: '<think>literal</think>' + raw, completeness: 'partial' },
-        { id: 't3', type: 'text', text: '<think>literal</think>' + raw, completeness: 'partial' },
+        { type: 'reasoning', text: '', completeness: 'complete' },
+        { type: 'reasoning', text: ' ', completeness: 'partial' },
+        { type: 'text', text: '', completeness: 'complete' },
+        { type: 'text', text: '<think>literal</think>' + raw, completeness: 'partial' },
+        { type: 'text', text: '<think>literal</think>' + raw, completeness: 'partial' },
       ],
     };
     const result = recordPersistencePartsMessages({ messages: [message] });
@@ -29,12 +29,12 @@ describe('persistence parts evidence', () => {
 
   it('records call IDs and argument bytes without parsing or canonicalizing them', () => {
     const result = recordPersistencePartsMessages({ messages: [{
-      id: toMessageId({ raw: 'm' }), role: 'assistant', parts: [{ id: 'p', type: 'tool_call', toolCall: {
+      id: toMessageId({ raw: 'm' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: {
         id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'tool', arguments: ' { "x": 1.00, "y": "\\u0061" } ' },
       } }],
     }] });
     expect(result).toEqual([{
-      id: 'm', role: 'assistant', parts: [{ id: 'p', type: 'tool_call', toolCall: {
+      id: 'm', role: 'assistant', parts: [{ type: 'tool_call', toolCall: {
         id: 'call', type: 'function', function: { name: 'tool', arguments: ' { "x": 1.00, "y": "\\u0061" } ' },
       } }],
     }]);
@@ -48,17 +48,17 @@ describe('persistence parts evidence', () => {
       { toolCallId, status: 'error', error: { code: 'timeout', message: { type: 'text', text: ' timeout ' } } },
     ];
     const recorded = recordPersistencePartsMessages({ messages: [{
-      id: toMessageId({ raw: 't' }), role: 'tool', parts: results.map((result, index) => ({ id: String(index), type: 'tool_result', result })),
+      id: toMessageId({ raw: 't' }), role: 'tool', parts: results.map((result) => ({ type: 'tool_result', result })),
     }] });
     expect(recorded).toEqual([{
-      id: 't', role: 'tool', parts: results.map((result, index) => ({ id: String(index), type: 'tool_result', result: { ...result, toolCallId: 'call' } })),
+      id: 't', role: 'tool', parts: results.map((result) => ({ type: 'tool_result', result: { ...result, toolCallId: 'call' } })),
     }]);
   });
 
   it('does not hide an unsupported attachment or read its bytes', () => {
     const blob = new Blob(['private image']);
     const message: ChatMessage = {
-      id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'attachment', attachment: {
+      id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'attachment', attachment: {
         id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }),
         originalName: 'image', mimeType: 'image/png', size: blob.size, uploadedAt: 0, status: 'memory', blob,
       } }],
@@ -75,7 +75,7 @@ describe('persistence parts evidence', () => {
     ];
     for (const result of results) {
       expect(() => recordPersistencePartsMessages({ messages: [{
-        id: toMessageId({ raw: 't' }), role: 'tool', parts: [{ id: 'p', type: 'tool_result', result }],
+        id: toMessageId({ raw: 't' }), role: 'tool', parts: [{ type: 'tool_result', result }],
       }] })).toThrow(/binary tool/);
     }
   });
@@ -83,16 +83,16 @@ describe('persistence parts evidence', () => {
   it('compares order, IDs, state, contents and lengths without flattening the transcript', () => {
     const message: PersistencePartsMessage = {
       id: 'a', role: 'assistant', parts: [
-        { id: 'p1', type: 'text', text: 'A', completeness: 'complete' },
-        { id: 'p2', type: 'text', text: 'B', completeness: 'partial' },
+        { type: 'text', text: 'A', completeness: 'complete' },
+        { type: 'text', text: 'B', completeness: 'partial' },
       ],
     };
     expect(firstPersistencePartsMismatch({ expected: [message], actual: structuredClone([message]) })).toBeUndefined();
     for (const changed of [
       { ...message, id: 'different' },
       { ...message, parts: [...message.parts].reverse() },
-      { ...message, parts: [{ id: 'p1', type: 'text', text: 'AB', completeness: 'partial' }] },
-      { ...message, parts: [{ id: 'p1', type: 'text', text: 'A', completeness: 'partial' }, message.parts[1]] },
+      { ...message, parts: [{ type: 'text', text: 'AB', completeness: 'partial' }] },
+      { ...message, parts: [{ type: 'text', text: 'A', completeness: 'partial' }, message.parts[1]] },
     ]) {
       const actual = persistencePartsMessageSchema.parse(changed);
       expect(firstPersistencePartsMismatch({ expected: [message], actual: [actual] })).toBe(0);
@@ -103,7 +103,7 @@ describe('persistence parts evidence', () => {
 
   it('does not parse a legacy flat record or another role into parts evidence', () => {
     expect(persistencePartsMessageSchema.safeParse({ role: 'assistant', content: 'old' }).success).toBe(false);
-    expect(persistencePartsMessageSchema.safeParse({ id: 'u', role: 'user', parts: [{ id: 'p', type: 'reasoning', text: '', completeness: 'complete' }] }).success).toBe(false);
-    expect(persistencePartsMessageSchema.safeParse({ id: 'a', role: 'assistant', parts: [{ id: 'p', type: 'text', text: '' }] }).success).toBe(false);
+    expect(persistencePartsMessageSchema.safeParse({ id: 'u', role: 'user', parts: [{ type: 'reasoning', text: '', completeness: 'complete' }] }).success).toBe(false);
+    expect(persistencePartsMessageSchema.safeParse({ id: 'a', role: 'assistant', parts: [{ type: 'text', text: '' }] }).success).toBe(false);
   });
 });

@@ -288,6 +288,8 @@ export function assertStructuredReplayInputCompatibility({ input, recordedInput,
   const index = assistantIndices[0]!;
   expect(recorded.messages[index], 'recorded legacy assistant matches the model-owned expected projection')
     .toEqual(expectedLegacyAssistant);
+  // Compare private capture identities before projecting the observed input;
+  // these IDs never become persisted/domain part fields.
   const revisions = new Map<string, { index: number; part: unknown }>();
   let messageId: string | undefined;
   for (const event of precedingEvents) {

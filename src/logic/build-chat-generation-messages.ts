@@ -21,7 +21,7 @@ export function buildChatGenerationMessages({ chat, excludedMessageId, systemPro
     usedIds.add(raw);
     return {
       id: toMessageId({ raw }), role: 'system',
-      parts: [{ id: 'text', type: 'text', text, completeness: 'complete' }],
+      parts: [{ type: 'text', text, completeness: 'complete' }],
     };
   });
   for (const node of history) {

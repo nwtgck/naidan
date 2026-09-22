@@ -117,7 +117,7 @@ describe('SmolLM2 135M Provider / basic', () => {
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -230,7 +230,7 @@ describe('SmolLM2 135M Provider / basic', () => {
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -305,7 +305,7 @@ I hope this message finds you well.`,
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -368,8 +368,8 @@ describe('SmolLM2 135M Provider / system', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ id: 'text_0', type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ id: 'text_1', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -423,8 +423,8 @@ describe('SmolLM2 135M Provider / history', () => {
         request: {
           model: inputEvidence.modelId,
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ id: 'text_0', type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] },
-            { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ id: 'text_1', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+            { id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -510,9 +510,9 @@ describe('SmolLM2 135M Provider / history', () => {
         request: {
           model: inputEvidence.modelId,
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe first user message.", completeness: 'complete' }] },
-            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] },
-            { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -606,12 +606,12 @@ describe('SmolLM2 135M Provider / history', () => {
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
-            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: `\
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: `\
 "Dear Hugging Face,
 
 I hope this message finds you well.`, completeness: 'complete' }] },
-            { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue with one short sentence.", completeness: 'complete' }] }
+            { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue with one short sentence.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -686,9 +686,9 @@ I hope this message finds you well.`, completeness: 'complete' }] },
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe first user message.", completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -724,7 +724,7 @@ describe('SmolLM2 135M Provider / independent', () => {
     let firstCapture: ProviderChatCapture | undefined;
     let secondCapture: ProviderChatCapture | undefined;
     const nextMessages: ChatMessage[] = [
-      { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'A separate synthetic conversation.', completeness: 'complete' }] }
+      { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: 'A separate synthetic conversation.', completeness: 'complete' }] }
     ];
     const nextPrompt = `\
 <|im_start|>system
@@ -769,7 +769,7 @@ A separate synthetic conversation.<|im_end|>
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -892,7 +892,7 @@ A separate synthetic conversation.<|im_end|>
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -939,9 +939,9 @@ I hope this message finds you well.`]);
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: firstResponse, completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: firstResponse, completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -984,7 +984,7 @@ I hope this message finds you well.`]);
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "A separate synthetic capture conversation.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "A separate synthetic capture conversation.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -1044,7 +1044,7 @@ describe('SmolLM2 135M Provider / reasoning', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -1101,7 +1101,7 @@ describe('SmolLM2 135M Provider / reasoning', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -1158,7 +1158,7 @@ describe('SmolLM2 135M Provider / reasoning', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -1215,7 +1215,7 @@ describe('SmolLM2 135M Provider / reasoning', () => {
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -1281,7 +1281,7 @@ describe('SmolLM2 135M Provider / tools', () => {
       const request: CapturedChatRequest = {
         model: toolInputEvidence.modelId,
         messages: [
-          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
         ],
         tools: [publicTool],
         parameters: {
@@ -1426,9 +1426,9 @@ describe('SmolLM2 135M Provider / tools', () => {
       const request: CapturedChatRequest = {
         model: toolInputEvidence.modelId,
         messages: [
-          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
-          { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "", completeness: 'complete' },
-            { id: 'call_1_0', type: 'tool_call', toolCall: {
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
+          { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "", completeness: 'complete' },
+            { type: 'tool_call', toolCall: {
               id: toToolCallId({ raw: "call_template_probe_1" }),
               type: "function",
               function: {
@@ -1436,7 +1436,7 @@ describe('SmolLM2 135M Provider / tools', () => {
                 arguments: "{\"city\":\"Tokyo\"}",
               },
             } }] },
-          { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
+          { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
         ],
         tools: [publicTool],
         parameters: {
@@ -1567,7 +1567,7 @@ describe('SmolLM2 135M Provider / tools', () => {
     try {
       replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
       const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
+        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
       ], parameters, debug: undefined, readBinaryObject: undefined };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
@@ -1628,7 +1628,7 @@ describe('SmolLM2 135M Provider / tools', () => {
     try {
       replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
       const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
+        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
       ], parameters, debug: undefined, readBinaryObject: undefined };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
@@ -1689,9 +1689,9 @@ describe('SmolLM2 135M Provider / tools', () => {
     try {
       replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
       const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-135M-Instruct", messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
-        { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "", completeness: 'complete' },
-          { id: 'call_1_0', type: 'tool_call', toolCall: {
+        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
+        { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "", completeness: 'complete' },
+          { type: 'tool_call', toolCall: {
             id: toToolCallId({ raw: "call_model_support_probe_1" }),
             type: "function",
             function: {
@@ -1699,7 +1699,7 @@ describe('SmolLM2 135M Provider / tools', () => {
               arguments: "{\"city\":\"Tokyo\"}",
             },
           } }] },
-        { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
+        { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
       ], parameters, debug: undefined, readBinaryObject: undefined };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
@@ -1762,8 +1762,8 @@ describe('SmolLM2 135M Provider / images', () => {
         const request: CapturedChatRequest = {
           model: "HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'part_0_0', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { id: 'part_0_1', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }
           ],
           parameters,
           tools: [],
@@ -1808,7 +1808,7 @@ describe('SmolLM2 135M Provider / sequences', () => {
       const toolRequest: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
         model: 'HuggingFaceTB/SmolLM2-135M-Instruct', parameters: { ...parameters, maxCompletionTokens: 128 },
         messages: [{ id: toMessageId({ raw: 'tool-user' }), role: 'user', parts: [
-          { id: 'text', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+          { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
         ] }], debug: undefined, readBinaryObject: undefined,
       };
       const toolInput = structuredClone(toolRequest);
@@ -1834,8 +1834,8 @@ describe('SmolLM2 135M Provider / sequences', () => {
       const imageRequest: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
         model: 'HuggingFaceTB/SmolLM2-135M-Instruct', parameters: { ...parameters, maxCompletionTokens: 1 },
         messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
-          { id: 'text', type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-          { id: 'image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
+          { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+          { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
         ] }], debug: undefined, readBinaryObject: undefined,
       };
       const imageInput = structuredClone(imageRequest);
@@ -1865,7 +1865,7 @@ describe('SmolLM2 135M Provider / sequences', () => {
         abortController: new AbortController(),
         request: { model: 'HuggingFaceTB/SmolLM2-135M-Instruct', parameters,
           messages: [{ id: toMessageId({ raw: 'plain-user' }), role: 'user', parts: [
-            { id: 'text', type: 'text', text: 'Template probe user message.', completeness: 'complete' },
+            { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
           ] }], debug: undefined, readBinaryObject: undefined },
       });
       observedTurns.push(recovered);
@@ -1938,7 +1938,7 @@ I hope this message finds you well.` }),
         request: {
           model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
           ],
           tools: [],
           parameters: {
@@ -1975,9 +1975,9 @@ I hope this message finds you well.` }),
           request: {
             model: "hf.co/HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'Template probe user message.', completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: firstTextAtSettlement, completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: 'Continue with one short sentence.', completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: firstTextAtSettlement, completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: 'Continue with one short sentence.', completeness: 'complete' }] }
             ],
             tools: [],
             parameters: {
@@ -2065,7 +2065,7 @@ I hope this message finds you well.` }),
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],
@@ -2112,9 +2112,9 @@ I hope this message finds you well.`]);
           request: {
             model: "HuggingFaceTB/SmolLM2-135M-Instruct",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: firstResponse, completeness: 'complete' }] },
-              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }
+              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: firstResponse, completeness: 'complete' }] },
+              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }
             ],
             parameters,
             tools: [],

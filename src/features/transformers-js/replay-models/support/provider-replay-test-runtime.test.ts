@@ -25,7 +25,7 @@ const capturedSmolLoadIdentity = {
 function textMessage({ id, role, text }: { id: string; role: 'user' | 'assistant'; text: string }): ChatMessage {
   return {
     id: toMessageId({ raw: id }), role,
-    parts: [{ id: `${id}_text`, type: 'text', text, completeness: 'complete' }],
+    parts: [{ type: 'text', text, completeness: 'complete' }],
   };
 }
 

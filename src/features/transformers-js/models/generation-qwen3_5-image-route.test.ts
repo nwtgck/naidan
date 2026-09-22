@@ -116,8 +116,8 @@ describe('Qwen image generation session ownership', () => {
         request: {
           model: modelId, debug: undefined, readBinaryObject: undefined,
           messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
-            { id: 'text', type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-            { id: 'image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+            { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
           ] }],
           parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
         },
@@ -154,7 +154,7 @@ describe('Qwen image generation session ownership', () => {
         abortController: new AbortController(),
         onChange,
         request: {
-          ...request, messages: [{ id: toMessageId({ raw: 'text-user' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Hello.', completeness: 'complete' }] }],
+          ...request, messages: [{ id: toMessageId({ raw: 'text-user' }), role: 'user', parts: [{ type: 'text', text: 'Hello.', completeness: 'complete' }] }],
         },
       });
       expect(generate).toHaveBeenCalledTimes(1);
@@ -173,8 +173,8 @@ describe('Qwen image generation session ownership', () => {
         onChange: undefined,
         request: {
           ...request, messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
-            { id: 'text', type: 'text', text: 'Describe this image.', completeness: 'complete' },
-            { id: 'image', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+            { type: 'text', text: 'Describe this image.', completeness: 'complete' },
+            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
           ] }],
         },
       });

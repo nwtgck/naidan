@@ -92,7 +92,7 @@ describe('useChatSearch Composable', () => {
         items: [{
           id: 'm1',
           modelId: undefined, lmParameters: undefined,
-          parts: [{ id: 'text', type: 'text', text: 'hello content', completeness: 'complete' }],
+          parts: [{ type: 'text', text: 'hello content', completeness: 'complete' }],
           createdAt: 100,
           role: 'user',
           replies: { items: [] },
@@ -287,7 +287,7 @@ describe('useChatSearch Composable', () => {
         items: [{
           id: 'm1',
           modelId: undefined, lmParameters: undefined,
-          parts: [{ id: 'text', type: 'text', text: 'hello content', completeness: 'complete' }],
+          parts: [{ type: 'text', text: 'hello content', completeness: 'complete' }],
           createdAt: 100,
           role: 'user',
           replies: { items: [] },
@@ -318,7 +318,7 @@ describe('useChatSearch Composable', () => {
           {
             id: 'm1',
             modelId: undefined, lmParameters: undefined,
-            parts: [{ id: 'text', type: 'text', text: 'hello from user', completeness: 'complete' }],
+            parts: [{ type: 'text', text: 'hello from user', completeness: 'complete' }],
             createdAt: 100,
             role: 'user',
             replies: { items: [] },
@@ -326,7 +326,7 @@ describe('useChatSearch Composable', () => {
           {
             id: 'm2',
             modelId: undefined, lmParameters: undefined, interruption: undefined,
-            parts: [{ id: 'text', type: 'text', text: 'hello from assistant', completeness: 'complete' }],
+            parts: [{ type: 'text', text: 'hello from assistant', completeness: 'complete' }],
             createdAt: 200,
             role: 'assistant',
             replies: { items: [] },
@@ -357,7 +357,7 @@ describe('useChatSearch Composable', () => {
           {
             id: 'm1',
             modelId: undefined, lmParameters: undefined,
-            parts: [{ id: 'text', type: 'text', text: 'hello from user', completeness: 'complete' }],
+            parts: [{ type: 'text', text: 'hello from user', completeness: 'complete' }],
             createdAt: 100,
             role: 'user',
             replies: { items: [] },
@@ -365,7 +365,7 @@ describe('useChatSearch Composable', () => {
           {
             id: 'm2',
             modelId: undefined, lmParameters: undefined, interruption: undefined,
-            parts: [{ id: 'text', type: 'text', text: 'hello from assistant', completeness: 'complete' }],
+            parts: [{ type: 'text', text: 'hello from assistant', completeness: 'complete' }],
             createdAt: 200,
             role: 'assistant',
             replies: { items: [] },

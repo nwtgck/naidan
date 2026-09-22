@@ -35,10 +35,13 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
     execute: tool.execute.bind(tool),
   }]));
 
-  for (const [index, call] of pendingCalls.entries()) {
+  for (const call of pendingCalls) {
     signal?.throwIfAborted();
-    const partId = `tool_result_${index}`;
-    node.parts.push({ id: partId, type: 'tool_result', result: { toolCallId: call.id, status: 'executing' } });
+    node.parts.push({ type: 'tool_result', result: { toolCallId: call.id, status: 'executing' } });
+    // Capture the node's reactive view after insertion. Array positions can
+    // change while execution or persistence is awaiting another operation.
+    const part = node.parts.at(-1);
+    if (!part) throw new Error('The owned tool result was removed or replaced.');
     // Notifications and persistence failures are not recoverable tool errors.
     try {
       await onChange();
@@ -58,10 +61,7 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
         eventPhase = 'settled';
       }
 
-      // Find only within the node owned by this run, and mutate through the node
-      // rather than an unproxied object retained before Vue inserted it.
-      const part = node.parts.find(part => part.id === partId);
-      if (!part || part.result.toolCallId !== call.id) throw new Error('The owned tool result was removed or replaced.');
+      if (!node.parts.includes(part) || part.result.toolCallId !== call.id) throw new Error('The owned tool result was removed or replaced.');
       let content: { type: 'result' | 'error', text: string };
       switch (outcome.status) {
       case 'success': {
@@ -90,7 +90,7 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
       // Retain the inline result first. A failed binary write must not erase the
       // observed tool outcome or cause the side effect to be executed again.
       const stored = await persistContent({ toolCallId: call.id, ...content });
-      if (node.parts.find(entry => entry.id === partId) !== part || part.result !== recorded) {
+      if (!node.parts.includes(part) || part.result !== recorded) {
         throw new Error('The owned tool result changed during persistence.');
       }
       const persisted = (() => {
@@ -169,7 +169,7 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
         });
       }
     } catch (error) {
-      const unfinished = node.parts.find(part => part.id === partId);
+      const unfinished = node.parts.includes(part) ? part : undefined;
       if (unfinished?.result.toolCallId === call.id) {
         switch (unfinished.result.status) {
         case 'executing':

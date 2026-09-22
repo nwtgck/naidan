@@ -306,7 +306,7 @@ describe('ChatPane Fork Functionality', () => {
   });
 
   it('should show fork button when there are messages', async () => {
-    mockActiveMessages.value = [{ id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } }];
     const wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -316,8 +316,8 @@ describe('ChatPane Fork Functionality', () => {
 
   it('should call forkChat with the last message ID when fork button is clicked', async () => {
     mockActiveMessages.value = [
-      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } },
-      { id: toMessageId({ raw: 'msg-2' }), role: 'assistant', parts: [{ id: 'text', type: 'text', text: 'hi', completeness: 'complete' }], createdAt: 2, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-2' }), role: 'assistant', parts: [{ type: 'text', text: 'hi', completeness: 'complete' }], createdAt: 2, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } },
     ];
     mockForkChat.mockResolvedValue('new-chat-id');
 

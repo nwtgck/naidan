@@ -8,10 +8,12 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
   if (node.parts.length !== 0 || node.interruption !== undefined) {
     throw new Error('Generation requires a new assistant without existing content or interruption.');
   }
-  const positions = new Map<string, number>();
+  type Part = AssistantMessageNode['parts'][number];
+  const parts = new Map<string, Part>();
+  const positions = new Map<Part, number>();
   const indices = new Set<number>();
   const calls = new Set<ToolCallId>();
-  const closed = new Set<string>();
+  const closed = new Set<Part>();
   let phase: 'generating' | 'finished' = 'generating';
 
   function requireGenerating() {
@@ -27,26 +29,24 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
 
   function reservePosition({ partId, index }: { partId: string, index: number }): number {
     requireGenerating();
-    if (positions.has(partId)) throw new Error('Duplicate generated part ID.');
+    if (parts.has(partId)) throw new Error('Duplicate generated part ID.');
     if (!Number.isSafeInteger(index) || index < 0 || indices.has(index)) {
       throw new Error('Invalid or duplicate generated part position.');
     }
     const insertion = node.parts.findIndex(part => {
-      const position = positions.get(part.id);
+      const position = positions.get(part);
       if (position === undefined) throw new Error('Generated content was changed outside its owner.');
       return position > index;
     });
-    positions.set(partId, index);
     indices.add(index);
     return insertion === -1 ? node.parts.length : insertion;
   }
 
   function findTextPart({ partId }: { partId: string }) {
     requireGenerating();
-    if (!positions.has(partId)) throw new Error('Unknown generated part.');
-    // Read through the history node, so callers may use a reactive node safely.
-    const part = node.parts.find(part => part.id === partId);
-    if (!part) throw new Error('Generated content was removed outside its owner.');
+    const part = parts.get(partId);
+    if (!part) throw new Error('Unknown generated part.');
+    if (!node.parts.includes(part)) throw new Error('Generated content was removed outside its owner.');
     switch (part.type) {
     case 'text':
     case 'reasoning': return part;
@@ -58,24 +58,34 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
     }
   }
 
+  function insertPart({ partId, index, part }: { partId: string, index: number, part: Part }): void {
+    const insertion = reservePosition({ partId, index });
+    node.parts.splice(insertion, 0, part);
+    // Retain the node's own view of the inserted object, including a caller's
+    // reactive wrapper. Logical positions and stream IDs stay local to this run.
+    const owned = node.parts[insertion];
+    if (!owned) throw new Error('Generated content was removed outside its owner.');
+    parts.set(partId, owned);
+    positions.set(owned, index);
+  }
+
   return {
     beginPart({ partId, index, type }: { partId: string, index: number, type: 'text' | 'reasoning' }): void {
-      const insertion = reservePosition({ partId, index });
-      node.parts.splice(insertion, 0, { id: partId, type, text: '', completeness: 'partial' });
+      insertPart({ partId, index, part: { type, text: '', completeness: 'partial' } });
     },
     appendText({ partId, text }: { partId: string, text: string }): void {
       const part = findTextPart({ partId });
-      if (closed.has(partId)) throw new Error('A closed part cannot receive another delta.');
+      if (closed.has(part)) throw new Error('A closed part cannot receive another delta.');
       part.text += text;
     },
     closePart({ partId, completeness }: { partId: string, completeness: 'complete' | 'partial' }): void {
       const part = findTextPart({ partId });
-      if (closed.has(partId)) throw new Error('The part was already closed.');
+      if (closed.has(part)) throw new Error('The part was already closed.');
       switch (completeness) {
       case 'complete':
       case 'partial':
         part.completeness = completeness;
-        closed.add(partId);
+        closed.add(part);
         return;
       default: {
         const _ex: never = completeness;
@@ -90,8 +100,7 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
       const { name, arguments: argumentsText, ...unhandledFunction } = fn;
       unhandledFunction satisfies Record<PropertyKey, never>;
       const copy = exactObject<ToolCall>()({ id, type, function: { name, arguments: argumentsText } });
-      const insertion = reservePosition({ partId, index });
-      node.parts.splice(insertion, 0, { id: partId, type: 'tool_call', toolCall: copy });
+      insertPart({ partId, index, part: { type: 'tool_call', toolCall: copy } });
       calls.add(id);
     },
     finish({ result }: { result: ChatGenerationResult }): void {
@@ -102,7 +111,7 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
           switch (part.type) {
           case 'text':
           case 'reasoning':
-            if (!closed.has(part.id) || part.completeness !== 'complete') {
+            if (!closed.has(part) || part.completeness !== 'complete') {
               throw new Error('A successful generation cannot leave a partial part.');
             }
             break;

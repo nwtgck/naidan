@@ -4,7 +4,7 @@ import { idToRaw } from '@/01-models/ids';
 
 // Fixed synthetic histories only: this is not a format for exporting user chats.
 const textPartSchema = z.object({
-  id: z.string(), type: z.literal('text'), text: z.string(),
+  type: z.literal('text'), text: z.string(),
   completeness: z.enum(['complete', 'partial']),
 });
 
@@ -15,12 +15,12 @@ export const persistencePartsMessageSchema = z.discriminatedUnion('role', [
     id: z.string(), role: z.literal('assistant'),
     parts: z.array(z.discriminatedUnion('type', [
       z.object({
-        id: z.string(), type: z.literal('reasoning'), text: z.string(),
+        type: z.literal('reasoning'), text: z.string(),
         completeness: z.enum(['complete', 'partial']),
       }),
       textPartSchema,
       z.object({
-        id: z.string(), type: z.literal('tool_call'),
+        type: z.literal('tool_call'),
         toolCall: z.object({
           id: z.string(), type: z.literal('function'),
           function: z.object({ name: z.string(), arguments: z.string() }),
@@ -31,7 +31,7 @@ export const persistencePartsMessageSchema = z.discriminatedUnion('role', [
   z.object({
     id: z.string(), role: z.literal('tool'),
     parts: z.array(z.object({
-      id: z.string(), type: z.literal('tool_result'),
+      type: z.literal('tool_result'),
       result: z.discriminatedUnion('status', [
         z.object({ toolCallId: z.string(), status: z.literal('executing') }),
         z.object({
@@ -63,27 +63,27 @@ export function recordPersistencePartsMessages({ messages }: {
       switch (part.type) {
       case 'text':
       case 'reasoning': {
-        const { id, type, text, completeness, ...unhandledPart } = part;
+        const { type, text, completeness, ...unhandledPart } = part;
         unhandledPart satisfies Record<PropertyKey, never>;
-        return { id, type, text, completeness };
+        return { type, text, completeness };
       }
       case 'tool_call': {
-        const { id, type, toolCall, ...unhandledPart } = part;
+        const { type, toolCall, ...unhandledPart } = part;
         unhandledPart satisfies Record<PropertyKey, never>;
         const { id: callId, type: callType, function: fn, ...unhandledCall } = toolCall;
         unhandledCall satisfies Record<PropertyKey, never>;
         const { name, arguments: args, ...unhandledFunction } = fn;
         unhandledFunction satisfies Record<PropertyKey, never>;
-        return { id, type, toolCall: { id: idToRaw({ id: callId }), type: callType, function: { name, arguments: args } } };
+        return { type, toolCall: { id: idToRaw({ id: callId }), type: callType, function: { name, arguments: args } } };
       }
       case 'tool_result': {
-        const { id, type, result, ...unhandledPart } = part;
+        const { type, result, ...unhandledPart } = part;
         unhandledPart satisfies Record<PropertyKey, never>;
         switch (result.status) {
         case 'executing': {
           const { toolCallId, status, ...unhandledResult } = result;
           unhandledResult satisfies Record<PropertyKey, never>;
-          return { id, type, result: { toolCallId: idToRaw({ id: toolCallId }), status } };
+          return { type, result: { toolCallId: idToRaw({ id: toolCallId }), status } };
         }
         case 'success': {
           const { toolCallId, status, content, ...unhandledResult } = result;
@@ -92,7 +92,7 @@ export function recordPersistencePartsMessages({ messages }: {
           case 'text': {
             const { type: contentType, text, ...unhandledContent } = content;
             unhandledContent satisfies Record<PropertyKey, never>;
-            return { id, type, result: { toolCallId: idToRaw({ id: toolCallId }), status, content: { type: contentType, text } } };
+            return { type, result: { toolCallId: idToRaw({ id: toolCallId }), status, content: { type: contentType, text } } };
           }
           case 'binary_object':
             throw new Error('The persistence fixture must not contain binary tool results');
@@ -111,7 +111,7 @@ export function recordPersistencePartsMessages({ messages }: {
           case 'text': {
             const { type: messageType, text, ...unhandledContent } = message;
             unhandledContent satisfies Record<PropertyKey, never>;
-            return { id, type, result: { toolCallId: idToRaw({ id: toolCallId }), status, error: { code, message: { type: messageType, text } } } };
+            return { type, result: { toolCallId: idToRaw({ id: toolCallId }), status, error: { code, message: { type: messageType, text } } } };
           }
           case 'binary_object':
             throw new Error('The persistence fixture must not contain binary tool errors');

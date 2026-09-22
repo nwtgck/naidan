@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { reactive, watch } from 'vue';
 import { executeChatToolCalls } from './execute-chat-tool-calls';
 import type { Tool, TextOrBinaryObject } from '@/01-models/tool';
 import type { ToolMessageNode, ToolCall } from '@/01-models/types';
@@ -32,7 +33,7 @@ describe('completed tool call execution', () => {
     await execute({ calls: [completed], tools: [tool({ execute: perform })], node, signal: undefined, persistContent: inline, onChange: () => {} });
     expect(perform).toHaveBeenCalledWith(expect.objectContaining({ args: { n: 4 } }));
     expect(completed.function.arguments).toBe(' { } ');
-    expect(node.parts).toEqual([{ id: 'tool_result_0', type: 'tool_result', result: { toolCallId: completed.id, status: 'success', content: { type: 'text', text: 'done' } } }]);
+    expect(node.parts).toEqual([{ type: 'tool_result', result: { toolCallId: completed.id, status: 'success', content: { type: 'text', text: 'done' } } }]);
   });
 
   it.each(['{"n":', '{"n":"bad"}', '{"n":4,"extra":true}'])('records invalid arguments without executing: %s', async argumentsText => {
@@ -54,7 +55,7 @@ describe('completed tool call execution', () => {
     const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' })); const implementation = tool({ execute: perform });
     await expect(execute({ calls: [completed], tools: [implementation, implementation], node: fresh(), signal: undefined, persistContent: inline, onChange: () => {} })).rejects.toThrow('definitions');
     await expect(execute({ calls: [completed, completed], tools: [implementation], node: fresh(), signal: undefined, persistContent: inline, onChange: () => {} })).rejects.toThrow('tool-call IDs');
-    const node = fresh(); node.parts.push({ id: 'saved', type: 'tool_result', result: { toolCallId: completed.id, status: 'executing' } });
+    const node = fresh(); node.parts.push({ type: 'tool_result', result: { toolCallId: completed.id, status: 'executing' } });
     await expect(execute({ calls: [completed], tools: [implementation], node, signal: undefined, persistContent: inline, onChange: () => {} })).rejects.toThrow('new tool message');
     expect(perform).not.toHaveBeenCalled();
   });
@@ -150,7 +151,7 @@ describe('completed tool call execution', () => {
   });
 
   it('only updates its own result node even when another branch has an identical call ID', async () => {
-    const other = fresh(); other.parts.push({ id: 'other', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'executing' } });
+    const other = fresh(); other.parts.push({ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'executing' } });
     const before = structuredClone(other); const node = fresh();
     await execute({ calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })], tools: [tool({ execute: async () => ({ status: 'success', content: 'this branch' }) })], node, signal: undefined, onChange: () => {}, persistContent: inline });
     expect(other).toEqual(before); expect(node.parts[0]?.result).toMatchObject({ status: 'success' });
@@ -204,6 +205,41 @@ describe('completed tool call execution', () => {
       await Promise.resolve(); throw fault;
     } })).rejects.toBe(fault);
     expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { text: 'known outcome' } });
+  });
+
+  it('updates the owned reactive result after another part is inserted before it', async () => {
+    const node = reactive(fresh());
+    const statuses: string[] = [];
+    const callId = toToolCallId({ raw: 'call' });
+    const stop = watch(() => node.parts.find(part => part.result.toolCallId === callId)?.result.status,
+      status => {
+        if (status) statuses.push(status);
+      }, { flush: 'sync' });
+    const inserted: ToolMessageNode['parts'][number] = {
+      type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'other' }), status: 'success', content: { type: 'text', text: 'untouched' } },
+    };
+    await execute({ calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })], tools: [tool({ execute: async () => {
+      node.parts.unshift(inserted);
+      await Promise.resolve();
+      return { status: 'success', content: 'done' };
+    } })], node, signal: undefined, onChange: () => {}, persistContent: inline });
+    stop();
+    expect(statuses).toEqual(['executing', 'success']);
+    expect(node.parts[0]).toEqual(inserted);
+    expect(node.parts[1]?.result).toEqual({ toolCallId: callId, status: 'success', content: { type: 'text', text: 'done' } });
+  });
+
+  it('rejects a replacement result with the same call ID while execution is pending', async () => {
+    const node = reactive(fresh());
+    const replacement: ToolMessageNode['parts'][number] = {
+      type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'success', content: { type: 'text', text: 'replacement' } },
+    };
+    await expect(execute({ calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })], tools: [tool({ execute: async () => {
+      node.parts[0] = replacement;
+      await Promise.resolve();
+      return { status: 'success', content: 'owned outcome' };
+    } })], node, signal: undefined, onChange: () => {}, persistContent: inline })).rejects.toThrow('removed or replaced');
+    expect(node.parts).toEqual([replacement]);
   });
 
 });

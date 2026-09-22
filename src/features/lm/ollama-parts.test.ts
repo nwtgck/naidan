@@ -55,8 +55,8 @@ describe('Ollama structured generation contract', () => {
   });
   it('copies reasoning and tool names into the next request without changing the history', async () => {
     const messages: ChatMessage[] = [
-      { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ id: 'r', type: 'reasoning', text: '  R\n', completeness: 'complete' }, { id: 'c', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {"n": 1} ' } } }] },
-      { id: toMessageId({ raw: 't' }), role: 'tool', parts: [{ id: 'r', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: 'result' } } }] },
+      { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ type: 'reasoning', text: '  R\n', completeness: 'complete' }, { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {"n": 1} ' } } }] },
+      { id: toMessageId({ raw: 't' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: 'result' } } }] },
     ];
     const before = structuredClone(messages);
     let request: unknown;

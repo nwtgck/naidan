@@ -15,7 +15,7 @@ describe('MessageThinking Design', () => {
     id: generateId<MessageId>(),
     role: 'assistant',
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,

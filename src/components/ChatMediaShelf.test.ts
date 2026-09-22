@@ -17,8 +17,8 @@ function message({ blob }: { blob: Blob | undefined }): UserMessageNode {
     originalName: 'user.png', mimeType: 'image/png', size: 10, uploadedAt: 7 };
   return { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 7, modelId: undefined, lmParameters: undefined,
     parts: [
-      { id: 'body', type: 'text', text: '  Uploaded image  ', completeness: 'complete' },
-      { id: 'image', type: 'attachment', attachment: blob === undefined ? { ...common, status: 'persisted' } : { ...common, status: 'memory', blob } },
+      { type: 'text', text: '  Uploaded image  ', completeness: 'complete' },
+      { type: 'attachment', attachment: blob === undefined ? { ...common, status: 'persisted' } : { ...common, status: 'memory', blob } },
     ], replies: { items: [] } };
 }
 

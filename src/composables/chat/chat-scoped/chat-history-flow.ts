@@ -276,7 +276,7 @@ async function editMessageInTarget({
     const correctedNode: AssistantMessageNode = {
       id: generateId<MessageId>(),
       role: 'assistant',
-      parts: [{ id: 'text', type: 'text', text: newContent, completeness: 'complete' }],
+      parts: [{ type: 'text', text: newContent, completeness: 'complete' }],
       createdAt: Date.now(),
       modelId: node.modelId,
       replies: { items: [] },

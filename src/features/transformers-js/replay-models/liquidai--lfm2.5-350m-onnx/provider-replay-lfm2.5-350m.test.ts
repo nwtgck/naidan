@@ -125,7 +125,7 @@ describe('LFM2.5 350M Provider / basic', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -217,7 +217,7 @@ describe('LFM2.5 350M Provider / basic', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -286,7 +286,7 @@ describe('LFM2.5 350M Provider / basic', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -348,7 +348,7 @@ describe('LFM2.5 350M Provider / system', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ id: 'text_0', type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ id: 'text_1', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -431,7 +431,7 @@ describe('LFM2.5 350M Provider / history', () => {
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ id: 'text_0', type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ id: 'text_1', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -522,7 +522,7 @@ describe('LFM2.5 350M Provider / history', () => {
         provider: harness.provider,
         request: {
           model: inputEvidence.modelId,
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -596,7 +596,7 @@ describe('LFM2.5 350M Provider / history', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "Sure! Here’s an example of a **template** for a **user", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue with one short sentence.", completeness: 'complete' }] }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Sure! Here’s an example of a **template** for a **user", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue with one short sentence.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -665,7 +665,7 @@ continuation:
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'text_1', type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -701,7 +701,7 @@ continuation:
 describe('LFM2.5 350M Provider / independent', () => {
   it('keeps an independent next input free of prior text in the same null-KV loaded runtime', async () => {
     const captures: ProviderChatCapture[] = [];
-    const nextMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'A separate synthetic conversation.', completeness: 'complete' }] }];
+    const nextMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: 'A separate synthetic conversation.', completeness: 'complete' }] }];
     const nextPrompt = `\
 <|startoftext|><|im_start|>user
 A separate synthetic conversation.<|im_end|>
@@ -757,7 +757,7 @@ A separate synthetic conversation.<|im_end|>
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -867,7 +867,7 @@ A separate synthetic conversation.<|im_end|>
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -898,7 +898,7 @@ A separate synthetic conversation.<|im_end|>
         if (completeness === 'pending') throw new Error('Expected a drained first text part');
         firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
           id: toMessageId({ raw: 'message_1' }), role: 'assistant',
-          parts: [{ id: partId, type, text: chunks.join(''), completeness }],
+          parts: [{ type, text: chunks.join(''), completeness }],
         });
       }
       // continuity: public inputs and settled expectations are owned by this model.
@@ -920,7 +920,7 @@ A separate synthetic conversation.<|im_end|>
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -970,7 +970,7 @@ User`]);
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "A separate synthetic capture conversation.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "A separate synthetic capture conversation.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -1032,7 +1032,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -1091,7 +1091,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -1150,7 +1150,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -1209,7 +1209,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -1296,7 +1296,7 @@ describe('LFM2.5 350M Provider / tools', () => {
         provider: harness.provider,
         request: {
           model: toolInputEvidence.modelId,
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }],
           tools: [{ name: publicTool.name, description: publicTool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: publicTool.parametersSchema })) }],
           parameters: {
             temperature: 0,
@@ -1432,7 +1432,7 @@ describe('LFM2.5 350M Provider / tools', () => {
         additionalProperties: false
       },
     } }];
-    const publicMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'call_1_0', type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }];
+    const publicMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }];
     const harness = await createProviderReplayTestRuntime({
       modelId: toolInputEvidence.modelId,
       expectedRevision: toolInputEvidence.revision,
@@ -1605,7 +1605,7 @@ describe('LFM2.5 350M Provider / tools', () => {
         reasoning: { effort: undefined },
       };
       const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-        { id: 'text_0', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+        { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
       ] }];
       const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: 'natural-tool-minimal', parameters });
@@ -1641,7 +1641,7 @@ describe('LFM2.5 350M Provider / tools', () => {
       if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
       expect(executions[0]?.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
-        { id: toolNode.id, role: 'tool', parts: [{ id: toolNode.parts[0]!.id, type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
+        { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
       ]);
       expect(executions[0]?.prefix?.[0]?.parts.at(-1)?.type).toBe('tool_call');
       expect(turn.generated.filter(node => node.role === 'assistant').flatMap(node => node.parts.filter(part => part.type === 'text'))).toEqual([]);
@@ -1700,7 +1700,7 @@ describe('LFM2.5 350M Provider / tools', () => {
           return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
         },
       }];
-      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }];
+      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }];
       const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
       turn = await runProviderReplayTurn({
@@ -1739,7 +1739,7 @@ describe('LFM2.5 350M Provider / tools', () => {
       if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
       expect(execution.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
-        { id: toolNode.id, role: 'tool', parts: [{ id: toolNode.parts[0]!.id, type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
+        { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
       ]);
       expect(execution.prefix?.[0]?.parts.at(-1)?.type).toBe('tool_call');
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
@@ -1781,7 +1781,7 @@ describe('LFM2.5 350M Provider / tools', () => {
           return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
         },
       }];
-      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }];
+      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }];
       const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
       turn = await runProviderReplayTurn({
@@ -1820,7 +1820,7 @@ describe('LFM2.5 350M Provider / tools', () => {
       if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
       expect(execution.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
-        { id: toolNode.id, role: 'tool', parts: [{ id: toolNode.parts[0]!.id, type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
+        { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
       ]);
       expect(execution.prefix?.[0]?.parts.at(-1)?.type).toBe('tool_call');
       replay.assertComplete({ requests: 1, nativeCalls: 2 });
@@ -1862,7 +1862,7 @@ describe('LFM2.5 350M Provider / tools', () => {
           return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
         },
       }];
-      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: 'call_1_0', type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_model_support_probe_1" }), type: 'function', function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ id: 'result_2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }];
+      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_model_support_probe_1" }), type: 'function', function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }];
       const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
       turn = await runProviderReplayTurn({
@@ -1929,7 +1929,7 @@ describe('LFM2.5 350M Provider / images', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0_0', type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' }, { id: 'attachment_0_1', type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' }, { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }],
             parameters,
             tools: [],
             signal,
@@ -2073,7 +2073,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
         provider: harness.provider,
         request: {
           model: "hf.co/LiquidAI/LFM2.5-350M-ONNX",
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -2101,7 +2101,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
       const { partId, type, chunks, completeness, index: _index, ...unhandled } = firstPart;
       unhandled satisfies Record<PropertyKey, never>;
       const firstTextAtSettlement = chunks.join('');
-      const secondMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ id: partId, type, text: firstTextAtSettlement, completeness }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: 'Continue with one short sentence.', completeness: 'complete' }] }];
+      const secondMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type, text: firstTextAtSettlement, completeness }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: 'Continue with one short sentence.', completeness: 'complete' }] }];
       const ortCountAfterFirst = harness.observations.ortCalls.length;
 
       let secondOutcome: { status: 'fulfilled' } | { status: 'rejected', error: unknown };
@@ -2193,7 +2193,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,
@@ -2224,7 +2224,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
         if (completeness === 'pending') throw new Error('Expected a drained first text part');
         firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
           id: toMessageId({ raw: 'message_1' }), role: 'assistant',
-          parts: [{ id: partId, type, text: chunks.join(''), completeness }],
+          parts: [{ type, text: chunks.join(''), completeness }],
         });
       }
       // continuity: public inputs and settled expectations are owned by this model.
@@ -2246,7 +2246,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-350M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ id: 'text_0', type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ id: 'text_2', type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
+            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
             parameters,
             tools: [],
             signal,

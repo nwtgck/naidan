@@ -174,7 +174,7 @@ describe('Chat Mapping', () => {
       groupId,
       root: {
         items: [
-          { id: toMessageId({ raw: 'message-user' }), role: 'user', createdAt: 100, modelId: undefined, lmParameters: lmParameters, parts: [{ id: 'test_text', type: 'text', text: 'Hello', completeness: 'complete' }, { id: 'test_attachment_0', type: 'attachment', attachment: {
+          { id: toMessageId({ raw: 'message-user' }), role: 'user', createdAt: 100, modelId: undefined, lmParameters: lmParameters, parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }, { type: 'attachment', attachment: {
             id: toAttachmentId({ raw: 'attachment-1' }),
             binaryObjectId,
             originalName: 'attachment.txt',
@@ -183,7 +183,7 @@ describe('Chat Mapping', () => {
             uploadedAt: 456,
             status: 'persisted',
           } }], replies: {
-            items: [{ id: toMessageId({ raw: 'message-assistant' }), role: 'assistant', createdAt: 200, modelId: 'assistant-model', lmParameters: lmParameters, parts: [{ id: 'test_reasoning', type: 'reasoning', text: 'Thinking trace', completeness: 'complete' }, { id: 'test_text', type: 'text', text: 'Assistant response', completeness: 'complete' }, { id: 'test_tool_call_0', type: 'tool_call', toolCall: {
+            items: [{ id: toMessageId({ raw: 'message-assistant' }), role: 'assistant', createdAt: 200, modelId: 'assistant-model', lmParameters: lmParameters, parts: [{ type: 'reasoning', text: 'Thinking trace', completeness: 'complete' }, { type: 'text', text: 'Assistant response', completeness: 'complete' }, { type: 'tool_call', toolCall: {
               id: toolCallId,
               type: 'function',
               function: {
@@ -192,8 +192,8 @@ describe('Chat Mapping', () => {
               },
             } }], interruption: undefined, replies: { items: [] } }],
           } },
-          { id: toMessageId({ raw: 'message-system' }), role: 'system', createdAt: 150, modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'System message', completeness: 'complete' }], replies: { items: [] } },
-          { id: currentLeafId, role: 'tool', createdAt: 300, modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_tool_result_0', type: 'tool_result', result: { toolCallId, status: 'executing' } }, { id: 'test_tool_result_1', type: 'tool_result', result: { toolCallId, status: 'success', content: { type: 'text', text: '2' } } }, { id: 'test_tool_result_2', type: 'tool_result', result: { toolCallId: secondToolCallId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } }, { id: 'test_tool_result_3', type: 'tool_result', result: {
+          { id: toMessageId({ raw: 'message-system' }), role: 'system', createdAt: 150, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'System message', completeness: 'complete' }], replies: { items: [] } },
+          { id: currentLeafId, role: 'tool', createdAt: 300, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId, status: 'executing' } }, { type: 'tool_result', result: { toolCallId, status: 'success', content: { type: 'text', text: '2' } } }, { type: 'tool_result', result: { toolCallId: secondToolCallId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } }, { type: 'tool_result', result: {
             toolCallId: secondToolCallId,
             status: 'error',
             error: {
@@ -252,13 +252,13 @@ describe('Chat Mapping', () => {
       }],
       root: {
         items: [
-          { id: 'message-user', role: 'user', createdAt: 100, modelId: undefined, lmParameters: lmParameters, parts: [{ id: 'test_text', type: 'text', text: 'Hello', completeness: undefined }, { id: 'test_attachment_0', type: 'attachment', attachment: {
+          { id: 'message-user', role: 'user', createdAt: 100, modelId: undefined, lmParameters: lmParameters, parts: [{ type: 'text', text: 'Hello', completeness: undefined }, { type: 'attachment', attachment: {
             id: 'attachment-1',
             binaryObjectId: 'binary-result',
             name: 'attachment.txt',
             status: 'persisted',
           } }], replies: {
-            items: [{ id: 'message-assistant', role: 'assistant', createdAt: 200, modelId: 'assistant-model', lmParameters: lmParameters, parts: [{ id: 'test_reasoning', type: 'reasoning', text: 'Thinking trace', completeness: undefined }, { id: 'test_text', type: 'text', text: 'Assistant response', completeness: undefined }, { id: 'test_tool_call_0', type: 'tool_call', toolCall: {
+            items: [{ id: 'message-assistant', role: 'assistant', createdAt: 200, modelId: 'assistant-model', lmParameters: lmParameters, parts: [{ type: 'reasoning', text: 'Thinking trace', completeness: undefined }, { type: 'text', text: 'Assistant response', completeness: undefined }, { type: 'tool_call', toolCall: {
               id: 'tool-call-primary',
               type: 'function',
               function: {
@@ -267,8 +267,8 @@ describe('Chat Mapping', () => {
               },
             } }], interruption: undefined, replies: { items: [] } }],
           } },
-          { id: 'message-system', role: 'system', createdAt: 150, modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'System message', completeness: undefined }], replies: { items: [] } },
-          { id: 'message-tool', role: 'tool', createdAt: 300, modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_tool_result_0', type: 'tool_result', result: { toolCallId: 'tool-call-primary', status: 'executing' } }, { id: 'test_tool_result_1', type: 'tool_result', result: { toolCallId: 'tool-call-primary', status: 'success', content: { type: 'text', text: '2' } } }, { id: 'test_tool_result_2', type: 'tool_result', result: { toolCallId: 'tool-call-secondary', status: 'success', content: { type: 'binary_object', id: 'binary-result' } } }, { id: 'test_tool_result_3', type: 'tool_result', result: {
+          { id: 'message-system', role: 'system', createdAt: 150, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'System message', completeness: undefined }], replies: { items: [] } },
+          { id: 'message-tool', role: 'tool', createdAt: 300, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId: 'tool-call-primary', status: 'executing' } }, { type: 'tool_result', result: { toolCallId: 'tool-call-primary', status: 'success', content: { type: 'text', text: '2' } } }, { type: 'tool_result', result: { toolCallId: 'tool-call-secondary', status: 'success', content: { type: 'binary_object', id: 'binary-result' } } }, { type: 'tool_result', result: {
             toolCallId: 'tool-call-secondary',
             status: 'error',
             error: {

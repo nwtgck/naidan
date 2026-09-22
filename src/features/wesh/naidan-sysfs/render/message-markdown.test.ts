@@ -13,13 +13,11 @@ describe('renderMessageMarkdown', () => {
       lmParameters: undefined,
       parts: [
         {
-          id: 'text',
           type: 'text',
           text: 'hello',
           completeness: 'complete'
         },
         {
-          id: 'attachment-0',
           type: 'attachment',
           attachment: {
             id: toAttachmentId({ raw: 'attachment-1' }),
@@ -43,12 +41,12 @@ createdAt: 1
 modelId: undefined
 lmParameters: undefined
 
-## Part text (text)
+## Part 1 (text)
 completeness: complete
 
 hello
 
-## Part attachment-0 (attachment)
+## Part 2 (attachment)
 note.pdf (application/pdf, 1234 bytes, binary hidden)
 
 `);
@@ -64,7 +62,6 @@ note.pdf (application/pdf, 1234 bytes, binary hidden)
       lmParameters: undefined,
       parts: [
         {
-          id: 'tool_result-0',
           type: 'tool_result',
           result: {
             toolCallId: toToolCallId({ raw: 'call-1' }),
@@ -87,7 +84,7 @@ createdAt: 2
 modelId: undefined
 lmParameters: undefined
 
-## Part tool_result-0 (tool_result)
+## Part 1 (tool_result)
 call-1: success ${'x'.repeat(4000)} [truncated]
 
 `);

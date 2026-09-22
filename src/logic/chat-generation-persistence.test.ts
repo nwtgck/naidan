@@ -23,7 +23,7 @@ describe('generation, execution, and persisted model history', () => {
   it('rebuilds the same next request after storing reasoning, literal text, calls, and tool results', async () => {
     const store = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'chat' });
     const first = assistant({ id: 'first' });
-    const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 12, modelId: undefined, lmParameters: undefined, parts: [{ id: 'text', type: 'text', text: 'Calculate', completeness: 'complete' }], replies: { items: [first] } };
+    const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 12, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'Calculate', completeness: 'complete' }], replies: { items: [first] } };
     const content: ChatContent = { root: { items: [user] }, currentLeafId: first.id };
     const controller = new AbortController();
     const provider: LmProvider = {
@@ -62,7 +62,7 @@ describe('generation, execution, and persisted model history', () => {
     ]);
     expect(before[3]?.parts).toMatchObject([{ type: 'tool_result', result: { status: 'success', content: { type: 'text', text: '8' } } }]);
     expect(await generate({ node: second })).toEqual({ type: 'finished', next: 'user' });
-    expect(second.parts).toEqual([{ id: 't', type: 'text', text: '8です。', completeness: 'complete' }]);
+    expect(second.parts).toEqual([{ type: 'text', text: '8です。', completeness: 'complete' }]);
     expect(first.parts).toEqual(before[2]?.parts);
     await store.saveChatContent({ id: chatId, content });
     const completed = await store.loadChatContent({ id: chatId });

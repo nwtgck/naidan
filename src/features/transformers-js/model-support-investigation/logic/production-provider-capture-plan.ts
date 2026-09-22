@@ -164,14 +164,14 @@ export function captureProviderMessages({ input }: { input: CaptureRequestInput 
       return { id, role, parts: parts.map(part => {
         switch (part.type) {
         case 'text': case 'reasoning': {
-          const { id, type, text, completeness, ...rest } = part; rest satisfies Record<PropertyKey, never>;
-          return { id, type, text, completeness };
+          const { id: _id, type, text, completeness, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+          return { type, text, completeness };
         }
         case 'tool_call': {
-          const { id, type, toolCall, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+          const { id: _id, type, toolCall, ...rest } = part; rest satisfies Record<PropertyKey, never>;
           const { id: callId, type: callType, function: fn, ...restCall } = toolCall; restCall satisfies Record<PropertyKey, never>;
           const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
-          return { id, type, toolCall: { id: toToolCallId({ raw: callId }), type: callType, function: { name, arguments: args } } };
+          return { type, toolCall: { id: toToolCallId({ raw: callId }), type: callType, function: { name, arguments: args } } };
         }
         default: { const exhaustive: never = part; throw new Error('Unhandled captured assistant part: ' + exhaustive); }
         }
@@ -180,33 +180,33 @@ export function captureProviderMessages({ input }: { input: CaptureRequestInput 
     if ('tool_calls' in message) {
       const { role, content, tool_calls, ...rest } = message; rest satisfies Record<PropertyKey, never>;
       return { id, role, parts: [
-        { id: 'text_0', type: 'text', text: content, completeness: 'complete' },
-        ...tool_calls.map(({ id, type, function: fn, ...rest }, callIndex) => {
+        { type: 'text', text: content, completeness: 'complete' },
+        ...tool_calls.map(({ id, type, function: fn, ...rest }) => {
           rest satisfies Record<PropertyKey, never>;
           const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
-          return { id: `tool_call_${callIndex}`, type: 'tool_call' as const,
+          return { type: 'tool_call' as const,
             toolCall: { id: toToolCallId({ raw: id }), type, function: { name, arguments: args } } };
         }),
       ] };
     }
     if ('tool_call_id' in message) {
       const { role, content, tool_call_id, ...rest } = message; rest satisfies Record<PropertyKey, never>;
-      return { id, role, parts: [{ id: 'tool_result_0', type: 'tool_result', result: {
+      return { id, role, parts: [{ type: 'tool_result', result: {
         toolCallId: toToolCallId({ raw: tool_call_id }), status: 'success', content: { type: 'text', text: content },
       } }] };
     }
     const { role, content, ...rest } = message; rest satisfies Record<PropertyKey, never>;
-    if (typeof content === 'string') return { id, role, parts: [{ id: 'text_0', type: 'text', text: content, completeness: 'complete' }] };
+    if (typeof content === 'string') return { id, role, parts: [{ type: 'text', text: content, completeness: 'complete' }] };
     switch (role) {
     case 'user': break;
     case 'assistant': case 'system': throw new Error('Only the fixed user input can contain an image');
     default: { const exhaustive: never = role; throw new Error('Unhandled capture role: ' + exhaustive); }
     }
-    return { id, role, parts: content.map((part, partIndex) => {
+    return { id, role, parts: content.map(part => {
       switch (part.type) {
       case 'text': {
         const { type, text, ...rest } = part; rest satisfies Record<PropertyKey, never>;
-        return { id: `text_${partIndex}`, type, text, completeness: 'complete' };
+        return { type, text, completeness: 'complete' };
       }
       case 'image_url': {
         const { type: _type, image_url, ...rest } = part; rest satisfies Record<PropertyKey, never>;
@@ -216,7 +216,7 @@ export function captureProviderMessages({ input }: { input: CaptureRequestInput 
         if (url !== image.dataUrl) throw new Error('Unknown capture image fixture');
         const bytes = Uint8Array.from(atob(image.dataUrl.slice(image.dataUrl.indexOf(',') + 1)), character => character.charCodeAt(0));
         const blob = new Blob([bytes], { type: image.mimeType });
-        return { id: `attachment_${partIndex}`, type: 'attachment', attachment: {
+        return { type: 'attachment', attachment: {
           id: toAttachmentId({ raw: 'capture_image' }), binaryObjectId: toBinaryObjectId({ raw: image.fixtureId }),
           originalName: 'capture.png', mimeType: image.mimeType, size: blob.size, uploadedAt: 0, status: 'memory', blob,
         } };

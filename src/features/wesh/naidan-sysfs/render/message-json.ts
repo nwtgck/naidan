@@ -32,22 +32,22 @@ function renderPart({ part }: { part: MessageNode['parts'][number] }) {
       default: { const _ex: never = part.completeness; throw new Error(`Unhandled completeness: ${_ex}`); }
       }
     })();
-    return { id: part.id, type: part.type, text: part.text, completeness };
+    return { type: part.type, text: part.text, completeness };
   }
   case 'attachment': {
     const attachment = part.attachment;
     // Only metadata is visible here, including when the attachment owns a Blob.
-    return { id: part.id, type: part.type, attachment: {
+    return { type: part.type, attachment: {
       id: attachment.id, binaryObjectId: attachment.binaryObjectId, name: attachment.originalName,
       mimeType: attachment.mimeType, size: attachment.size, uploadedAt: attachment.uploadedAt,
       status: attachment.status, note: '[binary attachment hidden]',
     } };
   }
-  case 'tool_call': return { id: part.id, type: part.type, toolCall: {
+  case 'tool_call': return { type: part.type, toolCall: {
     id: part.toolCall.id, type: part.toolCall.type,
     function: { name: part.toolCall.function.name, arguments: part.toolCall.function.arguments },
   } };
-  case 'tool_result': return { id: part.id, type: part.type, result: renderToolResult({ result: part.result }) };
+  case 'tool_result': return { type: part.type, result: renderToolResult({ result: part.result }) };
   default: { const _ex: never = part; throw new Error(`Unhandled message part: ${_ex}`); }
   }
 }

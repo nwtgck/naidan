@@ -87,7 +87,7 @@ function createTextNode({ id, role, text, createdAt }: {
   createdAt: number,
 }) {
   const common = { id, createdAt, modelId: undefined, lmParameters: undefined, replies: { items: [] },
-    parts: [{ id: 'p1', type: 'text' as const, text, completeness: 'complete' as const }],
+    parts: [{ type: 'text' as const, text, completeness: 'complete' as const }],
   };
   switch (role) {
   case 'user': return { ...common, role } satisfies MessageNode;

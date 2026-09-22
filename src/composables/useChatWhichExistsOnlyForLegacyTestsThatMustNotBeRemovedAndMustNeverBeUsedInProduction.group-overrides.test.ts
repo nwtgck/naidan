@@ -131,8 +131,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
-          expect.objectContaining({ role: 'system', parts: [{ id: 'text', type: 'text', text: 'Group Prompt', completeness: 'complete' }] }),
-          expect.objectContaining({ role: 'system', parts: [{ id: 'text', type: 'text', text: 'Chat Prompt', completeness: 'complete' }] }),
+          expect.objectContaining({ role: 'system', parts: [{ type: 'text', text: 'Group Prompt', completeness: 'complete' }] }),
+          expect.objectContaining({ role: 'system', parts: [{ type: 'text', text: 'Chat Prompt', completeness: 'complete' }] }),
         ]),
         model: 'chat-model',
         parameters: expect.objectContaining({ temperature: 0.5 }),
@@ -174,8 +174,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
-          expect.objectContaining({ role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global Prompt', completeness: 'complete' }] }),
-          expect.objectContaining({ role: 'system', parts: [{ id: 'text', type: 'text', text: 'Group Instruction', completeness: 'complete' }] }),
+          expect.objectContaining({ role: 'system', parts: [{ type: 'text', text: 'Global Prompt', completeness: 'complete' }] }),
+          expect.objectContaining({ role: 'system', parts: [{ type: 'text', text: 'Group Instruction', completeness: 'complete' }] }),
         ]),
         model: expect.any(String),
         parameters: expect.any(Object),

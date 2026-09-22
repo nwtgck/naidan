@@ -124,7 +124,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       id: '550e8400-e29b-41d4-a716-446655440000',
       title: 'Test',
       root: {
-        items: [{ id: '550e8400-e29b-41d4-a716-446655440001', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ id: 'test_text', type: 'text', text: 'text', completeness: 'complete' }, { id: 'test_attachment_0', type: 'attachment', attachment: {
+        items: [{ id: '550e8400-e29b-41d4-a716-446655440001', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'text', completeness: 'complete' }, { type: 'attachment', attachment: {
           id: '550e8400-e29b-41d4-a716-446655440002',
           binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
           originalName: 'test.png',

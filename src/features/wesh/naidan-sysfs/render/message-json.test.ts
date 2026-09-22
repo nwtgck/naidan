@@ -14,7 +14,6 @@ describe('renderMessageJson', () => {
       lmParameters: undefined,
       parts: [
         {
-          id: 'tool_result-0',
           type: 'tool_result',
           result: {
             toolCallId: toToolCallId({ raw: 'call-1' }),
@@ -31,7 +30,7 @@ describe('renderMessageJson', () => {
 
     expect(renderMessageJson({ node })).toBe(JSON.stringify({
       id: 'tool-1', role: 'tool', createdAt: 2,
-      parts: [{ id: 'tool_result-0', type: 'tool_result', result: {
+      parts: [{ type: 'tool_result', result: {
         toolCallId: 'call-1', status: 'success', content: { type: 'text', text: `${'y'.repeat(4000)}\n[truncated]` },
       } }],
     }, null, 2));

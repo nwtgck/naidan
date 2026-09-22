@@ -40,13 +40,13 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
       for (const part of message.parts) {
         switch (part.type) {
         case 'text': {
-          const { id: _id, type, text, completeness: _completeness, ...unhandled } = part;
+          const { type, text, completeness: _completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           content.push({ type, text });
           break;
         }
         case 'attachment': {
-          const { id: _id, type: _type, attachment, ...unhandled } = part;
+          const { type: _type, attachment, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           const { id: _attachmentId, binaryObjectId, mimeType, originalName: _name, size: _size, uploadedAt: _uploadedAt, ...state } = attachment;
           if (!mimeType.startsWith('image/')) return unsupported();
@@ -79,7 +79,7 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
       for (const part of message.parts) {
         switch (part.type) {
         case 'reasoning': {
-          const { id: _id, type: _type, text, completeness, ...unhandled } = part;
+          const { type: _type, text, completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           // The native message has one leading reasoning field, not arbitrary channels.
           if (phase !== 'reasoning' || reasoning !== undefined || completeness !== 'complete') return unsupported();
@@ -87,7 +87,7 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
           break;
         }
         case 'text': {
-          const { id: _id, type: _type, text, completeness: _completeness, ...unhandled } = part;
+          const { type: _type, text, completeness: _completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           switch (phase) {
           case 'reasoning': case 'text': break;
@@ -98,7 +98,7 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
           break;
         }
         case 'tool_call': {
-          const { id: _id, type: _type, toolCall, ...unhandled } = part;
+          const { type: _type, toolCall, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           const { id, type, function: fn, ...unhandledCall } = toolCall;
           unhandledCall satisfies Record<PropertyKey, never>;
@@ -118,7 +118,7 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
     }
     case 'tool':
       for (const part of message.parts) {
-        const { id: _id, type: _type, result, ...unhandled } = part;
+        const { type: _type, result, ...unhandled } = part;
         unhandled satisfies Record<PropertyKey, never>;
         const id = idToRaw({ id: result.toolCallId });
         const name = callNames.get(id);

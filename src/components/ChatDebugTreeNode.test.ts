@@ -16,7 +16,7 @@ function render({ node }: { node: MessageNode }) {
 function user({ status }: { status: 'memory' | 'persisted' }): UserMessageNode {
   const common = { id: toAttachmentId({ raw: 'file' }), binaryObjectId: toBinaryObjectId({ raw: 'binary' }), mimeType: 'image/png', originalName: 'image.png', size: 1, uploadedAt: 0 };
   return { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [] },
-    parts: [{ id: 'image', type: 'attachment', attachment: status === 'memory' ? { ...common, status, blob: new Blob(['image'], { type: 'image/png' }) } : { ...common, status } }] };
+    parts: [{ type: 'attachment', attachment: status === 'memory' ? { ...common, status, blob: new Blob(['image'], { type: 'image/png' }) } : { ...common, status } }] };
 }
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' }); vi.clearAllMocks();
@@ -31,13 +31,13 @@ afterEach(() => {
 it('renders raw body and reasoning in part order including explicit empty parts', async () => {
   const node: MessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 0, modelId: undefined, lmParameters: undefined,
     interruption: { type: 'error', message: '保存済みの日本語エラー' }, replies: { items: [] }, parts: [
-      { id: 'r', type: 'reasoning', text: '  考える\n', completeness: 'complete' },
-      { id: 'empty', type: 'text', text: '', completeness: 'complete' },
-      { id: 'body', type: 'text', text: '<think>literal</think>  🙂\n', completeness: 'partial' },
-      { id: 'call', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
+      { type: 'reasoning', text: '  考える\n', completeness: 'complete' },
+      { type: 'text', text: '', completeness: 'complete' },
+      { type: 'text', text: '<think>literal</think>  🙂\n', completeness: 'partial' },
+      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
     ] };
   const snapshot = structuredClone(node); const w = render({ node });
-  expect(w.findAll('[data-testid^="debug-part-"]').filter(p => p.attributes('data-testid') !== 'debug-part-text').map(p => p.attributes('data-testid'))).toEqual(['debug-part-r', 'debug-part-empty', 'debug-part-body', 'debug-part-call']);
+  expect(w.findAll('[data-testid="debug-part"]').map(part => part.attributes('data-part-type'))).toEqual(['reasoning', 'text', 'text', 'tool_call']);
   expect(w.findAll('[data-testid="debug-part-text"]').map(p => p.element.textContent)).toEqual(['  考える\n', '', '<think>literal</think>  🙂\n']);
   expect(w.get('[data-testid="debug-interruption"]').text()).toContain('保存済みの日本語エラー');
   expect(w.text()).toContain('1970-01-01T00:00:00.000Z');
@@ -47,8 +47,8 @@ it('renders raw body and reasoning in part order including explicit empty parts'
 });
 it('renders tool results without flattening them into body text', () => {
   const w = render({ node: { id: toMessageId({ raw: 't' }), role: 'tool', createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [] },
-    parts: [{ id: 'result', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: '<think>result</think>' } } }] } });
-  expect(w.get('[data-testid="debug-part-result"]').text()).toContain('<think>result</think>');
+    parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: '<think>result</think>' } } }] } });
+  expect(w.get('[data-testid="debug-part"][data-part-type="tool_result"]').text()).toContain('<think>result</think>');
   expect(w.find('[data-testid="copy-content-btn"]').exists()).toBe(false);
 });
 it('uses a memory Blob and releases the thumbnail when the part is removed', async () => {

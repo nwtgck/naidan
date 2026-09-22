@@ -9,13 +9,13 @@ import { prepareInferenceRequest } from './message-projection';
 const messageId = toMessageId({ raw: 'm' });
 const callId = toToolCallId({ raw: 'call-1' });
 const binaryId = toBinaryObjectId({ raw: 'binary-1' });
-const makeText = ({ text }: { text: string }) => ({ id: 'text', type: 'text' as const, text, completeness: 'complete' as const });
+const makeText = ({ text }: { text: string }) => ({ type: 'text' as const, text, completeness: 'complete' as const });
 const makeCall = ({ argumentsText }: { argumentsText: string }) => ({
-  id: 'call', type: 'tool_call' as const,
+  type: 'tool_call' as const,
   toolCall: { id: callId, type: 'function' as const, function: { name: 'calculator', arguments: argumentsText } },
 });
 function image({ state }: { state: { status: 'memory', blob: Blob } | { status: 'persisted' | 'missing' } }): Extract<Extract<ChatMessage, { role: 'user' }>['parts'][number], { type: 'attachment' }> {
-  return { id: 'image', type: 'attachment', attachment: {
+  return { type: 'attachment', attachment: {
     id: toAttachmentId({ raw: 'attachment-1' }), binaryObjectId: binaryId,
     originalName: 'image.png', mimeType: 'image/png', size: 3, uploadedAt: 1, ...state,
   } };
@@ -48,7 +48,7 @@ describe('parts to Transformers.js inference input', () => {
     const messages: ChatMessage[] = [
       { id: messageId, role: 'assistant', parts: [] },
       { id: messageId, role: 'assistant', parts: [makeText({ text: '' })] },
-      { id: messageId, role: 'system', parts: [makeText({ text: '' }), { ...makeText({ text: ' R ' }), id: 'second' }] },
+      { id: messageId, role: 'system', parts: [makeText({ text: '' }), { ...makeText({ text: ' R ' }), }] },
     ];
     const result = await prepare({ messages, readBinaryObject: undefined, signal: undefined });
     expect(result.messages).toEqual([
@@ -58,7 +58,7 @@ describe('parts to Transformers.js inference input', () => {
   });
 
   it('does not deduplicate identical text parts', async () => {
-    const result = await prepare({ messages: [{ id: messageId, role: 'user', parts: [makeText({ text: 'A' }), { ...makeText({ text: 'A' }), id: 'second' }] }], readBinaryObject: undefined, signal: undefined });
+    const result = await prepare({ messages: [{ id: messageId, role: 'user', parts: [makeText({ text: 'A' }), { ...makeText({ text: 'A' }), }] }], readBinaryObject: undefined, signal: undefined });
     expect(result.messages[0]!.content).toEqual([{ type: 'text', text: 'A' }, { type: 'text', text: 'A' }]);
   });
 
@@ -84,16 +84,16 @@ describe('parts to Transformers.js inference input', () => {
   it('preserves a single leading reasoning part, including empty and partial, for the model adapter', async () => {
     for (const text of ['', ' R ']) {
       for (const completeness of ['complete', 'partial'] as const) {
-        const original: ChatMessage = { id: messageId, role: 'assistant', parts: [{ id: 'reason', type: 'reasoning', text, completeness }, makeText({ text: '<think>literal</think>' })] };
+        const original: ChatMessage = { id: messageId, role: 'assistant', parts: [{ type: 'reasoning', text, completeness }, makeText({ text: '<think>literal</think>' })] };
         const result = await prepare({ messages: [original], readBinaryObject: undefined, signal: undefined });
         expect(result.messages).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning: { text, completeness } }]);
-        expect(original.parts[0]).toEqual({ id: 'reason', type: 'reasoning', text, completeness });
+        expect(original.parts[0]).toEqual({ type: 'reasoning', text, completeness });
       }
     }
   });
 
   it('does not combine repeated reasoning parts or reorder reasoning after text or calls', async () => {
-    const reason = { id: 'reason', type: 'reasoning' as const, text: 'R', completeness: 'complete' as const };
+    const reason = { type: 'reasoning' as const, text: 'R', completeness: 'complete' as const };
     for (const parts of [[reason, { ...reason, id: 'r2' }], [makeText({ text: '' }), reason], [makeCall({ argumentsText: '{}' }), reason]]) {
       await expect(prepare({ messages: [{ id: messageId, role: 'assistant', parts }], readBinaryObject: undefined, signal: undefined })).rejects.toThrow('single leading reasoning');
     }
@@ -103,7 +103,7 @@ describe('parts to Transformers.js inference input', () => {
     const read = vi.fn();
     await expect(prepare({ messages: [
       { id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] },
-      { id: messageId, role: 'assistant', parts: [makeText({ text: '' }), { id: 'reason', type: 'reasoning', text: '', completeness: 'partial' }] },
+      { id: messageId, role: 'assistant', parts: [makeText({ text: '' }), { type: 'reasoning', text: '', completeness: 'partial' }] },
     ], readBinaryObject: read, signal: undefined })).rejects.toThrow('single leading reasoning');
     expect(read).not.toHaveBeenCalled();
   });
@@ -112,7 +112,7 @@ describe('parts to Transformers.js inference input', () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
     const read = vi.fn();
     const result = await prepare({ messages: [{ id: messageId, role: 'user', parts: [
-      makeText({ text: 'before' }), image({ state: { status: 'memory', blob: new Blob([new Uint8Array([0, 1, 255])]) } }), { ...makeText({ text: '' }), id: 'last' },
+      makeText({ text: 'before' }), image({ state: { status: 'memory', blob: new Blob([new Uint8Array([0, 1, 255])]) } }), { ...makeText({ text: '' }), },
     ] }], readBinaryObject: read, signal: undefined });
     expect(result.messages[0]!.content).toEqual([
       { type: 'text', text: 'before' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAH/' } }, { type: 'text', text: '' },
@@ -172,8 +172,8 @@ describe('parts to Transformers.js inference input', () => {
 
   it('preserves inline tool success and error text and expands each result in order', async () => {
     const result = await prepare({ messages: [{ id: messageId, role: 'tool', parts: [
-      { id: 'r1', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\r\n' } } },
-      { id: 'r2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call-2' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'text', text: '説明' } } } },
+      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\r\n' } } },
+      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call-2' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'text', text: '説明' } } } },
     ] }], readBinaryObject: undefined, signal: undefined });
     expect(result.messages).toEqual([
       { role: 'tool', tool_call_id: callId, content: '  result\r\n' },
@@ -184,17 +184,17 @@ describe('parts to Transformers.js inference input', () => {
   it('preserves a tool result BOM and Unicode across a binary reference', async () => {
     const value = '\uFEFF  🙂e\u0301\r\n';
     const read = vi.fn().mockResolvedValue(new Blob([new TextEncoder().encode(value)]));
-    const result = await prepare({ messages: [{ id: messageId, role: 'tool', parts: [{ id: 'r', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } }] }], readBinaryObject: read, signal: undefined });
+    const result = await prepare({ messages: [{ id: messageId, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } }] }], readBinaryObject: read, signal: undefined });
     expect(result.messages[0]!.content).toBe(value);
   });
 
   it('does not replace invalid tool result bytes with replacement characters', async () => {
     const read = vi.fn().mockResolvedValue(new Blob([new Uint8Array([0xff])]));
-    await expect(prepare({ messages: [{ id: messageId, role: 'tool', parts: [{ id: 'r', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } }] }], readBinaryObject: read, signal: undefined })).rejects.toThrow();
+    await expect(prepare({ messages: [{ id: messageId, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } }] }], readBinaryObject: read, signal: undefined })).rejects.toThrow();
   });
 
   it('rejects unresolved or empty tool results without inventing content', async () => {
-    for (const parts of [[], [{ id: 'r', type: 'tool_result' as const, result: { toolCallId: callId, status: 'executing' as const } }]]) {
+    for (const parts of [[], [{ type: 'tool_result' as const, result: { toolCallId: callId, status: 'executing' as const } }]]) {
       await expect(prepare({ messages: [{ id: messageId, role: 'tool', parts }], readBinaryObject: undefined, signal: undefined })).rejects.toThrow();
     }
   });

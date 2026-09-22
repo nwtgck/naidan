@@ -248,7 +248,7 @@ export function useImageGeneration() {
 
     // Experimental images remain text markup; no image attachment migration is performed.
     if (assistantNode.parts.length === 0) {
-      assistantNode.parts.push({ id: 'image', type: 'text', text: '', completeness: 'partial' });
+      assistantNode.parts.push({ type: 'text', text: '', completeness: 'partial' });
     }
     const imagePart = assistantNode.parts[0];
     if (assistantNode.parts.length !== 1 || imagePart?.type !== 'text') {

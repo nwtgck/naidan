@@ -518,7 +518,6 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
     parts: z.array(
       z.discriminatedUnion('type', [
         resolveMissingAsUndefined(z.object({
-          id: z.string(),
           type: z.literal('text'),
           text: z.string(),
           completeness: missingAsUndefined(z.literal('partial')),
@@ -526,7 +525,6 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
           experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageTextPartSchemaDto }),
         })),
         z.object({
-          id: z.string(),
           type: z.literal('attachment'),
           attachment: AttachmentSchemaDtoV2,
 
@@ -547,7 +545,6 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
     parts: z.array(
       z.discriminatedUnion('type', [
         resolveMissingAsUndefined(z.object({
-          id: z.string(),
           type: z.literal('reasoning'),
           text: z.string(),
           completeness: missingAsUndefined(z.literal('partial')),
@@ -555,7 +552,6 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
           experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageReasoningPartSchemaDto }),
         })),
         resolveMissingAsUndefined(z.object({
-          id: z.string(),
           type: z.literal('text'),
           text: z.string(),
           completeness: missingAsUndefined(z.literal('partial')),
@@ -563,7 +559,6 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
           experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageTextPartSchemaDto }),
         })),
         z.object({
-          id: z.string(),
           type: z.literal('tool_call'),
           toolCall: ToolCallSchemaDto,
 
@@ -598,7 +593,6 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
     lmParameters: missingAsUndefined(z.undefined()),
     parts: z.array(
       resolveMissingAsUndefined(z.object({
-        id: z.string(),
         type: z.literal('text'),
         text: z.string(),
         completeness: missingAsUndefined(z.literal('partial')),
@@ -618,7 +612,6 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
     lmParameters: missingAsUndefined(z.undefined()),
     parts: z.array(
       z.object({
-        id: z.string(),
         type: z.literal('tool_result'),
         result: ToolExecutionResultSchemaDto,
 

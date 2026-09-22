@@ -26,8 +26,9 @@ describe('versioned message mapping', () => {
     expect(JSON.stringify(raw)).toBe(before);
     const visit = ({ nodes }: { nodes: typeof saved.root.items }) => {
       for (const node of nodes) {
-        expect(MessageNodeSchemaDtoV2.safeParse(node).success).toBe(true);
+        const modern = MessageNodeSchemaDtoV2.parse(node);
         expect(Object.hasOwn(node, 'content')).toBe(false);
+        for (const part of modern.parts) expect(part).not.toHaveProperty('id');
         visit({ nodes: node.replies.items });
       }
     };
@@ -37,7 +38,7 @@ describe('versioned message mapping', () => {
     expect(chatContentToDto({ domain: chatContentToDomain({ dto: ChatContentSchemaDto.parse(JSON.parse(JSON.stringify(saved))) }) })).toEqual(saved);
   });
 
-  it('uses deterministic message-local IDs without mutating the read record', () => {
+  it('maps legacy content consistently without mutating the read record', () => {
     const dto = legacy({ role: 'assistant' });
     expect(messageNodeToDomain({ dto })).toEqual(messageNodeToDomain({ dto }));
     expect(Object.hasOwn(dto, 'parts')).toBe(false);
@@ -67,7 +68,7 @@ describe('versioned message mapping', () => {
 [Generation Aborted]
 `;
     const node = messageNodeToDomain({ dto: MessageNodeSchemaDto.parse({ id: 'a', role: 'assistant', createdAt: 0,
-      parts: [{ id: 'r1', type: 'reasoning', text: '  ' }, { id: 'r2', type: 'reasoning', text: '' }, { id: 't', type: 'text', text, completeness: 'partial' }],
+      parts: [{ type: 'reasoning', text: '  ' }, { type: 'reasoning', text: '' }, { type: 'text', text, completeness: 'partial' }],
       interruption: { type: 'error', message: '通信が切れました: offline' }, replies: { items: [] } }) });
     expect(roundTrip({ node })).toEqual(node);
     const saved = JSON.parse(JSON.stringify(messageNodeToDto({ domain: node })));
@@ -77,7 +78,7 @@ describe('versioned message mapping', () => {
   });
 
   it('preserves no part versus an explicit empty part', () => {
-    for (const parts of [[], [{ id: 'p', type: 'text', text: '' }]]) {
+    for (const parts of [[], [{ type: 'text', text: '' }]]) {
       const node = messageNodeToDomain({ dto: MessageNodeSchemaDto.parse({ id: 'a', role: 'assistant', createdAt: 1, parts, replies: { items: [] } }) });
       expect(roundTrip({ node }).parts).toEqual(node.parts);
       expect(node.parts.length).toBe(parts.length);
@@ -86,7 +87,7 @@ describe('versioned message mapping', () => {
 
   it('retains cancellation separately from an already completed reasoning part', () => {
     const node = messageNodeToDomain({ dto: MessageNodeSchemaDto.parse({ id: 'a', role: 'assistant', createdAt: 1,
-      parts: [{ id: 'r', type: 'reasoning', text: 'R' }], interruption: { type: 'cancelled' }, replies: { items: [] } }) });
+      parts: [{ type: 'reasoning', text: 'R' }], interruption: { type: 'cancelled' }, replies: { items: [] } }) });
     expect(roundTrip({ node })).toEqual(node);
     expect(messageNodeToDto({ domain: node })).toMatchObject({ interruption: { type: 'cancelled' }, parts: [{ completeness: undefined }] });
   });
@@ -95,7 +96,7 @@ describe('versioned message mapping', () => {
     const node = messageNodeToDomain({ dto: MessageNodeSchemaDto.parse({ id: 'u', role: 'user', timestamp: 4, content: '',
       attachments: [{ id: 'att', originalName: 'image.png', mimeType: 'image/png', size: 123, uploadedAt: 3, status: 'persisted' }], replies: { items: [] } }) });
     expect(node.parts[1]).toMatchObject({ type: 'attachment', attachment: { mimeType: 'image/png', size: 123, uploadedAt: 3, binaryObjectId: 'att' } });
-    expect(messageNodeToDto({ domain: node }).parts[1]).toEqual({ id: 'legacy_attachment_0', type: 'attachment', experimental: undefined,
+    expect(messageNodeToDto({ domain: node }).parts[1]).toEqual({ type: 'attachment', experimental: undefined,
       attachment: { id: 'att', name: 'image.png', binaryObjectId: 'att', status: 'persisted', experimental: undefined } });
   });
 
@@ -125,14 +126,14 @@ describe('versioned message mapping', () => {
   it('preserves model-visible message content through the actual mapper and JSON boundary', () => {
     const records = [
       { id: 'a', role: 'assistant', createdAt: 1, interruption: { type: 'error', message: '日本語' }, parts: [
-        { id: 'r', type: 'reasoning', text: `\
+        { type: 'reasoning', text: `\
   R\\r
 🙂` },
-        { id: 't', type: 'text', text: '<think>literal</think>', completeness: 'partial' },
-        { id: 'c', type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'f', arguments: ' { "x": 1 } ' } } },
+        { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+        { type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'f', arguments: ' { "x": 1 } ' } } },
       ], replies: { items: [] } },
       { id: 't', role: 'tool', createdAt: 2, parts: [
-        { id: 'result', type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'binary' } } },
+        { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'binary' } } },
       ], replies: { items: [] } },
       { id: 'u', role: 'user', timestamp: 0, content: '', replies: { items: [] } },
     ];
@@ -145,5 +146,32 @@ describe('versioned message mapping', () => {
   it('has a V2-only writer return type', () => {
     expectTypeOf<ReturnType<typeof messageNodeToDto>>().toEqualTypeOf<MessageNodeDtoV2>();
     expectTypeOf<ReturnType<typeof messageNodeToDto>['replies']['items'][number]>().toEqualTypeOf<MessageNodeDtoV2>();
+  });
+
+  it('roundtrips every part kind without common IDs while preserving linked identifiers', () => {
+    const records = [
+      { id: 'user', role: 'user', createdAt: 1, parts: [
+        { type: 'text', text: ' [Aborted] <think>literal</think> ', completeness: 'partial' },
+        { type: 'attachment', attachment: { id: 'attachment', name: 'image.png', binaryObjectId: 'image-bytes', status: 'persisted' } },
+      ] },
+      { id: 'assistant', role: 'assistant', createdAt: 2, parts: [
+        { type: 'reasoning', text: ' R ' },
+        { type: 'text', text: '' },
+        { type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'weather', arguments: ' {"city":"Tokyo"} ' } } },
+      ] },
+      { id: 'tool', role: 'tool', createdAt: 3, parts: [
+        { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'result-bytes' } } },
+      ] },
+      { id: 'system', role: 'system', createdAt: 0, parts: [{ type: 'text', text: 'System' }] },
+    ];
+    for (const record of records) {
+      const dto = MessageNodeSchemaDtoV2.parse({ ...record, replies: { items: [] } });
+      const domain = messageNodeToDomain({ dto });
+      const saved = messageNodeToDto({ domain });
+      expect(saved).toEqual(dto);
+      for (const part of saved.parts) expect(part).not.toHaveProperty('id');
+      for (const part of domain.parts) expect(part).not.toHaveProperty('id');
+      expect(messageNodeToDto({ domain: roundTrip({ node: domain }) })).toEqual(saved);
+    }
   });
 });

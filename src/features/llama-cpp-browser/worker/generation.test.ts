@@ -578,21 +578,21 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     await storage.saveFile({ binaryObjectId, blob: new Blob([resultText]), name: 'result.txt', mimeType: 'text/plain' });
     const tool: ToolMessageNode = {
       id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'result', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } }],
+      parts: [{ type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } }],
       replies: { items: [] },
     };
     const assistant: AssistantMessageNode = {
       id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 2,
       modelId: undefined, lmParameters: undefined, interruption: undefined,
       parts: [
-        { id: 'reasoning', type: 'reasoning', text: ' R\n', completeness: 'complete' },
-        { id: 'text', type: 'text', text: '<think>[Aborted]</think> ', completeness: 'complete' },
-        { id: 'call', type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'lookup', arguments: ' {"value":" x "} ' } } },
+        { type: 'reasoning', text: ' R\n', completeness: 'complete' },
+        { type: 'text', text: '<think>[Aborted]</think> ', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'lookup', arguments: ' {"value":" x "} ' } } },
       ], replies: { items: [tool] },
     };
     const user: UserMessageNode = {
       id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'question', type: 'text', text: 'Q ', completeness: 'complete' }], replies: { items: [assistant] },
+      parts: [{ type: 'text', text: 'Q ', completeness: 'complete' }], replies: { items: [assistant] },
     };
     const content: ChatContent = { currentLeafId: tool.id, root: { items: [user] } };
     const original = structuredClone(content);
@@ -664,7 +664,7 @@ user:Q ;assistant: R
       }));
       const followup: UserMessageNode = {
         id: toMessageId({ raw: 'followup' }), role: 'user', createdAt: 4, modelId: undefined, lmParameters: undefined,
-        parts: [{ id: 'question', type: 'text', text: 'next', completeness: 'complete' }], replies: { items: [] },
+        parts: [{ type: 'text', text: 'next', completeness: 'complete' }], replies: { items: [] },
       };
       tool.replies.items.push(followup); content.currentLeafId = followup.id;
       const savedExtension = roundTripChatContentPersistenceSerialization({ content }).restored;

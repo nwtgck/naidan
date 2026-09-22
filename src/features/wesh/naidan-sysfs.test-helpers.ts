@@ -134,7 +134,6 @@ export const mainChatContent: ChatContent = {
         lmParameters: undefined,
         parts: [
           {
-            id: 'text',
             type: 'text',
             text: 'Root user',
             completeness: 'complete'
@@ -150,7 +149,6 @@ export const mainChatContent: ChatContent = {
               lmParameters: undefined,
               parts: [
                 {
-                  id: 'text',
                   type: 'text',
                   text: 'Root assistant',
                   completeness: 'complete'
@@ -167,7 +165,6 @@ export const mainChatContent: ChatContent = {
                     lmParameters: undefined,
                     parts: [
                       {
-                        id: 'text',
                         type: 'text',
                         text: 'Branch A user',
                         completeness: 'complete'
@@ -183,7 +180,6 @@ export const mainChatContent: ChatContent = {
                           lmParameters: undefined,
                           parts: [
                             {
-                              id: 'text',
                               type: 'text',
                               text: 'Branch A first leaf',
                               completeness: 'complete'
@@ -200,7 +196,6 @@ export const mainChatContent: ChatContent = {
                           lmParameters: undefined,
                           parts: [
                             {
-                              id: 'text',
                               type: 'text',
                               text: 'Branch A current leaf',
                               completeness: 'complete'
@@ -220,7 +215,6 @@ export const mainChatContent: ChatContent = {
                     lmParameters: undefined,
                     parts: [
                       {
-                        id: 'text',
                         type: 'text',
                         text: 'Branch B user',
                         completeness: 'complete'
@@ -236,7 +230,6 @@ export const mainChatContent: ChatContent = {
                           lmParameters: undefined,
                           parts: [
                             {
-                              id: 'text',
                               type: 'text',
                               text: 'Branch B leaf',
                               completeness: 'complete'
@@ -283,7 +276,6 @@ function createLinearContent({
           lmParameters: undefined,
           parts: [
             {
-              id: 'text',
               type: 'text',
               text: userText,
               completeness: 'complete'
@@ -299,7 +291,6 @@ function createLinearContent({
                 lmParameters: undefined,
                 parts: [
                   {
-                    id: 'text',
                     type: 'text',
                     text: assistantText,
                     completeness: 'complete'

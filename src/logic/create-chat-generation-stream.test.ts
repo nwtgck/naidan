@@ -26,9 +26,9 @@ describe('generation stream producer bridge', () => {
     expect(run).not.toHaveBeenCalled();
     const { node, result } = await collect({ items, controller });
     expect(node.parts).toEqual([
-      { id: 'part_0', type: 'reasoning', text: '  R\n', completeness: 'complete' },
-      { id: 'part_1', type: 'text', text: '<think>example</think>  ', completeness: 'complete' },
-      { id: 'part_2', type: 'reasoning', text: 'R2', completeness: 'complete' },
+      { type: 'reasoning', text: '  R\n', completeness: 'complete' },
+      { type: 'text', text: '<think>example</think>  ', completeness: 'complete' },
+      { type: 'reasoning', text: 'R2', completeness: 'complete' },
     ]);
     expect(result).toEqual({ type: 'finished', next: 'user' });
     expect(() => items[Symbol.asyncIterator]()).toThrow('once');
@@ -43,12 +43,21 @@ describe('generation stream producer bridge', () => {
   });
   it('does not publish drafts and preserves their position before a later completed call', async () => {
     const controller = new AbortController();
-    const { node, result } = await collect({ controller, items: createChatGenerationStream({ signal: undefined, run: async ({ writer }) => {
+    const published: { partId: string, index: number }[] = [];
+    const generation = createChatGenerationStream({ signal: undefined, run: async ({ writer }) => {
       writer.reserveCall({ key: 0 }); writer.reserveCall({ key: 1 });
       await writer.call({ key: 1, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
       return { type: 'interrupted', reason: 'limit' };
-    } }) });
-    expect(node.parts).toHaveLength(1); expect(node.parts[0]).toMatchObject({ id: 'part_1', toolCall: { function: { arguments: ' {} ' } } });
+    } });
+    const items = (async function* () {
+      for await (const item of generation) {
+        if (item.type === 'tool_call') published.push({ partId: item.partId, index: item.index });
+        yield item;
+      }
+    })();
+    const { node, result } = await collect({ controller, items });
+    expect(published).toEqual([{ partId: 'part_1', index: 1 }]);
+    expect(node.parts).toHaveLength(1); expect(node.parts[0]).toMatchObject({ toolCall: { function: { arguments: ' {} ' } } });
     expect(result.type).toBe('interrupted');
   });
   it('wakes an aborted pending network operation, draining its accepted content', async () => {

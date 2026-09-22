@@ -15,7 +15,7 @@ describe('MessageDiffModal', () => {
     id: toMessageId({ raw: id }),
     role: 'assistant',
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: timestamp,
     modelId: undefined,
     lmParameters: undefined,

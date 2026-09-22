@@ -53,7 +53,7 @@ const mockMessage: MessageNode = {
   id: toMessageId({ raw: 'msg-1' }),
   role: 'user',
   replies: { items: [] },
-  parts: [{ id: 'text', type: 'text' as const, text: 'Hello with image', completeness: 'complete' as const }, ...([
+  parts: [{ type: 'text' as const, text: 'Hello with image', completeness: 'complete' as const }, ...([
     {
       id: toAttachmentId({ raw: 'att-1' }),
       binaryObjectId: toBinaryObjectId({ raw: 'bin-1' }),
@@ -63,7 +63,7 @@ const mockMessage: MessageNode = {
       uploadedAt: 1000,
       status: 'persisted' as const,
     },
-  ]).map((attachment, index) => ({ id: `attachment-${index}`, type: 'attachment' as const, attachment }))],
+  ]).map((attachment) => ({ type: 'attachment' as const, attachment }))],
   createdAt: 1000,
   modelId: undefined,
   lmParameters: undefined,
@@ -118,7 +118,7 @@ describe('MessageItem.vue Preview Integration', () => {
       id: toMessageId({ raw: 'msg-2' }),
       role: 'assistant',
       replies: { items: [] },
-      parts: [...([{ id: 'text', type: 'text' as const, text: `Here is your image:\n\n\`\`\`naidan_experimental_image
+      parts: [...([{ type: 'text' as const, text: `Here is your image:\n\n\`\`\`naidan_experimental_image
 {"binaryObjectId":"${genId}","displayWidth":512,"displayHeight":512,"prompt":"a sunset"}
 \`\`\``, completeness: 'complete' as const }])],
       createdAt: 2000,

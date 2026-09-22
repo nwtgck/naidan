@@ -26,9 +26,9 @@ describe('assistant generation content', () => {
     state.closePart({ partId: 'text', completeness: 'complete' });
     state.finish({ result: { type: 'finished', next: 'user' } });
     expect(message.parts).toEqual([
-      { id: 'r1', type: 'reasoning', text: '  ', completeness: 'complete' },
-      { id: 'r2', type: 'reasoning', text: '', completeness: 'complete' },
-      { id: 'text', type: 'text', text: `\
+      { type: 'reasoning', text: '  ', completeness: 'complete' },
+      { type: 'reasoning', text: '', completeness: 'complete' },
+      { type: 'text', text: `\
 <think>literal</think>\\r
 🙂`, completeness: 'complete' },
     ]);
@@ -43,7 +43,7 @@ describe('assistant generation content', () => {
     state.addToolCall({ partId: 'a', index: 1, toolCall: call({ id: 'A' }) });
     second.function.arguments = 'changed';
     state.finish({ result: { type: 'finished', next: 'tool_results' } });
-    expect(message.parts.map(part => part.id)).toEqual(['a', 'b']);
+    expect(message.parts).toMatchObject([{ toolCall: { id: 'A' } }, { toolCall: { id: 'B' } }]);
     expect(message.parts[1]).toMatchObject({ toolCall: { function: { arguments: ' { "expression": "17 * 23" } ' } } });
   });
 
@@ -60,11 +60,11 @@ describe('assistant generation content', () => {
     expect(() => state.addToolCall({ partId: 'c', index: 0, toolCall: call({ id: 'call' }) })).toThrow('position');
     state.addToolCall({ partId: 'c', index: 1, toolCall: call({ id: 'call' }) });
     expect(() => state.addToolCall({ partId: 'd', index: 2, toolCall: call({ id: 'call' }) })).toThrow('call ID');
-    expect(message.parts.map(part => part.id)).toEqual(['p', 'c']);
+    expect(message.parts).toMatchObject([{ type: 'text' }, { type: 'tool_call', toolCall: { id: 'call' } }]);
   });
 
   it('rejects resumed partial content and prior interruption without altering them', () => {
-    const message = node(); message.parts.push({ id: 'p', type: 'text', text: 'prior', completeness: 'partial' });
+    const message = node(); message.parts.push({ type: 'text', text: 'prior', completeness: 'partial' });
     expect(() => createAssistantGeneration({ node: message })).toThrow('new assistant');
     expect(message.parts[0]).toMatchObject({ text: 'prior', completeness: 'partial' });
     const empty = node(); empty.interruption = { type: 'cancelled' };
@@ -115,5 +115,36 @@ describe('assistant generation content', () => {
     state.closePart({ partId: 'p', completeness: 'complete' });
     stop();
     expect(observations).toEqual([':partial', 'A:partial', 'A:complete']);
+  });
+
+  it('keeps a live text stream attached to its part when a completed call arrives earlier', () => {
+    const message = reactive(node()); const state = createAssistantGeneration({ node: message });
+    state.beginPart({ partId: 'answer', index: 2, type: 'text' });
+    state.appendText({ partId: 'answer', text: 'A' });
+    const textPart = message.parts[0];
+    state.addToolCall({ partId: 'call', index: 0, toolCall: call({ id: 'C' }) });
+    state.appendText({ partId: 'answer', text: 'B' });
+    state.closePart({ partId: 'answer', completeness: 'complete' });
+    state.finish({ result: { type: 'finished', next: 'tool_results' } });
+    expect(message.parts[1]).toBe(textPart);
+    expect(message.parts).toEqual([
+      { type: 'tool_call', toolCall: call({ id: 'C' }) },
+      { type: 'text', text: 'AB', completeness: 'complete' },
+    ]);
+  });
+
+  it.each(['remove', 'replace'] as const)('rejects an external %s without redirecting an accepted stream', change => {
+    const message = reactive(node()); const state = createAssistantGeneration({ node: message });
+    state.beginPart({ partId: 'answer', index: 0, type: 'text' });
+    state.appendText({ partId: 'answer', text: 'accepted' });
+    const original = message.parts[0];
+    switch (change) {
+    case 'remove': message.parts.splice(0, 1); break;
+    case 'replace': message.parts[0] = { type: 'text', text: 'replacement', completeness: 'partial' }; break;
+    default: { const _ex: never = change; throw new Error(String(_ex)); }
+    }
+    expect(() => state.appendText({ partId: 'answer', text: 'wrong' })).toThrow('outside its owner');
+    expect(original).toMatchObject({ text: 'accepted', completeness: 'partial' });
+    if (change === 'replace') expect(message.parts[0]).toMatchObject({ text: 'replacement' });
   });
 });

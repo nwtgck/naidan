@@ -49,7 +49,7 @@ describe('MessageItem Rendering', () => {
     id: generateId<MessageId>(),
     role,
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,
@@ -109,7 +109,7 @@ print("hello")
       role: 'assistant',
       modelId,
       replies: { items: [] },
-      parts: [{ id: 'text', type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+      parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
       createdAt: Date.now(),
       lmParameters: undefined,
       interruption: undefined,
@@ -458,7 +458,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
     id: generateId<MessageId>(),
     role,
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,
@@ -544,7 +544,7 @@ describe('MessageItem Attachment Rendering', () => {
     modelId: undefined,
     lmParameters: EMPTY_LM_PARAMETERS,
     replies: { items: [] },
-    parts: [{ id: 'text', type: 'text' as const, text: 'Message with images', completeness: 'complete' as const }, ...(attachments ?? []).map((attachment, index) => ({ id: `attachment-${index}`, type: 'attachment' as const, attachment }))],
+    parts: [{ type: 'text' as const, text: 'Message with images', completeness: 'complete' as const }, ...(attachments ?? []).map((attachment) => ({ type: 'attachment' as const, attachment }))],
     createdAt: Date.now(),
   } as UserMessageNode);
 
@@ -650,7 +650,7 @@ describe('MessageItem States', () => {
     modelId: 'test-model',
     lmParameters: EMPTY_LM_PARAMETERS,
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     interruption: error !== undefined ? {type:'error' as const,message:error} : undefined,
   } as AssistantMessageNode);
@@ -719,7 +719,7 @@ describe('MessageItem Edit Labels', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => {
     const common = {
       id: generateId<MessageId>(),
-      parts: [{ id: 'text', type: 'text' as const, text: 'Some content', completeness: 'complete' as const }],
+      parts: [{ type: 'text' as const, text: 'Some content', completeness: 'complete' as const }],
       createdAt: Date.now(),
       replies: { items: [] },
     };
@@ -796,7 +796,7 @@ describe('MessageItem Edit Labels', () => {
       role: 'user',
       replies: { items: [] },
       lmParameters,
-      parts: [{ id: 'text', type: 'text' as const, text: 'Original content', completeness: 'complete' as const }],
+      parts: [{ type: 'text' as const, text: 'Original content', completeness: 'complete' as const }],
       createdAt: Date.now(),
       modelId: undefined,
     };
@@ -820,7 +820,7 @@ describe('MessageItem Action Visibility', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => {
     const common = {
       id: generateId<MessageId>(),
-      parts: [{ id: 'text', type: 'text' as const, text: 'Some content', completeness: 'complete' as const }],
+      parts: [{ type: 'text' as const, text: 'Some content', completeness: 'complete' as const }],
       createdAt: Date.now(),
       replies: { items: [] },
     };
@@ -862,7 +862,7 @@ describe('MessageItem Touch Support', () => {
       id: generateId<MessageId>(),
       role: 'user',
       replies: { items: [] },
-      parts: [{ id: 'text', type: 'text' as const, text: 'Message with images', completeness: 'complete' as const }, ...([{
+      parts: [{ type: 'text' as const, text: 'Message with images', completeness: 'complete' as const }, ...([{
         id: toAttachmentId({ raw: 'att-1' }),
         binaryObjectId: toBinaryObjectId({ raw: 'binary-id-1' }),
         status: 'memory' as const,
@@ -871,7 +871,7 @@ describe('MessageItem Touch Support', () => {
         mimeType: 'image/png',
         size: 10,
         uploadedAt: Date.now(),
-      }]).map((attachment, index) => ({ id: `attachment-${index}`, type: 'attachment' as const, attachment }))],
+      }]).map((attachment) => ({ type: 'attachment' as const, attachment }))],
       createdAt: Date.now(),
       modelId: undefined,
       lmParameters: undefined,
@@ -897,7 +897,7 @@ describe('MessageItem Abort Button', () => {
     id: generateId<MessageId>(),
     role: 'assistant',
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,
@@ -949,7 +949,7 @@ describe('MessageItem Abort Button', () => {
         role: 'assistant',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } },
         replies: { items: [] },
-        parts: [{ id: 'text', type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
         createdAt: Date.now(),
         modelId: undefined,
         interruption: undefined,
@@ -969,7 +969,7 @@ describe('MessageItem Abort Button', () => {
         role: 'assistant',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } },
         replies: { items: [] },
-        parts: [{ id: 'text', type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
         createdAt: Date.now(),
         modelId: undefined,
         interruption: undefined,
@@ -989,7 +989,7 @@ describe('MessageItem Abort Button', () => {
         role: 'assistant',
         lmParameters: EMPTY_LM_PARAMETERS,
         replies: { items: [] },
-        parts: [{ id: 'text', type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
         createdAt: Date.now(),
         modelId: undefined,
         interruption: undefined,
@@ -1009,7 +1009,7 @@ describe('MessageItem Abort Button', () => {
         role: 'user',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
         replies: { items: [] },
-        parts: [{ id: 'text', type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
         createdAt: Date.now(),
         modelId: undefined,
       } as UserMessageNode;
@@ -1031,7 +1031,7 @@ describe('MessageItem Abort Button', () => {
         role: 'user',
         lmParameters: EMPTY_LM_PARAMETERS,
         replies: { items: [] },
-        parts: [{ id: 'text', type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
         createdAt: Date.now(),
         modelId: undefined,
       } as UserMessageNode;
@@ -1052,7 +1052,7 @@ describe('MessageItem Actions Menu', () => {
     id: generateId<MessageId>(),
     role: 'assistant',
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,
@@ -1139,7 +1139,7 @@ describe('MessageItem showGeneratingIndicator', () => {
     id: generateId<MessageId>(),
     role: 'assistant',
     replies: { items: [] },
-    parts: [...(thinking !== undefined ? [{ id: 'reasoning', type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(thinking !== undefined ? [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,

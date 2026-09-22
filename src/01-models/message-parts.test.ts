@@ -14,9 +14,9 @@ describe('message parts', () => {
       modelId: undefined,
       lmParameters: undefined,
       parts: [
-        { id: 'r', type: 'reasoning', text: '  Reason\n', completeness: 'complete' },
-        { id: 't', type: 'text', text: '<think>literal</think>', completeness: 'partial' },
-        { id: 'c', type: 'tool_call', toolCall: {
+        { type: 'reasoning', text: '  Reason\n', completeness: 'complete' },
+        { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+        { type: 'tool_call', toolCall: {
           id: toToolCallId({ raw: 'call-1' }), type: 'function',
           function: { name: 'calculator', arguments: ' { "expression": "1 + 1" } ' },
         } },
@@ -37,7 +37,7 @@ describe('message parts', () => {
 
   it('distinguishes no text part from an explicitly empty text part', () => {
     const absent: AssistantMessageNode['parts'] = [];
-    const empty: AssistantMessageNode['parts'] = [{ id: 'empty', type: 'text', text: '', completeness: 'complete' }];
+    const empty: AssistantMessageNode['parts'] = [{ type: 'text', text: '', completeness: 'complete' }];
     expect(absent).not.toEqual(empty);
   });
 

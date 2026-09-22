@@ -35,7 +35,7 @@ describe('legacy uploaded-file reference edits', () => {
   });
 
   it('preserves modern parts and rewrites legacy attachments on hidden branches', () => {
-    const modern = { id: 'new', role: 'assistant', createdAt: 0, parts: [{ id: 'r', type: 'reasoning', text: '  R\n', completeness: 'partial' }], interruption: { type: 'error', message: '日本語' }, replies: { items: [] }, future: 'kept' };
+    const modern = { id: 'new', role: 'assistant', createdAt: 0, parts: [{ type: 'reasoning', text: '  R\n', completeness: 'partial' }], interruption: { type: 'error', message: '日本語' }, replies: { items: [] }, future: 'kept' };
     const old = { id: 'old', role: 'assistant', content: 'A', thinking: '', timestamp: 0, replies: { items: [legacy(), legacy()] } };
     const result = remapLegacyUploadedFileReferences({ serialized: JSON.stringify({ root: { items: [modern, old], extra: true } }), binaryObjectIds: copyIds() });
     const value = JSON.parse(result.serialized!);
@@ -84,7 +84,7 @@ describe('legacy uploaded-file reference edits', () => {
   });
 
   it('does not fabricate old metadata from a new attachment reference', () => {
-    const node = { id: 'u', role: 'user', createdAt: 0, parts: [{ id: 'a', type: 'attachment', attachment: { id: 'a', binaryObjectId: 'b', name: 'a.png', status: 'missing' } }], replies: { items: [] } };
+    const node = { id: 'u', role: 'user', createdAt: 0, parts: [{ type: 'attachment', attachment: { id: 'a', binaryObjectId: 'b', name: 'a.png', status: 'missing' } }], replies: { items: [] } };
     expect(readLegacyUploadedFileMetadata({ serialized: JSON.stringify({ root: { items: [node] } }) })).toEqual([]);
   });
 });

@@ -31,7 +31,7 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
     id: toMessageId({ raw: 'test-id' }),
     role: 'assistant',
     replies: { items: [] },
-    parts: [...(thinking !== undefined ? [{ id: 'reasoning', type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(thinking !== undefined ? [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,

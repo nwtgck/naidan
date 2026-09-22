@@ -335,7 +335,7 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     setupScrollToMock();
     vi.clearAllMocks();
     mockActiveMessages.value = [
-      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'hello', completeness: 'complete' }], createdAt: Date.now(), modelId: undefined, lmParameters: undefined, replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }], createdAt: Date.now(), modelId: undefined, lmParameters: undefined, replies: { items: [] } },
       { id: toMessageId({ raw: 'msg-2' }), role: 'assistant', parts: [], createdAt: Date.now(), modelId: 'hf.co/model', lmParameters: undefined, interruption: undefined, replies: { items: [] } },
     ];
     mockCurrentChat.value.currentLeafId = 'msg-2';

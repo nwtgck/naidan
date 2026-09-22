@@ -69,7 +69,7 @@ describe('GPT-OSS public conversation cache ownership', () => {
         onChange: undefined,
         request: {
           ...request, messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
-            { id: 'text', type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
+            { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
           ] }],
         },
       });
@@ -90,12 +90,12 @@ describe('GPT-OSS public conversation cache ownership', () => {
         onChange: undefined,
         request: {
           ...request, messages: [
-            { id: toMessageId({ raw: 'separate-user' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
+            { id: toMessageId({ raw: 'separate-user' }), role: 'user', parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
             { id: toMessageId({ raw: 'separate-assistant' }), role: 'assistant', parts: [
-              { id: 'text', type: 'text', text: '', completeness: 'complete' },
-              { id: 'call', type: 'tool_call', toolCall: { id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+              { type: 'text', text: '', completeness: 'complete' },
+              { type: 'tool_call', toolCall: { id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
             ] },
-            { id: toMessageId({ raw: 'separate-tool' }), role: 'tool', parts: [{ id: 'result', type: 'tool_result', result: {
+            { id: toMessageId({ raw: 'separate-tool' }), role: 'tool', parts: [{ type: 'tool_result', result: {
               toolCallId: id, status: 'success', content: { type: 'text', text: '{"city":"Tokyo","condition":"sunny"}' },
             } }] },
           ],
@@ -111,7 +111,7 @@ describe('GPT-OSS public conversation cache ownership', () => {
         onChange: undefined,
         request: {
           ...request, messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
-            { id: 'text', type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
+            { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
           ] }],
         },
       });

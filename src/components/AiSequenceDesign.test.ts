@@ -40,7 +40,7 @@ describe('AI Sequence Design', () => {
   const createAssistantMessage = ({ content }: { content: string }): AssistantMessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    parts: [{ id: 'text', type: 'text', text: content, completeness: 'complete' }],
+    parts: [{ type: 'text', text: content, completeness: 'complete' }],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,

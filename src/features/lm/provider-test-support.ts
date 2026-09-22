@@ -40,11 +40,11 @@ export async function runProviderConversationForTest({ provider, messages, model
       const converted: Extract<MessageNode, { role: 'user' }>['parts'] = [];
       for (const [position, part] of parts.entries()) {
         switch (part.type) {
-        case 'text': converted.push({ id: `p_${position}`, type: 'text', text: part.text, completeness: 'complete' }); break;
+        case 'text': converted.push({ type: 'text', text: part.text, completeness: 'complete' }); break;
         case 'image_url': {
           const encoded = part.image_url.url.split(',');
           const bytes = Uint8Array.from(atob(encoded.at(-1)!), c => c.charCodeAt(0));
-          converted.push({ id: `p_${position}`, type: 'attachment', attachment: { id: toAttachmentId({ raw: `a_${position}` }), binaryObjectId: toBinaryObjectId({ raw: `b_${position}` }), originalName: 'image', mimeType: 'image/png', size: bytes.length, uploadedAt: 1, status: 'memory', blob: new Blob([bytes], { type: 'image/png' }) } });
+          converted.push({ type: 'attachment', attachment: { id: toAttachmentId({ raw: `a_${position}` }), binaryObjectId: toBinaryObjectId({ raw: `b_${position}` }), originalName: 'image', mimeType: 'image/png', size: bytes.length, uploadedAt: 1, status: 'memory', blob: new Blob([bytes], { type: 'image/png' }) } });
           break;
         }
         default: { const _ex: never = part; throw new Error(`Unexpected fixture content: ${_ex}`); }
@@ -52,14 +52,14 @@ export async function runProviderConversationForTest({ provider, messages, model
       }
       history.push({ ...common, role: 'user', parts: converted }); break;
     }
-    case 'system': history.push({ ...common, role: 'system', parts: [{ id: 'p', type: 'text', text: String(content), completeness: 'complete' }] }); break;
+    case 'system': history.push({ ...common, role: 'system', parts: [{ type: 'text', text: String(content), completeness: 'complete' }] }); break;
     case 'assistant': history.push({ ...common, role: 'assistant', interruption: undefined, parts: [
-      { id: 'p', type: 'text', text: String(content), completeness: 'complete' },
-      ...(message.tool_calls ?? []).map((toolCall, index) => ({ id: `call_${index}`, type: 'tool_call' as const, toolCall })),
+      { type: 'text', text: String(content), completeness: 'complete' },
+      ...(message.tool_calls ?? []).map(toolCall => ({ type: 'tool_call' as const, toolCall })),
     ] }); break;
     case 'tool': {
       if (!message.tool_call_id) throw new Error('Fixture tool call ID is required.');
-      history.push({ ...common, role: 'tool', parts: [{ id: 'p', type: 'tool_result', result: { toolCallId: message.tool_call_id, status: 'success', content: { type: 'text', text: String(content) } } }] }); break;
+      history.push({ ...common, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: message.tool_call_id, status: 'success', content: { type: 'text', text: String(content) } } }] }); break;
     }
     default: throw new Error('Unknown fixture role.');
     }
@@ -69,7 +69,7 @@ export async function runProviderConversationForTest({ provider, messages, model
   signal?.addEventListener('abort', relay, { once: true });
   if (signal?.aborted) relay();
   const starting = history.length;
-  const deliveredText = new Map<string, number>();
+  const deliveredText = new Map<AssistantMessageNode['parts'][number], number>();
   const deliveredCalls = new Set<ToolCallId>();
   const deliveredResults = new Set<ToolCallId>();
   try {
@@ -87,15 +87,15 @@ export async function runProviderConversationForTest({ provider, messages, model
       },
       buildMessages: ({ excludedMessageId }) => history.filter(node => node.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node })),
       onChange: () => {
-        for (const [offset, node] of history.slice(starting).entries()) {
+        for (const node of history.slice(starting)) {
           switch (node.role) {
           case 'assistant':
             for (const part of node.parts) {
               switch (part.type) {
               case 'text':
               case 'reasoning': {
-                const key = `${offset}/${part.id}`; const used = deliveredText.get(key) ?? 0;
-                const chunk = part.text.slice(used); deliveredText.set(key, part.text.length);
+                const used = deliveredText.get(part) ?? 0;
+                const chunk = part.text.slice(used); deliveredText.set(part, part.text.length);
                 if (chunk) {
                   switch (part.type) {
                   case 'text': onChunk({ chunk }); break;

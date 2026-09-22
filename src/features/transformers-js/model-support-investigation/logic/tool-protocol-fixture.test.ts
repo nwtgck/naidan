@@ -95,7 +95,7 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
     const tool = createModelSupportWeatherTool();
     const execute = vi.spyOn(tool, 'execute');
     const input: ChatMessage[] = [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
-      { id: 'text', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+      { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
     ] }];
     const original = structuredClone(input);
     const turn = await runProviderReplayTurn({
@@ -151,7 +151,7 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
       request: {
         model: 'fixture/weather',
         messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
-          { id: 'text', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+          { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
         ] }],
         parameters: undefined,
         readBinaryObject: undefined,

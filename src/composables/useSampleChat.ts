@@ -112,7 +112,7 @@ export function useSampleChat() {
     const m2: MessageNode = {
       id: generateId<MessageId>(),
       role: 'assistant',
-      parts: [{ id: 'text', type: 'text', text: sampleContent, completeness: 'complete' }],
+      parts: [{ type: 'text', text: sampleContent, completeness: 'complete' }],
       modelId: undefined, lmParameters: undefined, interruption: undefined,
       createdAt: now,
       replies: { items: [] },
@@ -121,7 +121,7 @@ export function useSampleChat() {
     const m3: MessageNode = {
       id: generateId<MessageId>(),
       role: 'assistant',
-      parts: [{ id: 'text', type: 'text', text: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!', completeness: 'complete' }],
+      parts: [{ type: 'text', text: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!', completeness: 'complete' }],
       modelId: undefined, lmParameters: undefined, interruption: undefined,
       createdAt: now + 1000,
       replies: { items: [] },
@@ -130,7 +130,7 @@ export function useSampleChat() {
     const m1: MessageNode = {
       id: generateId<MessageId>(),
       role: 'user',
-      parts: [{ id: 'text', type: 'text', text: 'Show me your tree-based branching and rendering capabilities!', completeness: 'complete' }],
+      parts: [{ type: 'text', text: 'Show me your tree-based branching and rendering capabilities!', completeness: 'complete' }],
       modelId: undefined, lmParameters: undefined,
       createdAt: now - 5000,
       replies: { items: [m2, m3] },
@@ -160,7 +160,7 @@ export function useSampleChat() {
       const role = index % 2 === 0 ? 'user' : 'assistant';
       const node = {
         id: generateId<MessageId>(),
-        parts: [{ id: 'text', text: longMessageContent({ turnIndex: Math.floor(index / 2), role }), completeness: 'complete' as const, type: 'text' as const }],
+        parts: [{ text: longMessageContent({ turnIndex: Math.floor(index / 2), role }), completeness: 'complete' as const, type: 'text' as const }],
         modelId: undefined, lmParameters: undefined,
         createdAt: now + index * 1000,
         replies: { items: [] },

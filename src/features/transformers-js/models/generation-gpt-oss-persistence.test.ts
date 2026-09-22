@@ -78,7 +78,7 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
   const user: UserMessageNode = {
     id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1,
     modelId: undefined, lmParameters: undefined,
-    parts: [{ id: 'question', type: 'text', completeness: 'complete',
+    parts: [{ type: 'text', completeness: 'complete',
       text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.' }],
     replies: { items: [] },
   };
@@ -145,15 +145,15 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
     const call = assistant?.parts.at(-1);
     if (assistant?.role !== 'assistant' || call?.type !== 'tool_call') throw new Error('Missing captured tool call');
     expect(assistant.parts).toEqual([
-      { id: 'part_0', type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
-      { id: 'part_1', type: 'tool_call', toolCall: {
+      { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
+      { type: 'tool_call', toolCall: {
         id: call.toolCall.id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
       } },
     ]);
-    expect(continuation[2]?.parts).toEqual([{ id: 'tool_result_0', type: 'tool_result', result: {
+    expect(continuation[2]?.parts).toEqual([{ type: 'tool_result', result: {
       toolCallId: call.toolCall.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
     } }]);
-    expect(history[3]?.parts).toEqual([{ id: 'part_0', type: 'text',
+    expect(history[3]?.parts).toEqual([{ type: 'text',
       text: 'Tokyo is clear with a comfortable temperature of about 20\u202f°C.', completeness: 'complete' }]);
     expect(execute).toHaveBeenCalledExactlyOnceWith({ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal), approvalContext: undefined, onEvent: expect.any(Function) });
     return nativeInputs;

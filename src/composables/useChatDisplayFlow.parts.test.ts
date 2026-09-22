@@ -17,10 +17,10 @@ function flatten({ items }: { items: ChatFlowItem[] }): Exclude<ChatFlowItem, { 
 describe('parts-based display flow', () => {
   it('preserves repeated text and reasoning segments with unique render keys', () => {
     const parts: AssistantMessageNode['parts'] = [
-      { id: 'r1', type: 'reasoning', text: 'R1', completeness: 'complete' },
-      { id: 't1', type: 'text', text: 'A', completeness: 'complete' },
-      { id: 'r2', type: 'reasoning', text: 'R2', completeness: 'complete' },
-      { id: 't2', type: 'text', text: 'B', completeness: 'complete' },
+      { type: 'reasoning', text: 'R1', completeness: 'complete' },
+      { type: 'text', text: 'A', completeness: 'complete' },
+      { type: 'reasoning', text: 'R2', completeness: 'complete' },
+      { type: 'text', text: 'B', completeness: 'complete' },
     ];
     const { chatFlow } = createFlow({ message: assistant({ parts, interruption: undefined }), processing: false });
     const items = flatten({ items: chatFlow.value });
@@ -30,20 +30,20 @@ describe('parts-based display flow', () => {
     expect(new Set(items.map(p => p.type === 'message' ? p.key : p.id)).size).toBe(4);
   });
   it('does not animate stored partial reasoning after stopping', () => {
-    const message = assistant({ parts: [{ id: 'r', type: 'reasoning', text: '途中', completeness: 'partial' }], interruption: { type: 'cancelled' } });
+    const message = assistant({ parts: [{ type: 'reasoning', text: '途中', completeness: 'partial' }], interruption: { type: 'cancelled' } });
     const { chatFlow, isThinkingActive } = createFlow({ message, processing: false });
     expect(isThinkingActive({ item: chatFlow.value[0]! })).toBe(false);
     expect(message.parts[0]).toMatchObject({ completeness: 'partial', text: '途中' });
   });
   it('animates the native partial of the live generation', () => {
-    const message = assistant({ parts: [{ id: 'r', type: 'reasoning', text: 'R', completeness: 'partial' }], interruption: undefined });
+    const message = assistant({ parts: [{ type: 'reasoning', text: 'R', completeness: 'partial' }], interruption: undefined });
     const { chatFlow, isThinkingActive } = createFlow({ message, processing: true });
     expect(isThinkingActive({ item: chatFlow.value[0]! })).toBe(true);
   });
   it('keeps a later part key stable when an earlier empty part receives content', () => {
     const { chat, chatFlow } = createFlow({ message: assistant({ parts: [
-      { id: 't', type: 'text', text: '', completeness: 'partial' },
-      { id: 'r', type: 'reasoning', text: 'R', completeness: 'partial' },
+      { type: 'text', text: '', completeness: 'partial' },
+      { type: 'reasoning', text: 'R', completeness: 'partial' },
     ], interruption: undefined }), processing: true });
     const prior = flatten({ items: chatFlow.value }).find(p => p.type === 'message' && p.mode === 'thinking');
     const node = chat.value.root.items[0]!; const first = node.parts[0];
@@ -51,6 +51,22 @@ describe('parts-based display flow', () => {
     first.text = 'A';
     const later = flatten({ items: chatFlow.value }).find(p => p.type === 'message' && p.mode === 'thinking');
     expect(later?.type === 'message' && later.key).toBe(prior?.type === 'message' && prior.key);
+  });
+  it('keeps reactive body identity when a late tool call is inserted before it', () => {
+    const { chat, chatFlow } = createFlow({ message: assistant({ parts: [
+      { type: 'text', text: 'body', completeness: 'partial' },
+    ], interruption: undefined }), processing: true });
+    const before = flatten({ items: chatFlow.value }).find(item => item.type === 'message' && item.partContent === 'body');
+    const node = chat.value.root.items[0];
+    if (node?.role !== 'assistant') throw new Error('Expected assistant fixture.');
+    node.parts.unshift({ type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'late-call' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
+    const text = node.parts[1];
+    if (text?.type !== 'text') throw new Error('Expected body part.');
+    text.text += ' continued';
+    const after = flatten({ items: chatFlow.value }).find(item => item.type === 'message' && item.partContent === 'body continued');
+    expect(before?.type).toBe('message');
+    expect(after?.type).toBe('message');
+    expect(after?.type === 'message' && after.key).toBe(before?.type === 'message' && before.key);
   });
   it('keeps a stopped empty assistant visible without inventing body text', () => {
     const message = assistant({ parts: [], interruption: { type: 'error', message: '通信エラー' } });
@@ -60,9 +76,9 @@ describe('parts-based display flow', () => {
   });
   it('does not associate a stray tool result across a new user turn', () => {
     const callId = toToolCallId({ raw: 'same-id' });
-    const a = assistant({ parts: [{ id: 'c', type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'old', arguments: '{}' } } }], interruption: undefined });
+    const a = assistant({ parts: [{ type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'old', arguments: '{}' } } }], interruption: undefined });
     const u: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
-    const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', parts: [{ id: 'result', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: 'value' } } }], createdAt: 2, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
+    const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: 'value' } } }], createdAt: 2, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
     a.replies.items = [u]; u.replies.items = [tool];
     const { chat, chatFlow } = createFlow({ message: a, processing: false }); chat.value.currentLeafId = tool.id;
     const items = flatten({ items: chatFlow.value });

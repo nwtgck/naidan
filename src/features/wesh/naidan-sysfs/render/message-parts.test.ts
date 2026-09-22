@@ -7,11 +7,11 @@ import { renderMessageMarkdown } from './message-markdown';
 function assistant(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 4, modelId: 'model', lmParameters: undefined,
     interruption: { type: 'error', message: '日本語の記録: offline' }, replies: { items: [] }, parts: [
-      { id: 'r1', type: 'reasoning', text: '  理由\r\n', completeness: 'complete' },
-      { id: 't1', type: 'text', text: '<think>literal</think>🙂', completeness: 'complete' },
-      { id: 'r2', type: 'reasoning', text: '', completeness: 'partial' },
-      { id: 't2', type: 'text', text: '', completeness: 'complete' },
-      { id: 'call', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' { "arg": 1 } ' } } },
+      { type: 'reasoning', text: '  理由\r\n', completeness: 'complete' },
+      { type: 'text', text: '<think>literal</think>🙂', completeness: 'complete' },
+      { type: 'reasoning', text: '', completeness: 'partial' },
+      { type: 'text', text: '', completeness: 'complete' },
+      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' { "arg": 1 } ' } } },
     ] };
 }
 describe('parts in read-only sysfs projections', () => {
@@ -20,11 +20,11 @@ describe('parts in read-only sysfs projections', () => {
     expect(JSON.parse(renderMessageJson({ node }))).toEqual({
       id: 'a', role: 'assistant', createdAt: 4, modelId: 'model',
       parts: [
-        { id: 'r1', type: 'reasoning', text: '  理由\r\n' },
-        { id: 't1', type: 'text', text: '<think>literal</think>🙂' },
-        { id: 'r2', type: 'reasoning', text: '', completeness: 'partial' },
-        { id: 't2', type: 'text', text: '' },
-        { id: 'call', type: 'tool_call', toolCall: { id: 'c', type: 'function', function: { name: 'f', arguments: ' { "arg": 1 } ' } } },
+        { type: 'reasoning', text: '  理由\r\n' },
+        { type: 'text', text: '<think>literal</think>🙂' },
+        { type: 'reasoning', text: '', completeness: 'partial' },
+        { type: 'text', text: '' },
+        { type: 'tool_call', toolCall: { id: 'c', type: 'function', function: { name: 'f', arguments: ' { "arg": 1 } ' } } },
       ], interruption: { type: 'error', message: '日本語の記録: offline' },
     });
     expect(node).toEqual(before);
@@ -32,16 +32,16 @@ describe('parts in read-only sysfs projections', () => {
   it('keeps the same part boundaries and order in Markdown without parsing literal tags', () => {
     const node = assistant(); const rendered = renderMessageMarkdown({ node });
     const headers = [...rendered.matchAll(/^## Part (.+)$/gm)].map(match => match[1]);
-    expect(headers).toEqual(['r1 (reasoning)', 't1 (text)', 'r2 (reasoning)', 't2 (text)', 'call (tool_call)']);
+    expect(headers).toEqual(['1 (reasoning)', '2 (text)', '3 (reasoning)', '4 (text)', '5 (tool_call)']);
     expect(rendered).toContain('  理由\r\n'); expect(rendered).toContain('<think>literal</think>🙂');
     expect(rendered).toContain('completeness: partial'); expect(rendered).toContain('日本語の記録: offline');
   });
   it('does not serialize a memory Blob, implementation properties, or descendant bodies in a message file', () => {
     const user: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'att', type: 'attachment', attachment: { id: toAttachmentId({ raw: 'att' }), binaryObjectId: toBinaryObjectId({ raw: 'bin' }), originalName: 'sample.bin', mimeType: 'application/octet-stream', size: 6, uploadedAt: 3, status: 'memory', blob: new Blob(['SECRET']) } }],
+      parts: [{ type: 'attachment', attachment: { id: toAttachmentId({ raw: 'att' }), binaryObjectId: toBinaryObjectId({ raw: 'bin' }), originalName: 'sample.bin', mimeType: 'application/octet-stream', size: 6, uploadedAt: 3, status: 'memory', blob: new Blob(['SECRET']) } }],
       replies: { items: [assistant()] } };
     const rendered = renderMessageJson({ node: user });
-    expect(JSON.parse(rendered).parts[0]).toEqual({ id: 'att', type: 'attachment', attachment: {
+    expect(JSON.parse(rendered).parts[0]).toEqual({ type: 'attachment', attachment: {
       id: 'att', binaryObjectId: 'bin', name: 'sample.bin', mimeType: 'application/octet-stream', size: 6, uploadedAt: 3, status: 'memory', note: '[binary attachment hidden]',
     } });
     for (const value of ['blob', 'SECRET', '日本語の記録', 'replies']) expect(rendered).not.toContain(value);
@@ -55,10 +55,10 @@ describe('parts in read-only sysfs projections', () => {
   it('truncates only the diagnostic tool-result view and never mutates the recorded result', () => {
     const text = 'x'.repeat(4001);
     const node: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined, replies: { items: [] }, parts: [
-      { id: 'r1', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'error', error: { code: 'execution_failed', message: { type: 'text', text } } } },
-      { id: 'r2', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'd' }), status: 'executing' } },
-      { id: 'r3', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'e' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'result' }) } } },
-      { id: 'r4', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'f' }), status: 'error', error: { code: 'other', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'error' }) } } } },
+      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'error', error: { code: 'execution_failed', message: { type: 'text', text } } } },
+      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'd' }), status: 'executing' } },
+      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'e' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'result' }) } } },
+      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'f' }), status: 'error', error: { code: 'other', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'error' }) } } } },
     ] };
     const before = structuredClone(node); const json = JSON.parse(renderMessageJson({ node }));
     expect(json.parts[0].result.error.message.text).toBe(`${'x'.repeat(4000)}\n[truncated]`);
@@ -71,8 +71,8 @@ describe('parts in read-only sysfs projections', () => {
   });
   for (const role of ['system', 'user'] as const) {
     it(`renders ${role} text without a legacy content/timestamp wrapper`, () => {
-      const node: MessageNode = { id: toMessageId({ raw: role }), role, createdAt: 0, modelId: undefined, lmParameters: undefined, parts: [{ id: 'p', type: 'text', text: '', completeness: 'partial' }], replies: { items: [] } };
-      expect(JSON.parse(renderMessageJson({ node }))).toEqual({ id: role, role, createdAt: 0, parts: [{ id: 'p', type: 'text', text: '', completeness: 'partial' }] });
+      const node: MessageNode = { id: toMessageId({ raw: role }), role, createdAt: 0, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: '', completeness: 'partial' }], replies: { items: [] } };
+      expect(JSON.parse(renderMessageJson({ node }))).toEqual({ id: role, role, createdAt: 0, parts: [{ type: 'text', text: '', completeness: 'partial' }] });
     });
   }
 });

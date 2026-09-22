@@ -21,12 +21,12 @@ describe('versioned fixed Provider capture inputs', () => {
     const input = captureScenarioInput({ scenario: 'structured-tool-history', firstSettled: undefined });
     const provider = captureProviderMessages({ input });
     expect(provider).toEqual([
-      { id: 'capture_input_0', role: 'user', parts: [{ id: 'text_0', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
+      { id: 'capture_input_0', role: 'user', parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
       { id: 'capture_input_1', role: 'assistant', parts: [
-        { id: 'text_0', type: 'text', text: '', completeness: 'complete' },
-        { id: 'tool_call_0', type: 'tool_call', toolCall: { id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        { type: 'text', text: '', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
       ] },
-      { id: 'capture_input_2', role: 'tool', parts: [{ id: 'tool_result_0', type: 'tool_result', result: { toolCallId: 'call_model_support_probe_1', status: 'success', content: { type: 'text', text: MODEL_SUPPORT_TOOL_RESULT_CONTENT } } }] },
+      { id: 'capture_input_2', role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: 'call_model_support_probe_1', status: 'success', content: { type: 'text', text: MODEL_SUPPORT_TOOL_RESULT_CONTENT } } }] },
     ]);
     const first = provider[0]?.parts[0];
     if (first?.type !== 'text') throw new Error('Missing text fixture');
@@ -44,7 +44,7 @@ describe('versioned fixed Provider capture inputs', () => {
     ] }]);
     expect(input.parameters.maxCompletionTokens).toBe(1);
     const messages = captureProviderMessages({ input });
-    expect(messages[0]?.parts[0]).toEqual({ id: 'text_0', type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt, completeness: 'complete' });
+    expect(messages[0]?.parts[0]).toEqual({ type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt, completeness: 'complete' });
     const part = messages[0]?.parts[1];
     if (part?.type !== 'attachment' || part.attachment.status !== 'memory') throw new Error('Missing fixture Blob');
     expect(part.attachment.blob.size).toBe(68);

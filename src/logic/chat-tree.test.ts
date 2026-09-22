@@ -20,8 +20,8 @@ describe('chat-tree utils', () => {
     ])('does not reinterpret $content while constructing stored parts', ({ content, thinking }) => {
       const [node] = createBranchFromMessages({ messages: [historyMessage({ role: 'assistant', content: content, thinking: thinking, attachments: undefined, modelId: undefined })] });
       expect(node?.parts).toEqual([
-        ...(thinking === undefined ? [] : [{ id: 'reasoning', type: 'reasoning', text: thinking, completeness: 'complete' }]),
-        { id: 'text', type: 'text', text: content, completeness: 'complete' },
+        ...(thinking === undefined ? [] : [{ type: 'reasoning', text: thinking, completeness: 'complete' }]),
+        { type: 'text', text: content, completeness: 'complete' },
       ]);
       expect(node).not.toHaveProperty('content');
       expect(node).not.toHaveProperty('thinking');
@@ -34,7 +34,7 @@ describe('chat-tree utils', () => {
       const root: MessageNode = {
         id: toMessageId({ raw: 'message-0' }),
         role: 'user',
-        parts: [{ id: 'text', type: 'text', text: '0', completeness: 'complete' }],
+        parts: [{ type: 'text', text: '0', completeness: 'complete' }],
         modelId: undefined, lmParameters: undefined,
         createdAt: 0,
         replies: { items: [] },
@@ -43,7 +43,7 @@ describe('chat-tree utils', () => {
       for (let index = 1; index < depth; index++) {
         const common = {
           id: toMessageId({ raw: `message-${index}` }),
-          parts: [{ id: 'text', type: 'text' as const, text: String(index), completeness: 'complete' as const }],
+          parts: [{ type: 'text' as const, text: String(index), completeness: 'complete' as const }],
           modelId: undefined, lmParameters: undefined,
           createdAt: index, replies: { items: [] },
         };
@@ -128,11 +128,11 @@ describe('chat-tree utils', () => {
 describe('full-part history preservation', () => {
   it('preserves tool call/result identity, state and metadata while assigning fresh message IDs', () => {
     const assistant: MessageNode = { ...historyMessage({ role: 'assistant', content: '', thinking: undefined, modelId: 'm', attachments: undefined }), role: 'assistant', interruption: { type: 'error', message: '日本語' }, parts: [
-      { id: 'empty', type: 'text', text: '', completeness: 'complete' },
-      { id: 'r1', type: 'reasoning', text: '  R\n', completeness: 'partial' },
-      { id: 'c1', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
+      { type: 'text', text: '', completeness: 'complete' },
+      { type: 'reasoning', text: '  R\n', completeness: 'partial' },
+      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
     ] };
-    const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 99, modelId: undefined, lmParameters: undefined, parts: [{ id: 'r', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'executing' } }], replies: { items: [] } };
+    const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 99, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'executing' } }], replies: { items: [] } };
     assistant.replies.items.push(tool, { ...tool, id: toMessageId({ raw: 'sibling' }) });
     const before = JSON.stringify(assistant);
     const nodes = createBranchFromMessages({ messages: [assistant, tool] });
@@ -157,10 +157,10 @@ describe('full-part history preservation', () => {
 
 function historyMessage({ role, content, thinking, attachments, modelId }: { role: 'user' | 'assistant' | 'system'; content: string; thinking: string | undefined; attachments: Attachment[] | undefined; modelId: string | undefined }): MessageNode {
   const common = { id: generateId<MessageId>(), createdAt: 3, replies: { items: [] } };
-  const body = { id: 'text', type: 'text', text: content, completeness: 'complete' } as const;
+  const body = { type: 'text', text: content, completeness: 'complete' } as const;
   switch (role) {
-  case 'user': return { ...common, role, modelId: undefined, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }), parts: [body, ...(attachments ?? []).map((attachment, index) => ({ id: 'a' + index, type: 'attachment' as const, attachment }))] };
-  case 'assistant': return { ...common, role, modelId, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }), interruption: undefined, parts: [...(thinking === undefined ? [] : [{ id: 'reasoning', type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }]), body] };
+  case 'user': return { ...common, role, modelId: undefined, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }), parts: [body, ...(attachments ?? []).map((attachment) => ({ type: 'attachment' as const, attachment }))] };
+  case 'assistant': return { ...common, role, modelId, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }), interruption: undefined, parts: [...(thinking === undefined ? [] : [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }]), body] };
   case 'system': return { ...common, role, modelId: undefined, lmParameters: undefined, parts: [body] };
   default: { const _ex: never = role; throw new Error('Unexpected role: ' + _ex); }
   }

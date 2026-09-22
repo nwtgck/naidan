@@ -98,12 +98,12 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     extra: { modelId?: string; thinking?: string; error?: string; attachments?: Attachment[]; lmParameters?: LmParameters };
   }): MessageNode => {
     const common = { id: toMessageId({ raw: id }), createdAt: Date.now(), replies: { items: replies } };
-    const body = { id: 'text', type: 'text', text: content, completeness: 'complete' } as const;
+    const body = { type: 'text', text: content, completeness: 'complete' } as const;
     switch (role) {
     case 'user': return { ...common, role, modelId: undefined, lmParameters: extra.lmParameters,
-      parts: [body, ...(extra.attachments ?? []).map((attachment, index) => ({ id: `attachment_${index}`, type: 'attachment' as const, attachment }))] };
+      parts: [body, ...(extra.attachments ?? []).map((attachment) => ({ type: 'attachment' as const, attachment }))] };
     case 'assistant': return { ...common, role, modelId: extra.modelId, lmParameters: extra.lmParameters,
-      parts: [...(extra.thinking === undefined ? [] : [{ id: 'reasoning', type: 'reasoning' as const, text: extra.thinking, completeness: 'complete' as const }]), body],
+      parts: [...(extra.thinking === undefined ? [] : [{ type: 'reasoning' as const, text: extra.thinking, completeness: 'complete' as const }]), body],
       interruption: extra.error === undefined ? undefined : { type: 'error', message: extra.error } };
     case 'system': return { ...common, role, modelId: undefined, lmParameters: undefined, parts: [body] };
     default: { const unhandled: never = role; throw new Error(`Unhandled role: ${unhandled}`); }

@@ -120,7 +120,7 @@ it('preserves common generated parts and the next native request through real me
   const request = chatRequest();
   const fixture = createChatFixture({ provider, request, tools: [{ name: 'lookup', description: '', parametersSchema: z.object({}), execute: async () => ({ status: 'success', content: '  result\r\n' }) }], controller: new AbortController(), onToolEvent: () => {}, approvalContext: undefined });
   expect((await fixture.run()).type).toBe('finished');
-  const user: import('@/01-models/types').UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'text', text: 'hello', completeness: 'complete' }], createdAt: 1, lmParameters: undefined, modelId: undefined, replies: { items: [] } };
+  const user: import('@/01-models/types').UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }], createdAt: 1, lmParameters: undefined, modelId: undefined, replies: { items: [] } };
   let branch = user.replies;
   for (const node of fixture.nodes) {
     branch.items.push(node);branch = node.replies;

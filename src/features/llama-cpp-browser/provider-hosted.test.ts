@@ -45,15 +45,15 @@ describe('local model provider', () => {
     service.listModels.mockResolvedValue([{ id: 'user/local-GGUF', name: 'local-GGUF', size: 100, importedAt: 1 }]);
     expect(await new LlamaCppBrowserProvider().listModels({ signal: undefined })).toEqual(['local-GGUF']);
     const request = chatRequest(); request.model = 'local-GGUF';
-    request.messages = [{ id: toMessageId({ raw: 's' }), role: 'system', parts: [{ id: 'p', type: 'text', text: 'rules', completeness: 'complete' }] },
-      { id: toMessageId({ raw: 'u' }), role: 'user', parts: ['first ', 'second'].map((text, index) => ({ id: `p${index}`, type: 'text', text, completeness: 'complete' })) }];
+    request.messages = [{ id: toMessageId({ raw: 's' }), role: 'system', parts: [{ type: 'text', text: 'rules', completeness: 'complete' }] },
+      { id: toMessageId({ raw: 'u' }), role: 'user', parts: ['first ', 'second'].map((text) => ({ type: 'text', text, completeness: 'complete' })) }];
     expect((await read({ request })).text).toBe('done');
     expect(service.generate.mock.calls[0]?.[0].input.messages).toEqual([{ role: 'system', content: 'rules' }, { role: 'user', content: 'first second' }]);
     expect(service.generate.mock.calls[0]?.[0].input.model).toBe('local-GGUF');
   });
   it('rejects remote image references instead of fetching arbitrary resources', async () => {
     const fetcher = vi.spyOn(globalThis, 'fetch'); const request = chatRequest();
-    request.messages = [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'attachment', attachment: {
+    request.messages = [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'attachment', attachment: {
       id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'https://private.invalid/image.png' }), originalName: 'x', size: 1, uploadedAt: 1, mimeType: 'image/png', status: 'missing',
     } }] }];
     expect((await read({ request })).result.type).toBe('error'); expect(service.generate).not.toHaveBeenCalled(); expect(fetcher).not.toHaveBeenCalled();fetcher.mockRestore();
@@ -61,15 +61,15 @@ describe('local model provider', () => {
   it('preserves ordered local image and text parts across the worker boundary', async () => {
     const request = chatRequest(); const blob = new Blob(['image'], { type: 'image/png' });
     request.messages = [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [
-      { id: 'p1', type: 'text', text: 'before', completeness: 'complete' },
-      { id: 'p2', type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x', size: blob.size, uploadedAt: 1, mimeType: blob.type, status: 'memory', blob } },
-      { id: 'p3', type: 'text', text: 'after', completeness: 'complete' },
+      { type: 'text', text: 'before', completeness: 'complete' },
+      { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x', size: blob.size, uploadedAt: 1, mimeType: blob.type, status: 'memory', blob } },
+      { type: 'text', text: 'after', completeness: 'complete' },
     ] }];
     await read({ request });
     expect(service.generate.mock.calls[0]?.[0].input.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: 'before' }, { type: 'image', blob }, { type: 'text', text: 'after' }] }]);
   });
   it('does not turn an unmatched tool-role result into ordinary assistant text', async () => {
-    const request = chatRequest(); request.messages = [{ id: toMessageId({ raw: 't' }), role: 'tool', parts: [{ id: 'p', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'unknown' }), status: 'success', content: { type: 'text', text: 'private tool result' } } }] }];
+    const request = chatRequest(); request.messages = [{ id: toMessageId({ raw: 't' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'unknown' }), status: 'success', content: { type: 'text', text: 'private tool result' } } }] }];
     expect((await read({ request })).result.type).toBe('error'); expect(service.generate).not.toHaveBeenCalled();
   });
   it('does not start generation for an already aborted request', async () => {

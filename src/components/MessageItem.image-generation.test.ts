@@ -84,7 +84,7 @@ describe('MessageItem Image Generation', () => {
     id: '1',
     role: 'assistant' as const,
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,
@@ -523,7 +523,7 @@ describe('MessageItem Image Generation', () => {
       id: '1',
       role: 'assistant' as const,
       replies: { items: [] },
-      parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+      parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
       createdAt: Date.now(),
       modelId: undefined,
       lmParameters: undefined,
@@ -547,7 +547,7 @@ describe('MessageItem Image Generation', () => {
     await wrapper.setProps({
       message: {
         ...message,
-        parts: [{ id: 'text', type: 'text', text: content + '\n\nMore text added to message.', completeness: 'complete' }],
+        parts: [{ type: 'text', text: content + '\n\nMore text added to message.', completeness: 'complete' }],
       },
     });
 

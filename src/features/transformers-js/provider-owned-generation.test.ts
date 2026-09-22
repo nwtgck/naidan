@@ -102,7 +102,7 @@ afterEach(async () => {
 describe('hosted structured generation with the real service lane', () => {
   it('loads only when read, projects parts and uses the structured worker method', async () => {
     const f = fixture(); const c = new AbortController();
-    const user: ChatMessage = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'text', text: '<think>literal</think> ', completeness: 'complete' }] };
+    const user: ChatMessage = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: '<think>literal</think> ', completeness: 'complete' }] };
     const items = f.provider.chat(request({ signal: c.signal, model: 'fixture/model', messages: [user] }));
     expect(f.client.loadDownloadedModel).not.toHaveBeenCalled();
     const r = await collectChatGeneration({ items, abortController: c });
@@ -113,7 +113,7 @@ describe('hosted structured generation with the real service lane', () => {
 
   it('snapshots content, reasoning, tools and settings at chat invocation', async () => {
     const f = fixture(); const c = new AbortController();
-    const a: Extract<ChatMessage, { role: 'assistant' }> = { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ id: 'r', type: 'reasoning', text: '  R\n', completeness: 'complete' }] };
+    const a: Extract<ChatMessage, { role: 'assistant' }> = { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ type: 'reasoning', text: '  R\n', completeness: 'complete' }] };
     const parameters = { ...EMPTY_LM_PARAMETERS, stop: ['STOP'] }; const tools = [{ name: 'f', description: 'before', parameters: { type: 'object' } }];
     const input: Parameters<LmProvider['chat']>[0] = { ...request({ signal: c.signal, model: 'fixture/model', messages: [a] }), parameters, tools };
     const items = f.provider.chat(input);
@@ -315,7 +315,7 @@ describe('hosted structured generation with the real service lane', () => {
 
   it('rejects a nonimage attachment before loading a model or reading its bytes', async () => {
     const f = fixture(); const c = new AbortController(); const read = vi.fn(async () => new Blob(['text']));
-    const user: ChatMessage = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'attachment', attachment: {
+    const user: ChatMessage = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'attachment', attachment: {
       id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'text', mimeType: 'text/plain', size: 4, uploadedAt: 1, status: 'persisted',
     } }] };
     const r = await collectChatGeneration({ items: f.provider.chat({ ...request({ signal: c.signal, model: 'fixture/m', messages: [user] }), readBinaryObject: read }), abortController: c });
@@ -462,7 +462,7 @@ describe('hosted structured generation with the real service lane', () => {
     const read = vi.fn(async () => {
       throw failure;
     });
-    const user: ChatMessage = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'attachment', attachment: {
+    const user: ChatMessage = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'attachment', attachment: {
       id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image', mimeType: 'image/png', size: 4, uploadedAt: 1, status: 'persisted',
     } }] };
     const result = await collectChatGeneration({ items: f.provider.chat({ ...request({ signal: c.signal, model: 'fixture/m', messages: [user] }), readBinaryObject: read }), abortController: c });

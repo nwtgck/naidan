@@ -31,11 +31,11 @@ import { commitFullHistoryManipulationForChat, editMessageForChat, forkChatForCh
 
 function fixture(): { chat: Chat, user: MessageNode, assistant: AssistantMessageNode } {
   const assistant: AssistantMessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 2, modelId: 'm', lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['STOP'], reasoning: { effort: 'high' } }, interruption: { type: 'error', message: '記録済みの理由' }, parts: [
-    { id: 'reason', type: 'reasoning', text: '  R\n', completeness: 'complete' },
-    { id: 'body', type: 'text', text: '<think>literal</think>A ', completeness: 'partial' },
-    { id: 'call', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "n": 1 }' } } },
+    { type: 'reasoning', text: '  R\n', completeness: 'complete' },
+    { type: 'text', text: '<think>literal</think>A ', completeness: 'partial' },
+    { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "n": 1 }' } } },
   ], replies: { items: [] } };
-  const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ id: 'body', type: 'text', text: 'question', completeness: 'complete' }], replies: { items: [assistant] } };
+  const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'question', completeness: 'complete' }], replies: { items: [assistant] } };
   const chat = reactive<Chat>({ id: toChatId({ raw: 'chat' }), title: 'Original', root: { items: [user] }, currentLeafId: assistant.id, createdAt: 1, updatedAt: 1, debugEnabled: false });
   state.current = chat;
   const actualUser = chat.root.items[0]!, actualAssistant = actualUser.replies.items[0]!;
@@ -71,7 +71,7 @@ describe('parts history branches', () => {
     const edited = '<think>literal edit</think> B \n';
     await editMessageForChat({ chatId: chat.id, messageId: assistant.id, newContent: edited, lmParameters: undefined });
     expect(user.replies.items).toHaveLength(2); const copy = user.replies.items[1]!;
-    expect(copy.id).not.toBe(assistant.id); expect(copy.parts).toEqual([{ id: 'text', type: 'text', text: edited, completeness: 'complete' }]);
+    expect(copy.id).not.toBe(assistant.id); expect(copy.parts).toEqual([{ type: 'text', text: edited, completeness: 'complete' }]);
     expect(copy.role === 'assistant' && copy.interruption).toBeUndefined();
     expect(JSON.stringify(assistant)).toBe(before);
     expect(chat.currentLeafId).toBe(copy.id);
@@ -81,7 +81,7 @@ describe('parts history branches', () => {
   it('user resend forwards attachment parts and chosen parameters', async () => {
     const { chat, user } = fixture(); if (user.role !== 'user') throw new Error('Wrong user');
     const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'f', size: 1, mimeType: 'image/png', uploadedAt: 1, status: 'memory' as const, blob: new Blob(['x']) };
-    user.parts.push({ id: 'a', type: 'attachment', attachment });
+    user.parts.push({ type: 'attachment', attachment });
     const parameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' as const } };
     await editMessageForChat({ chatId: chat.id, messageId: user.id, newContent: 'new', lmParameters: parameters });
     expect(state.sent).toHaveBeenCalledWith({ targetChat: chat, content: 'new', parentId: null, attachments: [attachment], lmParameters: parameters });
@@ -101,7 +101,7 @@ describe('parts history branches', () => {
   });
   it('commits an entire parts path without flattening tool results or rewriting original nodes', async () => {
     const { chat, user, assistant } = fixture();
-    const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined, parts: [{ id: 'result', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'success', content: { type: 'text', text: '  observed\n' } } }], replies: { items: [] } };
+    const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'success', content: { type: 'text', text: '  observed\n' } } }], replies: { items: [] } };
     assistant.replies.items.push(tool);
     const original = JSON.stringify(chat.root.items);
     const prompt = { behavior: 'append', content: '  instructions\n' } as const;
@@ -120,7 +120,7 @@ describe('parts history branches', () => {
     const { chat, user, assistant } = fixture();
     if (user.role !== 'user') throw new Error('Expected user');
     const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory' as const, blob: new Blob(['x']) };
-    user.parts.push({ id: 'image', type: 'attachment', attachment });
+    user.parts.push({ type: 'attachment', attachment });
     state.persistBinary = true;
     let finish!: () => void;
     state.saveFile.mockImplementationOnce(() => new Promise<void>(resolve => {
@@ -144,7 +144,7 @@ describe('parts history branches', () => {
   it('retains an unsaved attachment body if persistence fails', async () => {
     const { chat, user } = fixture(); if (user.role !== 'user') throw new Error('Expected user');
     const blob = new Blob(['original']);
-    user.parts.push({ id: 'image', type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: blob.size, uploadedAt: 1, status: 'memory', blob } });
+    user.parts.push({ type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: blob.size, uploadedAt: 1, status: 'memory', blob } });
     state.persistBinary = true; state.saveFile.mockRejectedValueOnce(new Error('disk full'));
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
@@ -166,7 +166,7 @@ describe('parts history branches', () => {
 
   it('keeps an awaiting history commit bound to its original chat after navigation', async () => {
     const { chat, user } = fixture(); if (user.role !== 'user') throw new Error('Expected user');
-    user.parts.push({ id: 'image', type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) } });
+    user.parts.push({ type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) } });
     state.persistBinary = true;
     let finish!: () => void;
     state.saveFile.mockImplementationOnce(() => new Promise<void>(resolve => {

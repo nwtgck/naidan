@@ -30,8 +30,8 @@ function message({ blob }: { blob: Blob | undefined }): UserMessageNode {
     originalName: 'local.png', mimeType: 'image/png', size: 68, uploadedAt: 0 };
   return { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
     parts: [
-      { id: 'p', type: 'text', text: 'A local image', completeness: 'complete' },
-      { id: 'a', type: 'attachment', attachment: blob === undefined ? { ...base, status: 'persisted' } : { ...base, status: 'memory', blob } },
+      { type: 'text', text: 'A local image', completeness: 'complete' },
+      { type: 'attachment', attachment: blob === undefined ? { ...base, status: 'persisted' } : { ...base, status: 'memory', blob } },
     ], replies: { items: [] } };
 }
 function mountOwner({ messages, showMessage }: { messages: UserMessageNode[]; showMessage: boolean }) {

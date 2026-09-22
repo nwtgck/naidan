@@ -53,7 +53,7 @@ function recordSyntheticAppliedPartBoundary() {
     // Worker callback. This is a late-event integrity fixture, not inference.
     callbacks.push(({ chunk }) => trace.observeAssistant({ message: {
       id: toMessageId({ raw: 'capture_assistant_0' }), role: 'assistant', createdAt: 0,
-      parts: [{ id: 'late_part', type: 'text', text: chunk, completeness: 'partial' }],
+      parts: [{ type: 'text', text: chunk, completeness: 'partial' }],
       replies: { items: [] }, modelId: undefined, lmParameters: undefined, interruption: undefined,
     } }));
     return trace;

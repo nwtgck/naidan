@@ -8,7 +8,7 @@ describe('searchChatTree', () => {
     id: toMessageId({ raw: id }),
     role: 'user',
     modelId: undefined, lmParameters: undefined,
-    parts: [{ id: 'text', type: 'text', text: content, completeness: 'complete' }],
+    parts: [{ type: 'text', text: content, completeness: 'complete' }],
     replies: { items: replies },
     createdAt: Date.now(),
   });
@@ -98,7 +98,7 @@ describe('searchLinearBranch', () => {
     id: toMessageId({ raw: id }),
     role: 'user',
     modelId: undefined, lmParameters: undefined,
-    parts: [{ id: 'text', type: 'text', text: content, completeness: 'complete' }],
+    parts: [{ type: 'text', text: content, completeness: 'complete' }],
     replies: { items: replies },
     createdAt: Date.now(),
   });

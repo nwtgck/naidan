@@ -12,6 +12,7 @@ const legacyEventSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('assistant-start'), sequence: z.number().int().nonnegative(), phase: z.literal('before-settlement') }).strict(),
   z.object({ kind: z.literal('chunk'), chunk: z.string(), sequence: z.number().int().nonnegative(), phase: z.literal('before-settlement') }).strict(),
 ]);
+// These IDs correlate private capture observations, not persisted/domain parts.
 const textPartSchema = z.object({ id: z.string().min(1), type: z.literal('text'), text: z.string(), completeness: z.enum(['complete', 'partial']) }).strict();
 const assistantPartsSchema = z.object({ role: z.literal('assistant'), parts: z.tuple([textPartSchema]) }).strict();
 const inputSchema = z.object({ messages: z.array(z.json()), tools: z.json(), parameters: z.json() }).strict();
@@ -97,8 +98,8 @@ export function verifySingleTextPartsObservation({ recordedEvents, invocation, c
   expect(observedEvents, 'plain-text parts, every native delivery and native termination').toEqual(expected);
 }
 
-/** Compare the inert old input shape only after checking that current parts are
- * exactly the caller's preceding applied history, including IDs/completeness.
+/** Compare the inert old input shape only after checking that capture parts are
+ * exactly the caller's preceding applied history, including observation IDs/completeness.
  * This is a test projection; neither the real request nor stored data changes. */
 export function projectSingleTextReplayInput({ input, precedingEvents }: {
   input: unknown;

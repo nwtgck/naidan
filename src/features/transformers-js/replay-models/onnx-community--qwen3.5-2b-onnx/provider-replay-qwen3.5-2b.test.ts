@@ -63,7 +63,7 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       unhandled satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ChatMessage, { role: typeof role }>>()({
         id: messageId, role,
-        parts: [{ id: `message_${index}_text`, type: 'text', text: content, completeness: 'complete' }],
+        parts: [{ type: 'text', text: content, completeness: 'complete' }],
       });
     }
     case 'assistant': {
@@ -72,9 +72,9 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       return exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
         id: messageId, role,
         parts: [
-          ...(content.length === 0 ? [] : [{ id: `message_${index}_text`, type: 'text' as const, text: content, completeness: 'complete' as const }]),
-          ...(tool_calls ?? []).map((toolCall, callIndex) => ({
-            id: `message_${index}_call_${callIndex}`, type: 'tool_call' as const,
+          ...(content.length === 0 ? [] : [{ type: 'text' as const, text: content, completeness: 'complete' as const }]),
+          ...(tool_calls ?? []).map((toolCall) => ({
+            type: 'tool_call' as const,
             toolCall: {
               id: typeof toolCall.id === 'string' ? toToolCallId({ raw: toolCall.id }) : toolCall.id, type: toolCall.type,
               function: { name: toolCall.function.name, arguments: toolCall.function.arguments },
@@ -88,7 +88,7 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       unhandled satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ChatMessage, { role: 'tool' }>>()({
         id: messageId, role,
-        parts: [{ id: `message_${index}_result`, type: 'tool_result', result: {
+        parts: [{ type: 'tool_result', result: {
           toolCallId: typeof tool_call_id === 'string' ? toToolCallId({ raw: tool_call_id }) : tool_call_id,
           status: 'success', content: { type: 'text', text: content },
         } }],
@@ -106,8 +106,8 @@ function textMessage({ id, role, text }: { id: string; role: 'user' | 'assistant
 function imageMessage({ id, text, dataUrl }: { id: string; text: string; dataUrl: string }): ChatMessage {
   return {
     id: toMessageId({ raw: id }), role: 'user', parts: [
-      { id: `${id}_text`, type: 'text', text, completeness: 'complete' },
-      { id: `${id}_image`, type: 'attachment', attachment: createReplayImageAttachment({ dataUrl }) },
+      { type: 'text', text, completeness: 'complete' },
+      { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl }) },
     ],
   };
 }

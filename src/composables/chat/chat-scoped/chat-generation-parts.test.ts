@@ -62,7 +62,7 @@ import { generateResponseForAssistant, regenerateMessageForChat } from './chat-g
 
 function createChat(): { chat: Chat, assistant: AssistantMessageNode } {
   const assistant: AssistantMessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 2, parts: [], interruption: undefined, modelId: 'm', lmParameters: undefined, replies: { items: [] } };
-  const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, parts: [{ id: 'p', type: 'text', text: 'question', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [assistant] } };
+  const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, parts: [{ type: 'text', text: 'question', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [assistant] } };
   const chat = reactive<Chat>({ id: toChatId({ raw: 'chat' }), title: null, root: { items: [user] }, currentLeafId: assistant.id, createdAt: 1, updatedAt: 1, debugEnabled: false });
   const node = chat.root.items[0]!.replies.items[0]!;
   if (node.role !== 'assistant') throw new Error('Invalid fixture');
@@ -176,7 +176,7 @@ describe('chat generation ownership and failure boundaries', () => {
     state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined); state.title.mockResolvedValue(undefined);
   });
   it('does not open an existing partial assistant as a new generation', async () => {
-    const fixture = createChat(); fixture.assistant.parts = [{ id: 'p', type: 'text', text: 'old', completeness: 'partial' }];
+    const fixture = createChat(); fixture.assistant.parts = [{ type: 'text', text: 'old', completeness: 'partial' }];
     fixture.assistant.interruption = { type: 'cancelled' };
     const before = JSON.stringify(fixture.assistant);
     await expect(run(fixture)).rejects.toThrow(/cannot be resumed/);
@@ -224,18 +224,18 @@ function createToolRetryFixture({ results }: { results: ToolExecutionResult[] })
 } {
   const fixture = createChat();
   fixture.assistant.parts = results.map((result, index) => ({
-    id: `call_${index}`, type: 'tool_call',
+    type: 'tool_call',
     toolCall: { id: result.toolCallId, type: 'function', function: { name: 'calculator', arguments: `{"value":${index}}` } },
   }));
   const stopped: AssistantMessageNode = {
     id: toMessageId({ raw: 'stopped-answer' }), role: 'assistant', createdAt: 0,
-    parts: [{ id: 'partial-answer', type: 'text', text: '<think>stopped answer', completeness: 'partial' }],
+    parts: [{ type: 'text', text: '<think>stopped answer', completeness: 'partial' }],
     modelId: 'm', lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.25 },
     interruption: { type: 'cancelled' }, replies: { items: [] },
   };
   fixture.assistant.replies.items.push({
     id: toMessageId({ raw: 'tool-results' }), role: 'tool', createdAt: 3,
-    parts: results.map((result, index) => ({ id: `result_${index}`, type: 'tool_result', result })),
+    parts: results.map((result) => ({ type: 'tool_result', result })),
     modelId: undefined, lmParameters: undefined, replies: { items: [stopped] },
   });
   const tool = fixture.assistant.replies.items[0]!;

@@ -20,9 +20,9 @@ function attachment({ status }: { status: 'persisted' | 'missing' }): Attachment
 describe('collectChatMedia', () => {
   it('collects attachments and each body block in part order without changing original text', () => {
     const parts: UserMessageNode['parts'] = [
-      { id: 'before', type: 'text', text: imageBlock({ id: 'generated-before' }), completeness: 'partial' },
-      { id: 'file', type: 'attachment', attachment: attachment({ status: 'persisted' }) },
-      { id: 'after', type: 'text', text: imageBlock({ id: 'generated-after' }), completeness: 'complete' },
+      { type: 'text', text: imageBlock({ id: 'generated-before' }), completeness: 'partial' },
+      { type: 'attachment', attachment: attachment({ status: 'persisted' }) },
+      { type: 'text', text: imageBlock({ id: 'generated-after' }), completeness: 'complete' },
     ];
     const message = user({ id: 'u', parts, createdAt: 10 });
     const before = structuredClone(message);
@@ -36,8 +36,8 @@ describe('collectChatMedia', () => {
   });
 
   it('uses distinct stable view IDs for repeated binary references and different messages', () => {
-    const a = user({ id: 'a', createdAt: 0, parts: [{ id: 'same', type: 'text', text: imageBlock({ id: 'same-binary' }) + imageBlock({ id: 'same-binary' }), completeness: 'complete' }] });
-    const b = user({ id: 'b', createdAt: 1, parts: [{ id: 'same', type: 'text', text: imageBlock({ id: 'same-binary' }), completeness: 'complete' }] });
+    const a = user({ id: 'a', createdAt: 0, parts: [{ type: 'text', text: imageBlock({ id: 'same-binary' }) + imageBlock({ id: 'same-binary' }), completeness: 'complete' }] });
+    const b = user({ id: 'b', createdAt: 1, parts: [{ type: 'text', text: imageBlock({ id: 'same-binary' }), completeness: 'complete' }] });
     const items = collectChatMedia({ messages: [a, b], order: 'forward' }).flatMap(group => group.items);
     expect(new Set(items.map(item => item.id)).size).toBe(3);
     const reversed = collectChatMedia({ messages: [a, b], order: 'reverse' });
@@ -45,14 +45,29 @@ describe('collectChatMedia', () => {
     expect(reversed[1]?.items.map(item => item.id)).toEqual([items[2]?.id, items[1]?.id]);
   });
 
+  it('keeps image occurrence identity when earlier parts are inserted or removed', () => {
+    const file = attachment({ status: 'persisted' });
+    const message = user({ id: 'u', createdAt: 1, parts: [
+      { type: 'attachment', attachment: file },
+      { type: 'attachment', attachment: file },
+      { type: 'text', text: imageBlock({ id: 'same-binary' }), completeness: 'partial' },
+    ] });
+    const before = collectChatMedia({ messages: [message], order: 'forward' })[0]!.items;
+    expect(new Set(before.map(item => item.id)).size).toBe(3);
+    message.parts.unshift({ type: 'text', text: '', completeness: 'partial' });
+    expect(collectChatMedia({ messages: [message], order: 'forward' })[0]!.items.map(item => item.id)).toEqual(before.map(item => item.id));
+    message.parts.splice(1, 1);
+    expect(collectChatMedia({ messages: [message], order: 'forward' })[0]!.items.map(item => item.id)).toEqual(before.slice(1).map(item => item.id));
+  });
+
   it('does not join a split metadata fence or parse reasoning as generated images', () => {
     const block = imageBlock({ id: 'not-an-image' }); const middle = Math.floor(block.length / 2);
     const message: MessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 1,
       modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] },
       parts: [
-        { id: 'r', type: 'reasoning', text: block, completeness: 'complete' },
-        { id: 'one', type: 'text', text: block.slice(0, middle), completeness: 'complete' },
-        { id: 'two', type: 'text', text: block.slice(middle), completeness: 'complete' },
+        { type: 'reasoning', text: block, completeness: 'complete' },
+        { type: 'text', text: block.slice(0, middle), completeness: 'complete' },
+        { type: 'text', text: block.slice(middle), completeness: 'complete' },
       ] };
     expect(collectChatMedia({ messages: [message], order: 'forward' })).toEqual([]);
   });
@@ -62,7 +77,7 @@ describe('collectChatMedia', () => {
 \`\`\`naidan_experimental_image
 invalid-json
 \`\`\``;
-    const message = user({ id: 'u', createdAt: 1, parts: [{ id: 'p', type: 'text', text: raw, completeness: 'partial' }] });
+    const message = user({ id: 'u', createdAt: 1, parts: [{ type: 'text', text: raw, completeness: 'partial' }] });
     const groups = collectChatMedia({ messages: [message], order: 'forward' });
     expect(groups[0]?.items).toHaveLength(1);
     expect(message.parts[0]).toMatchObject({ text: raw, completeness: 'partial' });
@@ -73,9 +88,9 @@ invalid-json
     const blob = new Blob(['image'], { type: 'image/png' });
     const memory: Attachment = { ...persisted, status: 'memory', blob };
     const message = user({ id: 'u', createdAt: 1, parts: [
-      { id: 'missing', type: 'attachment', attachment: attachment({ status: 'missing' }) },
-      { id: 'document', type: 'attachment', attachment: { ...persisted, mimeType: 'text/plain' } },
-      { id: 'memory', type: 'attachment', attachment: memory },
+      { type: 'attachment', attachment: attachment({ status: 'missing' }) },
+      { type: 'attachment', attachment: { ...persisted, mimeType: 'text/plain' } },
+      { type: 'attachment', attachment: memory },
     ] });
     const groups = collectChatMedia({ messages: [message], order: 'forward' });
     expect(groups[0]?.items).toHaveLength(1);

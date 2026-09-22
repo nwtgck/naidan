@@ -236,10 +236,10 @@ Calculate.<|im_end|>
     expect(await operation).toEqual({ type: 'finished', next: 'tool_results' });
     const call = node.parts.find(p => p.type === 'tool_call'); if (!call) throw new Error('Expected a native completed call.');
     const tool: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'result', type: 'tool_result', result: { toolCallId: call.toolCall.id, status: 'success', content: { type: 'text', text: '391' } } }], replies: { items: [] } };
+      parts: [{ type: 'tool_result', result: { toolCallId: call.toolCall.id, status: 'success', content: { type: 'text', text: '391' } } }], replies: { items: [] } };
     node.replies.items.push(tool);
     const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'question', type: 'text', text: 'Calculate.', completeness: 'complete' }], replies: { items: [node] } };
+      parts: [{ type: 'text', text: 'Calculate.', completeness: 'complete' }], replies: { items: [node] } };
     const chat: ChatContent = { root: { items: [user] }, currentLeafId: tool.id };
     const storage = new MemoryStorageProvider(); const id = toChatId({ raw: 'qwen-native' });
     await storage.saveChatContent({ id, content: chat }); const loaded = await storage.loadChatContent({ id }); if (!loaded) throw new Error('Expected saved content.');

@@ -19,9 +19,9 @@ function find({ messages, query }: { messages: MessageNode[]; query: string }) {
 describe('parts-backed chat search', () => {
   it('finds each body part and uses node creation time without changing the source', () => {
     const message = assistant({ parts: [
-      { id: 'reason', type: 'reasoning', text: 'private reasoning word', completeness: 'complete' },
-      { id: 'one', type: 'text', text: '  First body. ', completeness: 'complete' },
-      { id: 'two', type: 'text', text: 'Second 🙂 body.', completeness: 'partial' },
+      { type: 'reasoning', text: 'private reasoning word', completeness: 'complete' },
+      { type: 'text', text: '  First body. ', completeness: 'complete' },
+      { type: 'text', text: 'Second 🙂 body.', completeness: 'partial' },
     ] });
     const before = structuredClone(message);
     const results = find({ messages: [message], query: 'SECOND' });
@@ -32,8 +32,8 @@ describe('parts-backed chat search', () => {
 
   it('keeps AND matching across text parts without inventing words at a part boundary', () => {
     const message = assistant({ parts: [
-      { id: 'one', type: 'text', text: 'Alpha', completeness: 'complete' },
-      { id: 'two', type: 'text', text: 'Beta', completeness: 'complete' },
+      { type: 'text', text: 'Alpha', completeness: 'complete' },
+      { type: 'text', text: 'Beta', completeness: 'complete' },
     ] });
     expect(find({ messages: [message], query: 'alpha beta' })).toHaveLength(1);
     expect(find({ messages: [message], query: 'alphabeta' })).toHaveLength(0);
@@ -42,9 +42,9 @@ describe('parts-backed chat search', () => {
 
   it('searches literal think tags as text but does not expand body search to reasoning or calls', () => {
     const message = assistant({ parts: [
-      { id: 'reason', type: 'reasoning', text: 'reasoning-only', completeness: 'partial' },
-      { id: 'literal', type: 'text', text: '<think>literal-only</think> body', completeness: 'partial' },
-      { id: 'call', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'function-only', arguments: '{"private-argument":true}' } } },
+      { type: 'reasoning', text: 'reasoning-only', completeness: 'partial' },
+      { type: 'text', text: '<think>literal-only</think> body', completeness: 'partial' },
+      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'function-only', arguments: '{"private-argument":true}' } } },
     ] });
     expect(find({ messages: [message], query: '<think>literal-only' })).toHaveLength(1);
     for (const query of ['reasoning-only', 'function-only', 'private-argument']) {
@@ -53,10 +53,10 @@ describe('parts-backed chat search', () => {
   });
 
   it('keeps role, selected-thread, and deepest-leaf behavior with parts', () => {
-    const child = assistant({ parts: [{ id: 'p', type: 'text', text: 'shared', completeness: 'complete' }] });
+    const child = assistant({ parts: [{ type: 'text', text: 'shared', completeness: 'complete' }] });
     const parent: MessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1,
       modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'p', type: 'text', text: 'shared', completeness: 'complete' }], replies: { items: [child] } };
+      parts: [{ type: 'text', text: 'shared', completeness: 'complete' }], replies: { items: [child] } };
     const results = searchChatTree({ root: { items: [parent] }, query: 'shared', chatId: toChatId({ raw: 'chat' }),
       activeBranchIds: new Set([parent.id]), roleFilter: 'all' });
     expect(results.map(item => [item.messageId, item.targetLeafId, item.isCurrentThread])).toEqual([
@@ -66,9 +66,9 @@ describe('parts-backed chat search', () => {
   });
 
   it('returns no body matches from empty text or tool results', () => {
-    const empty = assistant({ parts: [{ id: 'p', type: 'text', text: '', completeness: 'complete' }] });
+    const empty = assistant({ parts: [{ type: 'text', text: '', completeness: 'complete' }] });
     const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'p', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: 'result-only' } } }], replies: { items: [] } };
+      parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: 'result-only' } } }], replies: { items: [] } };
     expect(find({ messages: [empty, tool], query: 'result-only' })).toHaveLength(0);
   });
 
@@ -77,8 +77,8 @@ describe('parts-backed chat search', () => {
     await storage.init();
     const chatId = toChatId({ raw: 'persisted-search' });
     const message = assistant({ parts: [
-      { id: 'r', type: 'reasoning', text: 'not-indexed', completeness: 'complete' },
-      { id: 'p', type: 'text', text: '保存された🙂回答', completeness: 'partial' },
+      { type: 'reasoning', text: 'not-indexed', completeness: 'complete' },
+      { type: 'text', text: '保存された🙂回答', completeness: 'partial' },
     ] });
     await storage.saveChatContent({ id: chatId, content: { currentLeafId: message.id, root: { items: [message] } } });
     const worker = createGlobalSearchWorker();

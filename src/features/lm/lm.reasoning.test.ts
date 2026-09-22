@@ -14,7 +14,7 @@ const finishedOllama = '{"done":true}\n';
 function request({ parameters }: { parameters: LmParameters | undefined }): Parameters<LmProvider['chat']>[0] {
   return {
     debug: undefined,
-    messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'text', text: 'Hi', completeness: 'complete' }] }],
+    messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }] }],
     model: 'test-model', parameters, tools: undefined, readBinaryObject: undefined, signal: undefined,
   };
 }

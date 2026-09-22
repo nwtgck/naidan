@@ -34,7 +34,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         lmParameters: undefined,
         modelId: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: 'Calc', completeness: 'complete' as const }, ...([]).map((attachment, index) => ({ id: `attachment-${index}`, type: 'attachment' as const, attachment }))],
+        parts: [{ type: 'text' as const, text: 'Calc', completeness: 'complete' as const }, ...([]).map((attachment) => ({ type: 'attachment' as const, attachment }))],
         createdAt: 0,
       } as MessageNode,
       {
@@ -43,7 +43,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: 'm',
         lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: '<think>T1</think>', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'c', arguments: '{}' } }]).map((toolCall, index) => ({ id: `tool_call-${index}`, type: 'tool_call' as const, toolCall }))],
+        parts: [{ type: 'text' as const, text: '<think>T1</think>', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'c', arguments: '{}' } }]).map((toolCall) => ({ type: 'tool_call' as const, toolCall }))],
         createdAt: 0,
         interruption: undefined,
       } as MessageNode,
@@ -53,7 +53,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: undefined,
         lmParameters: undefined,
-        parts: [...([{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R1' } }]).map((result, index) => ({ id: `tool_result-${index}`, type: 'tool_result' as const, result }))],
+        parts: [...([{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R1' } }]).map((result) => ({ type: 'tool_result' as const, result }))],
         createdAt: 0,
       } as MessageNode,
       {
@@ -62,7 +62,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: 'm',
         lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: '<think>TM</think>Body', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tcm' }), type: 'function' as const, function: { name: 'c', arguments: '{}' } }]).map((toolCall, index) => ({ id: `tool_call-${index}`, type: 'tool_call' as const, toolCall }))],
+        parts: [{ type: 'text' as const, text: '<think>TM</think>Body', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tcm' }), type: 'function' as const, function: { name: 'c', arguments: '{}' } }]).map((toolCall) => ({ type: 'tool_call' as const, toolCall }))],
         createdAt: 0,
         interruption: undefined,
       } as MessageNode,
@@ -72,7 +72,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: undefined,
         lmParameters: undefined,
-        parts: [...([{ toolCallId: toToolCallId({ raw: 'tcm' }), status: 'success', content: { type: 'text', text: 'RM' } }]).map((result, index) => ({ id: `tool_result-${index}`, type: 'tool_result' as const, result }))],
+        parts: [...([{ toolCallId: toToolCallId({ raw: 'tcm' }), status: 'success', content: { type: 'text', text: 'RM' } }]).map((result) => ({ type: 'tool_result' as const, result }))],
         createdAt: 0,
       } as MessageNode,
       {
@@ -81,7 +81,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: 'm',
         lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: '<think>TL</think>End', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: '<think>TL</think>End', completeness: 'complete' as const }],
         createdAt: 0,
         interruption: undefined,
       } as MessageNode,
@@ -107,7 +107,7 @@ describe('useChatDisplayFlow complex scenario', () => {
       },
       {
         type: 'process_sequence',
-        id: `seq-${JSON.stringify(['a1', JSON.stringify(['text', 0])])}`,
+        id: expect.any(String),
         isFirstInTurn: true,
         stats: {
           thinkingSteps: 2,
@@ -137,7 +137,7 @@ describe('useChatDisplayFlow complex scenario', () => {
       },
       {
         type: 'process_sequence',
-        id: `seq-${JSON.stringify(['am', JSON.stringify(['tool_call-0'])])}`,
+        id: expect.any(String),
         isFirstInTurn: false,
         stats: {
           thinkingSteps: 1,
@@ -167,6 +167,22 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     expect(result).toEqual(expected);
+
+    // Sequence identity follows its first display item, not a persisted part ID.
+    const sequences = chatFlow.value.filter(item => item.type === 'process_sequence');
+    expect(sequences).toHaveLength(2);
+    expect(new Set(sequences.map(sequence => sequence.id)).size).toBe(2);
+    for (const sequence of sequences) {
+      const first = sequence.items[0];
+      if (first?.type !== 'message') throw new Error('Expected each sequence to start with a message');
+      expect(sequence.id).toBe(`seq-${first.key}`);
+    }
+
+    const repeated = useChatDisplayFlow({
+      chat: createChat(messages),
+      isProcessing: () => false,
+    });
+    expect(repeated.chatFlow.value).toEqual(chatFlow.value);
   });
 
   it('correctly handles streaming state with active thinking and waiting', () => {
@@ -177,7 +193,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         lmParameters: undefined,
         modelId: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: 'Hi', completeness: 'complete' as const }, ...([]).map((attachment, index) => ({ id: `attachment-${index}`, type: 'attachment' as const, attachment }))],
+        parts: [{ type: 'text' as const, text: 'Hi', completeness: 'complete' as const }, ...([]).map((attachment) => ({ type: 'attachment' as const, attachment }))],
         createdAt: 0,
       } as MessageNode,
       {
@@ -186,7 +202,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: 'm',
         lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: 'Answer<think>Active', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: 'Answer<think>Active', completeness: 'complete' as const }],
         createdAt: 0,
         interruption: undefined,
       } as MessageNode,
@@ -244,7 +260,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: 'm',
         lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: '<think>T1</think>C1<think>T2</think>', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'f', arguments: '{}' } }]).map((toolCall, index) => ({ id: `tool_call-${index}`, type: 'tool_call' as const, toolCall }))],
+        parts: [{ type: 'text' as const, text: '<think>T1</think>C1<think>T2</think>', completeness: 'complete' as const }, ...([{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'f', arguments: '{}' } }]).map((toolCall) => ({ type: 'tool_call' as const, toolCall }))],
         createdAt: 0,
         interruption: undefined,
       } as MessageNode,
@@ -254,7 +270,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: undefined,
         lmParameters: undefined,
-        parts: [...([{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R' } }]).map((result, index) => ({ id: `tool_result-${index}`, type: 'tool_result' as const, result }))],
+        parts: [...([{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R' } }]).map((result) => ({ type: 'tool_result' as const, result }))],
         createdAt: 0,
       } as MessageNode,
     ];
@@ -281,7 +297,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: 'm',
         lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: '', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: '', completeness: 'complete' as const }],
         createdAt: 0,
         interruption: undefined,
       } as MessageNode,
@@ -307,7 +323,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         replies: { items: [] },
         modelId: 'm',
         lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text' as const, text: '<think>Just one think</think>', completeness: 'complete' as const }],
+        parts: [{ type: 'text' as const, text: '<think>Just one think</think>', completeness: 'complete' as const }],
         createdAt: 0,
         interruption: undefined,
       } as MessageNode,

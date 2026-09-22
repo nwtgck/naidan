@@ -195,7 +195,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       title: 'New Chat',
       root: {
         items: [{
-          id: '1', role: 'user', parts: [{ id: 'text', type: 'text', text: '<!-- naidan_experimental_image_request {"w":512} -->A beautiful landscape', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0, replies: { items: [] },
+          id: '1', role: 'user', parts: [{ type: 'text', text: '<!-- naidan_experimental_image_request {"w":512} -->A beautiful landscape', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0, replies: { items: [] },
         }],
       },
     } as any;
@@ -222,8 +222,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: 'chat-fork',
       root: {
         items: [{
-          id: 'u1', role: 'user', parts: [{ id: 'text', type: 'text', text: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->small cat', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
-          replies: { items: [{ id: 'a1', role: 'assistant', parts: [{ id: 'text', type: 'text', text: 'Failed', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0, interruption: undefined, replies: { items: [] } }] },
+          id: 'u1', role: 'user', parts: [{ type: 'text', text: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->small cat', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
+          replies: { items: [{ id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Failed', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0, interruption: undefined, replies: { items: [] } }] },
         }],
       },
     } as any;
@@ -267,7 +267,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       modelId: 'llama3',
       root: {
         items: [{
-          id: 'u1', role: 'user', parts: [{ id: 'text', type: 'text', text: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->cat', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
+          id: 'u1', role: 'user', parts: [{ type: 'text', text: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->cat', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
           replies: { items: [{ id: 'a1', role: 'assistant', parts: [], modelId: undefined, lmParameters: undefined, createdAt: 0, interruption: undefined, replies: { items: [] } }] },
         }],
       },

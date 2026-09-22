@@ -116,7 +116,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
-      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
+      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
     });
 
     it('ignores Profile System Prompt at runtime (Resolution is Chat > Global)', async () => {
@@ -135,7 +135,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       // Should find Global Default Prompt, NOT Profile Prompt
-      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
+      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
     });
 
     it('overrides with Chat System Prompt when behavior is override', async () => {
@@ -146,7 +146,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       expect(messages).toHaveLength(2); // System + User
-      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Chat Custom Prompt', completeness: 'complete' }] });
+      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ type: 'text', text: 'Chat Custom Prompt', completeness: 'complete' }] });
     });
 
     it('appends Chat System Prompt to Global Prompt, ignoring Profile at runtime', async () => {
@@ -166,8 +166,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       // Should find Global Default Prompt + Chat Extra Prompt as separate messages
-      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
-      expect(messages[1]).toEqual({ id: 'system_prompt_1', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Chat Extra Prompt', completeness: 'complete' }] });
+      expect(messages[0]).toEqual({ id: 'system_prompt_0', role: 'system', parts: [{ type: 'text', text: 'Global Default Prompt', completeness: 'complete' }] });
+      expect(messages[1]).toEqual({ id: 'system_prompt_1', role: 'system', parts: [{ type: 'text', text: 'Chat Extra Prompt', completeness: 'complete' }] });
     });
   });
 

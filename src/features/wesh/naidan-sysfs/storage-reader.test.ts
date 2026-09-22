@@ -79,7 +79,7 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     for (const node of [user, assistant, tool]) {
       expect(node).not.toHaveProperty('timestamp');
       expect(node).not.toHaveProperty('content');
-      expect(node?.parts.every(part => part.id.length > 0)).toBe(true);
+      for (const part of node?.parts ?? []) expect(part).not.toHaveProperty('id');
     }
     expect(await remote.loadChatContent({ chatId: 'chat-legacy' })).toEqual(payload.content);
     expect(await remote.loadChatMeta({ chatId: 'chat-legacy' })).toEqual(payload.metadata);
@@ -139,7 +139,7 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     const content = {
       root: { items: [{
         id: 'parent', role: 'user', createdAt: 1,
-        parts: [{ id: 'text', type: 'text', text: 'question' }],
+        parts: [{ type: 'text', text: 'question' }],
         replies: { items: [legacyTool] },
       }] },
     };

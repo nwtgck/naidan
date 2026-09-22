@@ -153,13 +153,11 @@ const sampleContent: ChatContent = {
         lmParameters: undefined,
         parts: [
           {
-            id: 'text',
             type: 'text',
             text: 'Hello from the user',
             completeness: 'complete'
           },
           {
-            id: 'attachment-0',
             type: 'attachment',
             attachment: {
               id: toAttachmentId({ raw: 'att-1' }),
@@ -182,19 +180,16 @@ const sampleContent: ChatContent = {
               lmParameters: undefined,
               parts: [
                 {
-                  id: 'reasoning',
                   type: 'reasoning',
                   text: 'internal thought',
                   completeness: 'complete'
                 },
                 {
-                  id: 'text',
                   type: 'text',
                   text: 'Assistant reply',
                   completeness: 'complete'
                 },
                 {
-                  id: 'tool_call-0',
                   type: 'tool_call',
                   toolCall: {
                     id: toToolCallId({ raw: 'tool-call-1' }),
@@ -217,7 +212,6 @@ const sampleContent: ChatContent = {
                     lmParameters: undefined,
                     parts: [
                       {
-                        id: 'tool_result-0',
                         type: 'tool_result',
                         result: {
                           toolCallId: toToolCallId({ raw: 'tool-call-1' }),
@@ -253,7 +247,6 @@ const branchingContent: ChatContent = {
         lmParameters: undefined,
         parts: [
           {
-            id: 'text',
             type: 'text',
             text: 'Root user',
             completeness: 'complete'
@@ -269,7 +262,6 @@ const branchingContent: ChatContent = {
               lmParameters: undefined,
               parts: [
                 {
-                  id: 'text',
                   type: 'text',
                   text: 'Root assistant',
                   completeness: 'complete'
@@ -286,7 +278,6 @@ const branchingContent: ChatContent = {
                     lmParameters: undefined,
                     parts: [
                       {
-                        id: 'text',
                         type: 'text',
                         text: 'Branch A user',
                         completeness: 'complete'
@@ -302,7 +293,6 @@ const branchingContent: ChatContent = {
                           lmParameters: undefined,
                           parts: [
                             {
-                              id: 'text',
                               type: 'text',
                               text: 'Branch A first leaf',
                               completeness: 'complete'
@@ -319,7 +309,6 @@ const branchingContent: ChatContent = {
                           lmParameters: undefined,
                           parts: [
                             {
-                              id: 'text',
                               type: 'text',
                               text: 'Branch A current leaf',
                               completeness: 'complete'
@@ -339,7 +328,6 @@ const branchingContent: ChatContent = {
                     lmParameters: undefined,
                     parts: [
                       {
-                        id: 'text',
                         type: 'text',
                         text: 'Branch B user',
                         completeness: 'complete'
@@ -355,7 +343,6 @@ const branchingContent: ChatContent = {
                           lmParameters: undefined,
                           parts: [
                             {
-                              id: 'text',
                               type: 'text',
                               text: 'Branch B leaf',
                               completeness: 'complete'

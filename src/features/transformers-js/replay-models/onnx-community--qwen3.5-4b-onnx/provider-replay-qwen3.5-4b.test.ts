@@ -77,9 +77,9 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       const contentParts = typeof content === 'string' ? [{ type: 'text' as const, text: content }] : content;
       return exactObject<Extract<ChatMessage, { role: 'user' }>>()({
         id: messageId, role,
-        parts: contentParts.map((part, partIndex) => part.type === 'text'
-          ? { id: `message_${index}_text_${partIndex}`, type: 'text' as const, text: part.text, completeness: 'complete' as const }
-          : { id: `message_${index}_image_${partIndex}`, type: 'attachment' as const,
+        parts: contentParts.map((part) => part.type === 'text'
+          ? { type: 'text' as const, text: part.text, completeness: 'complete' as const }
+          : { type: 'attachment' as const,
             attachment: createReplayImageAttachment({ dataUrl: part.image_url.url }) }),
       });
     }
@@ -89,7 +89,7 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       const text = typeof content === 'string' ? content : content.flatMap(part => part.type === 'text' ? [part.text] : []).join('');
       return exactObject<Extract<ChatMessage, { role: 'system' }>>()({
         id: messageId, role,
-        parts: [{ id: `message_${index}_text`, type: 'text', text, completeness: 'complete' }],
+        parts: [{ type: 'text', text, completeness: 'complete' }],
       });
     }
     case 'assistant': {
@@ -99,9 +99,9 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       return exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
         id: messageId, role,
         parts: [
-          ...(text.length === 0 ? [] : [{ id: `message_${index}_text`, type: 'text' as const, text, completeness: 'complete' as const }]),
-          ...(tool_calls ?? []).map((toolCall, callIndex) => ({
-            id: `message_${index}_call_${callIndex}`, type: 'tool_call' as const,
+          ...(text.length === 0 ? [] : [{ type: 'text' as const, text, completeness: 'complete' as const }]),
+          ...(tool_calls ?? []).map((toolCall) => ({
+            type: 'tool_call' as const,
             toolCall: {
               id: typeof toolCall.id === 'string' ? toToolCallId({ raw: toolCall.id }) : toolCall.id, type: toolCall.type,
               function: { name: toolCall.function.name, arguments: toolCall.function.arguments },
@@ -115,7 +115,7 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       unhandled satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ChatMessage, { role: 'tool' }>>()({
         id: messageId, role,
-        parts: [{ id: `message_${index}_result`, type: 'tool_result', result: {
+        parts: [{ type: 'tool_result', result: {
           toolCallId: typeof tool_call_id === 'string' ? toToolCallId({ raw: tool_call_id }) : tool_call_id,
           status: 'success', content: { type: 'text', text: content },
         } }],
@@ -133,8 +133,8 @@ function textMessage({ id, role, text }: { id: string; role: 'user' | 'assistant
 function imageMessage({ id, text, dataUrl }: { id: string; text: string; dataUrl: string }): ChatMessage {
   return {
     id: toMessageId({ raw: id }), role: 'user', parts: [
-      { id: `${id}_text`, type: 'text', text, completeness: 'complete' },
-      { id: `${id}_image`, type: 'attachment', attachment: createReplayImageAttachment({ dataUrl }) },
+      { type: 'text', text, completeness: 'complete' },
+      { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl }) },
     ],
   };
 }
@@ -1699,7 +1699,7 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
       const currentMessages: ChatMessage[] = [
         textMessage({ id: 'current_user_0', role: 'user', text: 'Template probe user message.' }),
         { id: toMessageId({ raw: 'current_assistant_0' }), role: 'assistant', parts: [{
-          id: 'current_reasoning_0', type: 'reasoning', text: reasoning.chunks.join(''), completeness: 'partial',
+          type: 'reasoning', text: reasoning.chunks.join(''), completeness: 'partial',
         }] },
         textMessage({ id: 'current_user_1', role: 'user', text: 'Continue the synthetic conversation with a short response.' }),
       ];

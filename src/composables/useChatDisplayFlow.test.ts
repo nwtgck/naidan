@@ -11,7 +11,7 @@ describe('useChatDisplayFlow', () => {
     id: generateId<MessageId>(),
     role: 'assistant',
     replies: { items: [] },
-    parts: [...(content !== undefined ? [{ id: 'text', type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
     modelId: undefined,
     lmParameters: undefined,
@@ -28,7 +28,7 @@ describe('useChatDisplayFlow', () => {
       toolCallId: toToolCallId({ raw: toolCallId }),
       status: 'success',
       content: { type: 'text', text: 'ok' },
-    }]).map((result, index) => ({ id: `tool_result-${index}`, type: 'tool_result' as const, result }))],
+    }]).map((result) => ({ type: 'tool_result' as const, result }))],
     createdAt: Date.now(),
   } as MessageNode);
 
@@ -56,7 +56,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups internal processes: thought followed by tool', () => {
     const m1 = createAssistantMsg('<think>thinking...</think>');
-    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall, index) => ({ id: `call-${index}`, type: 'tool_call' as const, toolCall })));
+    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall) => ({ type: 'tool_call' as const, toolCall })));
     const t1 = createToolNode('tc1');
 
     const { chatFlow } = createFlow({ messages: [m1, t1] });
@@ -71,7 +71,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups internal processes: tool followed by thought', () => {
     const m1 = createAssistantMsg('');
-    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall, index) => ({ id: `call-${index}`, type: 'tool_call' as const, toolCall })));
+    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall) => ({ type: 'tool_call' as const, toolCall })));
     const t1 = createToolNode('tc1');
     const m2 = createAssistantMsg('<think>thinking...</think>');
 
@@ -113,13 +113,13 @@ describe('useChatDisplayFlow', () => {
       role: 'user',
       id: toMessageId({ raw: 'u1' }),
       replies: { items: [] },
-      parts: [{ id: 'text', type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
+      parts: [{ type: 'text' as const, text: 'hi', completeness: 'complete' as const }],
       createdAt: 0,
       modelId: undefined,
       lmParameters: undefined,
     } as MessageNode;
     const m1 = createAssistantMsg('<think>thinking...</think>');
-    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall, index) => ({ id: `call-${index}`, type: 'tool_call' as const, toolCall })));
+    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'test_tool', arguments: '{}' } }].map((toolCall) => ({ type: 'tool_call' as const, toolCall })));
     const t1 = createToolNode('tc1');
     const m2 = createAssistantMsg('Final answer');
 
@@ -181,7 +181,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups assistant message with content if it has tool calls (the original bug)', () => {
     const m1 = createAssistantMsg('<think>thinking...</think>Partially done...');
-    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'calc', arguments: '{}' } }].map((toolCall, index) => ({ id: `call-${index}`, type: 'tool_call' as const, toolCall })));
+    m1.parts.push(...[{ id: toToolCallId({ raw: 'tc1' }), type: 'function' as const, function: { name: 'calc', arguments: '{}' } }].map((toolCall) => ({ type: 'tool_call' as const, toolCall })));
     const t1 = createToolNode('tc1');
 
     const { chatFlow } = createFlow({ messages: [m1, t1] });

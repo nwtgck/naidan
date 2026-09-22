@@ -56,9 +56,9 @@ describe('Assistant Turn Visual Logic', () => {
     };
     switch (role) {
     case 'user':
-      return { ...base, role, modelId: undefined, parts: [{ id: 'text', type: 'text', text: '', completeness: 'complete' }] };
+      return { ...base, role, modelId: undefined, parts: [{ type: 'text', text: '', completeness: 'complete' }] };
     case 'assistant':
-      return { ...base, role, modelId, parts: [{ id: 'text', type: 'text', text: '', completeness: 'complete' }], interruption: undefined };
+      return { ...base, role, modelId, parts: [{ type: 'text', text: '', completeness: 'complete' }], interruption: undefined };
     case 'tool':
       return { ...base, role, modelId: undefined, parts: [] };
     default: {

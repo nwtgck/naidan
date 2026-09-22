@@ -30,8 +30,8 @@ async function capturedSession({ batchId, modelId, observation }: { batchId: str
     : createProductionProviderPartsTrace({ requestId: context.requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } });
   if (observation === 'parts') {
     trace.observeAssistant({ message: { id: toMessageId({ raw: 'synthetic-assistant' }), role: 'assistant', createdAt: 0, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, parts: [
-      { id: 'r', type: 'reasoning', text: '  reason\n', completeness: 'complete' },
-      { id: 't', type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+      { type: 'reasoning', text: '  reason\n', completeness: 'complete' },
+      { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
     ] } });
     trace.observeResult({ result: { type: 'interrupted', reason: 'limit' } });
   }

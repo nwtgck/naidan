@@ -85,7 +85,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({
-      messages: expect.arrayContaining([{ id: 'system_prompt_0', role: 'system', parts: [{ id: 'text', type: 'text', text: 'Global System Prompt', completeness: 'complete' }] }]),
+      messages: expect.arrayContaining([{ id: 'system_prompt_0', role: 'system', parts: [{ type: 'text', text: 'Global System Prompt', completeness: 'complete' }] }]),
     }));
 
     // 2. Chat-level Clear (behavior: override, content: null)
@@ -165,6 +165,6 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter(m => m.role === 'system');
-    expect(systemMessages[0]?.parts).toEqual([{ id: 'text', type: 'text', text: 'Chat Specific Prompt', completeness: 'complete' }]);
+    expect(systemMessages[0]?.parts).toEqual([{ type: 'text', text: 'Chat Specific Prompt', completeness: 'complete' }]);
   });
 });

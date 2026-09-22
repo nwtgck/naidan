@@ -33,7 +33,7 @@ vi.mock('../../../components/MessageItem.vue', () => ({
   default: {
     name: 'MessageItem',
     props: ['message'],
-    template: '<div class="message-item"><template v-for="part in message.parts" :key="part.id"><template v-if="part.type === \'text\'">{{ part.text }}</template></template></div>',
+    template: '<div class="message-item"><template v-for="(part, index) in message.parts" :key="index"><template v-if="part.type === \'text\'">{{ part.text }}</template></template></div>',
   },
 }));
 
@@ -57,9 +57,9 @@ describe('SearchPreview Component', () => {
       root: {
         items: [
           { id: 'm1', modelId: undefined, lmParameters: undefined,
-            parts: [{ id: 'text', type: 'text', text: 'Msg 1', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [
+            parts: [{ type: 'text', text: 'Msg 1', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [
               { id: 'm2', modelId: undefined, lmParameters: undefined, interruption: undefined,
-                parts: [{ id: 'text', type: 'text', text: 'Msg 2', completeness: 'complete' }], role: 'assistant', createdAt: 2, replies: { items: [] } },
+                parts: [{ type: 'text', text: 'Msg 2', completeness: 'complete' }], role: 'assistant', createdAt: 2, replies: { items: [] } },
             ] } },
         ],
       },
@@ -98,21 +98,21 @@ describe('SearchPreview Component', () => {
         items: [{
           id: 'm1',
           modelId: undefined, lmParameters: undefined,
-          parts: [{ id: 'text', type: 'text', text: 'M1', completeness: 'complete' }],
+          parts: [{ type: 'text', text: 'M1', completeness: 'complete' }],
           role: 'user',
           createdAt: 1,
           replies: {
             items: [{
               id: 'm2',
               modelId: undefined, lmParameters: undefined, interruption: undefined,
-              parts: [{ id: 'text', type: 'text', text: 'M2', completeness: 'complete' }],
+              parts: [{ type: 'text', text: 'M2', completeness: 'complete' }],
               role: 'assistant',
               createdAt: 2,
               replies: {
                 items: [{
                   id: 'm3',
                   modelId: undefined, lmParameters: undefined,
-                  parts: [{ id: 'text', type: 'text', text: 'M3', completeness: 'complete' }],
+                  parts: [{ type: 'text', text: 'M3', completeness: 'complete' }],
                   role: 'user',
                   createdAt: 3,
                   replies: { items: [] },
@@ -157,11 +157,11 @@ describe('SearchPreview Component', () => {
       root: {
         items: [
           { id: 'm1', modelId: undefined, lmParameters: undefined,
-            parts: [{ id: 'text', type: 'text', text: 'M1', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [
+            parts: [{ type: 'text', text: 'M1', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [
               { id: 'm2', modelId: undefined, lmParameters: undefined, interruption: undefined,
-                parts: [{ id: 'text', type: 'text', text: 'M2', completeness: 'complete' }], role: 'assistant', createdAt: 2, replies: { items: [
+                parts: [{ type: 'text', text: 'M2', completeness: 'complete' }], role: 'assistant', createdAt: 2, replies: { items: [
                   { id: 'm3', modelId: undefined, lmParameters: undefined,
-                    parts: [{ id: 'text', type: 'text', text: 'M3', completeness: 'complete' }], role: 'user', createdAt: 3, replies: { items: [] } },
+                    parts: [{ type: 'text', text: 'M3', completeness: 'complete' }], role: 'user', createdAt: 3, replies: { items: [] } },
                 ] } },
             ] } },
         ],
@@ -187,7 +187,7 @@ describe('SearchPreview Component', () => {
     const items = Array.from({ length: 11 }, (_, index) => ({
       id: `m${index + 1}`,
       modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'text', type: 'text', text: `M${index + 1}`, completeness: 'complete' }],
+      parts: [{ type: 'text', text: `M${index + 1}`, completeness: 'complete' }],
       role: index % 2 === 0 ? 'user' : 'assistant',
       createdAt: index + 1,
       replies: { items: [] as any[] },
@@ -239,7 +239,7 @@ describe('SearchPreview Component', () => {
       }))
       .mockResolvedValueOnce({
         root: { items: [{ id: 'new-message', modelId: undefined, lmParameters: undefined,
-          parts: [{ id: 'text', type: 'text', text: 'New preview', completeness: 'complete' }], role: 'user', createdAt: 2, replies: { items: [] } }] },
+          parts: [{ type: 'text', text: 'New preview', completeness: 'complete' }], role: 'user', createdAt: 2, replies: { items: [] } }] },
         currentLeafId: 'new-message',
       } as any);
 
@@ -255,7 +255,7 @@ describe('SearchPreview Component', () => {
 
     resolveFirst?.({
       root: { items: [{ id: 'old-message', modelId: undefined, lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text', text: 'Old preview', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [] } }] },
+        parts: [{ type: 'text', text: 'Old preview', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [] } }] },
       currentLeafId: 'old-message',
     });
     await new Promise(resolve => setTimeout(resolve, 0));

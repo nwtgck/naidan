@@ -148,13 +148,11 @@ export type UserMessageNode = MessageNodeBase & {
   lmParameters: LmParameters | undefined,
   parts: (
     | {
-        id: string,
         type: 'text',
         text: string,
         completeness: 'complete' | 'partial',
       }
     | {
-        id: string,
         type: 'attachment',
         attachment: Attachment,
       }
@@ -167,19 +165,16 @@ export type AssistantMessageNode = MessageNodeBase & {
   lmParameters: LmParameters | undefined,
   parts: (
     | {
-        id: string,
         type: 'reasoning',
         text: string,
         completeness: 'complete' | 'partial',
       }
     | {
-        id: string,
         type: 'text',
         text: string,
         completeness: 'complete' | 'partial',
       }
     | {
-        id: string,
         type: 'tool_call',
         toolCall: ToolCall,
       }
@@ -201,7 +196,6 @@ export type SystemMessageNode = MessageNodeBase & {
   modelId: undefined,
   lmParameters: undefined,
   parts: {
-    id: string,
     type: 'text',
     text: string,
     completeness: 'complete' | 'partial',
@@ -213,7 +207,6 @@ export type ToolMessageNode = MessageNodeBase & {
   modelId: undefined,
   lmParameters: undefined,
   parts: {
-    id: string,
     type: 'tool_result',
     result: ToolExecutionResult,
   }[],

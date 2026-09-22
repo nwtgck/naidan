@@ -99,7 +99,7 @@ function createPublicationFixture({ outputs, historyEncoding }: {
   const provider = createTransformersJsProvider({ service });
   const executions: unknown[] = [];
   const history: MessageNode[] = [{ id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
-    parts: [{ id: 'u1', type: 'text', text: 'Use the weather tool.', completeness: 'complete' }], replies: { items: [] } }];
+    parts: [{ type: 'text', text: 'Use the weather tool.', completeness: 'complete' }], replies: { items: [] } }];
   const controller = new AbortController();
   return { generate, published, executions, history,
     text: () => history.flatMap(node => node.role === 'assistant' ? node.parts.flatMap(part => part.type === 'text' ? [part.text] : []) : []).join(''),

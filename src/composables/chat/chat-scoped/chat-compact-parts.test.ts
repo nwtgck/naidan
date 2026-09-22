@@ -36,9 +36,9 @@ vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn() } })
 import { runCompactCurrentBranchForChat } from './chat-compact-flow';
 
 function makeChat(): Chat {
-  const tail: MessageNode = { id: toMessageId({ raw: 'last' }), role: 'assistant', createdAt: 3, modelId: 'm', lmParameters: undefined, interruption: { type: 'cancelled' }, parts: [{ id: 'p', type: 'text', text: '  old partial  ', completeness: 'partial' }], replies: { items: [] } };
-  const second: MessageNode = { id: toMessageId({ raw: 'second' }), role: 'user', createdAt: 2, modelId: undefined, lmParameters: undefined, parts: [{ id: 'p', type: 'text', text: 'question', completeness: 'complete' }], replies: { items: [tail] } };
-  const first: MessageNode = { id: toMessageId({ raw: 'first' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ id: 'p', type: 'text', text: 'original', completeness: 'complete' }], replies: { items: [second] } };
+  const tail: MessageNode = { id: toMessageId({ raw: 'last' }), role: 'assistant', createdAt: 3, modelId: 'm', lmParameters: undefined, interruption: { type: 'cancelled' }, parts: [{ type: 'text', text: '  old partial  ', completeness: 'partial' }], replies: { items: [] } };
+  const second: MessageNode = { id: toMessageId({ raw: 'second' }), role: 'user', createdAt: 2, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'question', completeness: 'complete' }], replies: { items: [tail] } };
+  const first: MessageNode = { id: toMessageId({ raw: 'first' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'original', completeness: 'complete' }], replies: { items: [second] } };
   return { id: toChatId({ raw: 'chat' }), title: 'chat', createdAt: 1, updatedAt: 1, debugEnabled: false, root: { items: [first] }, currentLeafId: tail.id };
 }
 async function* chunks({ values }: { values: string[] }) {
@@ -62,7 +62,7 @@ describe('context compaction generation', () => {
     const chat = state.chat!; const original = JSON.stringify(chat.root); const result = await runCompactCurrentBranchForChat({ chatId: chat.id, keepRecentMessages: 1, instructionOverride: undefined });
     expect(result.status).toBe('compacted'); expect(chat.root.items).toHaveLength(2);
     expect(JSON.stringify({ items: [chat.root.items[0]] })).toBe(original);
-    expect(chat.root.items[1]!.parts).toEqual([{ id: 'text', type: 'text', text: '  <think>literal</think>summary  ', completeness: 'complete' }]);
+    expect(chat.root.items[1]!.parts).toEqual([{ type: 'text', text: '  <think>literal</think>summary  ', completeness: 'complete' }]);
     expect(chat.root.items[1]!.replies.items[0]).toMatchObject({ interruption: { type: 'cancelled' }, parts: [{ text: '  old partial  ', completeness: 'partial' }] });
     expect(state.request).toMatchObject({ tools: undefined, model: 'm', readBinaryObject: expect.any(Function) });
     expect(state.request?.messages[0]!.parts[0]).toMatchObject({ text: 'original' });

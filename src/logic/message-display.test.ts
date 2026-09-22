@@ -13,7 +13,7 @@ describe('read-only message display', () => {
   it('projects text and thinking without trimming whitespace or altering model history', () => {
     const crlf = String.fromCharCode(13, 10);
     const raw = '前<think>  考え' + crlf + '</think>後\n';
-    const message = assistant({ parts: [{ id: 'p', type: 'text', text: raw, completeness: 'complete' }] });
+    const message = assistant({ parts: [{ type: 'text', text: raw, completeness: 'complete' }] });
     const before = copyChatMessage({ message });
     expect(getAssistantDisplayParts({ message }).map(p => [p.type, 'text' in p ? p.text : ''])).toEqual([
       ['text', '前'], ['reasoning', '  考え' + crlf], ['text', '後\n'],
@@ -24,11 +24,11 @@ describe('read-only message display', () => {
   });
   it('preserves native reasoning, repeated part kinds, and tool position', () => {
     const message = assistant({ parts: [
-      { id: 'r1', type: 'reasoning', text: '<think>literal inside native</think>', completeness: 'complete' },
-      { id: 't1', type: 'text', text: '  A', completeness: 'complete' },
-      { id: 'c', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{}' } } },
-      { id: 'r2', type: 'reasoning', text: 'R2', completeness: 'partial' },
-      { id: 't2', type: 'text', text: ' B ', completeness: 'partial' },
+      { type: 'reasoning', text: '<think>literal inside native</think>', completeness: 'complete' },
+      { type: 'text', text: '  A', completeness: 'complete' },
+      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{}' } } },
+      { type: 'reasoning', text: 'R2', completeness: 'partial' },
+      { type: 'text', text: ' B ', completeness: 'partial' },
     ] });
     const display = getAssistantDisplayParts({ message });
     expect(display.map(p => p.type)).toEqual(['reasoning', 'text', 'tool_call', 'reasoning', 'text']);
@@ -69,24 +69,33 @@ describe('read-only message display', () => {
     ]);
   });
   it('reports an unclosed displayed block as partial without inserting a closing marker', () => {
-    const message = assistant({ parts: [{ id: 'p', type: 'text', text: '<think>unfinished', completeness: 'partial' }] });
+    const message = assistant({ parts: [{ type: 'text', text: '<think>unfinished', completeness: 'partial' }] });
     expect(getAssistantDisplayParts({ message })[0]).toMatchObject({ type: 'reasoning', text: 'unfinished', completeness: 'partial' });
     expect(getMessageText({ message })).toBe('<think>unfinished');
   });
-  it('uses stable source IDs and offsets as chunks grow or a hidden body becomes nonempty', () => {
-    const first: AssistantMessageNode['parts'][number] = { id: 'first', type: 'text', text: '', completeness: 'partial' };
-    const second: AssistantMessageNode['parts'][number] = { id: 'second', type: 'reasoning', text: 'R', completeness: 'partial' };
+  it('uses stable view keys and offsets as chunks grow or a hidden body becomes nonempty', () => {
+    const first: AssistantMessageNode['parts'][number] = { type: 'text', text: '', completeness: 'partial' };
+    const second: AssistantMessageNode['parts'][number] = { type: 'reasoning', text: 'R', completeness: 'partial' };
     const message = assistant({ parts: [first, second] });
     const key = getAssistantDisplayParts({ message })[1]!.key;
     first.text = 'A'; second.text += ' more';
     expect(getAssistantDisplayParts({ message })[1]!.key).toBe(key);
+  });
+  it('preserves keys when a completed call is inserted before an existing part', () => {
+    const message = assistant({ parts: [{ type: 'text', text: 'after call', completeness: 'partial' }] });
+    const key = getAssistantDisplayParts({ message })[0]!.key;
+    message.parts.unshift({ type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'late-call' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
+    const display = getAssistantDisplayParts({ message });
+    expect(display.map(part => part.type)).toEqual(['tool_call', 'text']);
+    expect(display[1]!.key).toBe(key);
+    expect(display[0]!.key).not.toBe(key);
   });
   it('handles every text chunk boundary without rewriting the original string', () => {
     const raw = `\
 A<think>理由🙂
 </think>B`;
     for (let i = 0; i <= raw.length; i++) {
-      const message = assistant({ parts: [{ id: 'p', type: 'text', text: raw.slice(0, i), completeness: 'partial' }] });
+      const message = assistant({ parts: [{ type: 'text', text: raw.slice(0, i), completeness: 'partial' }] });
       getAssistantDisplayParts({ message });
       const first = message.parts[0];
       if (first?.type !== 'text') throw new Error('Missing fixture part.');

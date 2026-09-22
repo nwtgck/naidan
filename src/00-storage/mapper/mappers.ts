@@ -1390,16 +1390,15 @@ const messageNodeRepliesToDto = ({ replies }: { replies: MessageBranch }): Messa
   });
 };
 
-// Legacy part IDs are deterministic within their message. Merely reading an old
-// record must not rewrite it or allocate different part identities on each load.
+// Legacy records remain readable without rewriting them until the ordinary save path.
 const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageNode => {
   switch (dto.role) {
   case 'user': {
     const { id, role, content, attachments, timestamp, thinking: _thinking, modelId: _modelId, lmParameters, toolCalls: _toolCalls, results: _results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     const parts: UserMessageNode['parts'] = [];
-    parts.push({ id: 'legacy_text', type: 'text', text: content, completeness: 'complete' });
-    attachments?.forEach((attachment, index) => parts.push({ id: `legacy_attachment_${index}`, type: 'attachment', attachment: attachmentToDomain({ dto: attachment }) }));
+    parts.push({ type: 'text', text: content, completeness: 'complete' });
+    attachments?.forEach(attachment => parts.push({ type: 'attachment', attachment: attachmentToDomain({ dto: attachment }) }));
     return exactObject<UserMessageNode>()({
       id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
       modelId: undefined,
@@ -1411,9 +1410,9 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     const { id, role, content, attachments: _attachments, timestamp, thinking, modelId, lmParameters, toolCalls, results: _results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     const parts: AssistantMessageNode['parts'] = [];
-    if (thinking !== undefined) parts.push({ id: 'legacy_reasoning', type: 'reasoning', text: thinking, completeness: 'complete' });
-    parts.push({ id: 'legacy_text', type: 'text', text: content, completeness: 'complete' });
-    toolCalls?.forEach((call, index) => parts.push({ id: `legacy_tool_call_${index}`, type: 'tool_call', toolCall: toolCallToDomain({ dto: call }) }));
+    if (thinking !== undefined) parts.push({ type: 'reasoning', text: thinking, completeness: 'complete' });
+    parts.push({ type: 'text', text: content, completeness: 'complete' });
+    toolCalls?.forEach(call => parts.push({ type: 'tool_call', toolCall: toolCallToDomain({ dto: call }) }));
     return exactObject<AssistantMessageNode>()({
       id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
       modelId: modelId,
@@ -1426,7 +1425,7 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     const { id, role, content, attachments: _attachments, timestamp, thinking: _thinking, modelId: _modelId, lmParameters: _lmParameters, toolCalls: _toolCalls, results: _results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     const parts: SystemMessageNode['parts'] = [];
-    parts.push({ id: 'legacy_text', type: 'text', text: content, completeness: 'complete' });
+    parts.push({ type: 'text', text: content, completeness: 'complete' });
     return exactObject<SystemMessageNode>()({
       id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
       modelId: undefined,
@@ -1438,7 +1437,7 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     const { id, role, content: _content, attachments: _attachments, timestamp, thinking: _thinking, modelId: _modelId, lmParameters: _lmParameters, toolCalls: _toolCalls, results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     const parts: ToolMessageNode['parts'] = [];
-    results.forEach((result, index) => parts.push({ id: `legacy_tool_result_${index}`, type: 'tool_result', result: toolExecutionResultToDomain({ dto: result }) }));
+    results.forEach(result => parts.push({ type: 'tool_result', result: toolExecutionResultToDomain({ dto: result }) }));
     return exactObject<ToolMessageNode>()({
       id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
       modelId: undefined,
@@ -1467,14 +1466,14 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       parts: parts.map((part): UserMessageNode['parts'][number] => {
         switch (part.type) {
         case 'text': {
-          const { id, type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
+          const { type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<UserMessageNode['parts'][number], { type: 'text' }>>()({ id, type, text, completeness: completeness ?? 'complete' });
+          return exactObject<Extract<UserMessageNode['parts'][number], { type: 'text' }>>()({ type, text, completeness: completeness ?? 'complete' });
         }
         case 'attachment': {
-          const { id, type, attachment, experimental: _partExperimental, ...unhandledPart } = part;
+          const { type, attachment, experimental: _partExperimental, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<UserMessageNode['parts'][number], { type: 'attachment' }>>()({ id, type, attachment: attachmentToDomain({ dto: attachment }) });
+          return exactObject<Extract<UserMessageNode['parts'][number], { type: 'attachment' }>>()({ type, attachment: attachmentToDomain({ dto: attachment }) });
         }
         default: {
           const _ex: never = part;
@@ -1517,19 +1516,19 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       parts: parts.map((part): AssistantMessageNode['parts'][number] => {
         switch (part.type) {
         case 'reasoning': {
-          const { id, type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
+          const { type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'reasoning' }>>()({ id, type, text, completeness: completeness ?? 'complete' });
+          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'reasoning' }>>()({ type, text, completeness: completeness ?? 'complete' });
         }
         case 'text': {
-          const { id, type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
+          const { type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'text' }>>()({ id, type, text, completeness: completeness ?? 'complete' });
+          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'text' }>>()({ type, text, completeness: completeness ?? 'complete' });
         }
         case 'tool_call': {
-          const { id, type, toolCall, experimental: _partExperimental, ...unhandledPart } = part;
+          const { type, toolCall, experimental: _partExperimental, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'tool_call' }>>()({ id, type, toolCall: toolCallToDomain({ dto: toolCall }) });
+          return exactObject<Extract<AssistantMessageNode['parts'][number], { type: 'tool_call' }>>()({ type, toolCall: toolCallToDomain({ dto: toolCall }) });
         }
         default: {
           const _ex: never = part;
@@ -1550,9 +1549,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       parts: parts.map((part): SystemMessageNode['parts'][number] => {
         switch (part.type) {
         case 'text': {
-          const { id, type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
+          const { type, text, completeness, experimental: _partExperimental, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<SystemMessageNode['parts'][number], { type: 'text' }>>()({ id, type, text, completeness: completeness ?? 'complete' });
+          return exactObject<Extract<SystemMessageNode['parts'][number], { type: 'text' }>>()({ type, text, completeness: completeness ?? 'complete' });
         }
         default: {
           const _ex: never = part.type;
@@ -1573,9 +1572,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       parts: parts.map((part): ToolMessageNode['parts'][number] => {
         switch (part.type) {
         case 'tool_result': {
-          const { id, type, result, experimental: _partExperimental, ...unhandledPart } = part;
+          const { type, result, experimental: _partExperimental, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<ToolMessageNode['parts'][number], { type: 'tool_result' }>>()({ id, type, result: toolExecutionResultToDomain({ dto: result }) });
+          return exactObject<Extract<ToolMessageNode['parts'][number], { type: 'tool_result' }>>()({ type, result: toolExecutionResultToDomain({ dto: result }) });
         }
         default: {
           const _ex: never = part.type;
@@ -1619,14 +1618,14 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number] => {
         switch (part.type) {
         case 'text': {
-          const { id, type, text, completeness, ...unhandledPart } = part;
+          const { type, text, completeness, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number], { type: 'text' }>>()({ id, type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number], { type: 'text' }>>()({ type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
         }
         case 'attachment': {
-          const { id, type, attachment, ...unhandledPart } = part;
+          const { type, attachment, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number], { type: 'attachment' }>>()({ id, type, attachment: attachmentToDto({ domain: attachment }), experimental: undefined });
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number], { type: 'attachment' }>>()({ type, attachment: attachmentToDto({ domain: attachment }), experimental: undefined });
         }
         default: {
           const _ex: never = part;
@@ -1671,19 +1670,19 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number] => {
         switch (part.type) {
         case 'reasoning': {
-          const { id, type, text, completeness, ...unhandledPart } = part;
+          const { type, text, completeness, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'reasoning' }>>()({ id, type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'reasoning' }>>()({ type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
         }
         case 'text': {
-          const { id, type, text, completeness, ...unhandledPart } = part;
+          const { type, text, completeness, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'text' }>>()({ id, type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'text' }>>()({ type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
         }
         case 'tool_call': {
-          const { id, type, toolCall, ...unhandledPart } = part;
+          const { type, toolCall, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'tool_call' }>>()({ id, type, toolCall: toolCallToDto({ domain: toolCall }), experimental: undefined });
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'assistant' }>['parts'][number], { type: 'tool_call' }>>()({ type, toolCall: toolCallToDto({ domain: toolCall }), experimental: undefined });
         }
         default: {
           const _ex: never = part;
@@ -1705,9 +1704,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'system' }>['parts'][number] => {
         switch (part.type) {
         case 'text': {
-          const { id, type, text, completeness, ...unhandledPart } = part;
+          const { type, text, completeness, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'system' }>['parts'][number], { type: 'text' }>>()({ id, type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'system' }>['parts'][number], { type: 'text' }>>()({ type, text, completeness: messagePartCompletenessToDto({ completeness }), experimental: undefined });
         }
         default: {
           const _ex: never = part.type;
@@ -1729,9 +1728,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'tool' }>['parts'][number] => {
         switch (part.type) {
         case 'tool_result': {
-          const { id, type, result, ...unhandledPart } = part;
+          const { type, result, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'tool' }>['parts'][number], { type: 'tool_result' }>>()({ id, type, result: toolExecutionResultToDto({ domain: result }), experimental: undefined });
+          return exactObject<Extract<Extract<MessageNodeDtoV2, { role: 'tool' }>['parts'][number], { type: 'tool_result' }>>()({ type, result: toolExecutionResultToDto({ domain: result }), experimental: undefined });
         }
         default: {
           const _ex: never = part.type;

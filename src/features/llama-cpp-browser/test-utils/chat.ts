@@ -8,7 +8,7 @@ import { generateChatTurn } from '@/logic/generate-chat-turn';
 import type { GenerationCallback, GenerationResult } from '@/features/llama-cpp-browser/types';
 
 export function chatRequest(): Parameters<LmProvider['chat']>[0] {
-  return { messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'text', text: 'hello', completeness: 'complete' }] }],
+  return { messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }] }],
     model: 'local.gguf', parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: undefined };
 }
 export async function deliverNativeResult({ result, onEvent }: { result: GenerationResult, onEvent: GenerationCallback }): Promise<GenerationResult> {

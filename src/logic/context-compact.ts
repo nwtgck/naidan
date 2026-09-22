@@ -200,7 +200,7 @@ export function buildCompactRequestMessages({
   while (ids.has(raw)) raw += '_';
   messages.push({
     id: toMessageId({ raw }), role: 'user',
-    parts: [{ id: 'text', type: 'text', text: instructionContent ?? createCompactInstruction({ promptMode }), completeness: 'complete' }],
+    parts: [{ type: 'text', text: instructionContent ?? createCompactInstruction({ promptMode }), completeness: 'complete' }],
   });
   return messages;
 }
@@ -298,7 +298,7 @@ export async function createCompactChatMessagesFromPrefix({
 function addCompactLookupText<Part extends ChatMessage['parts'][number]>({ parts, messageId }: {
   parts: readonly Part[],
   messageId: MessageId,
-}): (Part | { id: string, type: 'text', text: string, completeness: 'complete' })[] {
+}): (Part | { type: 'text', text: string, completeness: 'complete' })[] {
   let annotated = false;
   const copied = parts.map(part => {
     if (part.type !== 'text' || annotated) return part;
@@ -306,13 +306,11 @@ function addCompactLookupText<Part extends ChatMessage['parts'][number]>({ parts
     return { ...part, text: createCompactToolMessageContent({ messageId, content: part.text, promptMode: 'with_message_ids' }) };
   });
   if (annotated) return copied;
-  let id = 'compact_lookup';
-  while (parts.some(part => part.id === id)) id += '_';
   // Reasoning remains before visible text, including reasoning-only assistants.
   const next = copied.findIndex(part => part.type !== 'reasoning');
   return [
     ...copied.slice(0, next === -1 ? copied.length : next),
-    { id, type: 'text', text: createCompactToolMessageContent({ messageId, content: '', promptMode: 'with_message_ids' }), completeness: 'complete' },
+    { type: 'text', text: createCompactToolMessageContent({ messageId, content: '', promptMode: 'with_message_ids' }), completeness: 'complete' },
     ...copied.slice(next === -1 ? copied.length : next),
   ];
 }
@@ -406,7 +404,7 @@ export function createCompactBranchFromResponse({
   const compactNode: AssistantMessageNode = {
     id: createMessageId(),
     role: 'assistant',
-    parts: [{ id: 'text', type: 'text', text: compactContent, completeness: 'complete' }],
+    parts: [{ type: 'text', text: compactContent, completeness: 'complete' }],
     createdAt: now(),
     modelId: compactModelId,
     replies: { items: [] },

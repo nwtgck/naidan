@@ -8,11 +8,11 @@ import { prepareLlamaCppRequest } from './message-projection';
 const id = toMessageId({ raw: 'message' });
 const callId = toToolCallId({ raw: 'call' });
 const binaryObjectId = toBinaryObjectId({ raw: 'binary' });
-const text = ({ value }: { value: string }) => ({ id: 'text', type: 'text' as const, text: value, completeness: 'complete' as const });
-const reasoning = ({ value }: { value: string }) => ({ id: 'reasoning', type: 'reasoning' as const, text: value, completeness: 'complete' as const });
-const call = () => ({ id: 'call', type: 'tool_call' as const, toolCall: { id: callId, type: 'function' as const, function: { name: 'calculator', arguments: ' { "value": 1.0 } ' } } });
+const text = ({ value }: { value: string }) => ({ type: 'text' as const, text: value, completeness: 'complete' as const });
+const reasoning = ({ value }: { value: string }) => ({ type: 'reasoning' as const, text: value, completeness: 'complete' as const });
+const call = () => ({ type: 'tool_call' as const, toolCall: { id: callId, type: 'function' as const, function: { name: 'calculator', arguments: ' { "value": 1.0 } ' } } });
 const image = ({ status }: { status: 'persisted' | 'missing' | 'memory' }): Extract<Extract<ChatMessage, { role: 'user' }>['parts'][number], { type: 'attachment' }> => ({
-  id: 'image', type: 'attachment', attachment: {
+  type: 'attachment', attachment: {
     id: toAttachmentId({ raw: 'image' }), binaryObjectId, originalName: 'image.png', mimeType: 'image/png', size: 3, uploadedAt: 1,
     ...(status === 'memory' ? { status, blob: new Blob(['png'], { type: 'image/png' }) } : { status }),
   },
@@ -38,7 +38,7 @@ describe('parts to llama.cpp input', () => {
   });
 
   it('joins text-only content only at this native input boundary without deduplication', async () => {
-    const prepared = await prepareLlamaCppRequest(request({ messages: [{ id, role: 'user', parts: [text({ value: 'A' }), { ...text({ value: 'A' }), id: 'other' }] }] }));
+    const prepared = await prepareLlamaCppRequest(request({ messages: [{ id, role: 'user', parts: [text({ value: 'A' }), { ...text({ value: 'A' }), }] }] }));
     expect(prepared.messages).toEqual([{ role: 'user', content: 'AA' }]);
   });
 
@@ -95,15 +95,15 @@ describe('parts to llama.cpp input', () => {
     const prepared = await prepareLlamaCppRequest({ ...request({ messages: [
       { id, role: 'assistant', parts: [call()] },
       { id, role: 'tool', parts: [
-        { id: 'r', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } },
-        { id: 'e', type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
       ] },
     ] }), readBinaryObject: async () => new Blob([raw]) });
     expect(prepared.messages.slice(1)).toEqual([{ role: 'tool', tool_call_id: 'call', name: 'calculator', content: raw }, { role: 'tool', tool_call_id: 'call', name: 'calculator', content: 'Error [other]: 失敗' }]);
   });
 
   it('rejects unbound and still executing tool results before inference', async () => {
-    const result = { id, role: 'tool' as const, parts: [{ id: 'r', type: 'tool_result' as const, result: { toolCallId: callId, status: 'executing' as const } }] };
+    const result = { id, role: 'tool' as const, parts: [{ type: 'tool_result' as const, result: { toolCallId: callId, status: 'executing' as const } }] };
     await expect(prepareLlamaCppRequest(request({ messages: [result] }))).rejects.toThrow('unsupported-input');
     await expect(prepareLlamaCppRequest(request({ messages: [{ id, role: 'assistant', parts: [call()] }, result] }))).rejects.toThrow('unsupported-input');
   });

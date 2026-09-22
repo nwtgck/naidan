@@ -10,7 +10,7 @@ function createContent(): ChatContent {
         id: toMessageId({ raw: 'message-1' }),
         role: 'user',
         modelId: undefined, lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text', text: 'searchable content', completeness: 'complete' }],
+        parts: [{ type: 'text', text: 'searchable content', completeness: 'complete' }],
         createdAt: 1,
         replies: { items: [] },
       }],
@@ -54,7 +54,7 @@ describe('createGlobalSearchWorker', () => {
         id: toMessageId({ raw: `message-${index + 1}` }),
         ...(index % 2 === 0 ? { role: 'user' as const } : { role: 'assistant' as const, interruption: undefined }),
         modelId: undefined, lmParameters: undefined,
-        parts: [{ id: 'text', type: 'text', text: index === depth - 1 ? 'deep searchable content' : String(index), completeness: 'complete' }],
+        parts: [{ type: 'text', text: index === depth - 1 ? 'deep searchable content' : String(index), completeness: 'complete' }],
         createdAt: index + 1,
         replies: { items: [] },
       };

@@ -11,12 +11,12 @@ import { PromptApiProvider } from './provider';
 import { TEST_ONLY as RUNTIME_TEST_ONLY } from './runtime';
 
 function message({ role, content }: { role: 'user' | 'assistant' | 'system', content: string }): ChatMessage {
-  return { id: toMessageId({ raw: `${role}-history` }), role, parts: [{ id: 'p', type: 'text', text: content, completeness: 'complete' }] };
+  return { id: toMessageId({ raw: `${role}-history` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] };
 }
 function userImage({ withText }: { withText: boolean }): ChatMessage {
   return { id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
-    ...(withText ? [{ id: 't', type: 'text' as const, text: 'Describe this image.', completeness: 'complete' as const }] : []),
-    { id: 'a', type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image.png', mimeType: 'image/png', size: 5, uploadedAt: 1, status: 'memory', blob: new Blob(['hello'], { type: 'image/png' }) } },
+    ...(withText ? [{ type: 'text' as const, text: 'Describe this image.', completeness: 'complete' as const }] : []),
+    { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image.png', mimeType: 'image/png', size: 5, uploadedAt: 1, status: 'memory', blob: new Blob(['hello'], { type: 'image/png' }) } },
   ] };
 }
 async function generate({ provider, messages, model, parameters, tools }: {

@@ -24,24 +24,24 @@ function fixedFixture(): ChatContent {
     {
       id: toMessageId({ raw: 'model-support-investigation-system' }), role: 'system', createdAt: 0,
       modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'system', type: 'text', text: 'Keep the supplied history unchanged.', completeness: 'complete' }],
+      parts: [{ type: 'text', text: 'Keep the supplied history unchanged.', completeness: 'complete' }],
       replies: { items: [] },
     },
     {
       id: toMessageId({ raw: 'model-support-investigation-user' }), role: 'user', createdAt: 1,
       modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'user', type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }],
+      parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }],
       replies: { items: [] },
     },
     {
       id: toMessageId({ raw: 'model-support-investigation-assistant' }), role: 'assistant', createdAt: 2,
       modelId: undefined, lmParameters: undefined, interruption: undefined,
       parts: [
-        { id: 'reasoning', type: 'reasoning', text: `\
+        { type: 'reasoning', text: `\
   Check the forecast.\n`, completeness: 'complete' },
-        { id: 'empty', type: 'text', text: '', completeness: 'complete' },
-        { id: 'literal', type: 'text', text: '<think>preserve this exact model-visible tool-call prefix</think>', completeness: 'complete' },
-        { id: 'call', type: 'tool_call', toolCall: { id: toolCallId, type: 'function', function: { name: 'lookup_weather', arguments: `\
+        { type: 'text', text: '', completeness: 'complete' },
+        { type: 'text', text: '<think>preserve this exact model-visible tool-call prefix</think>', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { id: toolCallId, type: 'function', function: { name: 'lookup_weather', arguments: `\
 {
   "city": "Tokyo",
   "unit": "C"
@@ -52,7 +52,7 @@ function fixedFixture(): ChatContent {
     {
       id: toMessageId({ raw: 'model-support-investigation-tool-result' }), role: 'tool', createdAt: 3,
       modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'result', type: 'tool_result', result: { toolCallId, status: 'success', content: { type: 'text', text: `\
+      parts: [{ type: 'tool_result', result: { toolCallId, status: 'success', content: { type: 'text', text: `\
 {"temperatureC":20,"condition":"clear"}
 source=fixture` } } }],
       replies: { items: [] },
@@ -60,14 +60,14 @@ source=fixture` } } }],
     {
       id: toMessageId({ raw: 'model-support-investigation-partial' }), role: 'assistant', createdAt: 4,
       modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' },
-      parts: [{ id: 'partial', type: 'text', text: `\
+      parts: [{ type: 'text', text: `\
   Tokyo 🙂\n`, completeness: 'partial' }],
       replies: { items: [] },
     },
     {
       id: toMessageId({ raw: 'model-support-investigation-follow-up' }), role: 'user', createdAt: 5,
       modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'follow-up', type: 'text', text: 'Use the tool result in a new answer.', completeness: 'complete' }],
+      parts: [{ type: 'text', text: 'Use the tool result in a new answer.', completeness: 'complete' }],
       replies: { items: [] },
     },
   ];

@@ -33,7 +33,7 @@ function messageFlowItem({ id, role, content }: {
     node: {
       id: toMessageId({ raw: id }), role, createdAt: 0, replies: { items: [] },
       modelId: undefined, lmParameters: undefined, interruption: undefined,
-      parts: [{ id: 'p1', type: 'text', text: content, completeness: 'complete' }],
+      parts: [{ type: 'text', text: content, completeness: 'complete' }],
     },
     mode: 'content',
     flow: { position: 'standalone', nesting: 'none' },
@@ -256,9 +256,9 @@ function structuredFlow({ parts }: { parts: AssistantMessageNode['parts'] }) {
 describe('outline navigation over message parts', () => {
   it('keeps one navigation row and one peek for several text parts of the same assistant', async () => {
     const { node, chat, chatFlow } = structuredFlow({ parts: [
-      { id: 'a', type: 'text', text: 'First ', completeness: 'complete' },
-      { id: 'r', type: 'reasoning', text: 'Do not put this in the outline.', completeness: 'complete' },
-      { id: 'b', type: 'text', text: 'second', completeness: 'partial' },
+      { type: 'text', text: 'First ', completeness: 'complete' },
+      { type: 'reasoning', text: 'Do not put this in the outline.', completeness: 'complete' },
+      { type: 'text', text: 'second', completeness: 'partial' },
     ] });
     const before = structuredClone(node);
     const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });
@@ -304,7 +304,7 @@ describe('outline navigation over message parts', () => {
 
 B `;
     const { node, chat, chatFlow } = structuredFlow({ parts: [
-      { id: 'body', type: 'text', text: raw, completeness: 'partial' },
+      { type: 'text', text: raw, completeness: 'partial' },
     ] });
     const before = structuredClone(node);
     const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });
@@ -332,15 +332,15 @@ B `);
 describe('outline identity during generation and history changes', () => {
   it('retains the row and its open peek when an earlier empty part starts emitting text', async () => {
     const initial = structuredFlow({ parts: [
-      { id: 'first', type: 'text', text: '', completeness: 'partial' },
-      { id: 'second', type: 'text', text: 'B', completeness: 'complete' },
+      { type: 'text', text: '', completeness: 'partial' },
+      { type: 'text', text: 'B', completeness: 'complete' },
     ] });
     const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: initial.chat.id, visibility: 'visible', flowItems: initial.chatFlow.value } });
     const row = wrapper.find('[data-testid="conversation-outline-item"]').element;
     await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
     const updated = structuredFlow({ parts: [
-      { id: 'first', type: 'text', text: 'A ', completeness: 'partial' },
-      { id: 'second', type: 'text', text: 'B', completeness: 'complete' },
+      { type: 'text', text: 'A ', completeness: 'partial' },
+      { type: 'text', text: 'B', completeness: 'complete' },
     ] });
     await wrapper.setProps({ flowItems: updated.chatFlow.value });
     expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(1);
@@ -352,8 +352,8 @@ describe('outline identity during generation and history changes', () => {
 
   it('keeps an empty cancelled assistant navigable without treating partial as live generation', () => {
     const { node, chat, chatFlow } = structuredFlow({ parts: [
-      { id: 'first', type: 'text', text: '', completeness: 'partial' },
-      { id: 'second', type: 'text', text: '', completeness: 'complete' },
+      { type: 'text', text: '', completeness: 'partial' },
+      { type: 'text', text: '', completeness: 'complete' },
     ] });
     const before = structuredClone(node);
     const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });

@@ -7,7 +7,7 @@ import { captureProviderChat, type CapturedChatRequest } from './capture-provide
 function request(): CapturedChatRequest {
   return {
     model: 'synthetic/test',
-    messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [{ id: 'input', type: 'text', text: 'Literal input.', completeness: 'complete' }] }],
+    messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [{ type: 'text', text: 'Literal input.', completeness: 'complete' }] }],
     parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined,
     signal: new AbortController().signal,
   };

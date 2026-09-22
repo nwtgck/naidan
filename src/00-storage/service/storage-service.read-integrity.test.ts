@@ -75,7 +75,7 @@ describe('read-update-write chat content', () => {
     localStorage.setItem(contentKey, '{');
     await expect(service.updateChatContent({ id, updater: () => replacementContent })).rejects.toThrow();
     localStorage.setItem(contentKey, JSON.stringify({ root: { items: [{ id: 'a', role: 'assistant', createdAt: 9,
-      parts: [{ id: 'p1', type: 'reasoning', text: '  R\r\n' }, { id: 'p2', type: 'text', text: '<think>raw</think> ', completeness: 'partial' }],
+      parts: [{ type: 'reasoning', text: '  R\r\n' }, { type: 'text', text: '<think>raw</think> ', completeness: 'partial' }],
       interruption: { type: 'error', message: '通信が途切れました' }, replies: { items: [] } }] }, currentLeafId: 'a' }));
     const before = await service.loadChatContent({ id });
     await service.updateChatContent({ id, updater: ({ current }) => {
@@ -101,8 +101,8 @@ describe('read-update-write chat content', () => {
     const saved = JSON.parse(localStorage.getItem(contentKey)!);
     expect(saved.root.items[0]).toEqual({ id: 'a', role: 'assistant', createdAt: 9,
       parts: [
-        { id: 'legacy_reasoning', type: 'reasoning', text: ' R ' },
-        { id: 'legacy_text', type: 'text', text: ' <think>literal</think> [Generation Aborted]' },
+        { type: 'reasoning', text: ' R ' },
+        { type: 'text', text: ' <think>literal</think> [Generation Aborted]' },
       ], replies: { items: [] } });
     expect(await service.loadChatContent({ id })).toEqual(before);
     expect(before?.currentLeafId).toBe(toMessageId({ raw: 'a' }));

@@ -93,7 +93,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       expect(streaming.value).toBe(true);
       abortChat({ chatId: idToRaw({ id: chat.id }) });
       await vi.waitUntil(() => !streaming.value);
-      expect(assistant.parts).toEqual([{ id: 'part_0', type: 'text', text: '<think>I am thinking...', completeness: 'partial' }]);
+      expect(assistant.parts).toEqual([{ type: 'text', text: '<think>I am thinking...', completeness: 'partial' }]);
       expect(assistant.role === 'assistant' && assistant.interruption).toEqual({ type: 'cancelled' });
       expect(getMessageText({ message: assistant })).not.toContain('</think>');
       expect(getMessageText({ message: assistant })).not.toContain('[Generation Aborted]');

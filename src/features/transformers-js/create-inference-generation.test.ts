@@ -33,8 +33,8 @@ describe('native events to local nested parts', () => {
     ] });
     expect(result).toEqual(done.type === 'result' ? done.result : undefined);
     expect(node.parts).toMatchObject([
-      { id: 'part_0', type: 'reasoning', text: '  R\n' }, { id: 'part_1', type: 'reasoning', text: 'R2' },
-      { id: 'part_2', type: 'text', text: '' }, { id: 'part_3', type: 'text', text: '<think>literal</think>🙂  ' },
+      { type: 'reasoning', text: '  R\n' }, { type: 'reasoning', text: 'R2' },
+      { type: 'text', text: '' }, { type: 'text', text: '<think>literal</think>🙂  ' },
     ]);
   });
   it('keeps partial separate from already closed content', async () => {
@@ -49,7 +49,7 @@ describe('native events to local nested parts', () => {
       { type: 'tool_start', index: 0 }, { type: 'tool_start', index: 1 },
       { type: 'tool_call', index: 1, toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: ' {"a": 1} ' } } }, interrupted,
     ] });
-    expect(node.parts).toHaveLength(1); expect(node.parts[0]).toMatchObject({ id: 'part_1', type: 'tool_call', toolCall: { function: { arguments: ' {"a": 1} ' } } });
+    expect(node.parts).toHaveLength(1); expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { function: { arguments: ' {"a": 1} ' } } });
   });
   it.each([
     [{ type: 'part_start', index: 1, kind: 'text' }],

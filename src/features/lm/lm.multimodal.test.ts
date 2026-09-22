@@ -10,8 +10,8 @@ import { consumeProviderGenerationForTest } from './provider-test-support';
 function request({ text, model }: { text: string, model: string }): Parameters<LmProvider['chat']>[0] {
   const messages: ChatMessage[] = [{
     id: toMessageId({ raw: 'u' }), role: 'user', parts: [
-      { id: 'text', type: 'text', text, completeness: 'complete' },
-      { id: 'image', type: 'attachment', attachment: {
+      { type: 'text', text, completeness: 'complete' },
+      { type: 'attachment', attachment: {
         id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }),
         originalName: 'image.png', mimeType: 'image/png', size: 3, uploadedAt: 1,
         status: 'memory', blob: new Blob([Uint8Array.of(1, 2, 3)], { type: 'image/png' }),

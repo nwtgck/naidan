@@ -11,20 +11,20 @@ const block = `\
 \`\`\``;
 it('inspects each text independently without reading reasoning or joining parts', () => {
   const value = message({ parts: [
-    { id: 'r', type: 'reasoning', text: block, completeness: 'complete' },
-    { id: 'a', type: 'text', text: block.slice(0, 20), completeness: 'complete' },
-    { id: 'b', type: 'text', text: block.slice(20), completeness: 'partial' },
+    { type: 'reasoning', text: block, completeness: 'complete' },
+    { type: 'text', text: block.slice(0, 20), completeness: 'complete' },
+    { type: 'text', text: block.slice(20), completeness: 'partial' },
   ] });
   expect(inspectDebugImages({ message: value })).toEqual({ images: [], errors: [] });
 });
 it('keeps repeated image occurrences distinct and leaves raw text untouched', () => {
-  const value = message({ parts: [{ id: 'p', type: 'text', text: '<think>literal</think>' + block + block, completeness: 'partial' }] });
+  const value = message({ parts: [{ type: 'text', text: '<think>literal</think>' + block + block, completeness: 'partial' }] });
   const before = structuredClone(value); const result = inspectDebugImages({ message: value });
   expect(result.images.map(i => i.image.binaryObjectId)).toEqual(['binary', 'binary']);
   expect(new Set(result.images.map(i => i.key)).size).toBe(2); expect(value).toEqual(before);
 });
 it('reports malformed or invalid metadata without treating it as an image', () => {
-  const value = message({ parts: [{ id: 'p', type: 'text', text: `\
+  const value = message({ parts: [{ type: 'text', text: `\
 \`\`\`naidan_experimental_image
 not-json
 \`\`\`

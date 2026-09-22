@@ -8,12 +8,12 @@ function assistant(): AssistantMessageNode {
     id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 15,
     modelId: 'model', lmParameters: undefined, interruption: { type: 'error', message: '日本語の失敗' },
     parts: [
-      { id: 'r', type: 'reasoning', text: `\
+      { type: 'reasoning', text: `\
   R\\r
 🙂`, completeness: 'complete' },
-      { id: 't', type: 'text', text: '<think>literal</think>', completeness: 'partial' },
-      { id: 'r2', type: 'reasoning', text: '', completeness: 'partial' },
-      { id: 'c', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' { "x": 1 } ' } } },
+      { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+      { type: 'reasoning', text: '', completeness: 'partial' },
+      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' { "x": 1 } ' } } },
     ], replies: { items: [] },
   };
 }
@@ -39,7 +39,7 @@ describe('createChatMessageSnapshot', () => {
     reasoning.text = 'changed';
     reasoning.completeness = 'partial';
     node.parts.reverse();
-    expect(snapshot.parts[0]).toEqual({ id: 'r', type: 'reasoning', text: `\
+    expect(snapshot.parts[0]).toEqual({ type: 'reasoning', text: `\
   R\\r
 🙂`, completeness: 'complete' });
     expect(snapshot.parts[3]).toMatchObject({ toolCall: { function: { name: 'f', arguments: ' { "x": 1 } ' } } });
@@ -56,7 +56,7 @@ describe('createChatMessageSnapshot', () => {
       default: { const _ex: never = status; throw new Error(`Unhandled status: ${_ex}`); }
       }
     })();
-    const node: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ id: 'att', type: 'attachment', attachment }], replies: { items: [] } };
+    const node: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'attachment', attachment }], replies: { items: [] } };
     const snapshot = createChatMessageSnapshot({ node });
     expect(snapshot.parts).toEqual(node.parts);
     attachment.originalName = 'changed';
@@ -77,11 +77,11 @@ describe('createChatMessageSnapshot', () => {
     const callId = toToolCallId({ raw: 'c' });
     const binaryId = toBinaryObjectId({ raw: 'b' });
     const node: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', modelId: undefined, lmParameters: undefined, createdAt: 1, replies: { items: [] }, parts: [
-      { id: 'a', type: 'tool_result', result: { toolCallId: callId, status: 'executing' } },
-      { id: 'b', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\n' } } },
-      { id: 'c', type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } },
-      { id: 'd', type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
-      { id: 'e', type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'timeout', message: { type: 'binary_object', id: binaryId } } } },
+      { type: 'tool_result', result: { toolCallId: callId, status: 'executing' } },
+      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\n' } } },
+      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } },
+      { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
+      { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'timeout', message: { type: 'binary_object', id: binaryId } } } },
     ] };
     const expected = structuredClone(node.parts);
     const snapshot = createChatMessageSnapshot({ node });
@@ -99,7 +99,7 @@ describe('createChatMessageSnapshot', () => {
   it('does not create a text part when a message has no parts', () => {
     const node: MessageNode = { id: toMessageId({ raw: 's' }), role: 'system', modelId: undefined, lmParameters: undefined, createdAt: 1, replies: { items: [] }, parts: [] };
     expect(createChatMessageSnapshot({ node }).parts).toEqual([]);
-    node.parts.push({ id: 'empty', type: 'text', text: '', completeness: 'complete' });
-    expect(createChatMessageSnapshot({ node }).parts).toEqual([{ id: 'empty', type: 'text', text: '', completeness: 'complete' }]);
+    node.parts.push({ type: 'text', text: '', completeness: 'complete' });
+    expect(createChatMessageSnapshot({ node }).parts).toEqual([{ type: 'text', text: '', completeness: 'complete' }]);
   });
 });

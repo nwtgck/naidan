@@ -54,13 +54,13 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
       for (const part of message.parts) {
         switch (part.type) {
         case 'text': {
-          const { id: _id, type, text, completeness: _completeness, ...unhandled } = part;
+          const { type, text, completeness: _completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           content.push({ type, text });
           break;
         }
         case 'attachment': {
-          const { id: _id, type: _type, attachment, ...unhandled } = part;
+          const { type: _type, attachment, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           const { id: _attachmentId, binaryObjectId, mimeType, originalName, size: _size, uploadedAt: _uploadedAt, ...state } = attachment;
           let blob: Blob;
@@ -114,7 +114,7 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
       for (const part of message.parts) {
         switch (part.type) {
         case 'reasoning': {
-          const { id: _id, type: _type, text, completeness: _completeness, ...unhandled } = part;
+          const { type: _type, text, completeness: _completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           switch (phase) {
           case 'reasoning': break;
@@ -126,7 +126,7 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
           break;
         }
         case 'text': {
-          const { id: _id, type: _type, text, completeness: _completeness, ...unhandled } = part;
+          const { type: _type, text, completeness: _completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           switch (phase) {
           case 'reasoning':
@@ -138,7 +138,7 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
           break;
         }
         case 'tool_call': {
-          const { id: _id, type: _type, toolCall, ...unhandled } = part;
+          const { type: _type, toolCall, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           const { id, type, function: fn, ...unhandledCall } = toolCall;
           unhandledCall satisfies Record<PropertyKey, never>;
@@ -162,7 +162,7 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
       break;
     case 'tool':
       for (const part of message.parts) {
-        const { id: _id, type: _type, result: outcome, ...unhandled } = part;
+        const { type: _type, result: outcome, ...unhandled } = part;
         unhandled satisfies Record<PropertyKey, never>;
         result.push({ role, content: await toolText({ result: outcome, readBinaryObject, signal }), reasoning_content: undefined, tool_calls: undefined, tool_call_id: idToRaw({ id: outcome.toolCallId }) });
       }

@@ -51,7 +51,7 @@ describe("LFM2.5 350M original tokenizer and structured standard generation", ()
       _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config, generate,
     } as unknown as Context['model'];
     const onChunk = vi.fn(); const onToolCalls = vi.fn(); const controller = new AbortController(); const node = assistant();
-    const input = await prepareInferenceRequest({ messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'u1', type: 'text', text: 'Hel', completeness: 'complete' }, { id: 'u2', type: 'text', text: 'lo', completeness: 'complete' }] }], parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined });
+    const input = await prepareInferenceRequest({ messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hel', completeness: 'complete' }, { type: 'text', text: 'lo', completeness: 'complete' }] }], parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined });
     const { createInferenceEventDelivery } = await import('@/features/transformers-js/worker/inference-event-delivery');
     const operation = consumeChatGeneration({ node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal,
       generate: async ({ onEvent }) => {
@@ -89,10 +89,10 @@ Hello<|im_end|>
     const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
     const native = harness.runtime as unknown as typeof Tjs;
     const tokenizer = await native.AutoTokenizer.from_pretrained(modelId, { revision: archive.summary.revision, local_files_only: true });
-    const node = assistant(); node.parts = [{ id: 'p1', type: 'text', text: '  <think>literal</think>🙂\r\n', completeness: 'complete' }, { id: 'p2', type: 'text', text: 'tail ', completeness: 'complete' }];
-    const next: UserMessageNode = { id: toMessageId({ raw: 'u2' }), role: 'user', parts: [{ id: 'q', type: 'text', text: 'Next', completeness: 'complete' }], createdAt: 3, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
+    const node = assistant(); node.parts = [{ type: 'text', text: '  <think>literal</think>🙂\r\n', completeness: 'complete' }, { type: 'text', text: 'tail ', completeness: 'complete' }];
+    const next: UserMessageNode = { id: toMessageId({ raw: 'u2' }), role: 'user', parts: [{ type: 'text', text: 'Next', completeness: 'complete' }], createdAt: 3, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
     node.replies.items.push(next);
-    const user: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [node] } };
+    const user: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [node] } };
     const content: ChatContent = { root: { items: [user] }, currentLeafId: next.id };
     const storage = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'native-standard' });
     await storage.saveChatContent({ id: chatId, content }); const loaded = await storage.loadChatContent({ id: chatId }); expect(loaded).not.toBeNull();
@@ -137,7 +137,7 @@ Next<|im_end|>
     const model = { config: jsonBody({ archive, path: 'config.json' }), configs: { generation_config: jsonBody({ archive, path: 'generation_config.json' }) },
       _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config, generate,
     } as unknown as Context['model'];
-    const node = assistant(); const user: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 'p', type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [node] } };
+    const node = assistant(); const user: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [node] } };
     const controller = new AbortController();
     async function run({ request, node }: { request: Awaited<ReturnType<typeof prepareInferenceRequest>>, node: AssistantMessageNode }) {
       return consumeChatGeneration({ node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal,
@@ -166,7 +166,7 @@ Next<|im_end|>
     if (part.type !== 'tool_call') throw new Error('Expected a complete call');
     expect(part.toolCall.function).toEqual({ name: 'f', arguments: '{"x":" a "}' });
     const result: ToolMessageNode = { id: toMessageId({ raw: 'result' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined,
-      parts: [{ id: 'result-1', type: 'tool_result', result: { toolCallId: part.toolCall.id, status: 'success', content: { type: 'text', text: 'tool reply' } } }], replies: { items: [] } };
+      parts: [{ type: 'tool_result', result: { toolCallId: part.toolCall.id, status: 'success', content: { type: 'text', text: 'tool reply' } } }], replies: { items: [] } };
     node.replies.items.push(result);
     const content: ChatContent = { root: { items: [user] }, currentLeafId: result.id };
     const storage = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'standard-tool-roundtrip' });

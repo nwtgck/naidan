@@ -6,18 +6,18 @@ import { toAttachmentId, toBinaryObjectId, toMessageId, toToolCallId } from '@/0
 
 const id = toMessageId({ raw: 'm' });
 function text({ value }: { value: string }) {
-  return { id: 'p', type: 'text' as const, text: value, completeness: 'complete' as const };
+  return { type: 'text' as const, text: value, completeness: 'complete' as const };
 }
 describe('remote chat request projection', () => {
   it('keeps reasoning separate and literal tags in text without updating the source', async () => {
-    const message: ChatMessage = { id, role: 'assistant', parts: [{ id: 'r', type: 'reasoning', text: '  R\n', completeness: 'complete' }, text({ value: '<think>literal</think>' }), { id: 'c', type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: ' {"value": 1} ' } } }] };
+    const message: ChatMessage = { id, role: 'assistant', parts: [{ type: 'reasoning', text: '  R\n', completeness: 'complete' }, text({ value: '<think>literal</think>' }), { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: ' {"value": 1} ' } } }] };
     const before = JSON.stringify(message);
     const value = await buildApiChatMessages({ messages: [message], readBinaryObject: undefined, signal: undefined });
     expect(value).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning_content: '  R\n', tool_call_id: undefined, tool_calls: [{ id: 'call', type: 'function', function: { name: 'f', arguments: ' {"value": 1} ' } }] }]);
     expect(JSON.stringify(message)).toBe(before);
   });
   it('does not silently regroup unrepresentable interleaved history', async () => {
-    const m: ChatMessage = { id, role: 'assistant', parts: [text({ value: 'A' }), { id: 'r', type: 'reasoning', text: 'R', completeness: 'complete' }] };
+    const m: ChatMessage = { id, role: 'assistant', parts: [text({ value: 'A' }), { type: 'reasoning', text: 'R', completeness: 'complete' }] };
     await expect(buildApiChatMessages({ messages: [m], readBinaryObject: undefined, signal: undefined })).rejects.toThrow('cannot represent');
   });
   it('distinguishes missing assistant text from an explicitly empty text part', async () => {
@@ -27,18 +27,18 @@ describe('remote chat request projection', () => {
   });
   it('resolves images and text attachments at the API boundary in source order', async () => {
     const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'image' }), originalName: 'image.png', mimeType: 'image/png', size: 1, uploadedAt: 2, status: 'persisted' as const };
-    const m: ChatMessage = { id, role: 'user', parts: [text({ value: 'before' }), { id: 'a', type: 'attachment', attachment }, text({ value: 'after' })] };
+    const m: ChatMessage = { id, role: 'user', parts: [text({ value: 'before' }), { type: 'attachment', attachment }, text({ value: 'after' })] };
     const reader = vi.fn(async () => new Blob([new Uint8Array([1])], { type: 'image/png' }));
     const [result] = await buildApiChatMessages({ messages: [m], readBinaryObject: reader, signal: undefined });
     expect(result?.content).toEqual([{ type: 'text', text: 'before' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } }, { type: 'text', text: 'after' }]);
     expect(reader).toHaveBeenCalledExactlyOnceWith({ binaryObjectId: attachment.binaryObjectId, signal: undefined });
   });
   it('refuses missing attachments and unresolved executing tool results', async () => {
-    const m: ChatMessage = { id, role: 'tool', parts: [{ id: 'r', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'executing' } }] };
+    const m: ChatMessage = { id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'executing' } }] };
     await expect(buildApiChatMessages({ messages: [m], readBinaryObject: undefined, signal: undefined })).rejects.toThrow('executing');
   });
   it('reconstructs stored tool errors using the same format as live errors', async () => {
-    const m: ChatMessage = { id, role: 'tool', parts: [{ id: 'r', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'b' }) } } } }] };
+    const m: ChatMessage = { id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'b' }) } } } }] };
     const [result] = await buildApiChatMessages({ messages: [m], readBinaryObject: async () => new Blob(['説明']), signal: undefined });
     expect(result?.content).toBe('Error [invalid_arguments]: 説明'); expect(result?.tool_call_id).toBe('c');
   });
@@ -56,7 +56,7 @@ describe('persisted tool text decoding', () => {
   const toolCallId = toToolCallId({ raw: 'call-utf8' });
   const binaryObjectId = toBinaryObjectId({ raw: 'result-utf8' });
   function message({ bytesReference }: { bytesReference: boolean }): ChatMessage {
-    return { id, role: 'tool', parts: [{ id: 'result', type: 'tool_result', result: {
+    return { id, role: 'tool', parts: [{ type: 'tool_result', result: {
       toolCallId, status: 'success',
       content: bytesReference ? { type: 'binary_object', id: binaryObjectId } : { type: 'text', text: '\uFEFF  結果🙂\r\n' },
     } }] };

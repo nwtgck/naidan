@@ -10,7 +10,7 @@ function node(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'generated' }), role: 'assistant', createdAt: 1, parts: [], interruption: undefined, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
 }
 function history(): ChatMessage[] {
-  return [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ id: 't', type: 'text', text: 'original', completeness: 'complete' }] }];
+  return [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'original', completeness: 'complete' }] }];
 }
 function chat({ messages, controller }: { messages: ChatMessage[], controller: AbortController }) {
   return new PromptApiProvider().chat({ debug: undefined, messages, model: BROWSER_PROVIDED_LM_MODEL_ID, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: controller.signal });
@@ -37,7 +37,7 @@ describe('Prompt API parts and ownership', () => {
     const result = await consumeChatGeneration({ node: n, items, abortController: controller, onChange: () => {} });
     expect(b.promptStreaming.mock.calls[0]?.[0]).toBe('original');
     expect(result).toEqual({ type: 'finished', next: 'user' });
-    expect(n.parts).toEqual([{ id: 'part_0', type: 'text', text: '<think>literal</think>    ', completeness: 'complete' }]);
+    expect(n.parts).toEqual([{ type: 'text', text: '<think>literal</think>    ', completeness: 'complete' }]);
     expect(b.destroy).toHaveBeenCalledOnce();
   });
   it('cancels an uncooperative pending browser read and keeps accepted text partial', async () => {
@@ -83,7 +83,7 @@ describe('Prompt API parts and ownership', () => {
     const b = browser({ stream: new ReadableStream({ start(c) {
       c.close();
     } }) }); const controller = new AbortController();
-    const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ id: 'r', type: 'reasoning', text: 'R', completeness: 'partial' }] }, ...history()];
+    const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ type: 'reasoning', text: 'R', completeness: 'partial' }] }, ...history()];
     const n = node(); const result = await consumeChatGeneration({ node: n, items: chat({ messages, controller }), abortController: controller, onChange: () => {} });
     expect(result).toMatchObject({ type: 'error', error: { code: 'unsupported_input' } });
     expect(n.parts).toEqual([]); expect(b.create).not.toHaveBeenCalled();

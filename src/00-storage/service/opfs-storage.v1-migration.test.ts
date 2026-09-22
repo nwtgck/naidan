@@ -496,9 +496,9 @@ describe('OPFSStorageProvider - Migration Logic', () => {
           role: 'user',
           createdAt: node.createdAt,
           parts: [
-            { id: 'legacy_text', type: 'text', text: 'txt' },
+            { type: 'text', text: 'txt' },
             {
-              id: 'legacy_attachment_0',
+
               type: 'attachment',
               attachment: {
                 id: VALID_UUID_1,

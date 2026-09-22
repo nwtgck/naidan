@@ -103,7 +103,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
         items: [{
           id: generateId<MessageId>(),
           role: 'user',
-          parts: [{ id: 'text', type: 'text', text: 'Huge Content'.repeat(100), completeness: 'complete' }],
+          parts: [{ type: 'text', text: 'Huge Content'.repeat(100), completeness: 'complete' }],
           createdAt: Date.now(),
           modelId: undefined,
           lmParameters: undefined,
@@ -142,7 +142,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     const mockChat: Chat = {
       id: chatId,
       title: 'Join Test',
-      root: { items: [{ id: generateId<MessageId>(), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } }] },
+      root: { items: [{ id: generateId<MessageId>(), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } }] },
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: true,

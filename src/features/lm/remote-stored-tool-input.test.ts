@@ -20,15 +20,15 @@ function fixture({ status, content }: { status: 'success' | 'error', content: Te
   default: { const _ex: never = status; throw new Error(`Unhandled test status: ${_ex}`); }
   }
   const tool: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined,
-    parts: [{ id: 'result', type: 'tool_result', result }], replies: { items: [] } };
+    parts: [{ type: 'tool_result', result }], replies: { items: [] } };
   const assistant: AssistantMessageNode = { id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 2, modelId: 'test', lmParameters: undefined, interruption: undefined,
     parts: [
-      { id: 'reason', type: 'reasoning', text: '  確認する。\n', completeness: 'complete' },
-      { id: 'literal', type: 'text', text: '<think>literal</think>', completeness: 'complete' },
-      { id: 'call', type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'lookup', arguments: ' {"n": 1} ' } } },
+      { type: 'reasoning', text: '  確認する。\n', completeness: 'complete' },
+      { type: 'text', text: '<think>literal</think>', completeness: 'complete' },
+      { type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'lookup', arguments: ' {"n": 1} ' } } },
     ], replies: { items: [tool] } };
   const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-    parts: [{ id: 'question', type: 'text', text: '質問', completeness: 'complete' }], replies: { items: [assistant] } };
+    parts: [{ type: 'text', text: '質問', completeness: 'complete' }], replies: { items: [assistant] } };
   const chat: ChatContent = { root: { items: [user] }, currentLeafId: tool.id };
   return { chat, tool };
 }
@@ -85,7 +85,7 @@ for (const kind of ['openai', 'ollama'] as const) {
         id: toMessageId({ raw: 'inactive' }), role: 'assistant', createdAt: 4,
         modelId: 'test', lmParameters: undefined,
         interruption: { type: 'error', message: '記録済みの失敗' },
-        parts: [{ id: 'partial', type: 'text', text: 'Other branch [Aborted]  ', completeness: 'partial' }],
+        parts: [{ type: 'text', text: 'Other branch [Aborted]  ', completeness: 'partial' }],
         replies: { items: [] },
       };
       user.replies.items.push(inactive);

@@ -72,8 +72,8 @@ describe('generateChatShareURL', () => {
             createdAt: Date.now(),
             modelId: undefined,
             parts: [
-              { id: 'p-text', type: 'text', text: 'Here is an image', completeness: 'complete' },
-              { id: 'p-attachment', type: 'attachment', attachment: {
+              { type: 'text', text: 'Here is an image', completeness: 'complete' },
+              { type: 'attachment', attachment: {
                 id: 'att-1',
                 binaryObjectId: 'bin-1',
                 originalName: 'image.png',
@@ -122,12 +122,12 @@ describe('parts sharing binary references', () => {
       id: toChatId({ raw: 'share' }), title: 'Shared', createdAt: 1, updatedAt: 1, debugEnabled: false,
       root: { items: [
         { id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' },
-          parts: [{ id: 'r', type: 'reasoning', text: imageText.replace('image', 'not-a-reference'), completeness: 'complete' }, { id: 't', type: 'text', text: imageText, completeness: 'partial' }],
+          parts: [{ type: 'reasoning', text: imageText.replace('image', 'not-a-reference'), completeness: 'complete' }, { type: 'text', text: imageText, completeness: 'partial' }],
           replies: { items: [{ id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined, parts: [
-            { id: 'ok', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'good' }) } } },
-            { id: 'error', type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c2' }), status: 'error', error: { code: 'other', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'error' }) } } } },
+            { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'good' }) } } },
+            { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c2' }), status: 'error', error: { code: 'other', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'error' }) } } } },
           ], replies: { items: [] } }] } },
-        { id: toMessageId({ raw: 'other' }), role: 'user', createdAt: 3, modelId: undefined, lmParameters: EMPTY_LM_PARAMETERS, parts: [{ id: 'attachment', type: 'attachment', attachment }], replies: { items: [] } },
+        { id: toMessageId({ raw: 'other' }), role: 'user', createdAt: 3, modelId: undefined, lmParameters: EMPTY_LM_PARAMETERS, parts: [{ type: 'attachment', attachment }], replies: { items: [] } },
       ] },
     };
     const settings: Settings = { endpoint: { type: 'openai', url: '' }, storageType: 'local', providerProfiles: [], mounts: [], titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: EMPTY_LM_PARAMETERS } };

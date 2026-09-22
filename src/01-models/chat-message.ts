@@ -70,14 +70,14 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
       parts: parts.map(part => {
         switch (part.type) {
         case 'text': {
-          const { id, type, text, completeness, ...unhandledPart } = part;
+          const { type, text, completeness, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<typeof part>()({ id, type, text, completeness });
+          return exactObject<typeof part>()({ type, text, completeness });
         }
         case 'attachment': {
-          const { id, type, attachment, ...unhandledPart } = part;
+          const { type, attachment, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<typeof part>()({ id, type, attachment: copyAttachment({ attachment }) });
+          return exactObject<typeof part>()({ type, attachment: copyAttachment({ attachment }) });
         }
         default: {
           const _ex: never = part;
@@ -96,18 +96,18 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
         switch (part.type) {
         case 'reasoning':
         case 'text': {
-          const { id, type, text, completeness, ...unhandledPart } = part;
+          const { type, text, completeness, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
-          return exactObject<typeof part>()({ id, type, text, completeness });
+          return exactObject<typeof part>()({ type, text, completeness });
         }
         case 'tool_call': {
-          const { id, type, toolCall, ...unhandledPart } = part;
+          const { type, toolCall, ...unhandledPart } = part;
           unhandledPart satisfies Record<PropertyKey, never>;
           const { id: callId, type: callType, function: fn, ...unhandledCall } = toolCall;
           unhandledCall satisfies Record<PropertyKey, never>;
           const { name, arguments: argumentsText, ...unhandledFunction } = fn;
           unhandledFunction satisfies Record<PropertyKey, never>;
-          return exactObject<typeof part>()({ id, type, toolCall: exactObject<typeof toolCall>()({
+          return exactObject<typeof part>()({ type, toolCall: exactObject<typeof toolCall>()({
             id: callId, type: callType,
             function: exactObject<typeof fn>()({ name, arguments: argumentsText }),
           }) });
@@ -126,9 +126,9 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
     return exactObject<Extract<ChatMessage, { role: 'system' }>>()({
       id, role,
       parts: parts.map(part => {
-        const { id, type, text, completeness, ...unhandledPart } = part;
+        const { type, text, completeness, ...unhandledPart } = part;
         unhandledPart satisfies Record<PropertyKey, never>;
-        return exactObject<typeof part>()({ id, type, text, completeness });
+        return exactObject<typeof part>()({ type, text, completeness });
       }),
     });
   }
@@ -138,7 +138,7 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
     return exactObject<Extract<ChatMessage, { role: 'tool' }>>()({
       id, role,
       parts: parts.map(part => {
-        const { id, type, result, ...unhandledPart } = part;
+        const { type, result, ...unhandledPart } = part;
         unhandledPart satisfies Record<PropertyKey, never>;
         let copy: ToolExecutionResult;
         switch (result.status) {
@@ -167,7 +167,7 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
           throw new Error(`Unhandled tool result: ${_ex}`);
         }
         }
-        return exactObject<typeof part>()({ id, type, result: copy });
+        return exactObject<typeof part>()({ type, result: copy });
       }),
     });
   }

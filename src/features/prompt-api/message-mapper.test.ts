@@ -6,12 +6,12 @@ import { mapChatMessagesToPromptApi } from './message-mapper';
 
 const id = toMessageId({ raw: 'message' });
 function text({ value }: { value: string }) {
-  return { id: 't', type: 'text' as const, text: value, completeness: 'complete' as const };
+  return { type: 'text' as const, text: value, completeness: 'complete' as const };
 }
 function image({ mimeType, status }: { mimeType: string, status: 'memory' | 'persisted' | 'missing' }): Extract<ChatMessage, { role: 'user' }>['parts'][number] {
   const common = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image', mimeType, size: 5, uploadedAt: 1 };
   const attachment: Attachment = status === 'memory' ? { ...common, status, blob: new Blob(['hello'], { type: mimeType }) } : { ...common, status };
-  return { id: 'a', type: 'attachment', attachment };
+  return { type: 'attachment', attachment };
 }
 function getPromptMessages({ prompt }: { prompt: PromptApiPrompt }) {
   if (typeof prompt === 'string') throw new Error('Expected message-array prompt.');
@@ -81,7 +81,7 @@ Chat instruction` },
     expect(result.initialPrompts).toEqual([{ role: 'assistant', content: raw + raw }]); expect(result.prompt).toBe('');
   });
   it('rejects structured reasoning instead of silently omitting it', async () => {
-    await expect(map({ messages: [{ id, role: 'assistant', parts: [{ id: 'r', type: 'reasoning', text: 'R', completeness: 'complete' }] }, { id, role: 'user', parts: [] }] })).rejects.toThrow('structured reasoning');
+    await expect(map({ messages: [{ id, role: 'assistant', parts: [{ type: 'reasoning', text: 'R', completeness: 'complete' }] }, { id, role: 'user', parts: [] }] })).rejects.toThrow('structured reasoning');
   });
   it('resolves persisted images in part order and forwards the request signal', async () => {
     const controller = new AbortController(); const reader = vi.fn(async () => new Blob(['bytes']));

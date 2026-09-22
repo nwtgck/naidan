@@ -1,5 +1,6 @@
 import type { AssistantMessageNode, MessageNode } from '@/01-models/types';
 import { stripNaidanSentinels } from '@/utils/image-generation';
+import { getMessagePartDisplayKey } from './message-part-display-key';
 
 export type AssistantDisplayPart =
   | { type: 'text', key: string, text: string }
@@ -56,18 +57,18 @@ export function splitDisplayedThinking({ text }: { text: string }): {
 
 export function getAssistantDisplayParts({ message }: { message: AssistantMessageNode }): AssistantDisplayPart[] {
   return message.parts.flatMap((part): AssistantDisplayPart[] => {
-    // JSON encoding avoids collisions between caller-provided IDs and delimiters.
+    const partKey = getMessagePartDisplayKey({ part });
     switch (part.type) {
     case 'text': return splitDisplayedThinking({ text: part.text }).map(piece => {
-      const key = JSON.stringify([part.id, piece.offset]);
+      const key = JSON.stringify([partKey, piece.offset]);
       switch (piece.type) {
       case 'text': return { type: 'text', key, text: stripNaidanSentinels({ content: piece.text }) };
       case 'reasoning': return { type: 'reasoning', key, text: piece.text, completeness: piece.completeness };
       default: { const _ex: never = piece.type; throw new Error(`Unhandled display segment: ${_ex}`); }
       }
     });
-    case 'reasoning': return [{ type: 'reasoning', key: JSON.stringify([part.id]), text: part.text, completeness: part.completeness }];
-    case 'tool_call': return [{ type: 'tool_call', key: JSON.stringify([part.id]), toolCall: part.toolCall }];
+    case 'reasoning': return [{ type: 'reasoning', key: partKey, text: part.text, completeness: part.completeness }];
+    case 'tool_call': return [{ type: 'tool_call', key: partKey, toolCall: part.toolCall }];
     default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
     }
   });

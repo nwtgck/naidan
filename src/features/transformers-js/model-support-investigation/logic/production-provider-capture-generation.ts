@@ -19,13 +19,13 @@ export async function generateProductionProviderCapture({ provider, modelId, inp
 }): Promise<ChatGenerationResult> {
   const history = captureProviderMessages({ input });
   const generated: (AssistantMessageNode | ToolMessageNode)[] = [];
-  const settledTools = new Set<string>();
+  const settledTools = new Set<ToolMessageNode['parts'][number]>();
   let assistant: AssistantMessageNode | undefined;
   let tool: ToolMessageNode | undefined;
   function recordAppliedContent(): void {
     if (assistant !== undefined) trace.observeAssistant({ message: assistant });
     for (const part of tool?.parts ?? []) {
-      if (part.result.status === 'executing' || settledTools.has(part.id)) continue;
+      if (part.result.status === 'executing' || settledTools.has(part)) continue;
       const result = part.result;
       switch (result.status) {
       case 'success':
@@ -42,7 +42,7 @@ export async function generateProductionProviderCapture({ provider, modelId, inp
         break;
       default: { const exhaustive: never = result; throw new Error('Unhandled captured tool result: ' + exhaustive); }
       }
-      settledTools.add(part.id);
+      settledTools.add(part);
     }
   }
   try {

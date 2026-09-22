@@ -500,7 +500,7 @@ describe('file-explorer.worker.impl', () => {
         items: [{
           id: toMessageId({ raw: 'user-1' }),
           role: 'user',
-          parts: [{ id: 'user-text', type: 'text', text: 'Hello', completeness: 'complete' }],
+          parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }],
           createdAt: 1000,
           modelId: undefined,
           lmParameters: undefined,
@@ -508,7 +508,7 @@ describe('file-explorer.worker.impl', () => {
             items: [{
               id: toMessageId({ raw: 'assistant-1' }),
               role: 'assistant',
-              parts: [{ id: 'assistant-text', type: 'text', text: 'Hi', completeness: 'complete' }],
+              parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }],
               createdAt: 1001,
               modelId: 'gpt-5',
               lmParameters: undefined,

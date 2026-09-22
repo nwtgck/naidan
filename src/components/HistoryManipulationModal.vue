@@ -10,6 +10,7 @@ import {
   CopyIcon, GripVerticalIcon, MessageSquareQuoteIcon, InfoIcon,
 } from 'lucide-vue-next';
 import { copyMessageWithoutReplies } from '@/logic/copy-message-node';
+import { getMessagePartDisplayKey } from '@/logic/message-part-display-key';
 import { cloneLmParameters } from '@/utils/lm-parameters';
 import { useLayout } from '@/composables/useLayout';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
@@ -58,7 +59,7 @@ function clearAttachmentUrls() {
   attachmentUrls.value = new Map();
 }
 
-watch(() => props.isOpen, open => {
+watch(() => props.isOpen, (open, wasOpen) => {
   editSession++;
   isSaving.value = false;
   clearAttachmentUrls();
@@ -78,18 +79,19 @@ watch(() => props.isOpen, open => {
     editingChatId.value = undefined;
     inheritedSystemPromptMessages.value = [];
     editableMessages.value = [];
-    setActiveFocusArea({ area: 'chat' });
+    // Lazy mounting a closed modal must not move focus away from the current area.
+    if (!open && wasOpen) setActiveFocusArea({ area: 'chat' });
   }
 }, { immediate: true });
 
-function attachmentKey({ item, partId }: { item: EditableHistoryItem; partId: string }): string {
-  return JSON.stringify([idToRaw({ id: item.localId }), partId]);
+function attachmentKey({ item, part }: { item: EditableHistoryItem; part: MessageNode['parts'][number] }): string {
+  return JSON.stringify([idToRaw({ id: item.localId }), getMessagePartDisplayKey({ part })]);
 }
 
 const attachmentPreviews = computed(() => editableMessages.value.flatMap(item =>
   item.message.parts.flatMap(part => {
     switch (part.type) {
-    case 'attachment': return [{ key: attachmentKey({ item, partId: part.id }), attachment: part.attachment }];
+    case 'attachment': return [{ key: attachmentKey({ item, part }), attachment: part.attachment }];
     case 'text':
     case 'reasoning':
     case 'tool_call':
@@ -143,7 +145,7 @@ function addMessage({ index }: { index: number }) {
   const common = {
     id: generateId<MessageId>(), createdAt: Date.now(), replies: { items: [] },
     modelId: undefined, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }),
-    parts: [{ id: 'text', type: 'text' as const, text: '', completeness: 'complete' as const }],
+    parts: [{ type: 'text' as const, text: '', completeness: 'complete' as const }],
   };
   editableMessages.value.splice(index + 1, 0, {
     localId: generateId<EditableHistoryItemId>(),
@@ -239,12 +241,7 @@ function appendImages({ index, files }: { index: number; files: readonly File[] 
       originalName: file.name, mimeType: file.type, size: file.size, uploadedAt: Date.now(),
       status: 'memory', blob: file,
     };
-    let partId: string;
-    do {
-      partId = idToRaw({ id: generateId<EditableHistoryItemId>() });
-    }
-    while (message.parts.some(part => part.id === partId));
-    message.parts.push({ id: partId, type: 'attachment', attachment });
+    message.parts.push({ type: 'attachment', attachment });
   }
 }
 
@@ -265,7 +262,7 @@ function handlePaste({ event, index }: { event: ClipboardEvent, index: number })
   appendImages({ index, files });
 }
 
-function removeAttachment({ index, partId }: { index: number; partId: string }) {
+function removeAttachment({ index, part }: { index: number; part: MessageNode['parts'][number] }) {
   const message = editableMessages.value[index]?.message;
   if (message === undefined) return;
   switch (message.role) {
@@ -275,7 +272,7 @@ function removeAttachment({ index, partId }: { index: number; partId: string }) 
   case 'tool': return;
   default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
   }
-  message.parts = message.parts.filter(part => part.id !== partId || part.type !== 'attachment');
+  message.parts = message.parts.filter(candidate => candidate !== part || candidate.type !== 'attachment');
 }
 
 function hasReasoning({ message }: { message: MessageNode }): boolean {
@@ -491,7 +488,7 @@ defineExpose({
                     <!-- Message Card -->
                     <div tw-class="flex-1 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden focus-within:ring-4 focus-within:ring-blue-500/10 focus-within:border-blue-500 transition-all flex flex-col shadow-sm group-hover:shadow-md">
                       <div data-testid="history-parts">
-                        <div v-for="part in msg.message.parts" :key="part.id" :data-testid="`history-part-${part.id}`">
+                        <div v-for="part in msg.message.parts" :key="getMessagePartDisplayKey({ part })" :data-testid="`history-part-${part.type}`">
                           <textarea
                             v-if="part.type === 'text'"
                             v-model="part.text"
@@ -503,7 +500,7 @@ defineExpose({
                             <div tw-class="relative group/att pb-5">
                               <img
                                 v-if="part.attachment.mimeType.startsWith('image/')"
-                                :src="attachmentUrls.get(attachmentKey({ item: msg, partId: part.id }))"
+                                :src="attachmentUrls.get(attachmentKey({ item: msg, part }))"
                                 :alt="part.attachment.originalName"
                                 tw-class="w-20 h-20 object-cover rounded-xl border-2 border-white dark:border-gray-800 shadow-sm"
                               />
@@ -511,7 +508,7 @@ defineExpose({
                                 <ImageIcon tw-class="w-8 h-8 text-gray-400" />
                               </div>
                               <button
-                                @click="removeAttachment({ index, partId: part.id })"
+                                @click="removeAttachment({ index, part })"
                                 data-testid="remove-history-attachment"
                                 tw-class="absolute -top-2 -right-2 p-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-lg opacity-0 group-hover/att:opacity-100 transition-opacity"
                               ><XIcon tw-class="w-3.5 h-3.5" /></button>

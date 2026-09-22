@@ -285,26 +285,26 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(secondTurnMessages.slice(0, continuationMessages.length)).toEqual(continuationMessages);
     expect(secondTurnMessages).toEqual([
       { id: expect.any(String), role: 'user', parts: [
-        { id: expect.any(String), type: 'text', text: 'First request', completeness: 'complete' },
+        { type: 'text', text: 'First request', completeness: 'complete' },
       ] },
       { id: expect.any(String), role: 'assistant', parts: [
-        { id: 'part_0', type: 'text', text: '<think>tool-call reasoning</think>', completeness: 'complete' },
-        { id: 'part_1', type: 'tool_call', toolCall: {
+        { type: 'text', text: '<think>tool-call reasoning</think>', completeness: 'complete' },
+        { type: 'tool_call', toolCall: {
           id: 'call-invalid', type: 'function',
           function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
         } },
       ] },
       { id: expect.any(String), role: 'tool', parts: [
-        { id: 'tool_result_0', type: 'tool_result', result: {
+        { type: 'tool_result', result: {
           toolCallId: 'call-invalid', status: 'error',
           error: { code: 'invalid_arguments', message: { type: 'text', text: 'Invalid arguments: test fixture' } },
         } },
       ] },
       { id: expect.any(String), role: 'assistant', parts: [
-        { id: 'part_0', type: 'text', text: 'Recovered from the tool error.', completeness: 'complete' },
+        { type: 'text', text: 'Recovered from the tool error.', completeness: 'complete' },
       ] },
       { id: expect.any(String), role: 'user', parts: [
-        { id: expect.any(String), type: 'text', text: 'Second request', completeness: 'complete' },
+        { type: 'text', text: 'Second request', completeness: 'complete' },
       ] },
     ]);
   });

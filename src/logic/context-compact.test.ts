@@ -21,7 +21,7 @@ function createMessage({
   content: string | undefined,
 }): MessageNode {
   const base = { id: toMessageId({ raw: id }), createdAt: 1, replies: { items: [] }, lmParameters: undefined };
-  const parts = [{ id: 'text', type: 'text' as const, text: content ?? '', completeness: 'complete' as const }];
+  const parts = [{ type: 'text' as const, text: content ?? '', completeness: 'complete' as const }];
   switch (role) {
   case 'user': return { ...base, role, parts, modelId: undefined };
   case 'assistant': return { ...base, role, parts, modelId: 'model-1', interruption: undefined };
@@ -74,7 +74,7 @@ describe('context-compact', () => {
   it('builds an English compact instruction and request messages', () => {
     const requestMessages = buildCompactRequestMessages({
       prefix: [
-        { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: `\
+        { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: `\
 messageId=msg-1
 
 Question`, completeness: 'complete' }] },
@@ -84,13 +84,13 @@ Question`, completeness: 'complete' }] },
     });
 
     expect(requestMessages).toEqual([
-      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ id: 'text', type: 'text', text: `\
+      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: `\
 messageId=msg-1
 
 Question`, completeness: 'complete' }] },
       {
         id: toMessageId({ raw: 'compact_instruction' }), role: 'user',
-        parts: [{ id: 'text', type: 'text', text: createCompactInstruction({ promptMode: 'with_message_ids' }), completeness: 'complete' }],
+        parts: [{ type: 'text', text: createCompactInstruction({ promptMode: 'with_message_ids' }), completeness: 'complete' }],
       },
     ]);
   });
@@ -105,7 +105,7 @@ Question`, completeness: 'complete' }] },
     expect(requestMessages).toEqual([
       {
         id: toMessageId({ raw: 'compact_instruction' }), role: 'user',
-        parts: [{ id: 'text', type: 'text', text: 'Custom compact prompt', completeness: 'complete' }],
+        parts: [{ type: 'text', text: 'Custom compact prompt', completeness: 'complete' }],
       },
     ]);
   });

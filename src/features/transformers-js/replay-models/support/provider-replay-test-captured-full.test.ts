@@ -222,7 +222,7 @@ describe('captured Full native inference gate', () => {
     });
     try {
       const observed = captureProviderChat({ provider: harness.provider, request: {
-        model: evidence.modelId, messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ id: 'text', type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
+        model: evidence.modelId, messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
         tools: [], parameters, debug: undefined, readBinaryObject: undefined, signal: undefined,
       } });
       await observed.completion;

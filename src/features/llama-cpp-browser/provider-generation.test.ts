@@ -28,7 +28,7 @@ describe('native llama.cpp events into common parts', () => {
     });
     const { node, result } = observation({ items: source({ generate, controller }), controller });
     expect(await result).toEqual({ type: 'finished', next: 'user' });
-    expect(node.parts).toEqual([{ id: 'part_0', type: 'reasoning', text: ' R\n', completeness: 'complete' }, { id: 'part_1', type: 'text', text: '<think>literal</think>  ', completeness: 'complete' }]);
+    expect(node.parts).toEqual([{ type: 'reasoning', text: ' R\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>  ', completeness: 'complete' }]);
   });
   it.each(['length', 'stop_sequence'] as const)('retains partial text after native %s', async finishReason => {
     const controller = new AbortController();const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => deliverNativeResult({ result: { ...finalText({ text: ' 途中\n' }), finishReason }, onEvent });

@@ -8,6 +8,7 @@ import { stripNaidanSentinels } from '@/utils/image-generation';
 import type { MessageNode } from '@/01-models/types';
 import { getMessageText } from '@/01-models/message-text';
 import { inspectDebugImages } from '@/logic/chat-debug-images';
+import { getMessagePartDisplayKey } from '@/logic/message-part-display-key';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { jsonToHighlightedHtml } from '@/logic/security/allowedHtml';
 import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
@@ -257,8 +258,8 @@ export default {
               <span tw-class="text-[9px] font-black uppercase tracking-widest block mb-1 opacity-70">{{ interruption.type === 'error' ? 'Error' : 'Cancelled' }}:</span>
               {{ interruption.type === 'error' ? interruption.message : '' }}
             </div>
-            <template v-for="part in node.parts" :key="part.id">
-              <div v-if="part.type === 'text' || part.type === 'reasoning'" tw-class="relative group/content text-[11px] whitespace-pre-wrap font-sans leading-relaxed text-gray-700 dark:text-gray-300 break-words" :data-testid="'debug-part-' + part.id">
+            <template v-for="part in node.parts" :key="getMessagePartDisplayKey({ part })">
+              <div v-if="part.type === 'text' || part.type === 'reasoning'" tw-class="relative group/content text-[11px] whitespace-pre-wrap font-sans leading-relaxed text-gray-700 dark:text-gray-300 break-words" data-testid="debug-part" :data-part-type="part.type">
                 <span tw-class="text-[9px] font-black uppercase tracking-widest block mb-1 opacity-70">{{ part.type === 'reasoning' ? 'Thinking Process' : 'Content' }} ({{ part.completeness }}):</span>
                 <button v-if="part.type === 'text'" @click.stop="copyContent" data-testid="copy-content-btn" tw-class="absolute right-0 top-0 p-1 opacity-0 group-hover/content:opacity-100">
                   <CheckIcon v-if="isCopied" tw-class="w-3.5 h-3.5 text-green-500" />
@@ -266,7 +267,7 @@ export default {
                 </button>
                 <span data-testid="debug-part-text">{{ part.text }}</span>
               </div>
-              <div v-else-if="part.type === 'tool_call' || part.type === 'tool_result'" tw-class="text-[11px] whitespace-pre-wrap break-words" :data-testid="'debug-part-' + part.id">
+              <div v-else-if="part.type === 'tool_call' || part.type === 'tool_result'" tw-class="text-[11px] whitespace-pre-wrap break-words" data-testid="debug-part" :data-part-type="part.type">
                 <span>{{ part.type }}</span>
                 <pre>{{ JSON.stringify(part.type === 'tool_call' ? part.toolCall : part.result, null, 2) }}</pre>
               </div>
@@ -307,18 +308,18 @@ export default {
 
             <div v-if="attachmentParts.length" tw-class="mt-4 flex flex-wrap gap-2">
               <div
-                v-for="{ id, attachment: att } in attachmentParts"
-                :key="id"
-                @click.stop="emit('preview-attachment', att.binaryObjectId)"
+                v-for="part in attachmentParts"
+                :key="getMessagePartDisplayKey({ part })"
+                @click.stop="emit('preview-attachment', part.attachment.binaryObjectId)"
                 tw-class="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center group/att"
               >
-                <img v-if="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" :src="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" tw-class="w-full h-full object-cover" />
+                <img v-if="thumbnailUrls[idToRaw({ id: part.attachment.binaryObjectId })]" :src="thumbnailUrls[idToRaw({ id: part.attachment.binaryObjectId })]" tw-class="w-full h-full object-cover" />
                 <div v-else tw-class="flex flex-col items-center justify-center gap-1">
-                  <ImageIcon v-if="att.mimeType.startsWith('image/')" tw-class="w-4 h-4 text-gray-400" />
+                  <ImageIcon v-if="part.attachment.mimeType.startsWith('image/')" tw-class="w-4 h-4 text-gray-400" />
                   <FileIcon v-else tw-class="w-4 h-4 text-gray-400" />
                 </div>
                 <div tw-class="absolute bottom-0 inset-x-0 bg-black/40 text-[7px] text-white px-1 py-0.5 truncate text-center font-bold backdrop-blur-sm">
-                  {{ att.mimeType.split('/')[1] }}
+                  {{ part.attachment.mimeType.split('/')[1] }}
                 </div>
               </div>
             </div>

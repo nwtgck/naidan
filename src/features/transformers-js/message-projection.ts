@@ -51,13 +51,13 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
       for (const part of message.parts) {
         switch (part.type) {
         case 'text': {
-          const { id: _id, type, text, completeness: _completeness, ...unhandled } = part;
+          const { type, text, completeness: _completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           content.push({ type, text });
           break;
         }
         case 'attachment': {
-          const { id: _id, type: _type, attachment, ...unhandled } = part;
+          const { type: _type, attachment, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           const { id: _attachmentId, binaryObjectId, originalName, mimeType, size: _size, uploadedAt: _uploadedAt, ...state } = attachment;
           let blob: Blob;
@@ -101,20 +101,20 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
       for (const part of message.parts) {
         switch (part.type) {
         case 'text': {
-          const { id: _id, type, text, completeness: _completeness, ...unhandled } = part;
+          const { type, text, completeness: _completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           content.push({ type, text });
           break;
         }
         case 'tool_call': {
-          const { id: _id, type: _type, toolCall, ...unhandled } = part;
+          const { type: _type, toolCall, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           // copyChatMessage already detached the arguments without JSON parsing.
           calls.push(toolCall);
           break;
         }
         case 'reasoning': {
-          const { id: _id, type: _type, text, completeness, ...unhandled } = part;
+          const { type: _type, text, completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           reasoning = { text, completeness };
           break;
@@ -127,7 +127,7 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
     }
     case 'system': {
       const content = message.parts.map(part => {
-        const { id: _id, type, text, completeness: _completeness, ...unhandled } = part;
+        const { type, text, completeness: _completeness, ...unhandled } = part;
         unhandled satisfies Record<PropertyKey, never>;
         return { type, text };
       });
@@ -136,7 +136,7 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
     }
     case 'tool':
       for (const part of message.parts) {
-        const { id: _id, type: _type, result, ...unhandled } = part;
+        const { type: _type, result, ...unhandled } = part;
         unhandled satisfies Record<PropertyKey, never>;
         const content = await readToolResult({ result, readBinaryObject, signal });
         inferenceMessages.push({ role, content, tool_call_id: result.toolCallId });
