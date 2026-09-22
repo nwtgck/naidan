@@ -2,7 +2,7 @@ import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/
 import { privacyFetchStream } from '@/features/privacy-fetch';
 import { getReadableStreamTransferSupport, workerProxy, workerCapability, workerTransfer } from '@/utils/worker-transport';
 import { deleteRepository, withRepositoryLock } from './storage';
-import { beginDownloadResultSchema, sharedProjectorConflictMessage, DownloadConflictError, progressSchema, repositoryUrlPath, selectionSchema, type BeginDownloadResult, type DownloadProgress, type DownloadSelection } from './types';
+import { beginDownloadResultSchema, sharedProjectorConflictMessage, existingModelConflictMessage, DownloadConflictError, progressSchema, repositoryUrlPath, selectionSchema, type BeginDownloadResult, type DownloadProgress, type DownloadSelection } from './types';
 import { createDownloadWriterClient } from '@/features/llama-cpp-browser/hugging-face/writer-client';
 
 export function responseOffset({ status, headers, offset, size }: { status: number, headers: Headers, offset: number, size: number }): number {
@@ -124,6 +124,7 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
       check(); await call({ promise: writer.finish() });
     } catch (error) {
       if (error instanceof Error && error.message === sharedProjectorConflictMessage) throw new DownloadConflictError({ reason: 'projector-conflict' });
+      if (error instanceof Error && error.message === existingModelConflictMessage) throw new DownloadConflictError({ reason: 'existing-files' });
       throw error;
     } finally {
       await body?.cancel().catch(() => {});

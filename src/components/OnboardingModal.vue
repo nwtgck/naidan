@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue';
@@ -35,7 +36,7 @@ import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
 import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
-const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
+const { settings, save, updateGlobalModelAndEndpoint, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
 const { setActiveFocusArea } = useLayout();
 const modalContent = ref<HTMLElement | undefined>(undefined);
 
@@ -495,6 +496,18 @@ async function handleClose() {
   setIsOnboardingDismissed({ dismissed: true });
 }
 
+// This explicit action sets the actual default even during onboarding. Keep
+// the onboarding draft selection aligned; downloading alone never saves it.
+const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) => {
+  const result = await updateGlobalModelAndEndpoint({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
+  switch (result) {
+  case 'applied': selectLocalModel({ name: model.name }); break;
+  case 'changed': break;
+  default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+  }
+  return result;
+};
+
 async function handleFinish() {
   if (isLlamaCppBrowser.value && !localRuntimeReady.value) return;
   if (!isEndpointAvailable.value) return;
@@ -676,7 +689,7 @@ defineExpose({
                 </div>
 
                 <TransformersJsManager v-if="isTransformersJs" @model-loaded="modelId => handleModelLoaded({ modelId })" />
-                <LlamaCppBrowserManager v-else :model-preset="modelPreset" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ name: $event })" />
+                <LlamaCppBrowserManager v-else :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ name: $event })" />
                 <div v-if="isLlamaCppBrowser && availableModels.length" tw-class="space-y-2">
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ lazyStrings.OnboardingModal__default_model() }}</label>
                   <ModelSelector v-model="selectedModel" :models="sortedModels" :loading="false" @refresh="refreshLocalModels({ signal: undefined })" :placeholder="lazyStrings.OnboardingModal__select_a_model()" />

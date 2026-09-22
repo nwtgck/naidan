@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { advanceThroughputSample, remainingEstimate, startThroughputSample, type ThroughputSample } from '@/features/llama-cpp-browser/hugging-face/download-estimate';
+import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
+import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles.vue';
+import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
+import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
+import { variantLabel } from '@/features/llama-cpp-browser/hugging-face/model-variants';
+import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, SearchIcon, Trash2Icon } from 'lucide-vue-next';
 import { quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { lazyStrings } from '@/strings';
-import { discoverRepository, parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
-import { cancelDownload, downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';
+import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
+import { cancelDownload } from '@/features/llama-cpp-browser/hugging-face/download';
 import { installedSelection, listPendingDownloads } from '@/features/llama-cpp-browser/hugging-face/storage';
-import { DownloadConflictError, repositoryUrlPath, type DownloadConflict, type DownloadJournal, type DownloadProgress, type DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
+import { repositoryUrlPath, type DownloadConflict, type DownloadJournal, type DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 
 import { useHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
@@ -21,7 +27,10 @@ const { input, checkedInput, catalog, requestedVariantUnresolved, quantization, 
 const id = useId(); const details = ref<HTMLDetailsElement>(); const active = ref<AbortController>();
 let inspectionPreset: ModelPreset | undefined;
 let inspecting = false;
-const progress = ref<DownloadProgress>(); const activeRepository = ref<string>(); const error = ref<DownloadConflict | 'failed' | 'changed'>(); const pending = shallowRef<DownloadJournal[]>([]);
+const queue = getDownloadQueue();
+const repositoryJobs = computed(() => queue.jobs.value.filter(job => job.source === 'repository' && job.status !== 'complete' && job.status !== 'cancelled'));
+const queuedDownloadBusy = computed(() => queue.jobs.value.some(job => jobIsBusy({ job })));
+const error = ref<DownloadConflict | 'failed' | 'changed'>(); const pending = shallowRef<DownloadJournal[]>([]);
 const errorMessage = computed(() => {
   switch (error.value) {
   case 'projector-conflict': return lazyStrings.LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict();
@@ -33,36 +42,9 @@ const errorMessage = computed(() => {
   default: { const exhaustive: never = error.value; throw new Error(String(exhaustive)); }
   }
 });
-const visiblePending = computed(() => pending.value.filter(job => job.selection.repository !== activeRepository.value));
-const throughput = shallowRef<ThroughputSample>(); const sampledNow = ref(0);
-let estimateTimer: ReturnType<typeof setInterval> | undefined;
-function stopEstimate(): void {
-  if (estimateTimer !== undefined) clearInterval(estimateTimer);
-  estimateTimer = undefined; throughput.value = undefined;
-}
-function startEstimate(): void {
-  stopEstimate(); sampledNow.value = performance.now(); throughput.value = startThroughputSample({ now: sampledNow.value });
-  estimateTimer = setInterval(() => {
-    sampledNow.value = performance.now();
-    if (throughput.value) throughput.value = advanceThroughputSample({ sample: throughput.value, now: sampledNow.value, processed: progress.value?.processed ?? 0 });
-  }, 1000);
-}
-const estimateText = computed(() => {
-  if (!throughput.value || !progress.value) return undefined;
-  const estimate = remainingEstimate({ sample: throughput.value, now: sampledNow.value, remaining: progress.value.total - progress.value.completed, phase: progress.value.phase });
-  switch (estimate.status) {
-  case 'estimating': return lazyStrings.LlamaCppBrowserHuggingFaceManager__estimating_remaining_time();
-  case 'verifying': return lazyStrings.LlamaCppBrowserHuggingFaceManager__performing_final_checks();
-  case 'remaining': {
-    if (estimate.seconds < 60) return lazyStrings.LlamaCppBrowserHuggingFaceManager__about_seconds_remaining({ seconds: Math.max(5, Math.ceil(estimate.seconds / 5) * 5) });
-    if (estimate.seconds < 3600) return lazyStrings.LlamaCppBrowserHuggingFaceManager__about_minutes_remaining({ minutes: Math.ceil(estimate.seconds / 60) });
-    const minutes = Math.ceil(estimate.seconds / 600) * 10; const hours = Math.floor(minutes / 60);
-    return minutes % 60 === 0 ? lazyStrings.LlamaCppBrowserHuggingFaceManager__about_hours_remaining({ hours }) : lazyStrings.LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining({ hours, minutes: minutes % 60 });
-  }
-  default: { const exhaustive: never = estimate; throw new Error(String(exhaustive)); }
-  }
-});
-const downloadPercentage = computed(() => progress.value ? percentage({ completed: progress.value.completed, total: progress.value.total }) : undefined);
+// A started journal may also be represented by a session job. Render it only
+// once, and never offer deletion while its writer is active in another row.
+const visiblePending = computed(() => pending.value.filter(pendingJob => !queue.jobs.value.some(job => job.repository === pendingJob.selection.repository && (jobIsBusy({ job }) || repositoryJobs.value.includes(job)))));
 const catalogCurrent = computed(() => input.value.trim() === checkedInput.value);
 const choices = computed(() => {
   const options = quantizationChoices({ repository: catalog.value?.repository ?? '', models: catalog.value?.models ?? [] });
@@ -123,20 +105,23 @@ async function refresh(): Promise<void> {
   }
 }
 async function inspect(): Promise<void> {
-  if (active.value || props.disabled) return;
+  if (active.value || props.disabled || deleting.value) return;
   inspecting = true;
-  const controller = new AbortController(); active.value = controller; emit('busy', true); error.value = undefined;
+  const controller = new AbortController(); active.value = controller; error.value = undefined;
   try {
     const submittedInput = input.value.trim();
     const { requestedVariant } = parseRepository({ input: submittedInput });
     const previousCandidate = selected.value?.label; const previousProjector = selectedProjector.value?.path ?? projector.value;
-    const next = await discoverRepository({ input: submittedInput, signal: controller.signal });
+    const next = await getMetadataSession().inspect({ input: submittedInput, signal: controller.signal, freshness: 'refresh' });
     if (controller.signal.aborted || disposed) return;
     const sameRepository = next.repository === catalog.value?.repository;
     const nextChoices = quantizationChoices({ repository: next.repository, models: next.models });
     requestedVariantUnresolved.value = false;
     if (requestedVariant !== undefined) {
-      const matches = nextChoices.filter(choice => choice.label === requestedVariant);
+      // Keep legacy URL/storage variant names compatible with the new
+      // quantization-first presentation. Never select a drafter by its quant alone.
+      const exact = nextChoices.filter(choice => choice.label === requestedVariant || variantLabel({ repository: next.repository, path: choice.id }) === requestedVariant);
+      const matches = exact.length ? exact : nextChoices.filter(choice => choice.quantization === requestedVariant.toUpperCase() && artifactRole({ path: choice.id }) === 'model');
       quantization.value = matches.length === 1 ? matches[0]!.id : ''; candidate.value = '';
       requestedVariantUnresolved.value = matches.length !== 1;
     } else if (!sameRepository || !nextChoices.some(choice => choice.id === quantization.value)) {
@@ -153,47 +138,40 @@ async function inspect(): Promise<void> {
   } catch {
     if (!controller.signal.aborted) error.value = 'failed';
   } finally {
-    inspecting = false; active.value = undefined; emit('busy', false);
+    inspecting = false; active.value = undefined;
   }
 }
-async function download({ selection }: { selection: DownloadSelection }): Promise<void> {
-  if (active.value || props.disabled) return;
-  const controller = new AbortController(); active.value = controller; emit('busy', true); error.value = undefined;
-  activeRepository.value = selection.repository; startEstimate();
-  controller.signal.addEventListener('abort', stopEstimate, { once: true });
-  try {
-    await downloadRepository({ selection, signal: controller.signal, onProgress: ({ progress: next }) => {
-      if (!disposed && !controller.signal.aborted) progress.value = next;
-    } }); emit('changed');
-  } catch (failure) {
-    if (!controller.signal.aborted) error.value = failure instanceof DownloadConflictError ? failure.reason : 'failed';
-  } finally {
-    stopEstimate(); controller.signal.removeEventListener('abort', stopEstimate);
-    active.value = undefined; emit('busy', false); progress.value = undefined; activeRepository.value = undefined; await refresh();
-  }
+function download({ selection }: { selection: DownloadSelection }): void {
+  if (active.value || props.disabled || deleting.value) return;
+  error.value = undefined;
+  // Explicit Download/Resume keeps the displayed revision and files immutable.
+  // The page-level queue owns the writer, not this component's mount lifetime.
+  queue.enqueue({ key: selectionKey({ selection }), repository: selection.repository, source: 'repository', prepare: async () => selection });
 }
 async function start(): Promise<void> {
   const current = catalog.value; const model = selected.value;
   if (!current || !model || needsProjector.value || !catalogCurrent.value || localAvailability.value !== 'missing') return;
-  await download({ selection: { repository: current.repository, revision: current.revision, files: selectedFiles.value } });
+  download({ selection: { repository: current.repository, revision: current.revision, files: selectedFiles.value } });
 }
 async function remove({ repository }: { repository: string }): Promise<void> {
-  if (deleting.value || active.value || props.disabled) return;
-  deleting.value = true; error.value = undefined; emit('busy', true);
+  if (deleting.value || active.value || props.disabled || queuedDownloadBusy.value) return;
+  deleting.value = true; error.value = undefined;
   try {
     const plan = await confirmRemoval({ id: `hf.co/${repository}` });
     if (!plan || disposed) return;
     const result = await cancelDownload({ repository, plan });
     switch (result) {
     case 'changed': error.value = 'changed'; break;
-    case 'deleted': break;
+    case 'deleted':
+      for (const job of queue.jobs.value) if (job.repository === repository) queue.forget({ id: job.id });
+      break;
     default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
     }
     await refresh(); emit('changed');
   } catch {
     error.value = 'failed';
   } finally {
-    deleting.value = false; emit('busy', false);
+    deleting.value = false;
   }
 }
 watch(selectionToCheck, () => emit('selectionChanged'), { flush: 'sync' });
@@ -240,14 +218,23 @@ watch([() => props.modelPreset, () => props.disabled, active], ([preset, disable
   if (!preset.claim()) return;
   inspectionPreset = preset;
   input.value = preset.input;
+  // Privacy exception: an explicit llama-cpp-browser-model URL requests this
+  // repository's metadata. An ordinary mount must not inspect or prefetch it,
+  // and even a model URL never authorizes starting a payload download.
   void inspect();
 }, { immediate: true, flush: 'post' });
+watch(queue.changed, () => {
+  recheckLocalFiles(); void refresh(); emit('changed');
+});
+watch([active, queuedDownloadBusy, deleting], ([operation, downloading, removing]) => {
+  emit('busy', operation !== undefined || downloading || removing);
+}, { immediate: true });
 onMounted(() => {
   window.addEventListener('focus', recheckLocalFiles);
   void refresh();
 });
 onUnmounted(() => {
-  disposed = true; active.value?.abort(); stopEstimate(); window.removeEventListener('focus', recheckLocalFiles);
+  disposed = true; active.value?.abort(); window.removeEventListener('focus', recheckLocalFiles);
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -311,32 +298,19 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
       </template>
     </fieldset>
-    <div v-if="active" role="status" tw-class="flex flex-col gap-3 py-2" data-testid="llama-hf-active-progress">
-      <div tw-class="flex items-center gap-3">
-        <div tw-class="w-8 h-8 rounded-xl flex items-center justify-center border border-purple-100 dark:border-purple-900/30 bg-purple-50/50 dark:bg-purple-900/20 shadow-sm shrink-0"><DownloadIcon v-if="activeRepository" tw-class="w-4 h-4 text-purple-500 animate-pulse" /><Loader2Icon v-else tw-class="w-4 h-4 text-purple-500 animate-spin" /></div>
-        <div tw-class="flex-1 min-w-0">
-          <div tw-class="flex items-start justify-between gap-3 mb-2">
-            <div tw-class="min-w-0 space-y-0.5">
-              <p tw-class="text-[10px] font-bold text-purple-600 dark:text-purple-400 tracking-wider">{{ activeRepository ? lazyStrings.LlamaCppBrowserHuggingFaceManager__downloading_model() : lazyStrings.LlamaCppBrowserHuggingFaceManager__checking_model() }}</p>
-              <p v-if="activeRepository" tw-class="text-[9px] text-gray-400 font-medium break-all">hf.co/{{ activeRepository }}</p>
-            </div>
-            <span v-if="downloadPercentage !== undefined" tw-class="text-[10px] font-bold text-purple-500/70 tabular-nums shrink-0 mt-0.5">{{ downloadPercentage }}%</span>
-          </div>
-          <div v-if="downloadPercentage !== undefined" role="progressbar" :aria-label="lazyStrings.LlamaCppBrowserHuggingFaceManager__downloading_model()" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="downloadPercentage" tw-class="h-1 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden"><div tw-class="h-full rounded-full bg-purple-500 dark:bg-purple-400 transition-all duration-500 ease-out" :style="{ width: `${downloadPercentage}%` }" /></div>
-        </div>
-      </div>
-      <div tw-class="ml-11 flex flex-wrap items-center justify-between gap-3">
-        <div tw-class="space-y-0.5">
-          <p v-if="progress" tw-class="text-[9px] text-gray-400 font-medium tabular-nums">{{ size({ bytes: progress.completed }) }} / {{ size({ bytes: progress.total }) }}</p>
-          <p v-if="estimateText" data-testid="llama-hf-remaining" tw-class="text-[9px] text-gray-400 font-medium tabular-nums">{{ estimateText }}</p>
-        </div>
-        <button type="button" data-testid="llama-hf-pause" tw-class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-purple-600 dark:hover:text-purple-400 transition-colors" @click="active?.abort()"><PauseIcon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__pause() }}</button>
-      </div>
+    <div v-if="active" role="status" tw-class="flex items-center justify-between gap-3 py-2 text-xs text-gray-500 dark:text-gray-400" data-testid="llama-hf-active-progress">
+      <span tw-class="inline-flex items-center gap-2"><Loader2Icon tw-class="w-4 h-4 animate-spin" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__checking_model() }}</span>
+      <button type="button" tw-class="px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800" @click="active?.abort()">{{ lazyStrings.SHARED__cancel() }}</button>
+    </div>
+    <div v-for="job in repositoryJobs" :key="job.id" data-testid="llama-hf-download-job" tw-class="space-y-2 rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+      <p tw-class="text-[10px] text-gray-500 dark:text-gray-400 break-all">Hugging Face · {{ job.repository }}</p>
+      <LlamaCppBrowserDownloadJob :job="job" :disabled="disabled || deleting" @resume="job.selection && download({ selection: job.selection })" />
+      <button v-if="job.status === 'paused' || job.status === 'failed'" type="button" data-testid="llama-hf-delete" :disabled="disabled || active !== undefined || deleting || queuedDownloadBusy" tw-class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-bold text-gray-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed" @click="remove({ repository: job.repository })"><Trash2Icon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__cancel_and_delete() }}</button>
     </div>
     <details v-if="catalog" ref="details" data-testid="llama-hf-details" tw-class="text-xs text-gray-500 dark:text-gray-400">
       <summary tw-class="cursor-pointer font-semibold py-1 hover:text-purple-600 dark:hover:text-purple-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download_details() }}</summary>
       <div tw-class="mt-3 space-y-4">
-        <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: catalog.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-repository-link" tw-class="inline-flex items-center gap-1.5 text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 break-all"><span>hf.co/{{ catalog.repository }}</span><ExternalLinkIcon tw-class="w-3 h-3 shrink-0" /></a>
+        <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: catalog.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-repository-link" tw-class="inline-flex items-center gap-1.5 text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 break-all"><span>Hugging Face · {{ catalog.repository }}</span><ExternalLinkIcon tw-class="w-3 h-3 shrink-0" /></a>
         <p :id="`${id}-multimodal-help`" tw-class="leading-relaxed">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models() }}</p>
         <div v-if="(selectedChoice?.models.length ?? 0) > 1" tw-class="space-y-2">
           <label :for="`${id}-variant`" tw-class="block font-bold">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__model_variant() }}</label>
@@ -345,7 +319,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <option v-for="model in selectedChoice?.models" :key="model.label" :value="model.label">{{ model.label }} · {{ size({ bytes: model.size }) }}</option>
           </select>
         </div>
-        <ul data-testid="llama-hf-files" tw-class="space-y-2"><li v-for="file in selectedFiles" :key="file.path" tw-class="flex items-start justify-between gap-3"><span tw-class="break-all font-mono">{{ file.path }}</span><span tw-class="shrink-0 tabular-nums">{{ size({ bytes: file.size }) }}</span></li></ul>
+        <div data-testid="llama-hf-files"><LlamaCppBrowserDownloadPlanFiles :repository="catalog.repository" :revision="catalog.revision" :files="selectedFiles" /></div>
       </div>
     </details>
     <p v-if="error" role="alert" tw-class="flex items-start gap-2 rounded-xl p-3 bg-red-50 dark:bg-red-900/10 text-xs text-red-700 dark:text-red-400"><AlertCircleIcon tw-class="w-4 h-4 shrink-0" />{{ errorMessage }}</p>
@@ -365,7 +339,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <p tw-class="text-[9px] text-gray-400 font-medium tabular-nums">{{ size({ bytes: job.bytes.reduce((sum, bytes) => sum + bytes, 0) }) }} / {{ size({ bytes: job.selection.files.reduce((sum, file) => sum + file.size, 0) }) }}</p>
           <div tw-class="flex items-center gap-2">
             <button type="button" :disabled="disabled || active !== undefined || deleting" data-testid="llama-hf-resume" tw-class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" @click="download({ selection: job.selection })"><PlayIcon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__resume() }}</button>
-            <button type="button" :disabled="disabled || active !== undefined || deleting" data-testid="llama-hf-delete" tw-class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" @click="remove({ repository: job.selection.repository })"><Trash2Icon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__cancel_and_delete() }}</button>
+            <button type="button" :disabled="disabled || active !== undefined || deleting || queuedDownloadBusy" data-testid="llama-hf-delete" tw-class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" @click="remove({ repository: job.selection.repository })"><Trash2Icon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__cancel_and_delete() }}</button>
           </div>
         </div>
       </li>

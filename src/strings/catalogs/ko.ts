@@ -21,6 +21,40 @@ import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } fro
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/ko';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/ko';
 
+import { llamaCppBrowserDownloads__find_more } from '@/strings/messages/llamaCppBrowserDownloads__find_more/ko';
+import { llamaCppBrowserDownloads__active_downloads } from '@/strings/messages/llamaCppBrowserDownloads__active_downloads/ko';
+import { llamaCppBrowserDownloads__model_catalog } from '@/strings/messages/llamaCppBrowserDownloads__model_catalog/ko';
+import { llamaCppBrowserDownloads__download_contents } from '@/strings/messages/llamaCppBrowserDownloads__download_contents/ko';
+import { llamaCppBrowserDownloads__all } from '@/strings/messages/llamaCppBrowserDownloads__all/ko';
+import { llamaCppBrowserDownloads__approximately_size } from '@/strings/messages/llamaCppBrowserDownloads__approximately_size/ko';
+import { llamaCppBrowserDownloads__change_default_model } from '@/strings/messages/llamaCppBrowserDownloads__change_default_model/ko';
+import { llamaCppBrowserDownloads__check_download_contents } from '@/strings/messages/llamaCppBrowserDownloads__check_download_contents/ko';
+import { llamaCppBrowserDownloads__checking_hugging_face } from '@/strings/messages/llamaCppBrowserDownloads__checking_hugging_face/ko';
+import { llamaCppBrowserDownloads__clear_search } from '@/strings/messages/llamaCppBrowserDownloads__clear_search/ko';
+import { llamaCppBrowserDownloads__default_model } from '@/strings/messages/llamaCppBrowserDownloads__default_model/ko';
+import { llamaCppBrowserDownloads__details } from '@/strings/messages/llamaCppBrowserDownloads__details/ko';
+import { llamaCppBrowserDownloads__download } from '@/strings/messages/llamaCppBrowserDownloads__download/ko';
+import { llamaCppBrowserDownloads__endpoint_type } from '@/strings/messages/llamaCppBrowserDownloads__endpoint_type/ko';
+import { llamaCppBrowserDownloads__global_settings_scope } from '@/strings/messages/llamaCppBrowserDownloads__global_settings_scope/ko';
+import { llamaCppBrowserDownloads__in_use } from '@/strings/messages/llamaCppBrowserDownloads__in_use/ko';
+import { llamaCppBrowserDownloads__memory } from '@/strings/messages/llamaCppBrowserDownloads__memory/ko';
+import { llamaCppBrowserDownloads__no_matching_models } from '@/strings/messages/llamaCppBrowserDownloads__no_matching_models/ko';
+import { llamaCppBrowserDownloads__not_set } from '@/strings/messages/llamaCppBrowserDownloads__not_set/ko';
+import { llamaCppBrowserDownloads__pause } from '@/strings/messages/llamaCppBrowserDownloads__pause/ko';
+import { llamaCppBrowserDownloads__paused } from '@/strings/messages/llamaCppBrowserDownloads__paused/ko';
+import { llamaCppBrowserDownloads__pausing } from '@/strings/messages/llamaCppBrowserDownloads__pausing/ko';
+import { llamaCppBrowserDownloads__plan_needs_review } from '@/strings/messages/llamaCppBrowserDownloads__plan_needs_review/ko';
+import { llamaCppBrowserDownloads__queue_position } from '@/strings/messages/llamaCppBrowserDownloads__queue_position/ko';
+import { llamaCppBrowserDownloads__refresh_download_contents } from '@/strings/messages/llamaCppBrowserDownloads__refresh_download_contents/ko';
+import { llamaCppBrowserDownloads__resume } from '@/strings/messages/llamaCppBrowserDownloads__resume/ko';
+import { llamaCppBrowserDownloads__retry } from '@/strings/messages/llamaCppBrowserDownloads__retry/ko';
+import { llamaCppBrowserDownloads__save_file_to_device } from '@/strings/messages/llamaCppBrowserDownloads__save_file_to_device/ko';
+import { llamaCppBrowserDownloads__search_model_names } from '@/strings/messages/llamaCppBrowserDownloads__search_model_names/ko';
+import { llamaCppBrowserDownloads__set_as_default } from '@/strings/messages/llamaCppBrowserDownloads__set_as_default/ko';
+import { llamaCppBrowserDownloads__settings_changed_review_again } from '@/strings/messages/llamaCppBrowserDownloads__settings_changed_review_again/ko';
+import { llamaCppBrowserDownloads__total } from '@/strings/messages/llamaCppBrowserDownloads__total/ko';
+import { llamaCppBrowserDownloads__waiting } from '@/strings/messages/llamaCppBrowserDownloads__waiting/ko';
+
 import { ChatPage__failed_to_load_chat } from '@/strings/messages/ChatPage__failed_to_load_chat/ko';
 import { ChatPage__retry } from '@/strings/messages/ChatPage__retry/ko';
 import { ChatPage__loading_chat } from '@/strings/messages/ChatPage__loading_chat/ko';
@@ -3590,4 +3624,37 @@ export const catalog = {
   llamaCppBrowser__prefill,
   llamaCppBrowser__generating,
   llamaCppBrowser__import_then_select,
+  llamaCppBrowserDownloads__active_downloads,
+  llamaCppBrowserDownloads__model_catalog,
+  llamaCppBrowserDownloads__download_contents,
+  llamaCppBrowserDownloads__all,
+  llamaCppBrowserDownloads__approximately_size,
+  llamaCppBrowserDownloads__change_default_model,
+  llamaCppBrowserDownloads__check_download_contents,
+  llamaCppBrowserDownloads__checking_hugging_face,
+  llamaCppBrowserDownloads__clear_search,
+  llamaCppBrowserDownloads__default_model,
+  llamaCppBrowserDownloads__details,
+  llamaCppBrowserDownloads__download,
+  llamaCppBrowserDownloads__endpoint_type,
+  llamaCppBrowserDownloads__global_settings_scope,
+  llamaCppBrowserDownloads__in_use,
+  llamaCppBrowserDownloads__memory,
+  llamaCppBrowserDownloads__no_matching_models,
+  llamaCppBrowserDownloads__not_set,
+  llamaCppBrowserDownloads__pause,
+  llamaCppBrowserDownloads__paused,
+  llamaCppBrowserDownloads__pausing,
+  llamaCppBrowserDownloads__plan_needs_review,
+  llamaCppBrowserDownloads__queue_position,
+  llamaCppBrowserDownloads__refresh_download_contents,
+  llamaCppBrowserDownloads__resume,
+  llamaCppBrowserDownloads__retry,
+  llamaCppBrowserDownloads__save_file_to_device,
+  llamaCppBrowserDownloads__search_model_names,
+  llamaCppBrowserDownloads__set_as_default,
+  llamaCppBrowserDownloads__settings_changed_review_again,
+  llamaCppBrowserDownloads__total,
+  llamaCppBrowserDownloads__waiting,
+  llamaCppBrowserDownloads__find_more,
 } satisfies Strings;

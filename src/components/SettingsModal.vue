@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
+import { cloneEndpoint } from '@/01-models/endpoint';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useModelPreset } from '@/features/llama-cpp-browser/model-preset';
@@ -53,7 +55,7 @@ const emit = defineEmits<{
   (e: 'openModelSupportInvestigation', modelId: string): void,
 }>();
 
-const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
+const { settings, updateGlobalModelAndEndpoint, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
 const availableModels = computed(() => naturalSort({ values: Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : [] }));
 
 const chatOrganization = useChatOrganization();
@@ -91,6 +93,24 @@ function pickConnectionFields({ settings }: { settings: Settings }) {
     lmParameters: JSON.stringify(settings.lmParameters),
   };
 }
+
+const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) => {
+  const result = await updateGlobalModelAndEndpoint({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
+  switch (result) {
+  case 'applied': {
+    const endpoint = cloneEndpoint({ endpoint: settings.value.endpoint });
+    form.value = { ...form.value, endpoint, defaultModelId: settings.value.defaultModelId };
+    // Rebase only the two committed fields. Unrelated unsaved edits and their
+    // original dirty baseline must survive switching the default model.
+    const initial = JSON.parse(initialFormState.value);
+    initialFormState.value = JSON.stringify({ ...initial, endpoint: JSON.stringify(endpoint), defaultModelId: settings.value.defaultModelId });
+    break;
+  }
+  case 'changed': break;
+  default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+  }
+  return result;
+};
 
 const hasUnsavedConnectionChanges = computed(() => {
   const current = pickConnectionFields({ settings: form.value });
@@ -377,7 +397,7 @@ defineExpose({
                 <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
-                <LlamaCppBrowserManager :model-preset="modelPreset" />
+                <LlamaCppBrowserManager :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" />
               </div>
 
               <!-- Recipes Tab -->

@@ -61,6 +61,9 @@ const treeSchema = z.array(z.discriminatedUnion('type', [
   z.object({ type: z.literal('file'), path: z.string(), size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }),
   z.object({ type: z.literal('directory'), path: z.string() }),
 ]));
+// Privacy boundary: callers must have an explicit user preview/download request.
+// The llama-cpp-browser-model query is an explicit request to inspect that model.
+// Mount, focus, details expansion and bundled-catalog filters are NOT permission.
 export async function discoverRepository({ input, signal }: { input: string, signal: AbortSignal }): Promise<RepositoryCatalog> {
   const { repository: requested } = parseRepository({ input }); const requestedPath = repositoryUrlPath({ repository: requested });
   const metadata = await fetchJson({ url: `https://huggingface.co/api/models/${requestedPath}/revision/main`, signal });
