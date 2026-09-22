@@ -17,6 +17,7 @@ vi.mock('./synchronizer', () => ({ StorageSynchronizer: class {
     return fn();
   }
   notify = notify;
+  subscribe = vi.fn(() => () => {});
 } }));
 
 const id = toChatId({ raw: 'read-before-write' });

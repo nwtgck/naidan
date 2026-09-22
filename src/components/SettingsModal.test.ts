@@ -275,15 +275,18 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       global: { stubs: { ...globalStubs, LlamaCppBrowserUpsell: true, LlamaCppBrowserManager: { name: 'LlamaCppBrowserManager', props: ['modelPreset', 'defaultModel', 'applyDefaultModel'], template: '<div data-testid="local-manager-stub" />' } } },
     });
     await flushPromises();
+    await vi.waitFor(() => expect(wrapper.findComponent(ConnectionTab).exists()).toBe(true));
     const connection = wrapper.getComponent(ConnectionTab);
     if (dirty) connection.vm.$emit('update:modelValue', { ...connection.props('modelValue'), systemPrompt: 'Unsaved prompt' });
     const route = useRoute(); route.query.settings = 'llama-cpp-browser'; await flushPromises();
+    await vi.waitFor(() => expect(wrapper.findComponent({ name: 'LlamaCppBrowserManager' }).exists()).toBe(true));
     const manager = wrapper.getComponent({ name: 'LlamaCppBrowserManager' });
     const apply = manager.props('applyDefaultModel') as ApplyDefaultModel;
     const model = { id: 'user/local', name: 'Local Q4_K_M', size: 128, importedAt: 1 };
     expect(await apply({ model, previous })).toBe('applied');
     expect(update).toHaveBeenCalledWith({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
     route.query.settings = 'connection'; await flushPromises();
+    await vi.waitFor(() => expect(wrapper.findComponent(ConnectionTab).exists()).toBe(true));
     const updated = wrapper.getComponent(ConnectionTab);
     expect(updated.props('modelValue')).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: model.name, systemPrompt: dirty ? 'Unsaved prompt' : 'Saved prompt' });
     expect(updated.props('hasUnsavedChanges')).toBe(dirty);

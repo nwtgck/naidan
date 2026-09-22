@@ -1,3 +1,5 @@
+import { OPFS_MODELS_DIR } from '@/constants';
+
 type NaidanOpfsRootDirectoryRegistryEntry = Readonly<{
   containerRootDisposition: 'copy_into_container_root' | 'outside_container_root';
   directoryName: string;
@@ -40,7 +42,7 @@ export const NAIDAN_OPFS_ROOT_DIRECTORY_REGISTRY = {
   },
   models: {
     containerRootDisposition: 'outside_container_root',
-    directoryName: 'models',
+    directoryName: OPFS_MODELS_DIR,
     purpose: 'reconstructible_model_cache',
   },
   debug_hizofs: {

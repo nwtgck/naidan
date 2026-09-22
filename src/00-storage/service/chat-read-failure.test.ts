@@ -46,12 +46,19 @@ function installOpfs() {
     getDirectoryHandle: vi.fn(async (name: string) => {
       if (name === 'chat-contents') return contentDirectory;
       if (name === 'chat-metas') return metaDirectory;
-      throw new Error(`Unexpected directory: ${name}`);
+      throw new DOMException(`Missing directory: ${name}`, 'NotFoundError');
     }),
   };
   storage.files.set('migration-state.json', createFile({ name: 'migration-state.json', text: JSON.stringify({ completedMigrations: [{ name: 'v1_uploaded_files_to_binary_objects', completedAt: 1 }] }) }));
   storage.files.set('hierarchy.json', createFile({ name: 'hierarchy.json', text: '{"items":[]}' }));
-  const root = { getDirectoryHandle: vi.fn(async () => storage) };
+  const root = {
+    kind: 'directory' as const,
+    name: '',
+    getDirectoryHandle: vi.fn(async (name: string) => {
+      if (name === 'naidan-storage') return storage;
+      throw new DOMException(`Missing directory: ${name}`, 'NotFoundError');
+    }),
+  };
   const getDirectory = vi.fn(async () => root);
   vi.stubGlobal('navigator', { storage: { getDirectory } });
   return { contentDirectory, metaDirectory, storage, getDirectory };
@@ -187,7 +194,9 @@ it('does not mistake a removed or unreadable acquired file for a missing lookup'
 it('does not interpret failure to acquire the storage directory as a missing chat', async () => {
   const fs = installOpfs(); const error = new DOMException('Root unavailable', 'NotFoundError');
   fs.getDirectory.mockRejectedValue(error);
-  await expect(new OPFSStorageProvider().loadChatContent({ id })).rejects.toBe(error);
+  const provider = new OPFSStorageProvider();
+  await expect(provider.init()).rejects.toBe(error);
+  await expect(provider.loadChatContent({ id })).rejects.toThrow();
 });
 
 it('propagates LocalStorage read failures without writing', async () => {

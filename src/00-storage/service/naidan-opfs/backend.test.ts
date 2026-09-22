@@ -246,18 +246,52 @@ describe('Naidan OPFS layout backend', () => {
       throw closeFailure;
     });
     vi.spyOn(backend, 'openBinaryObject').mockResolvedValue({ ...opened, close });
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
     const snapshot = await backend.dump();
-    const chunks = await collectAsyncIterable({ values: snapshot.contentStream });
-
-    expect(chunks.filter((chunk) => chunk.type === 'binary_object')).toEqual([]);
+    await expect(snapshot.contentStream[Symbol.asyncIterator]().next()).rejects.toBe(closeFailure);
     expect(close).toHaveBeenCalledTimes(1);
-    expect(warning).toHaveBeenCalledWith(
-      '[NaidanOpfsStorageBackend] Failed to dump some binary objects',
-      closeFailure,
-    );
   });
+
+  it.each(['malformed', 'NotFoundError', 'NotReadableError'] as const)(
+    'rejects writes and dumps without changing binary bytes when the acquired index is %s',
+    async failureKind => {
+      const root = new MockFileSystemDirectoryHandle({ name: 'index-failure-root' });
+      const session = createNativeOpfsFileSystemSession({ root });
+      const backend = new NaidanOpfsStorageBackend({ namespaceRoot: session.root, hostVolumeDB: new HostVolumeDB() });
+      await backend.init();
+      await backend.saveFile({
+        binaryObjectId: BINARY_OBJECT_ID, blob: new Blob(['original']), name: 'original.bin', mimeType: 'text/plain',
+      });
+      const storage = await root.getDirectoryHandle('naidan-storage');
+      const binaries = await storage.getDirectoryHandle('binary-objects');
+      const shard = await binaries.getDirectoryHandle('a1');
+      const index = await shard.getFileHandle('index.json');
+      const body = await shard.getFileHandle('00000000-0000-4000-a000-0000000000a1.bin');
+      const marker = await shard.getFileHandle('.00000000-0000-4000-a000-0000000000a1.bin.complete');
+      if (failureKind === 'malformed') {
+        const writable = await index.createWritable();
+        await writable.write('{invalid');
+        await writable.close();
+      }
+      const before = await (await index.getFile()).text();
+      const readIndex = vi.spyOn(index, 'getFile');
+      if (failureKind !== 'malformed') {
+        readIndex.mockRejectedValue(new DOMException('Index read failed after lookup', failureKind));
+      }
+      try {
+        await expect(backend.saveFile({
+          binaryObjectId: BINARY_OBJECT_ID, blob: new Blob(['replacement']), name: 'replacement.bin', mimeType: 'text/plain',
+        })).rejects.toThrow();
+        const snapshot = await backend.dump();
+        await expect(collectAsyncIterable({ values: snapshot.contentStream })).rejects.toThrow();
+        expect(await (await body.getFile()).text()).toBe('original');
+        expect(await shard.getFileHandle(marker.name)).toBe(marker);
+      } finally {
+        readIndex.mockRestore();
+      }
+      expect(await (await index.getFile()).text()).toBe(before);
+      await session.close();
+    },
+  );
 
   beforeEach(() => {
     vi.useFakeTimers();

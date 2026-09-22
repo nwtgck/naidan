@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, nextTick, reactive } from 'vue';
+import { ref, reactive } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import StorageTab from './StorageTab.vue';
@@ -94,11 +94,6 @@ describe('SettingsModal OPFS and Error Handling', () => {
     (useRoute as any).mockReturnValue(currentRoute);
   });
 
-  async function wait() {
-    await new Promise(r => setTimeout(r, 100));
-    await nextTick();
-  }
-
   it('should disable OPFS option if navigator.storage is undefined', async () => {
     vi.stubGlobal('navigator', {});
     vi.stubGlobal('isSecureContext', true);
@@ -115,7 +110,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await flushPromises();
 
     await wrapper.get('[data-testid="tab-storage"]').trigger('click');
-    await wait();
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="storage-opfs"]').exists()).toBe(true));
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
@@ -141,7 +136,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await flushPromises();
 
     await wrapper.get('[data-testid="tab-storage"]').trigger('click');
-    await wait();
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="storage-opfs"]').exists()).toBe(true));
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
@@ -171,7 +166,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await flushPromises();
 
     await wrapper.get('[data-testid="tab-storage"]').trigger('click');
-    await wait();
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="storage-opfs"]').exists()).toBe(true));
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).not.toContain('cursor-not-allowed');

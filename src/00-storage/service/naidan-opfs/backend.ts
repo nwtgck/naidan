@@ -1,3 +1,6 @@
+import { iterateAttachmentParts } from '@/00-storage/service/message-attachments';
+import { readLegacyUploadedFileMetadata, remapLegacyUploadedFileReferences } from '@/00-storage/service/legacy-uploaded-file-content';
+import { createLegacyUploadedFileId } from '@/00-storage/service/legacy-uploaded-file-id';
 import { generateId } from '@/01-models/id';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
@@ -7,7 +10,6 @@ import {
   type ChatGroupDto,
   type HierarchyDto,
   type MigrationChunkDto,
-  type MessageNodeDto,
   ChatMetaSchemaDto,
   ChatGroupSchemaDto,
   SettingsSchemaDto,
@@ -131,16 +133,31 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   private root: NaidanOpfsLayoutDirectoryHandle | undefined;
   readonly canPersistBinary = true;
 
-  private async loadUnhydratedChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
+  private async readChatRecord({ directory, id }: {
+    directory: 'chat-metas' | 'chat-contents',
+    id: ChatId,
+  }): Promise<string | null> {
+    await this.ensureRoot();
+    const dir = await this.getDir({ name: directory });
+    let fileHandle: NaidanOpfsLayoutFileHandle;
     try {
-      const contentDir = await this.getDir({ name: 'chat-contents' });
-      const contentFile = await (await contentDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      return chatContentToDomain({
-        dto: ChatContentSchemaDto.parse(JSON.parse(await contentFile.text())),
-      });
-    } catch {
-      return null;
+      fileHandle = await dir.getFileHandle(`${idToRaw({ id })}.json`);
+    } catch (error) {
+      // Only a missing entry at lookup means absence. An acquired handle that
+      // later fails to read must never let an updater overwrite an empty chat.
+      if (isNotFoundError({ error })) return null;
+      throw error;
     }
+    const file = await fileHandle.getFile();
+    return file.text();
+  }
+
+  private async loadUnhydratedChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
+    const rawContent = await this.readChatRecord({ directory: 'chat-contents', id });
+    if (rawContent === null) return null;
+    return chatContentToDomain({
+      dto: ChatContentSchemaDto.parse(JSON.parse(rawContent)),
+    });
   }
 
   async init(): Promise<void> {
@@ -181,7 +198,17 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     const completed = new Set(state.completedMigrations.map(m => m.name));
 
     if (!completed.has(MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS)) {
-      await this.migrateV1UploadedFilesToBinaryObjects();
+      const outcome = await this.migrateV1UploadedFilesToBinaryObjects();
+      // Unreadable or unwritten content may still reference the legacy directory.
+      // Leave it retryable while allowing unrelated readable chats to be used.
+      switch (outcome) {
+      case 'deferred': return;
+      case 'completed': break;
+      default: {
+        const _ex: never = outcome;
+        throw new Error(`Unhandled migration outcome: ${_ex}`);
+      }
+      }
       state.completedMigrations.push({
         name: MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS,
         completedAt: Date.now(),
@@ -190,13 +217,60 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     }
   }
 
-  private async migrateV1UploadedFilesToBinaryObjects(): Promise<void> {
+  private async migrateV1UploadedFilesToBinaryObjects(): Promise<'completed' | 'deferred'> {
+    let legacyDir: NaidanOpfsLayoutDirectoryHandle;
     try {
-      const legacyDir = await this.root!.getDirectoryHandle('uploaded-files');
+      legacyDir = await this.root!.getDirectoryHandle('uploaded-files');
+    } catch (error) {
+      // Only failure to locate the source directory means migration is unnecessary.
+      // A missing file later in the copy/write sequence must not mark success.
+      if (isNotFoundError({ error })) return 'completed';
+      throw error;
+    }
+    try {
       console.log(`[NaidanOpfsStorageBackend] Starting migration: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
 
-      // 1. Migrate Files and Create Mapping (attachmentId -> binaryObjectId)
-      const idMap = new Map<string, string>();
+      // Read one document at a time; keep only metadata, not all conversation bodies.
+      const contentDir = await this.getDir({ name: 'chat-contents' });
+      const metadata = new Map<string, Map<string, { mimeType: string, createdAt: number } | undefined>>();
+      let deferred = false;
+      for await (const entry of contentDir.values()) {
+        const entryKind = entry.kind;
+        switch (entryKind) {
+        case 'file':
+          if (entry.name.endsWith('.json')) {
+            try {
+              const file = await (entry as NaidanOpfsLayoutFileHandle).getFile();
+              for (const { attachmentId, name, mimeType, createdAt } of readLegacyUploadedFileMetadata({ serialized: await file.text() })) {
+                let files = metadata.get(attachmentId);
+                if (!files) {
+                  files = new Map(); metadata.set(attachmentId, files);
+                }
+                const previous = files.get(name);
+                if (files.has(name) && (previous?.mimeType !== mimeType || previous.createdAt !== createdAt)) {
+                  // One binary index cannot preserve contradictory legacy metadata.
+                  files.set(name, undefined);
+                  deferred = true;
+                } else {
+                  files.set(name, { mimeType, createdAt });
+                }
+              }
+            } catch (error) {
+              deferred = true;
+              console.warn(`[NaidanOpfsStorageBackend] Cannot read legacy attachment metadata: ${entry.name}`, error);
+            }
+          }
+          break;
+        case 'directory': deferred = true; break;
+        default: {
+          const _ex: never = entryKind;
+          throw new Error(`Unhandled content entry: ${_ex}`);
+        }
+        }
+      }
+
+      // 1. Copy each source file to a stable migration ID before changing references.
+      const idMap = new Map<string, Map<string, string>>();
 
       for await (const attachmentDirEntry of legacyDir.values()) {
         const entryKind = attachmentDirEntry.kind;
@@ -208,14 +282,32 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
             switch (fileKind) {
             case 'file': {
               const blob = await (fileEntry as NaidanOpfsLayoutFileHandle).getFile();
-              const newBinaryObjectId = generateId<BinaryObjectId>();
-
-              // Save to new location with NEW ID
-              await this.saveFile({ blob, binaryObjectId: newBinaryObjectId, name: fileEntry.name });
-              idMap.set(attachmentId, idToRaw({ id: newBinaryObjectId }));
+              const sourceMetadata = metadata.get(attachmentId);
+              const recorded = sourceMetadata?.get(fileEntry.name);
+              if (sourceMetadata?.has(fileEntry.name) && recorded === undefined) {
+                // Retain the source and its references for a later explicit repair.
+                continue;
+              }
+              const newBinaryObjectId = await createLegacyUploadedFileId({ attachmentId, name: fileEntry.name });
+              const existing = await this.getBinaryObject({ binaryObjectId: newBinaryObjectId });
+              await this.writeBinaryObject({
+                source: { type: 'direct_blob', blob },
+                binaryObjectId: newBinaryObjectId,
+                name: fileEntry.name,
+                mimeType: recorded?.mimeType ?? existing?.mimeType ?? (blob.type || 'application/octet-stream'),
+                size: blob.size,
+                signal: undefined,
+                createdAt: recorded?.createdAt ?? existing?.createdAt ?? Date.now(),
+              });
+              let files = idMap.get(attachmentId);
+              if (!files) {
+                files = new Map(); idMap.set(attachmentId, files);
+              }
+              files.set(fileEntry.name, idToRaw({ id: newBinaryObjectId }));
               break;
             }
             case 'directory':
+              deferred = true;
               break;
             default: {
               const _ex: never = fileKind;
@@ -226,6 +318,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
           break;
         }
         case 'file':
+          deferred = true;
           break;
         default: {
           const _ex: never = entryKind;
@@ -234,8 +327,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
         }
       }
 
-      // 2. Update all Chat Content JSON files to point to the new IDs
-      const contentDir = await this.getDir({ name: 'chat-contents' });
+      // 2. Reread current content and rewrite only references whose copies succeeded.
       for await (const entry of contentDir.values()) {
         const entryKind = entry.kind;
         switch (entryKind) {
@@ -243,42 +335,32 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
           if (entry.name.endsWith('.json')) {
             try {
               const file = await (entry as NaidanOpfsLayoutFileHandle).getFile();
-              const content = ChatContentSchemaDto.parse(JSON.parse(await file.text()));
-
-              let modified = false;
-              const processNodes = ({ nodes }: { nodes: MessageNodeDto[] }): void => {
-                for (const node of nodes) {
-                  if (node.attachments) {
-                    for (const attachment of node.attachments) {
-                      if ('binaryObjectId' in attachment) continue;
-
-                      const binaryObjectId = idMap.get(attachment.id);
-                      if (binaryObjectId === undefined) continue;
-
-                      Object.assign(attachment, {
-                        binaryObjectId,
-                        name: attachment.originalName,
-                      });
-                      modified = true;
-                    }
-                  }
-                  processNodes({ nodes: node.replies.items });
+              const rewritten = remapLegacyUploadedFileReferences({
+                serialized: await file.text(),
+                binaryObjectIds: idMap,
+              });
+              if (rewritten.unresolvedReferences > 0) deferred = true;
+              if (rewritten.serialized !== undefined) {
+                const writable = await (entry as NaidanOpfsLayoutFileHandle).createWritable();
+                try {
+                  await writable.write(rewritten.serialized);
+                  await writable.close();
+                } catch (error) {
+                  try {
+                    await writable.abort({ reason: error });
+                  } catch { /* The original failure remains authoritative. */ }
+                  throw error;
                 }
-              };
-
-              processNodes({ nodes: content.root.items });
-              if (modified) {
-                const writable = await (entry as unknown as NaidanOpfsLayoutFileHandle).createWritable();
-                await writable.write(JSON.stringify(content));
-                await writable.close();
               }
             } catch (jsonErr) {
-              console.warn(`[NaidanOpfsStorageBackend] Skipping corrupted chat content file: ${entry.name}`, jsonErr);
+              deferred = true;
+              console.warn(`[NaidanOpfsStorageBackend] Retaining legacy files because chat content could not be migrated: ${entry.name}`, jsonErr);
             }
           }
           break;
         }
         case 'directory':
+          deferred = true;
           break;
         default: {
           const _ex: never = entryKind;
@@ -287,19 +369,16 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
         }
       }
 
-      // 3. Cleanup
+      // Do not delete a directory that may still be needed by failed documents.
+      if (deferred) return 'deferred';
+
+      // 3. Cleanup, after every inspected chat reference was committed.
       await this.root!.removeEntry('uploaded-files', { recursive: true });
       console.log(`[NaidanOpfsStorageBackend] Migration completed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
-    } catch (e) {
-      // If uploaded-files doesn't exist, migration is not needed
-      const isNotFound = typeof e === 'object'
-        && e !== null
-        && (('name' in e && e.name === 'NotFoundError')
-          || ('code' in e && e.code === 8));
-      if (!isNotFound) {
-        console.error(`[NaidanOpfsStorageBackend] Migration failed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`, e);
-        throw e;
-      }
+      return 'completed';
+    } catch (error) {
+      console.error(`[NaidanOpfsStorageBackend] Migration failed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`, error);
+      throw error;
     }
   }
 
@@ -324,14 +403,16 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   }
 
   private async loadShardIndex({ shard }: { shard: string }): Promise<BinaryShardIndex> {
+    const dir = await this.getShardDir({ shard });
+    let fileHandle: NaidanOpfsLayoutFileHandle;
     try {
-      const dir = await this.getShardDir({ shard: shard });
-      const fileHandle = await dir.getFileHandle('index.json');
-      const file = await fileHandle.getFile();
-      return BinaryShardIndexSchemaDto.parse(JSON.parse(await file.text()));
-    } catch {
-      return { objects: {} };
+      fileHandle = await dir.getFileHandle('index.json');
+    } catch (error) {
+      if (isNotFoundError({ error })) return { objects: {} };
+      throw error;
     }
+    const file = await fileHandle.getFile();
+    return BinaryShardIndexSchemaDto.parse(JSON.parse(await file.text()));
   }
 
   private async saveShardIndex({ shard, index }: { shard: string, index: BinaryShardIndex }): Promise<void> {
@@ -345,58 +426,35 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   private async hydrateAttachments({ nodes }: { nodes: MessageNode[] }): Promise<void> {
     const shardCache = new Map<string, BinaryShardIndex>();
 
-    const processNodes = async ({ items }: { items: MessageNode[] }) => {
-      for (const node of items) {
-        if (node.attachments) {
-          for (let i = 0; i < node.attachments.length; i++) {
-            const att = node.attachments[i];
-            if (!att) continue;
-
-            const status = att.status;
-            switch (status) {
-            case 'persisted': {
-              const shard = this.getBinaryObjectShardPath({ id: att.binaryObjectId });
-              let index = shardCache.get(shard);
-              if (!index) {
-                index = await this.loadShardIndex({ shard: shard });
-                shardCache.set(shard, index);
-              }
-
-              const meta = index.objects[idToRaw({ id: att.binaryObjectId })];
-              if (meta) {
-                att.mimeType = meta.mimeType;
-                att.size = meta.size;
-                att.uploadedAt = meta.createdAt;
-              } else {
-                node.attachments[i] = {
-                  id: att.id,
-                  binaryObjectId: att.binaryObjectId,
-                  originalName: att.originalName,
-                  mimeType: att.mimeType,
-                  size: att.size,
-                  uploadedAt: att.uploadedAt,
-                  status: 'missing',
-                };
-              }
-              break;
-            }
-            case 'memory':
-            case 'missing':
-              break;
-            default: {
-              const _ex: never = status;
-              throw new Error(`Unhandled attachment status: ${_ex}`);
-            }
-            }
-          }
+    for (const part of iterateAttachmentParts({ nodes })) {
+      const att = part.attachment;
+      switch (att.status) {
+      case 'persisted': {
+        const shard = this.getBinaryObjectShardPath({ id: att.binaryObjectId });
+        let index = shardCache.get(shard);
+        if (!index) {
+          index = await this.loadShardIndex({ shard });
+          shardCache.set(shard, index);
         }
-        if (node.replies?.items) {
-          await processNodes({ items: node.replies.items });
+        const meta = index.objects[idToRaw({ id: att.binaryObjectId })];
+        if (meta) {
+          att.mimeType = meta.mimeType;
+          att.size = meta.size;
+          att.uploadedAt = meta.createdAt;
+        } else {
+          part.attachment = { ...att, status: 'missing' };
         }
+        break;
       }
-    };
-
-    await processNodes({ items: nodes });
+      case 'memory':
+      case 'missing':
+        break;
+      default: {
+        const _ex: never = att;
+        throw new Error(`Unhandled attachment status: ${_ex}`);
+      }
+      }
+    }
   }
 
   // --- Internal Data Access ---
@@ -502,51 +560,40 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   }
 
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
-    try {
-      const metaDir = await this.getDir({ name: 'chat-metas' });
-      const contentDir = await this.getDir({ name: 'chat-contents' });
+    const rawMeta = await this.readChatRecord({ directory: 'chat-metas', id });
+    const rawContent = await this.readChatRecord({ directory: 'chat-contents', id });
+    const meta = rawMeta === null ? null : ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
+    const content = rawContent === null ? null : ChatContentSchemaDto.parse(JSON.parse(rawContent));
+    if (meta === null || content === null) return null;
 
-      const metaFile = await (await metaDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      const contentFile = await (await contentDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
+    const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
-      const meta = ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text()));
-      const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
-
-      const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
-
-      // Resolve groupId from hierarchy
-      const hierarchy = await this.loadHierarchy();
-      if (hierarchy) {
-        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-        if (group) chat.groupId = toChatGroupId({ raw: group.id });
-      }
-
-      // Hydrate attachments with metadata from BinaryObject indices
-      await this.hydrateAttachments({ nodes: chat.root.items });
-
-      return chat;
-    } catch {
-      return null;
+    // Resolve groupId from hierarchy
+    const hierarchy = await this.loadHierarchy();
+    if (hierarchy) {
+      const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
+      if (group) chat.groupId = toChatGroupId({ raw: group.id });
     }
+
+    // Hydrate attachments with metadata from BinaryObject indices
+    await this.hydrateAttachments({ nodes: chat.root.items });
+
+    return chat;
   }
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
-    try {
-      const metaDir = await this.getDir({ name: 'chat-metas' });
-      const metaFile = await (await metaDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text())) });
+    const rawMeta = await this.readChatRecord({ directory: 'chat-metas', id });
+    if (rawMeta === null) return null;
+    const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
 
-      // Resolve groupId from hierarchy
-      const hierarchy = await this.loadHierarchy();
-      if (hierarchy) {
-        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-        if (group) meta.groupId = toChatGroupId({ raw: group.id });
-      }
-
-      return meta;
-    } catch {
-      return null;
+    // Resolve groupId from hierarchy
+    const hierarchy = await this.loadHierarchy();
+    if (hierarchy) {
+      const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
+      if (group) meta.groupId = toChatGroupId({ raw: group.id });
     }
+
+    return meta;
   }
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
@@ -637,6 +684,8 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
     const dir = await this.getShardDir({ shard });
     const binFileName = `${idToRaw({ id: binaryObjectId })}.bin`;
+    // Validate existing metadata before creating or replacing the binary body.
+    const index = await this.loadShardIndex({ shard });
     const fileHandle = await dir.getFileHandle(binFileName, { create: true });
     const stream = openStorageBinaryObjectWriteSourceStream({ source });
 
@@ -656,7 +705,6 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     const markerName = `.${binFileName}.complete`;
     await dir.getFileHandle(markerName, { create: true });
 
-    const index = await this.loadShardIndex({ shard });
     index.objects[idToRaw({ id: binaryObjectId })] = {
       id: idToRaw({ id: binaryObjectId }),
       mimeType,
@@ -845,49 +893,46 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
       }
 
       // 2. Stream all binary objects directly from storage (independent of chat references)
-      try {
-        const baseDir = await this.getBinaryObjectsDir();
-        for await (const shardEntry of baseDir.values()) {
-          const kind = shardEntry.kind;
-          switch (kind) {
-          case 'directory': {
-            const shard = shardEntry.name;
-            const index = await this.loadShardIndex({ shard: shard });
-            for (const bId of Object.keys(index.objects)) {
-              const meta = index.objects[bId]!;
-              const handle = await this.openBinaryObject({
-                binaryObjectId: toBinaryObjectId({ raw: bId }),
-              });
-              if (handle === null) {
-                continue;
-              }
-
-              const blob = await runWithStorageBinaryObjectReadHandleClose({
-                handle,
-                operation: async () => await materializeStorageBinaryObjectAsBlob({ handle }),
-              });
-              yield {
-                type: 'binary_object' as const,
-                id: bId,
-                name: meta.name ?? 'file',
-                mimeType: meta.mimeType,
-                size: meta.size,
-                createdAt: meta.createdAt,
-                blob,
-              };
+      // Existing index or stream failures must not finalize a partial backup.
+      const baseDir = await this.getBinaryObjectsDir();
+      for await (const shardEntry of baseDir.values()) {
+        const kind = shardEntry.kind;
+        switch (kind) {
+        case 'directory': {
+          const shard = shardEntry.name;
+          const index = await this.loadShardIndex({ shard: shard });
+          for (const bId of Object.keys(index.objects)) {
+            const meta = index.objects[bId]!;
+            const handle = await this.openBinaryObject({
+              binaryObjectId: toBinaryObjectId({ raw: bId }),
+            });
+            if (handle === null) {
+              continue;
             }
-            break;
+
+            const blob = await runWithStorageBinaryObjectReadHandleClose({
+              handle,
+              operation: async () => await materializeStorageBinaryObjectAsBlob({ handle }),
+            });
+            yield {
+              type: 'binary_object' as const,
+              id: bId,
+              name: meta.name ?? 'file',
+              mimeType: meta.mimeType,
+              size: meta.size,
+              createdAt: meta.createdAt,
+              blob,
+            };
           }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = kind;
-            throw new Error(`Unhandled entry kind: ${_ex}`);
-          }
-          }
+          break;
         }
-      } catch (e) {
-        console.warn('[NaidanOpfsStorageBackend] Failed to dump some binary objects', e);
+        case 'file':
+          break;
+        default: {
+          const _ex: never = kind;
+          throw new Error(`Unhandled entry kind: ${_ex}`);
+        }
+        }
       }
     };
 

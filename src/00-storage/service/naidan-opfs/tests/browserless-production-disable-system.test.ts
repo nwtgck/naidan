@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SettingsSchemaDto } from "@/00-storage/00-dto/dto";
-import type { Settings } from "@/01-models/types";
+import { ChatMetaSchemaDto, SettingsSchemaDto } from "@/00-storage/00-dto/dto";
+import { chatMetaToDomain } from "@/00-storage/mapper/mappers";
+import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from "@/01-models/ids";
+import type { ChatContent, MessageNode, Settings } from "@/01-models/types";
+import { iterateAttachmentParts } from "@/00-storage/service/message-attachments";
 import {
   installDevelopmentUnverifiedOpfsPersistenceRuntime,
 } from "@/00-storage/service/naidan-opfs/development-persistence-runtime";
@@ -161,6 +164,115 @@ afterEach(() => {
 });
 
 describe("browserless production HizoFS disable system", () => {
+  it("preserves nested message parts and binary metadata through encrypted writes and plain reopen", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: "window", name: "opfs-root" });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", { locks, storage: createInMemoryOpfsStorageManager({ root }) });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({ lockManager: locks });
+    const providers: OPFSStorageProvider[] = [];
+    const createProvider = () => {
+      const provider = new OPFSStorageProvider();
+      providers.push(provider);
+      return provider;
+    };
+    const id = toChatId({ raw: "parts-roundtrip" });
+    const binaryObjectId = toBinaryObjectId({ raw: "parts-binary-a1" });
+    const createMessage = ({ name, replies }: { name: string; replies: MessageNode[] }): MessageNode => ({
+      id: toMessageId({ raw: name }),
+      role: "user",
+      createdAt: 123,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [
+        { type: "text", text: name, completeness: "complete" },
+        { type: "attachment", attachment: {
+          id: toAttachmentId({ raw: `attachment-${name}` }),
+          binaryObjectId,
+          originalName: "payload.bin",
+          mimeType: "application/octet-stream",
+          size: 0,
+          uploadedAt: 0,
+          status: "persisted",
+        } },
+      ],
+      replies: { items: replies },
+    });
+    const answer: MessageNode = {
+      id: toMessageId({ raw: "answer" }),
+      role: "assistant",
+      createdAt: 124,
+      modelId: "saved-model",
+      lmParameters: undefined,
+      parts: [{ type: "text", text: `\
+  <think>literal</think>\r
+unfinished `, completeness: "partial" }],
+      interruption: { type: "cancelled" },
+      replies: { items: [createMessage({ name: "child", replies: [] })] },
+    };
+    const content: ChatContent = {
+      root: { items: [createMessage({ name: "parent", replies: [answer] })] },
+      currentLeafId: toMessageId({ raw: "child" }),
+    };
+    const assertContents = async ({ provider, text, mimeType, createdAt }: {
+      provider: OPFSStorageProvider; text: string; mimeType: string; createdAt: number;
+    }) => {
+      const loaded = await provider.loadChat({ id });
+      expect(loaded?.title).toBe("Parts roundtrip");
+      expect(loaded?.root.items[0]?.replies.items[0]).toMatchObject({
+        parts: answer.parts,
+        interruption: answer.interruption,
+        replies: { items: [{ parts: [{ type: "text", text: "child" }, { type: "attachment" }] }] },
+      });
+      if (loaded === null) throw new Error("Expected persisted chat");
+      const attachments = [...iterateAttachmentParts({ nodes: loaded.root.items })];
+      expect(attachments).toHaveLength(2);
+      for (const { attachment } of attachments) {
+        expect(attachment).toMatchObject({ binaryObjectId, mimeType, size: text.length, uploadedAt: createdAt, status: "persisted" });
+      }
+      const file = await provider.getFile({ binaryObjectId });
+      expect(await file?.text()).toBe(text);
+      expect(file?.type).toBe(mimeType);
+      const rawContent = await provider.loadChatContentWithoutAttachments({ id });
+      expect([...iterateAttachmentParts({ nodes: rawContent?.root.items ?? [] })][0]?.attachment.size).toBe(0);
+    };
+    try {
+      const plain = createProvider();
+      await plain.init();
+      await plain.saveChatMeta({ meta: chatMetaToDomain({ dto: ChatMetaSchemaDto.parse({
+        id: "parts-roundtrip", title: "Parts roundtrip", createdAt: 0, updatedAt: 1, debugEnabled: false,
+      }) }) });
+      await plain.saveChatContent({ id, content });
+      await plain.writeBinaryObject({
+        binaryObjectId, source: { type: "direct_blob", blob: new Blob(["plain"]) },
+        name: "payload.bin", mimeType: "application/x-before", size: 5, createdAt: 123, signal: undefined,
+      });
+      await assertContents({ provider: plain, text: "plain", mimeType: "application/x-before", createdAt: 123 });
+      await plain.enableEncryption({ passphrase: PASSPHRASE, onProgress: undefined, signal: undefined });
+      await plain.dispose();
+
+      const encrypted = createProvider();
+      await encrypted.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await assertContents({ provider: encrypted, text: "plain", mimeType: "application/x-before", createdAt: 123 });
+      await encrypted.writeBinaryObject({
+        binaryObjectId, source: { type: "direct_blob", blob: new Blob(["encrypted replacement"]) },
+        name: "payload.bin", mimeType: "application/x-after", size: 21, createdAt: 456, signal: undefined,
+      });
+      await encrypted.saveChatContent({ id, content });
+      await encrypted.dispose();
+
+      const reopenedEncrypted = createProvider();
+      await reopenedEncrypted.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await assertContents({ provider: reopenedEncrypted, text: "encrypted replacement", mimeType: "application/x-after", createdAt: 456 });
+      await reopenedEncrypted.disableEncryption({ onProgress: undefined, signal: undefined });
+      const reopenedPlain = createProvider();
+      await reopenedPlain.init();
+      await assertContents({ provider: reopenedPlain, text: "encrypted replacement", mimeType: "application/x-after", createdAt: 456 });
+    } finally {
+      for (const provider of providers) await provider.dispose();
+      uninstallRuntime();
+    }
+  }, 60_000);
+
   it("rejects fresh disable before durable start and preserves unowned plain bytes", async () => {
     const root = new InMemoryOpfsDirectoryHandle({
       capabilityProfile: "window",
