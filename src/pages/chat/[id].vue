@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { watch, onMounted, onUnmounted, computed, nextTick, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import CurrentChatPane from '@/components/CurrentChatPane.vue';
@@ -7,6 +7,7 @@ import { toChatId, toMessageId } from '@/01-models/ids';
 import {
   useInitialRouteRenderReadinessClaim,
 } from '@/logic/startup/initial-route-render-readiness';
+import { lazyStrings } from '@/strings';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
@@ -28,46 +29,69 @@ const messageId = computed(() => {
   return raw === undefined ? undefined : toMessageId({ raw });
 });
 
+const target = computed(() => ({ id: chatId.value, leafId: leafId.value, messageId: messageId.value }));
+const load = shallowRef<{
+  target: typeof target.value,
+  status: 'loading' | 'ready' | 'error',
+}>();
+const loadStatus = computed(() => load.value?.target === target.value ? load.value.status : 'loading');
+
 async function syncChat() {
-  const id = chatId.value;
-  if (id) {
-    if (messageId.value) {
+  const request = { target: target.value, status: 'loading' as const };
+  load.value = request;
+  const { id, leafId, messageId } = request.target;
+  if (!id) return;
+
+  try {
+    if (messageId) {
       await chatNavigation.openChatAtMessage({
         chatId: toChatId({ raw: id }),
-        messageId: messageId.value,
+        messageId,
       });
     } else {
       await chatNavigation.openChat({
         chatId: toChatId({ raw: id }),
-        leafId: leafId.value === undefined ? undefined : toMessageId({ raw: leafId.value }),
+        leafId: leafId === undefined ? undefined : toMessageId({ raw: leafId }),
       });
+    }
+    if (load.value === request) {
+      const ready = { ...request, status: 'ready' as const };
+      load.value = ready;
+      // Wait for the actual pane to render before releasing encrypted startup.
+      await nextTick();
+      if (load.value === ready) initialRouteRenderReadiness.reportReady();
+    }
+  } catch (error) {
+    console.error('Failed to load chat:', error);
+    if (load.value === request) {
+      load.value = { ...request, status: 'error' };
+      initialRouteRenderReadiness.reportFailure({ error });
     }
   }
 }
 
 function handleAutoSent() {
+  switch (loadStatus.value) {
+  case 'loading':
+  case 'error':
+    return;
+  case 'ready':
+    break;
+  default: {
+    const _ex: never = loadStatus.value;
+    throw new Error(`Unhandled chat load status: ${_ex}`);
+  }
+  }
   const query = { ...currentRoute.value?.query };
   delete query.q;
   router.replace({ query });
 }
 
-onMounted(async () => {
-  try {
-    await syncChat();
-    // openChat updates CurrentChatPane reactively. Wait for that DOM update so
-    // encrypted startup removes its lock only after the real ChatPane exists,
-    // not when this route wrapper happened to mount.
-    await nextTick();
-    initialRouteRenderReadiness.reportReady();
-  } catch (error) {
-    initialRouteRenderReadiness.reportFailure({ error });
-    throw error;
-  }
-});
+onMounted(syncChat);
 onUnmounted(() => {
   initialRouteRenderReadiness.cancel();
 });
-watch([chatId, leafId, messageId], syncChat);
+watch(target, syncChat);
 
 
 defineExpose({
@@ -80,12 +104,36 @@ defineExpose({
 </script>
 
 <template>
-  <CurrentChatPane
-    v-if="chatId"
-    :auto-send-prompt="currentRoute?.query?.q?.toString()"
-    :target-message-id="messageId"
-    @auto-sent="handleAutoSent"
-  />
+  <template v-if="chatId">
+    <!-- Keep the previous pane mounted to retain its draft and attachment URLs while a read fails. -->
+    <div
+      v-show="loadStatus === 'ready'"
+      :inert="loadStatus !== 'ready'"
+      data-testid="chat-page-content"
+      tw-class="h-full w-full"
+    >
+      <CurrentChatPane
+        :auto-send-prompt="loadStatus === 'ready' ? currentRoute?.query?.q?.toString() : undefined"
+        :target-message-id="loadStatus === 'ready' ? messageId : undefined"
+        @auto-sent="handleAutoSent"
+      />
+    </div>
+    <div
+      v-if="loadStatus !== 'ready'"
+      tw-class="h-full flex flex-col items-center justify-center gap-4 p-6 bg-[#fcfcfd] dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-center"
+    >
+      <template v-if="loadStatus === 'error'">
+        <p role="alert" data-testid="chat-load-error">{{ lazyStrings.ChatPage__failed_to_load_chat() }}</p>
+        <button
+          type="button"
+          data-testid="chat-load-retry"
+          tw-class="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          @click="syncChat"
+        >{{ lazyStrings.ChatPage__retry() }}</button>
+      </template>
+      <p v-else role="status">{{ lazyStrings.ChatPage__loading_chat() }}</p>
+    </div>
+  </template>
 </template>
 
 <style scoped>

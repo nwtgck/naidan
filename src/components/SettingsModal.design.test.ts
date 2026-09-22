@@ -5,7 +5,7 @@ import { useRouter, useRoute, createRouter, createMemoryHistory } from 'vue-rout
 import SettingsModal from './SettingsModal.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useSettings } from '@/composables/useSettings';
-import { useChat } from '@/composables/useChat';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';
@@ -23,8 +23,8 @@ vi.mock('vue-router', async (importActual) => {
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(),
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: vi.fn(),
 }));
 vi.mock('../composables/useToast', () => ({
   useToast: vi.fn(),
@@ -78,7 +78,7 @@ describe('SettingsModal Design Specifications', () => {
       save: vi.fn(),
       fetchModels: vi.fn().mockResolvedValue([]),
     });
-    (useChat as unknown as Mock).mockReturnValue({
+    (useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
       resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
     });

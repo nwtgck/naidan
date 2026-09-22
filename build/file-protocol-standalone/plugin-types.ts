@@ -1,3 +1,4 @@
+import type { StandaloneEmbeddedBinary } from '../../src/features/file-protocol-standalone/build-types.js';
 import type { FileProtocolStandaloneReleaseValidationOptions } from './release-validation.js';
 import type { FileProtocolStandaloneReleasePackagingOptions } from './plugin/release-packaging.js';
 
@@ -33,6 +34,7 @@ type NaidanStandaloneReleasePackagingOptions = Omit<
 
 export type NaidanStandalonePluginOptions = Readonly<{
   workers: readonly NaidanStandaloneWorkerDefinition[];
+  embeddedBinaries?: readonly StandaloneEmbeddedBinary[];
   systemRuntimePath: string;
   systemRuntimeSourceMapPath?: string;
   diagnostics?: Record<string, unknown>;

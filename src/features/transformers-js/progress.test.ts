@@ -1,16 +1,32 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as Comlink from 'comlink';
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from './runtime/fixtures/production-runtime-startup-fixture';
 
-// Mock Worker class
-class MockWorker {
-  terminate = vi.fn();
-  postMessage = vi.fn();
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
-  constructor() {}
+// Keep the real host startup/lease gate before the controlled progress RPC.
+// This facade does not execute model inference or native Worker communication.
+const workers: MockWorker[] = [];
+class MockWorker extends EventTarget {
+  private active = true;
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+  terminate = vi.fn(() => {
+    this.active = false;
+  });
+  postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+  // Worker constructors are a browser-platform positional boundary.
+  constructor(url: URL) {
+    super();
+    workers.push(this);
+    queueMicrotask(() => {
+      if (this.active && url.pathname.endsWith('/worker/bootstrap.ts')) this.startup.start();
+    });
+  }
 }
 
-vi.stubGlobal('Worker', MockWorker);
+afterEach(() => {
+  for (const worker of workers.splice(0)) worker.dispatchEvent(new Event('error'));
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 // Mock Comlink
 vi.mock('comlink', () => {
@@ -40,6 +56,10 @@ describe('transformersJsService progress logic', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.stubGlobal('Worker', MockWorker);
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
+    // Only the progress clock is synthetic; startup microtasks/timers stay real.
+    vi.useFakeTimers({ toFake: ['Date'] });
 
     // Clear navigator mock
     vi.stubGlobal('navigator', {
@@ -51,7 +71,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should cap metadata progress at 5%', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         // Send multiple small metadata files
         cb({ status: 'initiate', name: 'config.json' });
         cb({ status: 'progress', name: 'config.json', loaded: 1000, total: 1000 });
@@ -75,17 +95,15 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // Even though both files are 100% done, overall progress should be capped because no "heavy" file was seen
     expect(lastProgress).toBeLessThanOrEqual(5);
   });
 
   it('should stay in discovery phase (max 15%) for 3 seconds after heavy file seen', async () => {
-    vi.useFakeTimers();
-
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         // Metadata
         cb({ status: 'done', name: 'config.json', loaded: 1000, total: 1000 });
 
@@ -107,7 +125,7 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // model.onnx is 50% done (50MB), but total recognized is < 100MB and time is < 3s
     // So discovery phase cap (15%) applies.
@@ -117,12 +135,11 @@ describe('transformersJsService progress logic', () => {
   });
 
   it('should transition to active download phase after 3 seconds', async () => {
-    vi.useFakeTimers();
     const now = Date.now();
     vi.setSystemTime(now);
 
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         const floor = 200 * 1024 * 1024;
         const half = 100 * 1024 * 1024;
 
@@ -150,7 +167,7 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // Now Phase 3 applies. totalSize is 100MiB, but effectiveTotalSize has 200MiB floor.
     // (100MiB + 1) / 200MiB = ~50%
@@ -162,14 +179,14 @@ describe('transformersJsService progress logic', () => {
 
   it('should ensure monotonicity (progress never goes backwards)', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         // High progress with small denominator
         cb({ status: 'initiate', name: 'file1.bin' });
         cb({ status: 'progress', name: 'file1.bin', loaded: 80, total: 100 }); // 80%? No, capped/floored.
 
         // Actually, let's trigger Phase 3
         const startTime = Date.now();
-        vi.stubGlobal('Date', { now: () => startTime + 5000 }); // Force Phase 3
+        vi.setSystemTime(startTime + 5000); // Force Phase 3 without replacing the Date constructor.
 
         cb({ status: 'initiate', name: 'heavy.bin' });
         cb({ status: 'progress', name: 'heavy.bin', loaded: 100000000, total: 200000000 }); // 50% (of 200MB floor)
@@ -194,7 +211,7 @@ describe('transformersJsService progress logic', () => {
       progressHistory.push(progress);
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // Check that history never decreases
     for (let i = 1; i < progressHistory.length; i++) {
@@ -206,9 +223,9 @@ describe('transformersJsService progress logic', () => {
 
   it('should never reach 100% progress until model is ready', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         const startTime = Date.now();
-        vi.stubGlobal('Date', { now: () => startTime + 5000 }); // Force Phase 3
+        vi.setSystemTime(startTime + 5000); // Force Phase 3 without replacing the Date constructor.
 
         cb({ status: 'done', name: 'model.onnx', loaded: 1000000000, total: 1000000000 });
 
@@ -228,7 +245,7 @@ describe('transformersJsService progress logic', () => {
       }
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     expect(lastProgress).toBe(99);
     expect(transformersJsService.getState().status).toBe('ready');
@@ -236,7 +253,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should throttle Transformers.js progress_total/progress pairs as one high-frequency stream', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         for (let index = 1; index <= 100; index += 1) {
           cb({ status: 'progress_total', loaded: index, total: 100, progress: index });
           cb({ status: 'progress', file: 'model.onnx', loaded: index, total: 100, progress: index });
@@ -252,7 +269,7 @@ describe('transformersJsService progress logic', () => {
     const listener = vi.fn();
     transformersJsService.subscribe({ listener });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // 200 raw progress callbacks must not become 200 reactive notifications.
     // The raw events are still consumed by updateProgress before notification

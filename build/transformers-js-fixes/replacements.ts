@@ -1,0 +1,379 @@
+// These are exact source fragments, not executable replacement functions.
+// Keep literal boundaries at the actual first/last byte: String.raw preserves
+// backslashes and newlines, including the final newline in the deletion below.
+export default [
+  {
+    before: String.raw`async function readResponse(response, progress_callback, expectedSize) {
+  const contentLength = response.headers.get("Content-Length");
+  let total = contentLength ? parseInt(contentLength, 10) : expectedSize ?? 0;
+  if (contentLength === null && !expectedSize) {
+    logger.warn("Unable to determine content-length from response headers. Will expand buffer when needed.");
+  }
+  let buffer = new Uint8Array(total);
+  let loaded = 0;
+  const reader = response.body.getReader();
+  async function read() {
+    const { done, value } = await reader.read();
+    if (done) return;
+    const newLoaded = loaded + value.length;
+    if (newLoaded > total) {
+      total = newLoaded;
+      const newBuffer = new Uint8Array(total);
+      newBuffer.set(buffer);
+      buffer = newBuffer;
+    }
+    buffer.set(value, loaded);
+    loaded = newLoaded;
+    const progress = loaded / total * 100;
+    progress_callback({ progress, loaded, total });
+    return read();
+  }
+  await read();
+  return buffer;
+}`,
+    after: String.raw`// Naidan fix: observe allocation stages without granting recording code control over loading.
+function naidanCreateModelLoadObserver(kind, resource) {
+  let sink;
+  try {
+    sink = env.naidanModelLoadObserver;
+  } catch {
+    return;
+  }
+  if (typeof sink !== "function") return;
+  const token = {};
+  return (phase, bytes, error) => {
+    try {
+      // Naidan fix: keep only fixed failure labels, never error text, stack or cause.
+      // Message accessors are not executed; unavailable/oversized text is unclassified.
+      let errorName;
+      if (error !== void 0) {
+        errorName = "unknown";
+        try {
+          const name = error?.name;
+          if (["Error", "TypeError", "RangeError", "SyntaxError", "AbortError"].includes(name)) errorName = name;
+        } catch {
+        }
+      }
+      let errorCategory;
+      if (phase === "session-rejected") {
+        errorCategory = "unclassified";
+        try {
+          const descriptor = typeof error === "object" && error !== null ? Object.getOwnPropertyDescriptor(error, "message") : void 0;
+          const message = typeof error === "string" ? error : descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : void 0;
+          if (typeof message === "string" && message.length <= 4096) {
+            if (/webgpuInit is not a function/.test(message)) errorCategory = "missing-webgpu-entrypoint";
+            else if (/module doesn't start with ['"](?:\\0|\0)asm['"]|expected magic word 00 61 73 6d/.test(message)) errorCategory = "invalid-wasm-magic";
+            else if (/previous call to ['"]initWasm\(\)['"] failed/.test(message)) errorCategory = "prior-initialization-failure";
+          }
+        } catch {
+        }
+      }
+      const result = sink({ token, kind, resource, phase, bytes, errorName, ...(errorCategory === void 0 ? {} : { errorCategory }) });
+      if (result !== void 0) Promise.resolve(result).catch(() => {});
+    } catch {
+    }
+  };
+}
+async function readResponse(response, progress_callback, expectedSize, diagnosticResource) {
+  const observe = naidanCreateModelLoadObserver("read", diagnosticResource);
+  const contentLength = response.headers.get("Content-Length");
+  let total = contentLength ? parseInt(contentLength, 10) : expectedSize ?? 0;
+  if (contentLength === null && !expectedSize) {
+    logger.warn("Unable to determine content-length from response headers. Will expand buffer when needed.");
+  }
+  observe?.("allocation-attempt", total);
+  let buffer;
+  try {
+    buffer = new Uint8Array(total);
+  } catch (error) {
+    observe?.("allocation-failed", total, error);
+    throw error;
+  }
+  observe?.("allocation-succeeded", total);
+  let loaded = 0;
+  let reader;
+  try {
+    reader = response.body.getReader();
+  } catch (error) {
+    observe?.("read-failed", loaded, error);
+    throw error;
+  }
+  observe?.("read-start", loaded);
+  async function read() {
+    const { done, value } = await reader.read();
+    if (done) return;
+    const newLoaded = loaded + value.length;
+    if (newLoaded > total) {
+      total = newLoaded;
+      observe?.("allocation-attempt", total);
+      let newBuffer;
+      try {
+        newBuffer = new Uint8Array(total);
+      } catch (error) {
+        observe?.("allocation-failed", total, error);
+        throw error;
+      }
+      observe?.("allocation-succeeded", total);
+      newBuffer.set(buffer);
+      buffer = newBuffer;
+    }
+    buffer.set(value, loaded);
+    loaded = newLoaded;
+    const progress = loaded / total * 100;
+    progress_callback({ progress, loaded, total });
+    return read();
+  }
+  try {
+    await read();
+  } catch (error) {
+    observe?.("read-failed", loaded, error);
+    throw error;
+  }
+  observe?.("read-returned", buffer.byteLength);
+  return buffer;
+}`,
+  },
+  {
+    before: String.raw`          expectedSize
+        );`,
+    after: String.raw`          expectedSize,
+          // Naidan fix: identify the resource at the actual buffer-allocation boundary.
+          filename
+        );`,
+  },
+  {
+    before: String.raw`async function createInferenceSession(buffer_or_path, session_options, session_config) {
+  await ensureWasmLoaded();
+  const logSeverityLevel = getOnnxLogSeverityLevel(env.logLevel ?? LogLevel.WARNING);
+  const load = () => InferenceSession.create(buffer_or_path, {
+    // Set default log severity level, but allow overriding through session options
+    logSeverityLevel,
+    ...session_options
+  });
+  const session = await (apis.IS_WEB_ENV ? webInitChain = webInitChain.then(load) : load());
+  session.config = session_config;
+  return session;
+}`,
+    after: String.raw`async function createInferenceSession(buffer_or_path, session_options, session_config) {
+  // Naidan fix: distinguish session preparation from actual ORT entry.
+  const observe = naidanCreateModelLoadObserver("session");
+  observe?.("session-preparing", 0);
+  try {
+  await ensureWasmLoaded();
+  const logSeverityLevel = getOnnxLogSeverityLevel(env.logLevel ?? LogLevel.WARNING);
+  const load = () => {
+    observe?.("session-entering", 0);
+    return InferenceSession.create(buffer_or_path, {
+    // Set default log severity level, but allow overriding through session options
+    logSeverityLevel,
+    ...session_options
+  });
+  };
+  // Naidan fix: retain this session's rejection, but recover the serialization
+  // tail so a failed backend cannot prevent later queued sessions from entering ORT.
+  const pending = apis.IS_WEB_ENV ? webInitChain.then(load) : load();
+  if (apis.IS_WEB_ENV) webInitChain = pending.then(() => {}, () => {});
+  const session = await pending;
+  session.config = session_config;
+  observe?.("session-fulfilled", 0);
+  return session;
+  } catch (error) {
+    observe?.("session-rejected", 0, error);
+    throw error;
+  }
+}`,
+  },
+  {
+    before: String.raw`async function constructSessions(pretrained_model_name_or_path, names, options, cache_sessions = void 0) {
+  return Object.fromEntries(
+    await Promise.all(
+      Object.keys(names).map(async (name) => {
+        const cache_config = cache_sessions?.[name] ?? false;
+        const { buffer_or_path, session_options, session_config } = await getSession(
+          pretrained_model_name_or_path,
+          names[name],
+          options,
+          cache_config,
+          name
+        );
+        const session = await createInferenceSession(buffer_or_path, session_options, session_config);
+        return [name, session];
+      })
+    )
+  );
+}`,
+    after: String.raw`async function constructSessions(pretrained_model_name_or_path, names, options, cache_sessions = void 0) {
+  // Naidan fix: own partial and late sessions until the complete model accepts them.
+  const owned = new Set();
+  const released = new Set();
+  let failed = false;
+  const release = (session) => {
+    owned.delete(session);
+    if (released.has(session)) return;
+    released.add(session);
+    try {
+      // Naidan fix: request cleanup without delaying or replacing the original failure.
+      Promise.resolve(session.release()).catch(() => {});
+    } catch {
+    }
+  };
+  try {
+    return Object.fromEntries(
+      await Promise.all(
+        Object.keys(names).map(async (name) => {
+          const cache_config = cache_sessions?.[name] ?? false;
+          const { buffer_or_path, session_options, session_config } = await getSession(
+            pretrained_model_name_or_path,
+            names[name],
+            options,
+            cache_config,
+            name
+          );
+          const session = await createInferenceSession(buffer_or_path, session_options, session_config);
+          owned.add(session);
+          if (failed) release(session);
+          return [name, session];
+        })
+      )
+    );
+  } catch (error) {
+    failed = true;
+    for (const session of owned) release(session);
+    throw error;
+  }
+}`,
+  },
+  {
+    before: String.raw`        new Promise(async (resolve, reject) => {
+          const data = await getModelFile(
+            pretrained_model_name_or_path,
+            fullPath,
+            true,
+            options,
+            return_path
+          );
+          resolve(data instanceof Uint8Array ? { path, data } : path);
+        })`,
+    after: String.raw`        // Naidan fix: propagate external-data rejection to its owner.
+        getModelFile(
+          pretrained_model_name_or_path,
+          fullPath,
+          true,
+          options,
+          return_path
+        ).then((data) => data instanceof Uint8Array ? { path, data } : path)`,
+  },
+  {
+    before: String.raw`  const bufferOrPathPromise = getCoreModelFile(pretrained_model_name_or_path, fileName, options, suffix);
+  const use_external_data_format = options.use_external_data_format ?? custom_config.use_external_data_format;
+  const externalData = await getModelDataFiles(
+    pretrained_model_name_or_path,
+    fileName,
+    suffix,
+    options,
+    use_external_data_format,
+    session_options
+  );`,
+    after: String.raw`  const use_external_data_format = options.use_external_data_format ?? custom_config.use_external_data_format;
+  // Naidan fix: attach both rejection handlers before awaiting either input.
+  const [buffer_or_path, externalData] = await Promise.all([
+    getCoreModelFile(pretrained_model_name_or_path, fileName, options, suffix),
+    getModelDataFiles(
+      pretrained_model_name_or_path,
+      fileName,
+      suffix,
+      options,
+      use_external_data_format,
+      session_options
+    )
+  ]);`,
+  },
+  {
+    before: String.raw`  const buffer_or_path = await bufferOrPathPromise;
+`,
+    after: '',
+  },
+  {
+    before: String.raw`    const sessions = typeConfig.sessions(config, options, textOnly);
+    const promises = [
+      constructSessions(pretrained_model_name_or_path, sessions, options, typeConfig.cache_sessions)
+    ];
+    if (typeConfig.optional_configs) {
+      promises.push(get_optional_configs(pretrained_model_name_or_path, typeConfig.optional_configs, options));
+    }
+    const info = await Promise.all(promises);
+    return new this(config, ...info);`,
+    after: String.raw`    // Naidan fix: finish shared optional metadata before selecting or creating sessions.
+    const info = typeConfig.optional_configs
+      ? [await get_optional_configs(pretrained_model_name_or_path, typeConfig.optional_configs, options)]
+      : [];
+    const sessions = typeConfig.sessions(config, options, textOnly);
+    info.unshift(await constructSessions(pretrained_model_name_or_path, sessions, options, typeConfig.cache_sessions));
+    return new this(config, ...info);`,
+  },
+  {
+    before: String.raw`async function get_optional_configs(pretrained_model_name_or_path, names, options) {
+  return Object.fromEntries(
+    await Promise.all(
+      Object.keys(names).map(async (name) => {
+        const config = await getModelJSON(pretrained_model_name_or_path, names[name], false, options);
+        return [name, config];
+      })
+    )
+  );
+}`,
+    after: String.raw`async function get_optional_configs(pretrained_model_name_or_path, names, options) {
+  return Object.fromEntries(
+    await Promise.all(
+      Object.keys(names).map(async (name) => {
+        try {
+          const config = await getModelJSON(pretrained_model_name_or_path, names[name], false, options);
+          return [name, config];
+        } catch (cause) {
+          // Naidan fix: retain this consumer's origin without classifying every SyntaxError.
+          const description = cause instanceof Error ? cause.name + ": " + cause.message : String(cause);
+          const error = new Error("Optional configuration preparation failed for " + names[name] + ": " + description, { cause });
+          error.name = "TransformersJsOptionalConfigurationError";
+          throw error;
+        }
+      })
+    )
+  );
+}`,
+  },
+  {
+    before: String.raw`  return template.replace(/{%\s*(end)?generation\s*%}/gs, "");`,
+    after: String.raw`  // Naidan fix: generation is syntax, not text to erase inside quoted literals.
+  return template;`,
+  },
+  {
+    before: String.raw`      case "filter": {
+        ++current;`,
+    after: String.raw`      case "generation": {
+        // Naidan fix: parse balanced blocks so whitespace controls, nesting and literal contents survive.
+        ++current;
+        if (!is(TOKEN_TYPES.CloseStatement)) {
+          throw new SyntaxError("generation takes no arguments");
+        }
+        ++current;
+        const body = [];
+        while (!isStatement("endgeneration")) {
+          if (current >= tokens.length) {
+            throw new SyntaxError("Expected endgeneration");
+          }
+          body.push(parseAny());
+        }
+        expect(TOKEN_TYPES.OpenStatement, "Expected '{%'");
+        expectIdentifier("endgeneration");
+        if (!is(TOKEN_TYPES.CloseStatement)) {
+          throw new SyntaxError("endgeneration takes no arguments");
+        }
+        ++current;
+        // Naidan fix: render the body in the current environment; this does not implement assistant masks.
+        result = new Program(body);
+        break;
+      }
+      case "filter": {
+        ++current;`,
+  },
+] satisfies Array<{ before: string, after: string }>;

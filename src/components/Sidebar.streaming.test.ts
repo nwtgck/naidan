@@ -23,8 +23,8 @@ vi.mock('../composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: ref(null),
     currentChatGroup: ref(null),
     streaming: computed(() => mockActiveGenerations.size > 0),

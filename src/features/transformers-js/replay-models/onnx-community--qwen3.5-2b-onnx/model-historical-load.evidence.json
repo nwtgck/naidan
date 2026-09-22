@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "historical-model-support-investigation-production-observation",
+    "observedAt": "2026-09-02T00:10:13.488Z",
+    "note": "Historical observation from the implementation under test at that time. It is not a declaration of the current Production route."
+  },
+  "modelId": "onnx-community/Qwen3.5-2B-ONNX",
+  "resolvedRevision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+  "candidate": {
+    "device": "webgpu",
+    "dtype": "q4f16"
+  },
+  "autoClass": "AutoModelForCausalLM",
+  "modelType": "qwen3_5",
+  "sessionNames": [
+    "decoder_model_merged",
+    "embed_tokens"
+  ]
+}

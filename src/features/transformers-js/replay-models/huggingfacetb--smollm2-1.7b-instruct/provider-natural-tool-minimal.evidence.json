@@ -1,0 +1,1748 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "natural-tool-minimal",
+  "contextSha256": "8ac4c0736e8bdebd2a388d8fbb5c098fceed4240e637e182ea790185367bc256",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        }
+      ],
+      "tools": [
+        {
+          "fixtureId": "model-support-weather-v1",
+          "name": "lookup_weather",
+          "description": "Return deterministic weather fixture data.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 128,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I'm "
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "sorry "
+      },
+      {
+        "sequence": 3,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "for "
+      },
+      {
+        "sequence": 4,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 5,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "misunderstanding, "
+      },
+      {
+        "sequence": 6,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "but "
+      },
+      {
+        "sequence": 7,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "as "
+      },
+      {
+        "sequence": 8,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "an "
+      },
+      {
+        "sequence": 9,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "AI, "
+      },
+      {
+        "sequence": 10,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I "
+      },
+      {
+        "sequence": 11,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "don't "
+      },
+      {
+        "sequence": 12,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "have "
+      },
+      {
+        "sequence": 13,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "real-time "
+      },
+      {
+        "sequence": 14,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "capabilities "
+      },
+      {
+        "sequence": 15,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 16,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "fetch "
+      },
+      {
+        "sequence": 17,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "current "
+      },
+      {
+        "sequence": 18,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 19,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "data. "
+      },
+      {
+        "sequence": 20,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "However, "
+      },
+      {
+        "sequence": 21,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "you "
+      },
+      {
+        "sequence": 22,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "can "
+      },
+      {
+        "sequence": 23,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "easily "
+      },
+      {
+        "sequence": 24,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "find "
+      },
+      {
+        "sequence": 25,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 26,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "current "
+      },
+      {
+        "sequence": 27,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 28,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "in "
+      },
+      {
+        "sequence": 29,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Tokyo "
+      },
+      {
+        "sequence": 30,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "by "
+      },
+      {
+        "sequence": 31,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "using "
+      },
+      {
+        "sequence": 32,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "online "
+      },
+      {
+        "sequence": 33,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 34,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "tools "
+      },
+      {
+        "sequence": 35,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "or "
+      },
+      {
+        "sequence": 36,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "apps "
+      },
+      {
+        "sequence": 37,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "like "
+      },
+      {
+        "sequence": 38,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The "
+      },
+      {
+        "sequence": 39,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Weather "
+      },
+      {
+        "sequence": 40,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Channel, "
+      },
+      {
+        "sequence": 41,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "AccuWeather, "
+      },
+      {
+        "sequence": 42,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "or "
+      },
+      {
+        "sequence": 43,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "even "
+      },
+      {
+        "sequence": 44,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Google's "
+      },
+      {
+        "sequence": 45,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "built-in "
+      },
+      {
+        "sequence": 46,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 47,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "feature. "
+      },
+      {
+        "sequence": 48,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "These "
+      },
+      {
+        "sequence": 49,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "tools "
+      },
+      {
+        "sequence": 50,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "can "
+      },
+      {
+        "sequence": 51,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "provide "
+      },
+      {
+        "sequence": 52,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "you "
+      },
+      {
+        "sequence": 53,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "with "
+      },
+      {
+        "sequence": 54,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 55,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "current "
+      },
+      {
+        "sequence": 56,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "temperature, "
+      },
+      {
+        "sequence": 57,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "humidity, "
+      },
+      {
+        "sequence": 58,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "wind "
+      },
+      {
+        "sequence": 59,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "speed, "
+      },
+      {
+        "sequence": 60,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "and "
+      },
+      {
+        "sequence": 61,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "other "
+      },
+      {
+        "sequence": 62,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 63,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "conditions."
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              37
+            ],
+            "byteLength": 296,
+            "sha256": "a59d69f1de2513b2da3e4bf638358282d365ab499e107ab72a12539f17c6fd04"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              37
+            ],
+            "byteLength": 296,
+            "sha256": "ec37504372901fc76c27a11cf01f4ea1f0b30ca7257611d71d54a1a85be99518"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              37
+            ],
+            "byteLength": 296,
+            "sha256": "a59d69f1de2513b2da3e4bf638358282d365ab499e107ab72a12539f17c6fd04"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              37
+            ],
+            "byteLength": 296,
+            "sha256": "ec37504372901fc76c27a11cf01f4ea1f0b30ca7257611d71d54a1a85be99518"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 8192,
+          "promptTokenCount": 37,
+          "usedContextTokenCount": 37
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1",
+              "9690",
+              "198",
+              "2683",
+              "359",
+              "253",
+              "5356",
+              "5646",
+              "11173",
+              "3365",
+              "3511",
+              "308",
+              "34519",
+              "28",
+              "7018",
+              "411",
+              "407",
+              "19712",
+              "8182",
+              "2",
+              "198",
+              "1",
+              "4093",
+              "198",
+              "9801",
+              "260",
+              "3947",
+              "1763",
+              "327",
+              "19081",
+              "30",
+              "2",
+              "198",
+              "1",
+              "520",
+              "9531",
+              "198"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "57"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "5248"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22657"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "327"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "260"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29532"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "564"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "347"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "354"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "5646"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "339"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1326"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "982"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "457"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1345"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2256"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7596"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "288"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22957"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1574"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3947"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "940"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "30"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1423"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "346"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "416"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3152"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1042"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "260"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1574"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3947"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "281"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "19081"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "411"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1015"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2329"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3947"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2549"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "355"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "9527"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "702"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "378"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "17127"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "16771"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6698"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "101"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "39939"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "355"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "908"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "5837"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "506"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2837"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "254"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3947"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3865"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "30"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1216"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2549"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "416"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1538"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "346"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "351"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "260"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1574"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2779"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "11687"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2251"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3547"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "284"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "550"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3947"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1920"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "30"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "I'm ",
+          "streamEnd": false
+        },
+        {
+          "text": "sorry ",
+          "streamEnd": false
+        },
+        {
+          "text": "for ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "misunderstanding, ",
+          "streamEnd": false
+        },
+        {
+          "text": "but ",
+          "streamEnd": false
+        },
+        {
+          "text": "as ",
+          "streamEnd": false
+        },
+        {
+          "text": "an ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "AI, ",
+          "streamEnd": false
+        },
+        {
+          "text": "I ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "don't ",
+          "streamEnd": false
+        },
+        {
+          "text": "have ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "real-time ",
+          "streamEnd": false
+        },
+        {
+          "text": "capabilities ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "fetch ",
+          "streamEnd": false
+        },
+        {
+          "text": "current ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "data. ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "However, ",
+          "streamEnd": false
+        },
+        {
+          "text": "you ",
+          "streamEnd": false
+        },
+        {
+          "text": "can ",
+          "streamEnd": false
+        },
+        {
+          "text": "easily ",
+          "streamEnd": false
+        },
+        {
+          "text": "find ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "current ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "in ",
+          "streamEnd": false
+        },
+        {
+          "text": "Tokyo ",
+          "streamEnd": false
+        },
+        {
+          "text": "by ",
+          "streamEnd": false
+        },
+        {
+          "text": "using ",
+          "streamEnd": false
+        },
+        {
+          "text": "online ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "tools ",
+          "streamEnd": false
+        },
+        {
+          "text": "or ",
+          "streamEnd": false
+        },
+        {
+          "text": "apps ",
+          "streamEnd": false
+        },
+        {
+          "text": "like ",
+          "streamEnd": false
+        },
+        {
+          "text": "The ",
+          "streamEnd": false
+        },
+        {
+          "text": "Weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Channel, ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "AccuWeather, ",
+          "streamEnd": false
+        },
+        {
+          "text": "or ",
+          "streamEnd": false
+        },
+        {
+          "text": "even ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Google's ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "built-in ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "feature. ",
+          "streamEnd": false
+        },
+        {
+          "text": "These ",
+          "streamEnd": false
+        },
+        {
+          "text": "tools ",
+          "streamEnd": false
+        },
+        {
+          "text": "can ",
+          "streamEnd": false
+        },
+        {
+          "text": "provide ",
+          "streamEnd": false
+        },
+        {
+          "text": "you ",
+          "streamEnd": false
+        },
+        {
+          "text": "with ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "current ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "temperature, ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "humidity, ",
+          "streamEnd": false
+        },
+        {
+          "text": "wind ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "speed, ",
+          "streamEnd": false
+        },
+        {
+          "text": "and ",
+          "streamEnd": false
+        },
+        {
+          "text": "other ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "conditions.",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          121
+        ],
+        "byteLength": 968,
+        "sha256": "f43255138d32d33b2ca2f429d720c3888d2f3c213412f9fb77fb74a1b6f8b9c0",
+        "tokens": [
+          "1",
+          "9690",
+          "198",
+          "2683",
+          "359",
+          "253",
+          "5356",
+          "5646",
+          "11173",
+          "3365",
+          "3511",
+          "308",
+          "34519",
+          "28",
+          "7018",
+          "411",
+          "407",
+          "19712",
+          "8182",
+          "2",
+          "198",
+          "1",
+          "4093",
+          "198",
+          "9801",
+          "260",
+          "3947",
+          "1763",
+          "327",
+          "19081",
+          "30",
+          "2",
+          "198",
+          "1",
+          "520",
+          "9531",
+          "198",
+          "57",
+          "5248",
+          "22657",
+          "327",
+          "260",
+          "29532",
+          "28",
+          "564",
+          "347",
+          "354",
+          "5646",
+          "28",
+          "339",
+          "1326",
+          "982",
+          "457",
+          "1345",
+          "29",
+          "2256",
+          "7596",
+          "288",
+          "22957",
+          "1574",
+          "3947",
+          "940",
+          "30",
+          "1423",
+          "28",
+          "346",
+          "416",
+          "3152",
+          "1042",
+          "260",
+          "1574",
+          "3947",
+          "281",
+          "19081",
+          "411",
+          "1015",
+          "2329",
+          "3947",
+          "2549",
+          "355",
+          "9527",
+          "702",
+          "378",
+          "17127",
+          "16771",
+          "28",
+          "6698",
+          "101",
+          "39939",
+          "28",
+          "355",
+          "908",
+          "5837",
+          "506",
+          "2837",
+          "29",
+          "254",
+          "3947",
+          "3865",
+          "30",
+          "1216",
+          "2549",
+          "416",
+          "1538",
+          "346",
+          "351",
+          "260",
+          "1574",
+          "2779",
+          "28",
+          "11687",
+          "28",
+          "2251",
+          "3547",
+          "28",
+          "284",
+          "550",
+          "3947",
+          "1920",
+          "30",
+          "2"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "574cec99e285f94e0d138f99d364dcb241d73224b92aadd38ae72f03354b701a"
+}

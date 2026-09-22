@@ -1,0 +1,1 @@
+export const TransformersJsManager__current_candidate_received_and_cached_bytes = ({ received, cached }: { received: string; cached: string }): string => `現在の候補 — 受信済み: ${received}・キャッシュ済み: ${cached}`;

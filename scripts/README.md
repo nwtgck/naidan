@@ -53,14 +53,14 @@ npx tsx scripts/refactor-named-args.ts <source-file-path> <function-name> [optio
 
 ### Example
 
-To refactor `sendMessage` in `useChat.ts`:
+For a hypothetical `exampleFunction` in `src/example.ts` (replace both with the actual refactoring target):
 
 ```bash
 # Preview changes
-npx tsx scripts/refactor-named-args.ts src/composables/useChat.ts sendMessage --dry-run
+npx tsx scripts/refactor-named-args.ts src/example.ts exampleFunction --dry-run
 
 # Apply changes
-npx tsx scripts/refactor-named-args.ts src/composables/useChat.ts sendMessage
+npx tsx scripts/refactor-named-args.ts src/example.ts exampleFunction
 ```
 
 ### How it works

@@ -1,0 +1,1235 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "natural-tool-minimal",
+  "contextSha256": "1743c61359bd6b26916e3e1359727777e7ffbbb73a2fa8e54ab43e5b3f91a038",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        }
+      ],
+      "tools": [
+        {
+          "fixtureId": "model-support-weather-v1",
+          "name": "lookup_weather",
+          "description": "Return deterministic weather fixture data.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 128,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "tool-call",
+        "toolCallId": "tool-1",
+        "toolName": "lookup_weather",
+        "modelVisibleArguments": "{\"city\":\"Tokyo\"}"
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "tool-success",
+        "toolCallId": "tool-1",
+        "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+      },
+      {
+        "sequence": 3,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 4,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The "
+      },
+      {
+        "sequence": 5,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 6,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "in "
+      },
+      {
+        "sequence": 7,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Tokyo "
+      },
+      {
+        "sequence": 8,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "is "
+      },
+      {
+        "sequence": 9,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "clear "
+      },
+      {
+        "sequence": 10,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "with "
+      },
+      {
+        "sequence": 11,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "a "
+      },
+      {
+        "sequence": 12,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "temperature "
+      },
+      {
+        "sequence": 13,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "of "
+      },
+      {
+        "sequence": 14,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "20°C."
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              64
+            ],
+            "byteLength": 512,
+            "sha256": "0c3b056bc5e68cb1539f8938e18defbf9861ab6841d5d3d37ec3298f64aaffe1"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              64
+            ],
+            "byteLength": 512,
+            "sha256": "ae1fd128caf85aaf5af91075ffc018dc15569e7c71c2c1fe9c4c1f75c5f661ec"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              64
+            ],
+            "byteLength": 512,
+            "sha256": "0c3b056bc5e68cb1539f8938e18defbf9861ab6841d5d3d37ec3298f64aaffe1"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              64
+            ],
+            "byteLength": 512,
+            "sha256": "ae1fd128caf85aaf5af91075ffc018dc15569e7c71c2c1fe9c4c1f75c5f661ec"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 131072,
+          "promptTokenCount": 64,
+          "usedContextTokenCount": 64
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2",
+              "105",
+              "9731",
+              "107",
+              "46",
+              "163688",
+              "236787",
+              "48656",
+              "236779",
+              "19323",
+              "236782",
+              "7777",
+              "236787",
+              "52",
+              "13293",
+              "64745",
+              "7606",
+              "26215",
+              "1262",
+              "236761",
+              "52",
+              "236764",
+              "19031",
+              "29616",
+              "15921",
+              "29616",
+              "13319",
+              "29616",
+              "2084",
+              "236787",
+              "52",
+              "35410",
+              "52",
+              "5237",
+              "15979",
+              "24845",
+              "52",
+              "13319",
+              "52",
+              "1604",
+              "2084",
+              "236787",
+              "52",
+              "60688",
+              "52",
+              "1807",
+              "47",
+              "106",
+              "107",
+              "105",
+              "2364",
+              "107",
+              "10896",
+              "506",
+              "7606",
+              "5904",
+              "573",
+              "21038",
+              "236761",
+              "106",
+              "107",
+              "105",
+              "4368",
+              "107"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "48"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6639"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236787"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "48656"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236779"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "19323"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236782"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "13319"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236787"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "52"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "89265"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "52"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236783"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "49"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "50"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "<|tool_call>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "call:lookup_weather{city:",
+          "streamEnd": false
+        },
+        {
+          "text": "<|\"|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Tokyo",
+          "streamEnd": false
+        },
+        {
+          "text": "<|\"|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "}",
+          "streamEnd": false
+        },
+        {
+          "text": "<tool_call|>",
+          "streamEnd": false
+        },
+        {
+          "text": "<|tool_response>",
+          "streamEnd": false
+        },
+        {
+          "text": "<eos>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          80
+        ],
+        "byteLength": 640,
+        "sha256": "05a19fa880c3588d8a6590cd75d01d77893d7e7a03d4be10ae99d4ba2b552eaf",
+        "tokens": [
+          "2",
+          "105",
+          "9731",
+          "107",
+          "46",
+          "163688",
+          "236787",
+          "48656",
+          "236779",
+          "19323",
+          "236782",
+          "7777",
+          "236787",
+          "52",
+          "13293",
+          "64745",
+          "7606",
+          "26215",
+          "1262",
+          "236761",
+          "52",
+          "236764",
+          "19031",
+          "29616",
+          "15921",
+          "29616",
+          "13319",
+          "29616",
+          "2084",
+          "236787",
+          "52",
+          "35410",
+          "52",
+          "5237",
+          "15979",
+          "24845",
+          "52",
+          "13319",
+          "52",
+          "1604",
+          "2084",
+          "236787",
+          "52",
+          "60688",
+          "52",
+          "1807",
+          "47",
+          "106",
+          "107",
+          "105",
+          "2364",
+          "107",
+          "10896",
+          "506",
+          "7606",
+          "5904",
+          "573",
+          "21038",
+          "236761",
+          "106",
+          "107",
+          "105",
+          "4368",
+          "107",
+          "48",
+          "6639",
+          "236787",
+          "48656",
+          "236779",
+          "19323",
+          "236782",
+          "13319",
+          "236787",
+          "52",
+          "89265",
+          "52",
+          "236783",
+          "49",
+          "50",
+          "1"
+        ]
+      }
+    },
+    {
+      "localOrdinal": 2,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "4d7cdf1ed392c496bab8cf5b8e17accb30c27f801a18ce5dbf313a042b1a03df"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "37611d27f79518e501d2639c031c11b50a8a23a12bf632c89f007c327af72487"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "4d7cdf1ed392c496bab8cf5b8e17accb30c27f801a18ce5dbf313a042b1a03df"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "37611d27f79518e501d2639c031c11b50a8a23a12bf632c89f007c327af72487"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 131072,
+          "promptTokenCount": 102,
+          "usedContextTokenCount": 102
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2",
+              "105",
+              "9731",
+              "107",
+              "46",
+              "163688",
+              "236787",
+              "48656",
+              "236779",
+              "19323",
+              "236782",
+              "7777",
+              "236787",
+              "52",
+              "13293",
+              "64745",
+              "7606",
+              "26215",
+              "1262",
+              "236761",
+              "52",
+              "236764",
+              "19031",
+              "29616",
+              "15921",
+              "29616",
+              "13319",
+              "29616",
+              "2084",
+              "236787",
+              "52",
+              "35410",
+              "52",
+              "5237",
+              "15979",
+              "24845",
+              "52",
+              "13319",
+              "52",
+              "1604",
+              "2084",
+              "236787",
+              "52",
+              "60688",
+              "52",
+              "1807",
+              "47",
+              "106",
+              "107",
+              "105",
+              "2364",
+              "107",
+              "10896",
+              "506",
+              "7606",
+              "5904",
+              "573",
+              "21038",
+              "236761",
+              "106",
+              "107",
+              "105",
+              "4368",
+              "107",
+              "48",
+              "6639",
+              "236787",
+              "48656",
+              "236779",
+              "19323",
+              "236782",
+              "13319",
+              "236787",
+              "52",
+              "89265",
+              "52",
+              "236783",
+              "49",
+              "50",
+              "6275",
+              "236787",
+              "48656",
+              "236779",
+              "19323",
+              "236782",
+              "2394",
+              "236787",
+              "52",
+              "14937",
+              "27495",
+              "236780",
+              "1083",
+              "236778",
+              "236771",
+              "2098",
+              "19216",
+              "12375",
+              "9347",
+              "25938",
+              "52",
+              "236783",
+              "51"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "818"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7606"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "528"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "21038"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "563"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3582"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "607"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "496"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4022"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "529"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236743"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236778"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236771"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "237366"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236780"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "236761"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "106"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "The ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "in ",
+          "streamEnd": false
+        },
+        {
+          "text": "Tokyo ",
+          "streamEnd": false
+        },
+        {
+          "text": "is ",
+          "streamEnd": false
+        },
+        {
+          "text": "clear ",
+          "streamEnd": false
+        },
+        {
+          "text": "with ",
+          "streamEnd": false
+        },
+        {
+          "text": "a ",
+          "streamEnd": false
+        },
+        {
+          "text": "temperature ",
+          "streamEnd": false
+        },
+        {
+          "text": "of ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "20°C.",
+          "streamEnd": false
+        },
+        {
+          "text": "<turn|>",
+          "streamEnd": false
+        },
+        {
+          "text": "<eos>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          120
+        ],
+        "byteLength": 960,
+        "sha256": "d8c37d8f8598a74cac4e8076596db4bbe0409008c8bf7b388ebd9e25aa288291",
+        "tokens": [
+          "2",
+          "105",
+          "9731",
+          "107",
+          "46",
+          "163688",
+          "236787",
+          "48656",
+          "236779",
+          "19323",
+          "236782",
+          "7777",
+          "236787",
+          "52",
+          "13293",
+          "64745",
+          "7606",
+          "26215",
+          "1262",
+          "236761",
+          "52",
+          "236764",
+          "19031",
+          "29616",
+          "15921",
+          "29616",
+          "13319",
+          "29616",
+          "2084",
+          "236787",
+          "52",
+          "35410",
+          "52",
+          "5237",
+          "15979",
+          "24845",
+          "52",
+          "13319",
+          "52",
+          "1604",
+          "2084",
+          "236787",
+          "52",
+          "60688",
+          "52",
+          "1807",
+          "47",
+          "106",
+          "107",
+          "105",
+          "2364",
+          "107",
+          "10896",
+          "506",
+          "7606",
+          "5904",
+          "573",
+          "21038",
+          "236761",
+          "106",
+          "107",
+          "105",
+          "4368",
+          "107",
+          "48",
+          "6639",
+          "236787",
+          "48656",
+          "236779",
+          "19323",
+          "236782",
+          "13319",
+          "236787",
+          "52",
+          "89265",
+          "52",
+          "236783",
+          "49",
+          "50",
+          "6275",
+          "236787",
+          "48656",
+          "236779",
+          "19323",
+          "236782",
+          "2394",
+          "236787",
+          "52",
+          "14937",
+          "27495",
+          "236780",
+          "1083",
+          "236778",
+          "236771",
+          "2098",
+          "19216",
+          "12375",
+          "9347",
+          "25938",
+          "52",
+          "236783",
+          "51",
+          "818",
+          "7606",
+          "528",
+          "21038",
+          "563",
+          "3582",
+          "607",
+          "496",
+          "4022",
+          "529",
+          "236743",
+          "236778",
+          "236771",
+          "237366",
+          "236780",
+          "236761",
+          "106",
+          "1"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "0e05494e96b1893a91a94250f36aa99d31f9d0da6f89375530e1f78fd1b3e581"
+}

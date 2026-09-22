@@ -22,8 +22,8 @@ const mockCreateChatGroup = vi.fn();
 const mockRenameChatGroup = vi.fn();
 const mockRenameChat = vi.fn();
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: ref(null),
     currentChatGroup: ref(null),
     streaming: ref(false),

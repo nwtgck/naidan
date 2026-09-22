@@ -1,0 +1,601 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "natural-tool-representative",
+  "contextSha256": "0264f62eeab579581f3048f07d948a31b0415fffdc121ceb595e69eec9cfcc11",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use lookup_weather for Tokyo, then give a short answer based on the tool result."
+        }
+      ],
+      "tools": [
+        {
+          "fixtureId": "model-support-weather-v1",
+          "name": "lookup_weather",
+          "description": "Return deterministic weather fixture data.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 128,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "[lookup_weather(city=\"Tokyo\")]"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "e6b3c521c3c005677e09912a21d04fa618be92d21c44b520d0741281600218b0"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "37611d27f79518e501d2639c031c11b50a8a23a12bf632c89f007c327af72487"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "e6b3c521c3c005677e09912a21d04fa618be92d21c44b520d0741281600218b0"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "37611d27f79518e501d2639c031c11b50a8a23a12bf632c89f007c327af72487"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 128000,
+          "promptTokenCount": 102,
+          "usedContextTokenCount": 102
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1",
+              "6",
+              "24131",
+              "708",
+              "3621",
+              "803",
+              "6486",
+              "535",
+              "1607",
+              "38685",
+              "6383",
+              "6881",
+              "997",
+              "6046",
+              "1878",
+              "997",
+              "6046",
+              "6881",
+              "37080",
+              "3055",
+              "6881",
+              "997",
+              "30753",
+              "1557",
+              "572",
+              "51993",
+              "1878",
+              "997",
+              "19522",
+              "6881",
+              "997",
+              "17820",
+              "15249",
+              "3547",
+              "7921",
+              "52140",
+              "1818",
+              "50508",
+              "997",
+              "30202",
+              "6881",
+              "37080",
+              "6383",
+              "6881",
+              "997",
+              "7523",
+              "1878",
+              "997",
+              "39306",
+              "6881",
+              "37080",
+              "48250",
+              "6881",
+              "37080",
+              "6383",
+              "6881",
+              "997",
+              "4488",
+              "511",
+              "37602",
+              "997",
+              "35004",
+              "6881",
+              "35065",
+              "48250",
+              "63045",
+              "997",
+              "3263",
+              "2847",
+              "20051",
+              "6881",
+              "4831",
+              "2608",
+              "20352",
+              "7",
+              "708",
+              "6",
+              "6423",
+              "708",
+              "14875",
+              "60858",
+              "572",
+              "51993",
+              "875",
+              "19444",
+              "521",
+              "1757",
+              "3619",
+              "768",
+              "3290",
+              "5642",
+              "2948",
+              "884",
+              "779",
+              "6690",
+              "1725",
+              "523",
+              "7",
+              "708",
+              "6",
+              "64015",
+              "708"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "10"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "568"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "30753"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1557"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "572"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "51993"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "10120"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "960"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1248"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "40550"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "11554"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6681"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "570"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "11"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "[lookup_weather(city=\"Tokyo\")]",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          117
+        ],
+        "byteLength": 936,
+        "sha256": "2edeb19c99856336c692773e68bb308e80351fa6ac2dc6e86066a45d60b19749",
+        "tokens": [
+          "1",
+          "6",
+          "24131",
+          "708",
+          "3621",
+          "803",
+          "6486",
+          "535",
+          "1607",
+          "38685",
+          "6383",
+          "6881",
+          "997",
+          "6046",
+          "1878",
+          "997",
+          "6046",
+          "6881",
+          "37080",
+          "3055",
+          "6881",
+          "997",
+          "30753",
+          "1557",
+          "572",
+          "51993",
+          "1878",
+          "997",
+          "19522",
+          "6881",
+          "997",
+          "17820",
+          "15249",
+          "3547",
+          "7921",
+          "52140",
+          "1818",
+          "50508",
+          "997",
+          "30202",
+          "6881",
+          "37080",
+          "6383",
+          "6881",
+          "997",
+          "7523",
+          "1878",
+          "997",
+          "39306",
+          "6881",
+          "37080",
+          "48250",
+          "6881",
+          "37080",
+          "6383",
+          "6881",
+          "997",
+          "4488",
+          "511",
+          "37602",
+          "997",
+          "35004",
+          "6881",
+          "35065",
+          "48250",
+          "63045",
+          "997",
+          "3263",
+          "2847",
+          "20051",
+          "6881",
+          "4831",
+          "2608",
+          "20352",
+          "7",
+          "708",
+          "6",
+          "6423",
+          "708",
+          "14875",
+          "60858",
+          "572",
+          "51993",
+          "875",
+          "19444",
+          "521",
+          "1757",
+          "3619",
+          "768",
+          "3290",
+          "5642",
+          "2948",
+          "884",
+          "779",
+          "6690",
+          "1725",
+          "523",
+          "7",
+          "708",
+          "6",
+          "64015",
+          "708",
+          "10",
+          "568",
+          "30753",
+          "1557",
+          "572",
+          "51993",
+          "10120",
+          "960",
+          "1248",
+          "40550",
+          "11554",
+          "6681",
+          "570",
+          "11",
+          "7"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "dbec6a0e376be57c5cba7a94568bfbc87964a6806df115a089abd6827d478a0c"
+}

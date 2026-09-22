@@ -44,6 +44,13 @@
             </div>
           </div>
 
+          <details v-if="_props.details" data-testid="dialog-details" tw-class="mt-4 text-xs text-gray-500 dark:text-gray-400">
+            <summary tw-class="cursor-pointer font-medium">{{ _props.details.summary }}</summary>
+            <ul tw-class="mt-2 max-h-48 overflow-y-auto space-y-1 font-mono break-all" data-testid="dialog-details-items">
+              <li v-for="item in _props.details.items" :key="item">{{ item }}</li>
+            </ul>
+          </details>
+
           <!-- Actions -->
           <div tw-class="flex justify-end gap-3 mt-8">
             <button @click="cancel" data-testid="dialog-cancel-button" tw-class="px-5 py-2.5 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
@@ -74,6 +81,7 @@ import { useLayout } from '@/composables/useLayout';
 const { setActiveFocusArea } = useLayout();
 
 const _props = withDefaults(defineProps<{
+  details?: { summary: string, items: string[] },
   show?: boolean,
   title?: string,
   icon?: Component | null,

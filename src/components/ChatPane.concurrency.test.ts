@@ -6,7 +6,7 @@ import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { nextTick, ref, computed, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { useChat } from '@/composables/useChat';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import type { Attachment, LmParameters } from '@/01-models/types';
 
 
@@ -50,8 +50,8 @@ const mockInheritedSettings = ref<any>({
   sources: { endpoint: 'global', modelId: 'global' },
 });
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     streaming: computed(() => mockActiveGenerations.size > 0),
     activeGenerations: mockActiveGenerations,
@@ -160,7 +160,7 @@ vi.mock('../composables/chat/useChatConversation', () => ({
       parentId: string | null | undefined,
       attachments: Attachment[] | undefined,
       lmParameters: LmParameters | undefined,
-    }) => useChat().sendMessage({
+    }) => useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction().sendMessage({
       content,
       parentId,
       attachments: attachments ?? [],
@@ -211,7 +211,7 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
       parentId: string | null | undefined,
       attachments: Attachment[] | undefined,
       lmParameters: LmParameters | undefined,
-    }) => useChat().sendMessage({
+    }) => useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction().sendMessage({
       content,
       parentId,
       attachments: attachments ?? [],
@@ -325,8 +325,8 @@ describe('ChatPane Concurrency Button State', () => {
     };
 
     const mockSendMessage = vi.fn();
-    // We need to return the mock in the useChat implementation
-    vi.spyOn(await import('@/composables/useChat'), 'useChat').mockReturnValue({
+    // We need to return the mock in the useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction implementation
+    vi.spyOn(await import('@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction'), 'useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction').mockReturnValue({
       currentChat: mockCurrentChat,
       streaming: computed(() => mockActiveGenerations.size > 0),
       activeGenerations: mockActiveGenerations,

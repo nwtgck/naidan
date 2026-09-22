@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "source": "reference-template-behavior-matrix",
+  "sourceMemberSha256": "1ccd769adcfe0847658f94e1f83159a2ddb428d71d33411f841da0d2f5e6f230",
+  "modelId": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+  "selectedTemplateSha256": "872be49dbb638044ad01b60388f48d469ff2980e5f0dccdc22ec907db54d0788",
+  "cases": [
+    {
+      "caseId": "tools-generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": true,
+      "renderedText": "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\nUse the weather tool for Tokyo.<|im_end|>\n<|im_start|>assistant\n",
+      "inputTokenIds": [
+        1,
+        9690,
+        198,
+        2683,
+        359,
+        253,
+        5356,
+        5646,
+        11173,
+        3365,
+        3511,
+        308,
+        34519,
+        28,
+        7018,
+        411,
+        407,
+        19712,
+        8182,
+        2,
+        198,
+        1,
+        4093,
+        198,
+        9801,
+        260,
+        3947,
+        1763,
+        327,
+        19081,
+        30,
+        2,
+        198,
+        1,
+        520,
+        9531,
+        198
+      ]
+    },
+    {
+      "caseId": "tool-result-continuation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call_template_probe_1",
+              "type": "function",
+              "function": {
+                "name": "lookup_weather",
+                "arguments": "{\"city\":\"Tokyo\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call_template_probe_1",
+          "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_weather",
+            "description": "Return deterministic weather fixture data.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "addGenerationPrompt": true,
+      "renderedText": "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\nUse the weather tool for Tokyo.<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>tool\n{\"temperatureC\":20,\"condition\":\"clear\"}<|im_end|>\n<|im_start|>assistant\n",
+      "inputTokenIds": [
+        1,
+        9690,
+        198,
+        2683,
+        359,
+        253,
+        5356,
+        5646,
+        11173,
+        3365,
+        3511,
+        308,
+        34519,
+        28,
+        7018,
+        411,
+        407,
+        19712,
+        8182,
+        2,
+        198,
+        1,
+        4093,
+        198,
+        9801,
+        260,
+        3947,
+        1763,
+        327,
+        19081,
+        30,
+        2,
+        198,
+        1,
+        520,
+        9531,
+        198,
+        2,
+        198,
+        1,
+        19324,
+        198,
+        39428,
+        19864,
+        51,
+        1799,
+        34,
+        32,
+        1627,
+        17315,
+        25535,
+        10086,
+        23597,
+        2,
+        198,
+        1,
+        520,
+        9531,
+        198
+      ]
+    }
+  ]
+}

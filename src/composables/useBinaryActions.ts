@@ -33,8 +33,8 @@ export function useBinaryActions() {
     return false;
   };
 
-  const downloadBinaryObject = async ({ obj }: { obj: Pick<BinaryObject, 'id' | 'name'> }) => {
-    const blob = await storageService.getFile({ binaryObjectId: obj.id });
+  const downloadBinaryObject = async ({ obj, memoryBlob }: { obj: Pick<BinaryObject, 'id' | 'name'>; memoryBlob: Blob | undefined }) => {
+    const blob = memoryBlob ?? await storageService.getFile({ binaryObjectId: obj.id });
     if (!blob) return;
 
     const url = URL.createObjectURL(blob);
@@ -42,9 +42,12 @@ export function useBinaryActions() {
     a.href = url;
     a.download = obj.name || idToRaw({ id: obj.id });
     document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      a.click();
+    } finally {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   return {

@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "modelId": "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
+    "resolvedRevision": "66826372fd4fa166f53be0371c9315745c07cace",
+    "investigationRunId": "fa058e59-541e-46cf-b1e5-7f2339fb8d19",
+    "transformersJsVersion": "4.2.0"
+  },
+  "scenario": {
+    "id": "no-tools-first-turn-natural-prefix",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Template probe user message."
+      }
+    ],
+    "tools": [],
+    "lmParameters": {
+      "temperature": 0,
+      "topP": 1,
+      "maxCompletionTokens": 16
+    },
+    "boundary": {
+      "kind": "natural-prefix",
+      "lengthRelation": "equals-requested-budget",
+      "stopCause": "not-recorded"
+    }
+  },
+  "inputContract": {
+    "inputTokenIds": [
+      124894,
+      124899,
+      5922,
+      207,
+      23108,
+      22355,
+      4695,
+      5781,
+      22,
+      124900,
+      207,
+      124899,
+      63514,
+      207,
+      124901
+    ],
+    "inputTensorFacts": [
+      {
+        "name": "attention_mask",
+        "dtype": "int64",
+        "dims": [
+          1,
+          15
+        ],
+        "location": "cpu"
+      },
+      {
+        "name": "input_ids",
+        "dtype": "int64",
+        "dims": [
+          1,
+          15
+        ],
+        "location": "cpu"
+      }
+    ],
+    "effectiveGenerationConfig": {
+      "maxNewTokens": 16,
+      "temperature": 0,
+      "topP": 1,
+      "doSample": false
+    }
+  },
+  "modelReplay": {
+    "source": "production-lane",
+    "sourceInputTokenIds": [
+      124894,
+      124899,
+      5922,
+      207,
+      23108,
+      22355,
+      4695,
+      5781,
+      22,
+      124900,
+      207,
+      124899,
+      63514,
+      207,
+      124901
+    ],
+    "sourceInputSha256": "ffdb6455c0ef2daea8450833341d8b66b3ca2cac3880e284f9cbae6646f9ca3d",
+    "generatedTokenIds": [
+      597,
+      4695,
+      10966,
+      622,
+      310,
+      496,
+      23108,
+      22355,
+      4695,
+      5781,
+      2426,
+      969,
+      355,
+      267,
+      5018,
+      54644
+    ],
+    "generatedSequenceTokenIds": [
+      124894,
+      124899,
+      5922,
+      207,
+      23108,
+      22355,
+      4695,
+      5781,
+      22,
+      124900,
+      207,
+      124899,
+      63514,
+      207,
+      124901,
+      597,
+      4695,
+      10966,
+      622,
+      310,
+      496,
+      23108,
+      22355,
+      4695,
+      5781,
+      2426,
+      969,
+      355,
+      267,
+      5018,
+      54644
+    ],
+    "generatedText": "The user wants me to \"Template probe user message.\" This is a bit ambiguous"
+  },
+  "expectedProviderSemantic": {
+    "basis": "native-template-contract",
+    "captureScope": "prefix",
+    "thinking": "The user wants me to \"Template probe user message.\" This is a bit ambiguous",
+    "visibleContent": ""
+  }
+}

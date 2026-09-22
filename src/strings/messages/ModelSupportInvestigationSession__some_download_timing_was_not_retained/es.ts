@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__some_download_timing_was_not_retained = (): string => "Algunas mediciones no se conservaron por límites de registro o tiempos no disponibles. La exportación incluye estas carencias.";

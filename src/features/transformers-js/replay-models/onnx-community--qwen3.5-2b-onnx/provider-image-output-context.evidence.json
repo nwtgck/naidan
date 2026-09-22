@@ -1,0 +1,93 @@
+{
+  "format": "provider-resource-context-v1",
+  "modelId": "onnx-community/Qwen3.5-2B-ONNX",
+  "metadataRevision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+  "observedCacheRevision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+  "loadReceipt": {
+    "format": "production-offline-load-receipt-v1",
+    "modelId": "onnx-community/Qwen3.5-2B-ONNX",
+    "loaderRevisionOption": {
+      "status": "provided",
+      "value": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb"
+    },
+    "autoClass": "AutoModelForImageTextToText",
+    "processor": "qwen3_5-processor",
+    "candidate": {
+      "device": "webgpu",
+      "dtype": "q4f16"
+    },
+    "plannedRequiredPaths": [
+      "config.json",
+      "onnx/decoder_model_merged_q4f16.onnx",
+      "onnx/decoder_model_merged_q4f16.onnx_data",
+      "onnx/embed_tokens_q4f16.onnx",
+      "onnx/embed_tokens_q4f16.onnx_data",
+      "onnx/vision_encoder_q4f16.onnx",
+      "onnx/vision_encoder_q4f16.onnx_data",
+      "preprocessor_config.json",
+      "tokenizer.json",
+      "tokenizer_config.json"
+    ],
+    "cacheLookup": {
+      "source": "read-only-opfs-scoped-match",
+      "revision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+      "hitPaths": [
+        "config.json",
+        "generation_config.json",
+        "onnx/decoder_model_merged_q4f16.onnx",
+        "onnx/decoder_model_merged_q4f16.onnx_data",
+        "onnx/embed_tokens_q4f16.onnx",
+        "onnx/embed_tokens_q4f16.onnx_data",
+        "onnx/vision_encoder_q4f16.onnx",
+        "onnx/vision_encoder_q4f16.onnx_data",
+        "preprocessor_config.json",
+        "tokenizer.json",
+        "tokenizer_config.json"
+      ]
+    },
+    "completion": "model-session-and-tokenizer-processor-ready",
+    "resourceHealth": "healthy-after-close",
+    "accessBoundary": "production-offline-read-only",
+    "limitations": {
+      "wholeFileProvenance": "not-verified",
+      "allPlannedBodiesConsumed": "not-certified"
+    }
+  },
+  "localMetadataPaths": [
+    "config.json",
+    "generation_config.json",
+    "preprocessor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "metadata": [
+    {
+      "path": "config.json",
+      "sha256": "b028de63b0ed8b37107acaaf1475d40d6d4feb5721153674e7d1d0bdbfd0f258"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "sha256": "fccbff64ebe09343aa2171028657f5b038db96fb4f657609bc76743eddfa3b9d"
+    },
+    {
+      "path": "generation_config.json",
+      "sha256": "dc0cbe66543f310896469b7b1448af792f403293a1080baaf04d586c57b23e48"
+    },
+    {
+      "path": "processor_config.json",
+      "sha256": "14932921ca485d458a04dafd8069fbb0a4505622a48208d19ed247115801385b"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "sha256": "6a970fd06f30e6943b3e2c14d5d3b42d49b06cf99b99103d56689bef462d90f8"
+    },
+    {
+      "path": "chat_template.jinja",
+      "sha256": "273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80"
+    },
+    {
+      "path": "tokenizer.json",
+      "sha256": "89da80cc6689bef4d90cc1028249436975ffb0814618f1d93c65310e05801a9b"
+    }
+  ]
+}

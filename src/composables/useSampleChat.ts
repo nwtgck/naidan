@@ -3,7 +3,6 @@ import type { Chat, MessageNode } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import sampleContent from '@/assets/sample-showcase.md?raw';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
-import { processThinking } from '@/logic/chat-tree';
 import type { ChatId, MessageId } from '@/01-models/ids';
 
 const longSampleTopics = [
@@ -113,25 +112,27 @@ export function useSampleChat() {
     const m2: MessageNode = {
       id: generateId<MessageId>(),
       role: 'assistant',
-      content: sampleContent,
-      timestamp: now,
+      parts: [{ type: 'text', text: sampleContent, completeness: 'complete' }],
+      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      createdAt: now,
       replies: { items: [] },
     };
-    processThinking({ node: m2 });
 
     const m3: MessageNode = {
       id: generateId<MessageId>(),
       role: 'assistant',
-      content: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!',
-      timestamp: now + 1000,
+      parts: [{ type: 'text', text: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!', completeness: 'complete' }],
+      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      createdAt: now + 1000,
       replies: { items: [] },
     };
 
     const m1: MessageNode = {
       id: generateId<MessageId>(),
       role: 'user',
-      content: 'Show me your tree-based branching and rendering capabilities!',
-      timestamp: now - 5000,
+      parts: [{ type: 'text', text: 'Show me your tree-based branching and rendering capabilities!', completeness: 'complete' }],
+      modelId: undefined, lmParameters: undefined,
+      createdAt: now - 5000,
       replies: { items: [m2, m3] },
     };
 
@@ -157,13 +158,21 @@ export function useSampleChat() {
     const messageCount = 36;
     const messages: MessageNode[] = Array.from({ length: messageCount }, (_, index) => {
       const role = index % 2 === 0 ? 'user' : 'assistant';
-      return {
+      const node = {
         id: generateId<MessageId>(),
-        role,
-        content: longMessageContent({ turnIndex: Math.floor(index / 2), role }),
-        timestamp: now + index * 1000,
+        parts: [{ text: longMessageContent({ turnIndex: Math.floor(index / 2), role }), completeness: 'complete' as const, type: 'text' as const }],
+        modelId: undefined, lmParameters: undefined,
+        createdAt: now + index * 1000,
         replies: { items: [] },
       };
+      switch (role) {
+      case 'assistant': return { ...node, role, interruption: undefined };
+      case 'user': return { ...node, role };
+      default: {
+        const _ex: never = role;
+        throw new Error(`Unhandled sample role: ${_ex}`);
+      }
+      }
     });
 
     for (let index = 0; index < messages.length - 1; index++) {

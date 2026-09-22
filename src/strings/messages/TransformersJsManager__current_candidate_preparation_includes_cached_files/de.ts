@@ -1,0 +1,1 @@
+export const TransformersJsManager__current_candidate_preparation_includes_cached_files = (): string => "Vorbereitungsfortschritt für den aktuellen Kandidaten, einschließlich der Wiederverwendung bereits heruntergeladener Dateien.";

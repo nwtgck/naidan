@@ -1,0 +1,72 @@
+{
+  "format": "provider-resource-context-v1",
+  "modelId": "LiquidAI/LFM2.5-230M-ONNX",
+  "metadataRevision": "c6f46e4e3f885ebcad164d14059a49f90e27eb4d",
+  "observedCacheRevision": "c6f46e4e3f885ebcad164d14059a49f90e27eb4d",
+  "loadReceipt": {
+    "format": "production-offline-load-receipt-v1",
+    "modelId": "LiquidAI/LFM2.5-230M-ONNX",
+    "loaderRevisionOption": {
+      "status": "provided",
+      "value": "c6f46e4e3f885ebcad164d14059a49f90e27eb4d"
+    },
+    "autoClass": "AutoModelForCausalLM",
+    "processor": "tokenizer",
+    "candidate": {
+      "device": "webgpu",
+      "dtype": "q4"
+    },
+    "plannedRequiredPaths": [
+      "config.json",
+      "onnx/model_q4.onnx",
+      "onnx/model_q4.onnx_data",
+      "tokenizer.json",
+      "tokenizer_config.json"
+    ],
+    "cacheLookup": {
+      "source": "read-only-opfs-scoped-match",
+      "revision": "c6f46e4e3f885ebcad164d14059a49f90e27eb4d",
+      "hitPaths": [
+        "config.json",
+        "onnx/model_q4.onnx",
+        "onnx/model_q4.onnx_data",
+        "tokenizer.json",
+        "tokenizer_config.json"
+      ]
+    },
+    "completion": "model-session-and-tokenizer-processor-ready",
+    "resourceHealth": "healthy-after-close",
+    "accessBoundary": "production-offline-read-only",
+    "limitations": {
+      "wholeFileProvenance": "not-verified",
+      "allPlannedBodiesConsumed": "not-certified"
+    }
+  },
+  "localMetadataPaths": [
+    "config.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "metadata": [
+    {
+      "path": "config.json",
+      "sha256": "c09361ba08a21a464011710ade1bab1dbe7a9c43eadb70cae04ebb4825ff8233"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "sha256": "c46e3f5715c73f7ae9beeeebad8f7187fd647d2de352c3cd01fe250c88d2f960"
+    },
+    {
+      "path": "generation_config.json",
+      "sha256": "85fa3172f3838eefa602843e3d97fbf532aeb585e0d7fb869dcd17c268e77f45"
+    },
+    {
+      "path": "chat_template.jinja",
+      "sha256": "6d65c8804847ad74eea912dd7eca3dc1cf7a457b53a77f47d841a14121910963"
+    },
+    {
+      "path": "tokenizer.json",
+      "sha256": "df1d8d5ec5d091b460562ffd545e4a5e91d17d4a0db7ebe733be34ed374377bd"
+    }
+  ]
+}

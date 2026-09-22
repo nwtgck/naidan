@@ -2,6 +2,7 @@ import { MessageChannel, type MessagePort as NodeMessagePort } from 'node:worker
 import * as Comlink from 'comlink';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  TEST_ONLY,
   exposeWorkerRemote,
   releaseWorkerRemote,
   workerCapability,
@@ -31,6 +32,10 @@ interface TransferWorkerApi {
   attach(port: WorkerTransfer<MessagePort>): Promise<void>,
 }
 
+interface StreamCapabilityWorkerApi {
+  consume(request: WorkerTransfer<WorkerCapability<{ stream: ReadableStream<Uint8Array<ArrayBuffer>> }, 'readable-stream-transfer'>>): Promise<void>,
+}
+
 interface CapabilityAndProxyWorkerApi {
   configure(
     request: WorkerCapability<{ handle: FileSystemDirectoryHandle }, 'file-system-handle-clone'>,
@@ -39,6 +44,34 @@ interface CapabilityAndProxyWorkerApi {
 }
 
 describe('worker transport', () => {
+  it('strips both capability and transfer markers from server arguments', async () => {
+    const api: WorkerServerApi<StreamCapabilityWorkerApi> = {
+      async consume({ stream }) {
+        const reader = stream.getReader();
+        expect((await reader.read()).value?.[0]).toBe(7);
+        reader.releaseLock();
+      },
+    };
+    await api.consume({ stream: new ReadableStream({ start(controller) {
+      controller.enqueue(new Uint8Array([7])); controller.close();
+    } }) });
+  });
+
+  it('detects readable stream transfer by actually transferring a probe', async () => {
+    await expect(TEST_ONLY.detectReadableStreamTransferSupport()).resolves.toBe('supported');
+  });
+
+  it('treats browsers without readable stream transfer as unsupported', async () => {
+    const clone = vi.spyOn(globalThis, 'structuredClone').mockImplementation(() => {
+      throw new DOMException('Unsupported transfer', 'DataCloneError');
+    });
+    try {
+      await expect(TEST_ONLY.detectReadableStreamTransferSupport()).resolves.toBe('unsupported');
+    } finally {
+      clone.mockRestore();
+    }
+  });
+
   it('wraps and exposes a typed Comlink worker API', async () => {
     const channel = new MessageChannel();
     const api: TestWorkerApi = {

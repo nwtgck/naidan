@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "zipSha256": "41b6073f0a3f0351171304c75ae7954895ddb97deb548839e302cc14c61ef7b0",
+    "representation": "parsed-json-not-original-bytes",
+    "note": "Public model declarations and repository path/size facts from nine-model MSI evidence. No tokenizer.json body or model weight bytes were captured. Tests reserialize these parsed values; their bytes and hashes are not the original repository files."
+  }
+}

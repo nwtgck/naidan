@@ -71,6 +71,27 @@ function mountHeader({
 }
 
 describe('ChatPaneHeader', () => {
+  it('separates the debug toggle from the inspector and shows debug state beside the unchanged title', async () => {
+    const wrapper = mountHeader({ chat: makeChat(), groups: [] });
+    expect(wrapper.find('[data-testid="chat-debug-enabled"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('role')).toBe('switch');
+    expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('aria-checked')).toBe('false');
+    expect(wrapper.find('[data-testid="debug-toggle-thumb"]').classes()).toContain('translate-x-[3px]');
+    await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
+    expect(wrapper.emitted('toggle-debug')).toEqual([[]]);
+    expect(wrapper.emitted('open-chat-inspector')).toBeUndefined();
+    await wrapper.setProps({ chat: makeChat({ debugEnabled: true }) });
+    expect(wrapper.find('[data-testid="chat-debug-enabled"]').text()).toBe('Debug Mode');
+    expect(wrapper.find('[data-testid="chat-header-title"]').text()).toBe('Header Chat');
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('aria-checked')).toBe('true');
+    expect(wrapper.find('[data-testid="debug-toggle-thumb"]').classes()).toContain('translate-x-[18px]');
+    expect(wrapper.find('[data-testid="open-chat-inspector-button"]').text()).toBe('Chat Inspector');
+    await wrapper.find('[data-testid="open-chat-inspector-button"]').trigger('click');
+    expect(wrapper.emitted('open-chat-inspector')).toEqual([[]]);
+    expect(wrapper.emitted('toggle-debug')).toHaveLength(1);
+  });
   it('renders chat identity badges and emits settings updates', async () => {
     const wrapper = mountHeader({
       chat: makeChat(),

@@ -101,4 +101,29 @@ describe('inspectModelCache', () => {
     const result = await inspectModelCache({ modelId: 'org/model', storageRoot: root });
     expect(result).toMatchObject({ exists: false, fileCount: 0, allFilesHaveCompletionMarkers: false });
   });
+
+  it('keeps root-level legacy metadata in evidence without counting it as an incomplete cached artifact', async () => {
+    const root = storageRoot({ modelChildren: {
+      '.naidan-download-manifest.json': file({ size: 478 }),
+      resolve: directory({ children: {
+        main: directory({ children: {
+          'model_q4.onnx': file({ size: 30 }),
+          '.model_q4.onnx.complete': file({ size: 0 }),
+        } }),
+      } }),
+    } });
+
+    const result = await inspectModelCache({ modelId: 'hf.co/org/model', storageRoot: root });
+
+    expect(result).toMatchObject({
+      fileCount: 2,
+      incompleteFileCount: 0,
+      allFilesHaveCompletionMarkers: true,
+    });
+    expect(result.files).toContainEqual(expect.objectContaining({
+      path: '.naidan-download-manifest.json',
+      repositoryPath: undefined,
+      hasCompletionMarker: false,
+    }));
+  });
 });

@@ -1,3 +1,4 @@
+import { runProviderConversationForTest } from './provider-test-support';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OllamaProvider } from './ollama';
 import type { LmFetch } from '@/features/lm/fetch';
@@ -75,15 +76,20 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      let thinking = '';
+      await runProviderConversationForTest({ provider,
         messages: [{ role: 'user', content: 'What is the answer?' }],
         model: 'llama3',
+        onReasoning: ({ chunk }) => {
+          thinking += chunk;
+        },
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
         },
       });
 
-      expect(result).toBe('<think>Let me see...</think>The answer is 42');
+      expect(result).toBe('The answer is 42');
+      expect(thinking).toBe('Let me see...');
       expect(errorCount.value).toBe(0);
     });
 
@@ -94,7 +100,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: `${baseUrl}/` });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'any',
         onChunk: () => {},
@@ -114,7 +120,7 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
@@ -137,7 +143,7 @@ describe('OllamaProvider Integration Tests', () => {
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
       try {
-        await provider.chat({
+        await runProviderConversationForTest({ provider,
           messages: [],
           model: 'llama3',
           onChunk: ({ chunk: chunk }) => {
@@ -157,7 +163,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [{
           role: 'user',
           content: [
@@ -181,19 +187,19 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [{
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
-            { type: 'image_url', image_url: { url: 'data:image/png;base64,BBB' } },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,Ag==' } },
           ],
         }],
         model: 'multimodal',
         onChunk: () => {},
       });
 
-      expect(capturedRequests[0]!.body.messages[0].images).toEqual(['AAA', 'BBB']);
+      expect(capturedRequests[0]!.body.messages[0].images).toEqual(['AQ==', 'Ag==']);
     });
 
     it('should handle multiple text parts in multimodal content', async () => {
@@ -203,7 +209,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [{
           role: 'user',
           content: [
@@ -225,7 +231,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'test-model',
         onChunk: () => {},
@@ -266,7 +272,7 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
@@ -294,7 +300,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await expect(provider.chat({
+      await expect(runProviderConversationForTest({ provider,
         messages: [],
         model: 'llama3',
         onChunk: () => {},
@@ -446,7 +452,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      const models = await provider.listModels({});
+      const models = await provider.listModels({ signal: undefined });
       expect(models).toEqual(['llama3:latest', 'mistral:latest']);
     });
 
@@ -461,10 +467,10 @@ describe('OllamaProvider Integration Tests', () => {
         headers: [['X-Test', 'Ollama']],
       });
 
-      await provider.chat({ messages: [], model: 'm', onChunk: () => {} });
+      await runProviderConversationForTest({ provider, messages: [], model: 'm', onChunk: () => {} });
       expect(capturedRequests[0]!.headers['x-test']).toBe('Ollama');
 
-      await provider.listModels({});
+      await provider.listModels({ signal: undefined });
       expect(capturedRequests[1]!.headers['x-test']).toBe('Ollama');
 
       await provider.generateImage({
@@ -480,7 +486,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await expect(provider.listModels({})).rejects.toThrow(/Ollama crashed/);
+      await expect(provider.listModels({ signal: undefined })).rejects.toThrow(/Ollama crashed/);
       expect(errorCount.value).toBe(1);
     });
 
@@ -491,7 +497,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await expect(provider.listModels({})).rejects.toThrow();
+      await expect(provider.listModels({ signal: undefined })).rejects.toThrow();
     });
 
     it('should handle various HTTP error status codes correctly in listModels', async () => {
@@ -504,7 +510,7 @@ describe('OllamaProvider Integration Tests', () => {
         });
 
         const provider = new OllamaProvider({ endpoint: baseUrl });
-        await expect(provider.listModels({})).rejects.toThrow(new RegExp(`${code}`));
+        await expect(provider.listModels({ signal: undefined })).rejects.toThrow(new RegExp(`${code}`));
 
         expect(capturedRequests[0]!.url).toBe('/api/tags');
 
@@ -525,15 +531,15 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
-      await provider.chat({
+      await expect(runProviderConversationForTest({ provider,
         messages: [],
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
         },
-      });
+      })).rejects.toThrow();
 
-      expect(result).toBe('Valid');
+      expect(result).toBe('');
       // OllamaChatChunkSchema uses .optional() for message, so it actually validates {}
       // But if it's completely wrong, it might fail depending on exact schema.
       // Current OllamaChatChunkSchema is very permissive (all optional).
@@ -553,7 +559,7 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await provider.chat({
+      await runProviderConversationForTest({ provider,
         messages: [],
         model: 'm',
         onChunk: () => {},
@@ -606,7 +612,7 @@ describe('OllamaProvider Integration Tests', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       const provider = new OllamaProvider({ endpoint: 'http://any.local' });
-      await expect(provider.listModels({})).rejects.toThrow(/OLLAMA_ORIGINS='\*'/);
+      await expect(provider.listModels({ signal: undefined })).rejects.toThrow(/OLLAMA_ORIGINS='\*'/);
 
       Object.defineProperty(global, 'location', { value: originalLocation });
       vi.unstubAllGlobals();

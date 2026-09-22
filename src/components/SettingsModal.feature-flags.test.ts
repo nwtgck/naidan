@@ -38,8 +38,8 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     createChatGroup: vi.fn(),
   }),
 }));
@@ -62,7 +62,8 @@ vi.mock('@/composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRouter: vi.fn(),
   useRoute: vi.fn(),
 }));

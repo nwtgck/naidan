@@ -37,11 +37,14 @@ beforeEach(async () => {
 });
 
 describe('AI Sequence Design', () => {
-  const createAssistantMessage = (content: string): AssistantMessageNode => ({
+  const createAssistantMessage = ({ content }: { content: string }): AssistantMessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    content,
-    timestamp: Date.now(),
+    parts: [{ type: 'text', text: content, completeness: 'complete' }],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
     replies: { items: [] },
   });
 
@@ -72,7 +75,7 @@ describe('AI Sequence Design', () => {
 
   describe('MessageItem AI Sequence Styling', () => {
     it('hides header when position is middle or end', () => {
-      const message = createAssistantMessage('Hello');
+      const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
         props: { message, flow: flow('middle') },
       });
@@ -82,7 +85,7 @@ describe('AI Sequence Design', () => {
     });
 
     it('shows header when position is standalone or start', () => {
-      const message = createAssistantMessage('Hello');
+      const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
         props: { message, flow: flow('start'), isFirstInTurn: true },
       });
@@ -91,7 +94,7 @@ describe('AI Sequence Design', () => {
     });
 
     it('applies pt-2 when position is middle or end', () => {
-      const message = createAssistantMessage('Hello');
+      const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
         props: { message, flow: flow('middle') },
       });
@@ -101,7 +104,7 @@ describe('AI Sequence Design', () => {
     });
 
     it('applies border-t when position is standalone or start for assistant', () => {
-      const message = createAssistantMessage('Hello');
+      const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
         props: { message, flow: flow('start') },
       });
@@ -111,7 +114,7 @@ describe('AI Sequence Design', () => {
     });
 
     it('applies border-b only when position is standalone or end', () => {
-      const message = createAssistantMessage('Hello');
+      const message = createAssistantMessage({ content: 'Hello' });
 
       const lastWrapper = mount(MessageItem, {
         props: { message, flow: flow('end') },
@@ -125,7 +128,7 @@ describe('AI Sequence Design', () => {
     });
 
     it('applies pb-2 when NOT last in sequence', () => {
-      const message = createAssistantMessage('Hello');
+      const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
         props: { message, flow: flow('start') }, // Not end or standalone
       });
@@ -134,7 +137,7 @@ describe('AI Sequence Design', () => {
     });
 
     it('removes specialized styling when nested inside a group', () => {
-      const message = createAssistantMessage('Hello');
+      const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
         props: { message, flow: flow('middle', 'inside-group') },
       });

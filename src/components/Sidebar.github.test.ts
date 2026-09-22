@@ -9,9 +9,9 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
-// Mocking useChat and useSettings
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+// Mocking useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction and useSettings
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: ref(null),
     currentChatGroup: ref(null),
     streaming: ref(false),

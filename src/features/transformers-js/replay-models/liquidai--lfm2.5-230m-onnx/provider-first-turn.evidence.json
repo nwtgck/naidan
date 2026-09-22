@@ -1,0 +1,431 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "first-turn",
+  "contextSha256": "f282c5753f3753d8587316ab9e48722e4bc36f9593390063bc733bb9527aa56c",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Template probe user message."
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 16,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I'm "
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "sorry, "
+      },
+      {
+        "sequence": 3,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "but "
+      },
+      {
+        "sequence": 4,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I "
+      },
+      {
+        "sequence": 5,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "can't "
+      },
+      {
+        "sequence": 6,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "help "
+      },
+      {
+        "sequence": 7,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "with "
+      },
+      {
+        "sequence": 8,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "that."
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              14
+            ],
+            "byteLength": 112,
+            "sha256": "ba0533a456c3b65e40a4fd6a2d8e31f788f71c8b5850b87b92cc34f333698c17"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              14
+            ],
+            "byteLength": 112,
+            "sha256": "f53447c40b0e5a50d8f3ffeae755f8f455b0eb8b734530fa5102152ce347bf9f"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              14
+            ],
+            "byteLength": 112,
+            "sha256": "ba0533a456c3b65e40a4fd6a2d8e31f788f71c8b5850b87b92cc34f333698c17"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              14
+            ],
+            "byteLength": 112,
+            "sha256": "f53447c40b0e5a50d8f3ffeae755f8f455b0eb8b734530fa5102152ce347bf9f"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 16
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 16
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 16,
+          "contextLimit": 128000,
+          "promptTokenCount": 14,
+          "usedContextTokenCount": 14
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1",
+              "6",
+              "6423",
+              "708",
+              "23609",
+              "22856",
+              "5196",
+              "6282",
+              "523",
+              "7",
+              "708",
+              "6",
+              "64015",
+              "708"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "550"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6217"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29640"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "521"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1203"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "859"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1011"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1901"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1801"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "916"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "896"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "523"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "I'm ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "sorry, ",
+          "streamEnd": false
+        },
+        {
+          "text": "but ",
+          "streamEnd": false
+        },
+        {
+          "text": "I ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "can't ",
+          "streamEnd": false
+        },
+        {
+          "text": "help ",
+          "streamEnd": false
+        },
+        {
+          "text": "with ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "that.",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          27
+        ],
+        "byteLength": 216,
+        "sha256": "b895eace372699761cc6d027d67c3c33fcf1dc64531ef25a66fbbe242fd2054f",
+        "tokens": [
+          "1",
+          "6",
+          "6423",
+          "708",
+          "23609",
+          "22856",
+          "5196",
+          "6282",
+          "523",
+          "7",
+          "708",
+          "6",
+          "64015",
+          "708",
+          "550",
+          "6217",
+          "29640",
+          "521",
+          "1203",
+          "859",
+          "1011",
+          "1901",
+          "1801",
+          "916",
+          "896",
+          "523",
+          "7"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "8c1bf97d9f9208bbc3b7e16778a60b6bdf1b838c2455943c2cb55646f0fa699e"
+}

@@ -1,0 +1,71 @@
+{
+  "format": "provider-source-provenance-v1",
+  "sourceDigests": {
+    "native": "a2970b94489e2c7b269237e1053207cee358782c9b3d89737448357859ce5d52",
+    "provider": "85b0a9b245f48ff434a4417dbde1d29d55c34b74b7a28a842fac9dd82ca3106e",
+    "inventory": "2a24d3762b70e0524b7d045777a70d8732655a7dfb9fa4131c104132b14d0fe4"
+  },
+  "attributions": [
+    {
+      "caseId": "natural-tool-minimal",
+      "sourceDigests": {
+        "native": "a2970b94489e2c7b269237e1053207cee358782c9b3d89737448357859ce5d52",
+        "provider": "85b0a9b245f48ff434a4417dbde1d29d55c34b74b7a28a842fac9dd82ca3106e",
+        "inventory": "2a24d3762b70e0524b7d045777a70d8732655a7dfb9fa4131c104132b14d0fe4"
+      }
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "sourceDigests": {
+        "native": "a2970b94489e2c7b269237e1053207cee358782c9b3d89737448357859ce5d52",
+        "provider": "85b0a9b245f48ff434a4417dbde1d29d55c34b74b7a28a842fac9dd82ca3106e",
+        "inventory": "2a24d3762b70e0524b7d045777a70d8732655a7dfb9fa4131c104132b14d0fe4"
+      }
+    },
+    {
+      "caseId": "structured-tool-history",
+      "sourceDigests": {
+        "native": "a2970b94489e2c7b269237e1053207cee358782c9b3d89737448357859ce5d52",
+        "provider": "85b0a9b245f48ff434a4417dbde1d29d55c34b74b7a28a842fac9dd82ca3106e",
+        "inventory": "2a24d3762b70e0524b7d045777a70d8732655a7dfb9fa4131c104132b14d0fe4"
+      }
+    }
+  ],
+  "requestOrder": [
+    "natural-tool-minimal",
+    "natural-tool-representative",
+    "structured-tool-history"
+  ],
+  "invocations": [
+    {
+      "caseId": "natural-tool-minimal",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 10
+    },
+    {
+      "caseId": "natural-tool-minimal",
+      "localOrdinal": 2,
+      "sourceCallOrdinal": 11
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 12
+    },
+    {
+      "caseId": "natural-tool-representative",
+      "localOrdinal": 2,
+      "sourceCallOrdinal": 13
+    },
+    {
+      "caseId": "structured-tool-history",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 14
+    }
+  ],
+  "inputGaps": [],
+  "optionalFields": {
+    "unavailableRecordedCalls": false,
+    "nativeInputGaps": false
+  }
+}

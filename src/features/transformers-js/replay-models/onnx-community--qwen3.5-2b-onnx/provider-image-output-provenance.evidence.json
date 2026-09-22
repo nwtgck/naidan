@@ -1,0 +1,33 @@
+{
+  "format": "provider-source-provenance-v1",
+  "sourceDigests": {
+    "native": "37724d83a792ea7b14d5d4235e16d06bb97b5856352601f0b2fbc30d6362fb93",
+    "provider": "40f8f1aae8d6ff38a948af23b1da5aa578be20beea105a89e497d76f08ad9b52",
+    "inventory": "3d7ca92b176fe7b99ebd57c10f81e45c2bb30774584bee03baf32803400a6cf9"
+  },
+  "attributions": [
+    {
+      "caseId": "image",
+      "sourceDigests": {
+        "native": "37724d83a792ea7b14d5d4235e16d06bb97b5856352601f0b2fbc30d6362fb93",
+        "provider": "40f8f1aae8d6ff38a948af23b1da5aa578be20beea105a89e497d76f08ad9b52",
+        "inventory": "3d7ca92b176fe7b99ebd57c10f81e45c2bb30774584bee03baf32803400a6cf9"
+      }
+    }
+  ],
+  "requestOrder": [
+    "image"
+  ],
+  "invocations": [
+    {
+      "caseId": "image",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 15
+    }
+  ],
+  "inputGaps": [],
+  "optionalFields": {
+    "unavailableRecordedCalls": false,
+    "nativeInputGaps": false
+  }
+}

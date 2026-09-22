@@ -7,7 +7,8 @@ import AppAuxiliaryUi from './AppAuxiliaryUi.vue';
 
 const activePrintMode = ref<PrintMode>(undefined);
 
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRoute: vi.fn(),
   useRouter: vi.fn(),
 }));

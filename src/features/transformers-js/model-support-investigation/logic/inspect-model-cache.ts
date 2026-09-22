@@ -1,3 +1,4 @@
+import { OPFS_MODELS_DIR } from '@/constants';
 import type {
   ModelSupportInvestigationCacheFile,
   ModelSupportInvestigationCacheInventory,
@@ -42,7 +43,7 @@ async function getModelDirectory({
   normalizedModelId: string,
 }): Promise<FileSystemDirectoryHandle | undefined> {
   try {
-    let directory = await storageRoot.getDirectoryHandle('models', { create: false });
+    let directory = await storageRoot.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
     directory = await directory.getDirectoryHandle('huggingface.co', { create: false });
     for (const part of normalizedModelId.split('/')) {
       directory = await directory.getDirectoryHandle(part, { create: false });
@@ -66,7 +67,7 @@ export async function inspectModelCache({
   if (modelDirectory === undefined) {
     return {
       normalizedModelId,
-      rootPath: `models/huggingface.co/${normalizedModelId}`,
+      rootPath: `${OPFS_MODELS_DIR}/huggingface.co/${normalizedModelId}`,
       exists: false,
       revisionProvenance: 'unknown',
       revisionProvenanceReason: 'The cache path records a requested revision segment, but completion markers do not independently verify file bytes against the resolved Hugging Face commit SHA',
@@ -137,12 +138,16 @@ export async function inspectModelCache({
     })
     .sort((a, b) => a.localeCompare(b));
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  const incompleteFileCount = files.filter(file => !file.hasCompletionMarker).length;
+  // Completion markers are the commit contract for cached Hub artifacts under
+  // resolve/<revision>/.... Preserve any root-level legacy metadata in raw
+  // inventory evidence, but do not misclassify it as an incomplete model file.
+  const completionTrackedFiles = files.filter(file => file.repositoryPath !== undefined);
+  const incompleteFileCount = completionTrackedFiles.filter(file => !file.hasCompletionMarker).length;
   const zeroByteFileCount = files.filter(file => file.size === 0).length;
   const weightFileCount = files.filter(file => file.isWeightFile).length;
   return {
     normalizedModelId,
-    rootPath: `models/huggingface.co/${normalizedModelId}`,
+    rootPath: `${OPFS_MODELS_DIR}/huggingface.co/${normalizedModelId}`,
     exists: true,
     revisionProvenance: 'unknown',
     revisionProvenanceReason: 'The cache path records a requested revision segment, but completion markers do not independently verify file bytes against the resolved Hugging Face commit SHA',
@@ -154,7 +159,7 @@ export async function inspectModelCache({
     orphanCompletionMarkerPaths,
     zeroByteFileCount,
     weightFileCount,
-    allFilesHaveCompletionMarkers: files.length > 0 && incompleteFileCount === 0,
+    allFilesHaveCompletionMarkers: completionTrackedFiles.length > 0 && incompleteFileCount === 0,
     files,
   };
 }

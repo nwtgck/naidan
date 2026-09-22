@@ -3,12 +3,14 @@ import { lazyStrings } from '@/strings';
 import { computed, ref, watch, nextTick, inject } from 'vue';
 import type { Component } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
+import { getAssistantDisplayParts } from '@/logic/message-display';
 import type { MessageNode } from '@/01-models/types';
 
 const props = defineProps<{
   message: MessageNode,
   noMargin?: boolean,
   partContent?: string,
+  isActive?: boolean,
   trailingInline?: Component,
 }>();
 
@@ -21,35 +23,22 @@ const thinkingContentRef = ref<HTMLElement | null>(null);
 const previewRef = ref<HTMLElement | null>(null);
 const isPreviewOverflowing = ref(false);
 
-const displayThinking = computed(() => {
-  if (props.partContent !== undefined) return props.partContent;
-  if (props.message.thinking) return props.message.thinking;
-
-  // Try to extract from content if not yet processed (streaming case)
-  const msgContent = props.message.content || '';
-  const matches = [...msgContent.matchAll(/<think>([\s\S]*?)(?:<\/think>|$)/gi)];
-  if (matches.length === 0) return '';
-
-  return matches.map(m => m[1]?.trim()).filter(Boolean).join('\n\n---\n\n');
-});
-
-const hasThinking = computed(() => props.partContent !== undefined || !!props.message.thinking || /<think>/i.test(props.message.content || ''));
-
-const isThinkingNow = computed(() => {
-  if (props.partContent !== undefined) {
-    // If partContent is provided, we use the mode logic from the flow.
-    // However, for visual consistency (border sweep), we check if thinking tags are currently open in the message content.
-    const content = props.message.content || '';
-    const lastOpen = content.lastIndexOf('<think>');
-    const lastClose = content.lastIndexOf('</think>');
-    return lastOpen > -1 && lastClose < lastOpen;
+const reasoningParts = computed(() => {
+  const message = props.message;
+  switch (message.role) {
+  case 'assistant': return getAssistantDisplayParts({ message }).filter(part => part.type === 'reasoning');
+  case 'user':
+  case 'system':
+  case 'tool': return [];
+  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
   }
-  if (props.message.thinking) return false; // Already processed
-  const content = props.message.content || '';
-  const lastOpen = content.lastIndexOf('<think>');
-  const lastClose = content.lastIndexOf('</think>');
-  return lastOpen > -1 && lastClose < lastOpen;
 });
+const displayThinking = computed(() => props.partContent !== undefined
+  ? props.partContent
+  : reasoningParts.value.map(part => part.text).join('\n\n---\n\n'));
+const hasThinking = computed(() => props.partContent !== undefined || reasoningParts.value.length > 0);
+// A persisted partial is not by itself evidence of an active model request.
+const isThinkingNow = computed(() => props.isActive === true);
 
 const mode = computed<ThinkingMode>(() => {
   if (isUserExpanded.value) return 'expanded';

@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load = (): string => "다운로드 경로의 메타데이터 준비를 확인합니다. 전체 모델 다운로드나 모델 로드의 성공을 의미하지 않습니다. 기존 캐시 검증 결과와는 별개입니다.";

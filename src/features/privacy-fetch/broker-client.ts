@@ -1,3 +1,7 @@
+import { normalizePrivacyFetchHeaders } from './request';
+import { streamRequestSchema } from './stream-protocol';
+import { receivePrivacyStream } from './stream-port';
+import type { PrivacyFetchRequest, PrivacyFetchStreamResponse } from './types';
 import { generateId } from '@/01-models/id';
 import { idToRaw, toPrivacyFetchRequestId } from '@/01-models/ids';
 import type { PrivacyFetchRequestId } from '@/01-models/ids';
@@ -6,7 +10,6 @@ import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 import { privacyFetchBrokerToParentMessageSchema } from './schemas';
 import type {
   PrivacyFetchBrokerClient,
-  PrivacyFetchRequest,
   PrivacyFetchResponse,
 } from './types';
 
@@ -92,6 +95,7 @@ function createPrivacyFetchBrokerClient({
 }): PrivacyFetchBrokerClient {
   const pendingRequests = new Map<PrivacyFetchRequestId, PendingRequest>();
   const readyDeferred = createDeferred<void>();
+  const activeStreams = new Set<() => void>();
   let disposed = false;
   let readyResolved = false;
   let iframe: HTMLIFrameElement | undefined;
@@ -192,6 +196,8 @@ function createPrivacyFetchBrokerClient({
     }
 
     disposed = true;
+    for (const disposeStream of activeStreams) disposeStream();
+    activeStreams.clear();
     windowObject.removeEventListener('message', handleMessage);
     if (!readyResolved) {
       readyDeferred.reject(createPrivacyFetchError({
@@ -253,6 +259,30 @@ function createPrivacyFetchBrokerClient({
   };
 
   return {
+    // TODO: Unify fetch and fetchStream around the streaming transport, buffering only for callers that need the complete body.
+    async fetchStream({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchStreamResponse> {
+      if (disposed) throw createPrivacyFetchError({ code: 'broker_disposed', message: 'Privacy fetch broker is disposed' });
+      await waitForBrokerReady({ signal: request.signal });
+      if (disposed) throw createPrivacyFetchError({ code: 'broker_disposed', message: 'Privacy fetch broker is disposed' });
+      if (request.signal?.aborted) throw createPrivacyFetchError({ code: 'aborted', message: 'Privacy fetch was aborted' });
+      const contentWindow = iframe?.contentWindow;
+      if (!contentWindow) throw createPrivacyFetchError({ code: 'broker_unavailable', message: 'Privacy fetch broker is unavailable' });
+      const { signal: _signal, headers, ...requestFields } = request;
+      const fields = { ...requestFields, ...(headers === undefined ? {} : { headers: normalizePrivacyFetchHeaders({ headers }) }) };
+      if (!streamRequestSchema.safeParse({ protocol: PRIVACY_FETCH_PROTOCOL, type: 'stream-request', ...fields }).success) {
+        throw createPrivacyFetchError({ code: 'rejected', message: 'Invalid privacy fetch stream request' });
+      }
+      const channel = new MessageChannel();
+      const stream = receivePrivacyStream({ port: channel.port1, signal: request.signal, onFinish: () => activeStreams.delete(stream.dispose) });
+      activeStreams.add(stream.dispose);
+      try {
+        contentWindow.postMessage({ protocol: PRIVACY_FETCH_PROTOCOL, type: 'stream-request', ...fields }, '*', [channel.port2]);
+      } catch {
+        stream.dispose();
+        channel.port2.close();
+      }
+      return stream.response;
+    },
     async fetch({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchResponse> {
       if (disposed) {
         throw createPrivacyFetchError({
@@ -279,6 +309,7 @@ function createPrivacyFetchBrokerClient({
         });
       }
 
+      const headers = normalizePrivacyFetchHeaders({ headers: request.headers });
       const requestId = generateId<PrivacyFetchRequestId>();
 
       return new Promise<PrivacyFetchResponse>((resolve, reject) => {
@@ -344,6 +375,7 @@ function createPrivacyFetchBrokerClient({
           type: 'request',
           requestId: idToRaw({ id: requestId }),
           url: request.url,
+          ...(headers === undefined ? {} : { headers }),
         }, '*');
       });
     },
@@ -359,6 +391,7 @@ export function getPrivacyFetchBrokerClient(): PrivacyFetchBrokerClient {
     });
     sharedPrivacyFetchBrokerClient = {
       fetch: client.fetch,
+      fetchStream: client.fetchStream,
       dispose: () => {
         client.dispose();
         sharedPrivacyFetchBrokerClient = undefined;

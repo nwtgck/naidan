@@ -6,7 +6,7 @@ import { ref, reactive, nextTick, computed } from 'vue';
 import ChatPane from './ChatPane.vue';
 import ModelSelector from './ModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { useChat } from '@/composables/useChat';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 
@@ -34,8 +34,8 @@ const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
 const mockActiveMessages = ref<any[]>([]);
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     chatGroups: mockChatGroups,
     resolvedSettings: mockResolvedSettings,
@@ -162,7 +162,7 @@ vi.mock('../composables/chat/useChatConversation', () => ({
       parentId: string | null | undefined,
       attachments: Attachment[] | undefined,
       lmParameters: LmParameters | undefined,
-    }) => useChat().sendMessage({
+    }) => useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction().sendMessage({
       content,
       parentId,
       attachments: attachments ?? [],
@@ -213,7 +213,7 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
       parentId: string | null | undefined,
       attachments: Attachment[] | undefined,
       lmParameters: LmParameters | undefined,
-    }) => useChat().sendMessage({
+    }) => useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction().sendMessage({
       content,
       parentId,
       attachments: attachments ?? [],
@@ -395,7 +395,7 @@ describe('ChatPane Group Inheritance UI', () => {
   it('should pass inherited reasoning effort to sendMessage when not overridden at chat level', async () => {
     const mockSendMessage = vi.fn().mockResolvedValue(true);
     // Use an inline spy to verify sendMessage arguments
-    vi.spyOn(await import('@/composables/useChat'), 'useChat').mockReturnValue({
+    vi.spyOn(await import('@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction'), 'useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction').mockReturnValue({
       currentChat: mockCurrentChat,
       chatGroups: mockChatGroups,
       resolvedSettings: mockResolvedSettings,

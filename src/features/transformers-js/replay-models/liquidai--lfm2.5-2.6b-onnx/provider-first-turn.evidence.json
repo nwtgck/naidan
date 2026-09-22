@@ -1,0 +1,518 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "first-turn",
+  "contextSha256": "b8980711f542d83c9d5ab6df7d105431c1ee4ea6522e7a2a0753a522506db2e1",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Template probe user message."
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 16,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "<think>"
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The "
+      },
+      {
+        "sequence": 3,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "user "
+      },
+      {
+        "sequence": 4,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "wants "
+      },
+      {
+        "sequence": 5,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "me "
+      },
+      {
+        "sequence": 6,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 7,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "\"Template "
+      },
+      {
+        "sequence": 8,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "probe "
+      },
+      {
+        "sequence": 9,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "user "
+      },
+      {
+        "sequence": 10,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "message.\" "
+      },
+      {
+        "sequence": 11,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "This "
+      },
+      {
+        "sequence": 12,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "is "
+      },
+      {
+        "sequence": 13,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "a "
+      },
+      {
+        "sequence": 14,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "bit "
+      },
+      {
+        "sequence": 15,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "ambiguous"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              15
+            ],
+            "byteLength": 120,
+            "sha256": "237e7e42a4ce41766e663218efe15ae9cb45206311bd656132650ffb60c1d255"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              15
+            ],
+            "byteLength": 120,
+            "sha256": "863ce43e576d4bf8608ce09b92fa60ef18d2150ac70295c468473f19485c69ab"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              15
+            ],
+            "byteLength": 120,
+            "sha256": "237e7e42a4ce41766e663218efe15ae9cb45206311bd656132650ffb60c1d255"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              15
+            ],
+            "byteLength": 120,
+            "sha256": "863ce43e576d4bf8608ce09b92fa60ef18d2150ac70295c468473f19485c69ab"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 16
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 16
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 16,
+          "contextLimit": 128000,
+          "promptTokenCount": 15,
+          "usedContextTokenCount": 15
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124894",
+              "124899",
+              "5922",
+              "207",
+              "23108",
+              "22355",
+              "4695",
+              "5781",
+              "22",
+              "124900",
+              "207",
+              "124899",
+              "63514",
+              "207",
+              "124901"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "597"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4695"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "10966"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "622"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "310"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "496"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "23108"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22355"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4695"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "5781"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2426"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "969"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "355"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "267"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "5018"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "54644"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "The ",
+          "streamEnd": false
+        },
+        {
+          "text": "user ",
+          "streamEnd": false
+        },
+        {
+          "text": "wants ",
+          "streamEnd": false
+        },
+        {
+          "text": "me ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "\"Template ",
+          "streamEnd": false
+        },
+        {
+          "text": "probe ",
+          "streamEnd": false
+        },
+        {
+          "text": "user ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "message.\" ",
+          "streamEnd": false
+        },
+        {
+          "text": "This ",
+          "streamEnd": false
+        },
+        {
+          "text": "is ",
+          "streamEnd": false
+        },
+        {
+          "text": "a ",
+          "streamEnd": false
+        },
+        {
+          "text": "bit ",
+          "streamEnd": false
+        },
+        {
+          "text": "ambiguous",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          31
+        ],
+        "byteLength": 248,
+        "sha256": "0721395ffbb4825871369c1a88c65388fbd0204d296dc926d7eab35b625c2fcf",
+        "tokens": [
+          "124894",
+          "124899",
+          "5922",
+          "207",
+          "23108",
+          "22355",
+          "4695",
+          "5781",
+          "22",
+          "124900",
+          "207",
+          "124899",
+          "63514",
+          "207",
+          "124901",
+          "597",
+          "4695",
+          "10966",
+          "622",
+          "310",
+          "496",
+          "23108",
+          "22355",
+          "4695",
+          "5781",
+          "2426",
+          "969",
+          "355",
+          "267",
+          "5018",
+          "54644"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "1193afd51ea01490faaac23d92755c6a5ba286be382d840432c6df3164fc2552"
+}

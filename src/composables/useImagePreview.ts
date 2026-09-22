@@ -2,8 +2,12 @@ import { ref, inject, provide, type InjectionKey, type Ref } from 'vue';
 import type { BinaryObject } from '@/01-models/types';
 import type { BinaryObjectId } from '@/01-models/ids';
 
+// A local preview may own bytes that have never been written to storage.
+// This is not a persisted BinaryObject or message DTO.
+export type BinaryObjectPreviewItem = BinaryObject & { memoryBlob: Blob | undefined };
+
 interface PreviewState {
-  objects: BinaryObject[],
+  objects: BinaryObjectPreviewItem[],
   initialId: BinaryObjectId,
 }
 
@@ -35,7 +39,7 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
     const api = {
       state,
       openPreview: ({ objects, initialId }: PreviewState) => {
-        state.value = { objects, initialId };
+        state.value = { objects: objects.map(object => ({ ...object })), initialId };
       },
       closePreview: () => {
         state.value = null;
@@ -58,7 +62,7 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
   return {
     state,
     openPreview: ({ objects, initialId }: PreviewState) => {
-      state.value = { objects, initialId };
+      state.value = { objects: objects.map(object => ({ ...object })), initialId };
     },
     closePreview: () => {
       state.value = null;

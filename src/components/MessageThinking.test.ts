@@ -15,16 +15,18 @@ describe('MessageThinking Stability and Layout', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({
     id: toMessageId({ raw: 'test-id' }),
     role: 'assistant',
-    content,
-    thinking,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(thinking !== undefined ? [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   it('maintains fixed height and stable padding during active thinking (collapsed-active)', () => {
     // Simulate active thinking state (unclosed <think> tag)
     const message = createMessage('<think>Initial thought...');
-    const wrapper = mount(MessageThinking, { props: { message } });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) } });
 
     const outerContainer = wrapper.find('[data-testid="toggle-thinking"]');
     const contentContainer = wrapper.find('[data-testid="thinking-content"]');
@@ -44,7 +46,7 @@ describe('MessageThinking Stability and Layout', () => {
 
   it('does not apply fixed heights when expanded', async () => {
     const message = createMessage('<think>Long thought...');
-    const wrapper = mount(MessageThinking, { props: { message } });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) } });
 
     // Toggle to expanded
     await wrapper.find('[data-testid="toggle-thinking"]').trigger('click');
@@ -64,7 +66,7 @@ describe('MessageThinking Stability and Layout', () => {
   it('hides content in collapsed-finished mode', () => {
     // Simulate finished thinking
     const message = createMessage('Final answer', 'Completed thought');
-    const wrapper = mount(MessageThinking, { props: { message } });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) } });
 
     // In collapsed-finished, the content container should not exist (v-if)
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(false);
@@ -80,15 +82,17 @@ describe('MessageThinking in-sequence preview', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({
     id: toMessageId({ raw: 'test-id' }),
     role: 'assistant',
-    content,
-    thinking,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(thinking !== undefined ? [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   it('shows height-limited preview in collapsed-finished when inSequence is provided', () => {
     const message = createMessage('Final answer', 'Completed thought');
-    const wrapper = mount(MessageThinking, { props: { message }, ...withInSequence });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) }, ...withInSequence });
 
     expect(wrapper.find('[data-testid="thinking-preview"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(false);
@@ -100,14 +104,14 @@ describe('MessageThinking in-sequence preview', () => {
 
   it('does not show preview when inSequence is not provided', () => {
     const message = createMessage('Final answer', 'Completed thought');
-    const wrapper = mount(MessageThinking, { props: { message } });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) } });
 
     expect(wrapper.find('[data-testid="thinking-preview"]').exists()).toBe(false);
   });
 
   it('shows header as "Thought Process" in collapsed-finished when inSequence', () => {
     const message = createMessage('Final answer', 'Completed thought');
-    const wrapper = mount(MessageThinking, { props: { message }, ...withInSequence });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) }, ...withInSequence });
 
     expect(wrapper.find('[data-testid="thinking-header"]').text()).toContain('Thought Process');
     expect(wrapper.find('[data-testid="thinking-header"]').text()).not.toContain('Show');
@@ -115,7 +119,7 @@ describe('MessageThinking in-sequence preview', () => {
 
   it('clicking the block expands to full content when inSequence', async () => {
     const message = createMessage('Final answer', 'Completed thought');
-    const wrapper = mount(MessageThinking, { props: { message }, ...withInSequence });
+    const wrapper = mount(MessageThinking, { props: { message, isActive: message.parts.some(part => part.type === 'text' && part.text.includes('<think>') && !part.text.includes('</think>')) }, ...withInSequence });
 
     await wrapper.find('[data-testid="toggle-thinking"]').trigger('click');
 

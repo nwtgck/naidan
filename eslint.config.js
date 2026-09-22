@@ -88,7 +88,8 @@ import noHizoFSTestExternalProcess from './eslint-local-rules/no-hizofs-test-ext
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'scripts/**'],
+    // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

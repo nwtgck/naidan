@@ -1,0 +1,1 @@
+export const LlamaCppBrowserHuggingFaceManager__model_files_already_exist = (): string => "Für dieses Repository sind bereits Modelldateien vorhanden. Lösche das vorhandene Modell vor einem erneuten Download.";

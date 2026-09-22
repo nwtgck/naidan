@@ -1,0 +1,399 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "supplied-history",
+  "contextSha256": "8d2c0aa1fcc6194b4ac2afeb5131431a76da9f1be670a7b59b297aee5a495456",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Template probe first user message."
+        },
+        {
+          "role": "assistant",
+          "content": "Template probe assistant response."
+        },
+        {
+          "role": "user",
+          "content": "Template probe second user message."
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 1,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              94
+            ],
+            "byteLength": 752,
+            "sha256": "50c5c3717e829b536ec8033af8639f9f46294686c5f4fbbab07bdb09ac17045d"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              94
+            ],
+            "byteLength": 752,
+            "sha256": "5b6ea1150b78246e45c43143eddc870256cb8b6cc377cc3268213b1277b076d7"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              94
+            ],
+            "byteLength": 752,
+            "sha256": "50c5c3717e829b536ec8033af8639f9f46294686c5f4fbbab07bdb09ac17045d"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              94
+            ],
+            "byteLength": 752,
+            "sha256": "5b6ea1150b78246e45c43143eddc870256cb8b6cc377cc3268213b1277b076d7"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 1,
+          "contextLimit": 131072,
+          "promptTokenCount": 94,
+          "usedContextTokenCount": 94
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200006",
+              "17360",
+              "200008",
+              "3575",
+              "553",
+              "17554",
+              "162016",
+              "11",
+              "261",
+              "4410",
+              "6439",
+              "2359",
+              "22203",
+              "656",
+              "7788",
+              "17527",
+              "558",
+              "87447",
+              "100594",
+              "25",
+              "220",
+              "1323",
+              "19",
+              "12",
+              "3218",
+              "198",
+              "6576",
+              "3521",
+              "25",
+              "220",
+              "1323",
+              "21",
+              "12",
+              "3114",
+              "12",
+              "702",
+              "279",
+              "30377",
+              "289",
+              "25",
+              "14093",
+              "279",
+              "2",
+              "13888",
+              "18403",
+              "25",
+              "8450",
+              "11",
+              "49159",
+              "11",
+              "1721",
+              "13",
+              "21030",
+              "2804",
+              "413",
+              "7360",
+              "395",
+              "1753",
+              "3176",
+              "13",
+              "200007",
+              "200006",
+              "1428",
+              "200008",
+              "8396",
+              "31925",
+              "1577",
+              "1825",
+              "3176",
+              "13",
+              "200007",
+              "200006",
+              "173781",
+              "200005",
+              "17196",
+              "200008",
+              "8396",
+              "31925",
+              "29186",
+              "3322",
+              "13",
+              "200007",
+              "200006",
+              "1428",
+              "200008",
+              "8396",
+              "31925",
+              "3099",
+              "1825",
+              "3176",
+              "13",
+              "200007",
+              "200006",
+              "173781"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200005"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "<|channel|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          95
+        ],
+        "byteLength": 760,
+        "sha256": "b65873939048eb92e7bd39d265e60bd6d563db3fad3b4a7759ab4c9eaeb0db5a",
+        "tokens": [
+          "200006",
+          "17360",
+          "200008",
+          "3575",
+          "553",
+          "17554",
+          "162016",
+          "11",
+          "261",
+          "4410",
+          "6439",
+          "2359",
+          "22203",
+          "656",
+          "7788",
+          "17527",
+          "558",
+          "87447",
+          "100594",
+          "25",
+          "220",
+          "1323",
+          "19",
+          "12",
+          "3218",
+          "198",
+          "6576",
+          "3521",
+          "25",
+          "220",
+          "1323",
+          "21",
+          "12",
+          "3114",
+          "12",
+          "702",
+          "279",
+          "30377",
+          "289",
+          "25",
+          "14093",
+          "279",
+          "2",
+          "13888",
+          "18403",
+          "25",
+          "8450",
+          "11",
+          "49159",
+          "11",
+          "1721",
+          "13",
+          "21030",
+          "2804",
+          "413",
+          "7360",
+          "395",
+          "1753",
+          "3176",
+          "13",
+          "200007",
+          "200006",
+          "1428",
+          "200008",
+          "8396",
+          "31925",
+          "1577",
+          "1825",
+          "3176",
+          "13",
+          "200007",
+          "200006",
+          "173781",
+          "200005",
+          "17196",
+          "200008",
+          "8396",
+          "31925",
+          "29186",
+          "3322",
+          "13",
+          "200007",
+          "200006",
+          "1428",
+          "200008",
+          "8396",
+          "31925",
+          "3099",
+          "1825",
+          "3176",
+          "13",
+          "200007",
+          "200006",
+          "173781",
+          "200005"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "7a90a2dec17c23074c47bf582facf7d8bd0bb674cadf86535c5a41b34c83c741"
+}

@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "sourceMemberSha256": "96447b1b4d0173c0c8006f919755a1a5fd40d973b5c12abded82a5270606c7cf",
+  "capture": {
+    "sourceFacts": {
+      "inputKeys": [
+        "attention_mask",
+        "input_ids"
+      ],
+      "fullConversationInput": {
+        "status": "observed",
+        "inputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198
+        ]
+      },
+      "cacheDecision": {
+        "status": "not-reused",
+        "reason": "qwen3_5-missing-conversation-state"
+      },
+      "pastKeyValuesProvided": false,
+      "inputPastKeyValuesSummary": {
+        "kind": "nullish",
+        "valueType": "null",
+        "ownKeyCount": 0,
+        "ownKeys": [],
+        "truncated": false
+      }
+    },
+    "streamChunks": [
+      "<think>\n",
+      "Okay, ",
+      "the ",
+      "user ",
+      "is ",
+      "asking ",
+      "for ",
+      "a ",
+      "template ",
+      "for ",
+      "a ",
+      "user ",
+      "message."
+    ],
+    "replay": {
+      "schemaVersion": 1,
+      "identity": {
+        "modelId": "onnx-community/Qwen3.5-2B-ONNX",
+        "resolvedRevision": "b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb",
+        "investigationRunId": "18926c5f-50e7-4da8-8395-dd5f4ee5556a",
+        "transformersJsVersion": "4.2.0"
+      },
+      "scenario": {
+        "id": "recorded-qwen-first-turn-prefix",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Template probe user message."
+          }
+        ],
+        "tools": [],
+        "lmParameters": {
+          "temperature": 0,
+          "topP": 1,
+          "maxCompletionTokens": 16
+        },
+        "boundary": {
+          "kind": "natural-prefix",
+          "lengthRelation": "equals-requested-budget",
+          "stopCause": "not-recorded"
+        }
+      },
+      "inputContract": {
+        "inputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198
+        ],
+        "inputTensorFacts": [
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "dims": [
+              1,
+              13
+            ],
+            "location": "cpu"
+          },
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "dims": [
+              1,
+              13
+            ],
+            "location": "cpu"
+          }
+        ],
+        "effectiveGenerationConfig": {
+          "maxNewTokens": 16,
+          "temperature": 0,
+          "topP": 1,
+          "doSample": false
+        }
+      },
+      "modelReplay": {
+        "source": "production-lane",
+        "sourceInputTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198
+        ],
+        "sourceInputSha256": "c4dbe20901e458d482316bb3c7f666888e34f5694eaa3f181f68b7930ec1eac1",
+        "generatedTokenIds": [
+          248068,
+          198,
+          31248,
+          11,
+          279,
+          1156,
+          369,
+          9859,
+          364,
+          264,
+          3683,
+          364,
+          264,
+          1156,
+          1876,
+          13
+        ],
+        "generatedSequenceTokenIds": [
+          248045,
+          846,
+          198,
+          7048,
+          21059,
+          1156,
+          1876,
+          13,
+          248046,
+          198,
+          248045,
+          74455,
+          198,
+          248068,
+          198,
+          31248,
+          11,
+          279,
+          1156,
+          369,
+          9859,
+          364,
+          264,
+          3683,
+          364,
+          264,
+          1156,
+          1876,
+          13
+        ],
+        "generatedText": "<think>\nOkay, the user is asking for a template for a user message."
+      },
+      "expectedProviderSemantic": {
+        "basis": "production-positive-control",
+        "captureScope": "prefix",
+        "visibleContent": "<think>\nOkay, the user is asking for a template for a user message."
+      }
+    }
+  }
+}

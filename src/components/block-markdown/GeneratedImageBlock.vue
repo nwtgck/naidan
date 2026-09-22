@@ -88,7 +88,7 @@ async function handlePreview() {
   const obj = await storageService.getBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
   if (obj) {
     openPreview({
-      objects: [obj],
+      objects: [{ ...obj, memoryBlob: undefined }],
       initialId: toBinaryObjectId({ raw: parsed.value.binaryObjectId }),
     });
   }
@@ -99,6 +99,8 @@ async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
 
   const downloadOptions = {
     id: toBinaryObjectId({ raw: parsed.value.binaryObjectId }),
+    name: undefined,
+    memoryBlob: undefined,
     prompt: parsed.value.prompt || '',
     steps: parsed.value.steps,
     seed: parsed.value.seed,

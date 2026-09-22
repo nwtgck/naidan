@@ -48,9 +48,12 @@ describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
     id: generateId<MessageId>(),
     role,
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   beforeEach(() => {
@@ -104,10 +107,12 @@ print("hello")
     const message: MessageNode = {
       id: toMessageId({ raw: 'msg-1' }),
       role: 'assistant',
-      content: 'Hello',
       modelId,
-      timestamp: Date.now(),
       replies: { items: [] },
+      parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+      createdAt: Date.now(),
+      lmParameters: undefined,
+      interruption: undefined,
     };
     const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
 
@@ -452,9 +457,12 @@ describe('MessageItem Keyboard Shortcuts', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'user'): MessageNode => ({
     id: generateId<MessageId>(),
     role,
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   it('cancels editing on Escape key', async () => {
@@ -533,14 +541,11 @@ describe('MessageItem Attachment Rendering', () => {
   const createMessageWithAttachments = (attachments: any[]): MessageNode => ({
     id: generateId<MessageId>(),
     role: 'user',
-    content: 'Message with images',
-    timestamp: Date.now(),
-    attachments,
-    thinking: undefined,
-    error: undefined,
     modelId: undefined,
     lmParameters: EMPTY_LM_PARAMETERS,
     replies: { items: [] },
+    parts: [{ type: 'text' as const, text: 'Message with images', completeness: 'complete' as const }, ...(attachments ?? []).map((attachment) => ({ type: 'attachment' as const, attachment }))],
+    createdAt: Date.now(),
   } as UserMessageNode);
 
   beforeEach(() => {
@@ -642,14 +647,12 @@ describe('MessageItem States', () => {
   const createAssistantMessage = (content: string, error?: string): MessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    content,
-    error,
-    timestamp: Date.now(),
-    attachments: undefined,
-    thinking: undefined,
     modelId: 'test-model',
     lmParameters: EMPTY_LM_PARAMETERS,
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    interruption: error !== undefined ? {type:'error' as const,message:error} : undefined,
   } as AssistantMessageNode);
 
   it('displays loading indicator when waiting for response', async () => {
@@ -716,17 +719,14 @@ describe('MessageItem Edit Labels', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => {
     const common = {
       id: generateId<MessageId>(),
-      content: 'Some content',
-      timestamp: Date.now(),
+      parts: [{ type: 'text' as const, text: 'Some content', completeness: 'complete' as const }],
+      createdAt: Date.now(),
       replies: { items: [] },
     };
     if (role === 'user') {
       return {
         ...common,
         role: 'user',
-        attachments: [],
-        thinking: undefined,
-        error: undefined,
         modelId: undefined,
         lmParameters: EMPTY_LM_PARAMETERS,
       } as UserMessageNode;
@@ -734,9 +734,7 @@ describe('MessageItem Edit Labels', () => {
     return {
       ...common,
       role: 'assistant',
-      attachments: undefined,
-      thinking: undefined,
-      error: undefined,
+      interruption: undefined,
       modelId: 'test-model',
       lmParameters: EMPTY_LM_PARAMETERS,
     } as AssistantMessageNode;
@@ -796,10 +794,11 @@ describe('MessageItem Edit Labels', () => {
     const message: UserMessageNode = {
       id: generateId<MessageId>(),
       role: 'user',
-      content: 'Original content',
-      timestamp: Date.now(),
       replies: { items: [] },
       lmParameters,
+      parts: [{ type: 'text' as const, text: 'Original content', completeness: 'complete' as const }],
+      createdAt: Date.now(),
+      modelId: undefined,
     };
     const wrapper = mount(MessageItem, { props: { message } });
 
@@ -821,17 +820,14 @@ describe('MessageItem Action Visibility', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => {
     const common = {
       id: generateId<MessageId>(),
-      content: 'Some content',
-      timestamp: Date.now(),
+      parts: [{ type: 'text' as const, text: 'Some content', completeness: 'complete' as const }],
+      createdAt: Date.now(),
       replies: { items: [] },
     };
     if (role === 'user') {
       return {
         ...common,
         role: 'user',
-        attachments: [],
-        thinking: undefined,
-        error: undefined,
         modelId: undefined,
         lmParameters: EMPTY_LM_PARAMETERS,
       } as UserMessageNode;
@@ -839,9 +835,7 @@ describe('MessageItem Action Visibility', () => {
     return {
       ...common,
       role: 'assistant',
-      attachments: undefined,
-      thinking: undefined,
-      error: undefined,
+      interruption: undefined,
       modelId: 'test-model',
       lmParameters: EMPTY_LM_PARAMETERS,
     } as AssistantMessageNode;
@@ -867,19 +861,20 @@ describe('MessageItem Touch Support', () => {
     const message: MessageNode = {
       id: generateId<MessageId>(),
       role: 'user',
-      content: 'Message with images',
-      timestamp: Date.now(),
-      attachments: [{
+      replies: { items: [] },
+      parts: [{ type: 'text' as const, text: 'Message with images', completeness: 'complete' as const }, ...([{
         id: toAttachmentId({ raw: 'att-1' }),
         binaryObjectId: toBinaryObjectId({ raw: 'binary-id-1' }),
-        status: 'memory',
+        status: 'memory' as const,
         blob: new Blob([''], { type: 'image/png' }),
         originalName: 'mem.png',
         mimeType: 'image/png',
         size: 10,
         uploadedAt: Date.now(),
-      }],
-      replies: { items: [] },
+      }]).map((attachment) => ({ type: 'attachment' as const, attachment }))],
+      createdAt: Date.now(),
+      modelId: undefined,
+      lmParameters: undefined,
     };
 
     const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('mock-url');
@@ -901,9 +896,12 @@ describe('MessageItem Abort Button', () => {
   const createAssistantMessage = (content: string): MessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   it('renders the abort button when isGenerating is true', () => {
@@ -949,10 +947,12 @@ describe('MessageItem Abort Button', () => {
       const message = {
         id: toMessageId({ raw: 'msg-1' }),
         role: 'assistant',
-        content: 'Hello',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } },
-        timestamp: Date.now(),
         replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        createdAt: Date.now(),
+        modelId: undefined,
+        interruption: undefined,
       } as AssistantMessageNode;
       const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
 
@@ -967,10 +967,12 @@ describe('MessageItem Abort Button', () => {
       const message = {
         id: toMessageId({ raw: 'msg-1' }),
         role: 'assistant',
-        content: 'Hello',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } },
-        timestamp: Date.now(),
         replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        createdAt: Date.now(),
+        modelId: undefined,
+        interruption: undefined,
       } as AssistantMessageNode;
       const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
 
@@ -985,10 +987,12 @@ describe('MessageItem Abort Button', () => {
       const message = {
         id: toMessageId({ raw: 'msg-1' }),
         role: 'assistant',
-        content: 'Hello',
         lmParameters: EMPTY_LM_PARAMETERS,
-        timestamp: Date.now(),
         replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        createdAt: Date.now(),
+        modelId: undefined,
+        interruption: undefined,
       } as AssistantMessageNode;
 
       const wrapper = mount(MessageItem, { props: { message } });
@@ -1003,10 +1007,11 @@ describe('MessageItem Abort Button', () => {
       const message = {
         id: toMessageId({ raw: 'msg-1' }),
         role: 'user',
-        content: 'Hello',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
-        timestamp: Date.now(),
         replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        createdAt: Date.now(),
+        modelId: undefined,
       } as UserMessageNode;
 
       const wrapper = mount(MessageItem, { props: { message } });
@@ -1024,10 +1029,11 @@ describe('MessageItem Abort Button', () => {
       const message = {
         id: toMessageId({ raw: 'msg-1' }),
         role: 'user',
-        content: 'Hello',
         lmParameters: EMPTY_LM_PARAMETERS,
-        timestamp: Date.now(),
         replies: { items: [] },
+        parts: [{ type: 'text' as const, text: 'Hello', completeness: 'complete' as const }],
+        createdAt: Date.now(),
+        modelId: undefined,
       } as UserMessageNode;
 
       const wrapper = mount(MessageItem, { props: { message } });
@@ -1045,9 +1051,12 @@ describe('MessageItem Actions Menu', () => {
   const createMessage = (content: string): MessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    content,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   it('toggles the actions menu when the more-actions button is clicked', async () => {
@@ -1129,10 +1138,12 @@ describe('MessageItem showGeneratingIndicator', () => {
   const createAssistantMessage = (content: string, thinking?: string): MessageNode => ({
     id: generateId<MessageId>(),
     role: 'assistant',
-    content,
-    thinking,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(thinking !== undefined ? [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   beforeEach(() => {

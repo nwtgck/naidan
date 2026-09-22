@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness = (): string => "Completar la recopilación no garantiza que las funciones sean correctas. Las comprobaciones fallidas o no ejecutadas aparecen primero. Ejecutar correctamente no equivale a observar; los ámbitos no seleccionados no son tareas pendientes.";

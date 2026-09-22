@@ -58,7 +58,8 @@ vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
   })),
 }));
 
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRouter: vi.fn(),
   useRoute: vi.fn(),
 }));
@@ -554,6 +555,7 @@ describe('StorageTab.vue Tests', () => {
         fetchModels: vi.fn().mockResolvedValue([]),
         updateGlobalModel: vi.fn(),
         updateGlobalEndpoint: vi.fn(),
+        updateGlobalModelAndEndpoint: vi.fn().mockResolvedValue('applied'),
         updateSystemPrompt: vi.fn(),
         updateStorageType: vi.fn(),
         setIsOnboardingDismissed: vi.fn(),

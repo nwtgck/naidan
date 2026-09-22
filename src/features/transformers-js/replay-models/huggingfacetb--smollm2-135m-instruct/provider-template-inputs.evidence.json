@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "source": "reference-template-behavior-matrix",
+  "sourceMemberSha256": "1ccd769adcfe0847658f94e1f83159a2ddb428d71d33411f841da0d2f5e6f230",
+  "modelId": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+  "selectedTemplateSha256": "872be49dbb638044ad01b60388f48d469ff2980e5f0dccdc22ec907db54d0788",
+  "cases": [
+    {
+      "caseId": "system-user-generation",
+      "messages": [
+        { "role": "system", "content": "Template probe system instruction." },
+        { "role": "user", "content": "Template probe user message." }
+      ],
+      "addGenerationPrompt": true,
+      "renderedText": "<|im_start|>system\nTemplate probe system instruction.<|im_end|>\n<|im_start|>user\nTemplate probe user message.<|im_end|>\n<|im_start|>assistant\n",
+      "inputTokenIds": [1, 9690, 198, 29233, 14540, 817, 5785, 30, 2, 198, 1, 4093, 198, 29233, 14540, 2914, 3714, 30, 2, 198, 1, 520, 9531, 198]
+    },
+    {
+      "caseId": "multi-turn-generation",
+      "messages": [
+        { "role": "user", "content": "Template probe first user message." },
+        { "role": "assistant", "content": "Template probe assistant response." },
+        { "role": "user", "content": "Template probe second user message." }
+      ],
+      "addGenerationPrompt": true,
+      "renderedText": "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\nTemplate probe first user message.<|im_end|>\n<|im_start|>assistant\nTemplate probe assistant response.<|im_end|>\n<|im_start|>user\nTemplate probe second user message.<|im_end|>\n<|im_start|>assistant\n",
+      "inputTokenIds": [1, 9690, 198, 2683, 359, 253, 5356, 5646, 11173, 3365, 3511, 308, 34519, 28, 7018, 411, 407, 19712, 8182, 2, 198, 1, 4093, 198, 29233, 14540, 808, 2914, 3714, 30, 2, 198, 1, 520, 9531, 198, 29233, 14540, 11173, 2426, 30, 2, 198, 1, 4093, 198, 29233, 14540, 1796, 2914, 3714, 30, 2, 198, 1, 520, 9531, 198]
+    }
+  ]
+}

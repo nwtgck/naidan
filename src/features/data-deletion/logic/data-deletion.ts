@@ -266,7 +266,7 @@ export const DATA_DELETION_OPTIONS = [
     id: 'opfs-models',
     group: 'opfs',
     label: `OPFS: /${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}`,
-    description: 'Transformers.js model cache.',
+    description: 'Shared model files for local inference engines.',
     selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}` },
     advanced: false,
   },
