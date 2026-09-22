@@ -164,7 +164,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div tw-class="flex flex-wrap items-center justify-between gap-2" data-testid="llama-suggestion-heading">
       <div tw-class="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1" data-testid="llama-suggestion-title-options">
         <h4 :id="`${id}-name`" tw-class="min-w-0 break-words text-sm font-bold text-gray-800 dark:text-gray-100">{{ suggestion.name }}</h4>
-        <div tw-class="relative max-w-full">
+        <!-- Inline selects create a baseline line box in a plain wrapper, shifting
+             the control away from the title/chevron center. Keep both boxes explicit. -->
+        <div tw-class="relative flex max-w-full items-center">
           <label :id="`${id}-quantization-label`" :for="`${id}-quantization`" tw-class="sr-only">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__quantization() }}</label>
           <select
             :id="`${id}-quantization`"
@@ -172,12 +174,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             :aria-labelledby="`${id}-name ${id}-quantization-label`"
             :disabled="optionsLocked || suggestion.quantizationHints.length === 1"
             data-testid="llama-suggestion-quantization"
-            tw-class="max-w-full appearance-none rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 py-1 pl-2 pr-6 text-[11px] font-medium text-gray-600 dark:text-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            tw-class="block h-6 max-w-full appearance-none rounded-md border border-transparent bg-transparent py-0 pl-1.5 pr-5 text-[11px] leading-4 font-normal text-gray-500 dark:text-gray-400 enabled:hover:border-gray-200 dark:enabled:hover:border-gray-700 enabled:hover:bg-gray-100/70 dark:enabled:hover:bg-gray-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             @change="selectQuantization({ event: $event })"
           >
-            <option v-for="choice in suggestion.quantizationHints" :key="choice.id" :value="choice.id">{{ suggestedQuantizationLabel({ quantization: choice }) }}</option>
+            <option v-for="choice in suggestion.quantizationHints" :key="choice.id" :value="choice.id" tw-class="bg-white text-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ suggestedQuantizationLabel({ quantization: choice }) }}</option>
           </select>
-          <ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+          <ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute inset-y-0 right-1 my-auto w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
         </div>
       </div>
       <LlamaCppBrowserDefaultModelAction v-if="installed && !busy" :model="installed" :current="defaultModel" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @select="emit('selectDefault', $event)" />
