@@ -5,7 +5,7 @@ import { lazyStrings } from '@/strings';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import type { DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
-import { matchesMemoryHint, modelSuggestions, moreGgufModelsUrl, suggestedMemoryFilters, type ModelSuggestion, type SuggestedMemoryFilter } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
+import { preferredQuantizationHint, matchesMemoryHint, modelSuggestions, moreGgufModelsUrl, suggestedMemoryFilters, type ModelSuggestion, type SuggestedMemoryFilter } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
 defineProps<{ models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean }>();
 const emit = defineEmits<{ selectDefault: [model: LocalModel] }>();
@@ -21,10 +21,11 @@ function toggle(): void {
   open.value = !open.value;
 }
 function visible({ suggestion }: { suggestion: ModelSuggestion }): boolean {
-  // Memory chips are editorial text-model hints. Multimodal options must not
-  // make the row disappear underneath the pointer; they can require more memory.
+  // Memory chips are editorial text-model hints. Neither multimodal options
+  // nor quantization choices should hide the row underneath the pointer.
+  // Filter by the preferred text choice; other choices can require more memory.
   // Keep running/paused rows visible so filtering never hides cancellation.
-  return matchesMemoryHint({ suggestion, memory: memory.value, multimodal: 'off' }) || queue.jobs.value.some(job => job.key.startsWith(`suggestion:${suggestion.id}:`) && (jobIsBusy({ job }) || job.status === 'paused'));
+  return matchesMemoryHint({ quantization: preferredQuantizationHint({ suggestion }), memory: memory.value, multimodal: 'off' }) || queue.jobs.value.some(job => job.key.startsWith(`suggestion:${suggestion.id}:`) && (jobIsBusy({ job }) || job.status === 'paused'));
 }
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

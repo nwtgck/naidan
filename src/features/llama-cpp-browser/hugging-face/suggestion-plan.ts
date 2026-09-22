@@ -2,7 +2,7 @@ import { artifactRole } from './artifact-role';
 import { type RepositoryCatalog, type ModelCandidate } from './catalog';
 import { preferredProjector, quantizationName } from './presentation';
 import { selectionSchema, type DownloadSelection } from './types';
-import type { ModelSuggestion, MultimodalDownload } from './model-suggestions';
+import type { SuggestedQuantization, MultimodalDownload } from './model-suggestions';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 
 export class SuggestionPlanError extends Error {
@@ -12,15 +12,15 @@ export class SuggestionPlanError extends Error {
   }
 }
 
-function matchingCandidates({ suggestion, models }: { suggestion: ModelSuggestion, models: ModelCandidate[] }): ModelCandidate[] {
-  return models.filter(model => model.files.length > 0 && model.files.every(file => artifactRole({ path: file.path }) === 'model' && quantizationName({ path: file.path }) === suggestion.preferredQuantization));
+function matchingCandidates({ quantization, models }: { quantization: SuggestedQuantization, models: ModelCandidate[] }): ModelCandidate[] {
+  return models.filter(model => model.files.length > 0 && model.files.every(file => artifactRole({ path: file.path }) === 'model' && quantizationName({ path: file.path }) === quantization.preferredQuantization));
 }
 
 /** Pure resolution: approximate catalog fields never validate or identify files. */
-export function resolveSuggestionPlan({ suggestion, catalog, multimodal }: { suggestion: ModelSuggestion, catalog: RepositoryCatalog, multimodal: MultimodalDownload }): DownloadSelection {
+export function resolveSuggestionPlan({ quantization, catalog, multimodal }: { quantization: SuggestedQuantization, catalog: RepositoryCatalog, multimodal: MultimodalDownload }): DownloadSelection {
   // Do not silently follow a renamed/transferred repository for one-click installs.
-  if (catalog.repository.toLowerCase() !== suggestion.repository.toLowerCase()) throw new SuggestionPlanError();
-  const candidates = matchingCandidates({ suggestion, models: catalog.models });
+  if (catalog.repository.toLowerCase() !== quantization.repository.toLowerCase()) throw new SuggestionPlanError();
+  const candidates = matchingCandidates({ quantization, models: catalog.models });
   if (candidates.length !== 1) throw new SuggestionPlanError();
   const files = [...candidates[0]!.files];
   switch (multimodal) {
@@ -36,13 +36,13 @@ export function resolveSuggestionPlan({ suggestion, catalog, multimodal }: { sug
 }
 
 /** Uses already validated LOCAL model listings; never triggers remote discovery. */
-export function findLocalSuggestedModel({ suggestion, models }: { suggestion: ModelSuggestion, models: readonly LocalModel[] }): LocalModel | undefined {
-  const prefix = `hf.co/${suggestion.repository}:`.toLowerCase();
+export function findLocalSuggestedModel({ quantization, models }: { quantization: SuggestedQuantization, models: readonly LocalModel[] }): LocalModel | undefined {
+  const prefix = `hf.co/${quantization.repository}:`.toLowerCase();
   const matches = models.filter(model => {
     if (!model.id.toLowerCase().startsWith(prefix)) return false;
     try {
       const path = decodeURIComponent(model.id.slice(prefix.length));
-      return artifactRole({ path }) === 'model' && quantizationName({ path }) === suggestion.preferredQuantization;
+      return artifactRole({ path }) === 'model' && quantizationName({ path }) === quantization.preferredQuantization;
     } catch {
       return false;
     }

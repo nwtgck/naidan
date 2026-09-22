@@ -1,6 +1,6 @@
 import type { Endpoint } from '@/01-models/types';
 import type { LocalModel } from './types';
-import { modelSuggestions } from './hugging-face/model-suggestions';
+import { modelSuggestions, suggestedQuantizationLabel } from './hugging-face/model-suggestions';
 import { artifactRole } from './hugging-face/artifact-role';
 import { quantizationName } from './hugging-face/presentation';
 
@@ -12,8 +12,6 @@ export function isDefaultLocalModel({ model, current }: { model: LocalModel, cur
 }
 
 export function localModelDisplayName({ model }: { model: LocalModel }): string {
-  const suggestion = modelSuggestions.find(entry => model.id.toLowerCase().startsWith(`hf.co/${entry.repository}:`.toLowerCase()));
-  if (!suggestion) return model.name;
   try {
     const path = decodeURIComponent(model.id.slice(model.id.indexOf(':') + 1));
     const role = artifactRole({ path });
@@ -22,8 +20,15 @@ export function localModelDisplayName({ model }: { model: LocalModel }): string 
     case 'projector': case 'auxiliary': return model.name;
     default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
     }
-    const quantization = quantizationName({ path });
-    return quantization ? `${suggestion.name} · ${quantization}` : model.name;
+    const token = quantizationName({ path });
+    if (!token) return model.name;
+    for (const suggestion of modelSuggestions) {
+      const quantization = suggestion.quantizationHints.find(choice =>
+        model.id.toLowerCase().startsWith(`hf.co/${choice.repository}:`.toLowerCase())
+        && choice.preferredQuantization === token);
+      if (quantization) return `${suggestion.name} · ${suggestedQuantizationLabel({ quantization })}`;
+    }
+    return model.name;
   } catch {
     return model.name;
   }

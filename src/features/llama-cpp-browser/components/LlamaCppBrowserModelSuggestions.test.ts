@@ -6,13 +6,13 @@ import { downloadRepository } from '@/features/llama-cpp-browser/hugging-face/do
 import { installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { getDownloadQueue, TEST_ONLY as queueTest } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
-import { modelSuggestions } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
+import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import LlamaCppBrowserModelSuggestions from './LlamaCppBrowserModelSuggestions.vue';
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download', () => ({ downloadRepository: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedSelection: vi.fn(), repositoryDirectories: vi.fn(async () => []) }));
-const muse = modelSuggestions.find(entry => entry.id === 'muse-glimmer-30b')!;
+const muse = preferredQuantizationHint({ suggestion: modelSuggestions.find(entry => entry.id === 'muse-glimmer-30b')! });
 const main = 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf';
 const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
 const local: LocalModel = { id: `hf.co/${muse.repository}:${encodeURIComponent(main)}`, name: `hf.co/${muse.repository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
