@@ -163,7 +163,6 @@ const lockManager = {
 
 const runtimePolicy: NativeOpenOptions['runtimePolicy'] = {
   lazyDurability: NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY,
-  maxDirectoryIteratorEntries: 32,
   maxHeldLockNames: 64,
   maxMaintenanceRootRegistrations: 32,
   maxReaderPins: 16,

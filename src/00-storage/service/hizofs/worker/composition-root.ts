@@ -167,7 +167,6 @@ import {
 import { ReadOnlyNamespaceError } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type {
   OrdinaryEntryCreateRequest,
-  OrdinaryEntryCreateTarget,
   OrdinaryEntryCreateTargetDescriptor,
 } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
 import {
@@ -275,7 +274,6 @@ export type AuthenticatedApplicationReadSessionResources = Readonly<{
 
 const WORKER_MOUNT_GRANT_POLICY: HizoFSRuntimePolicy = Object.freeze({
   lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-  maxDirectoryIteratorEntries: 4_096,
   maxHeldLockNames: 1_024,
   maxMaintenanceRootRegistrations: 1_024,
   maxReaderPins: 256,
@@ -1287,22 +1285,6 @@ export function createAuthenticatedApplicationReadSessionResources({
   };
 }
 
-export type PublishedOrdinaryEntryCreate = PreparedOrdinaryEntryCreateCommit & Readonly<{
-  publication: PublishedPreparedMutationCommit;
-}>;
-
-export type PublishedOrdinaryEntryRemoval = PreparedOrdinaryEntryRemovalCommit & Readonly<{
-  publication: PublishedPreparedMutationCommit;
-}>;
-
-export type PublishedOrdinaryEntryMove = PreparedOrdinaryEntryMoveCommit & Readonly<{
-  publication: PublishedPreparedMutationCommit;
-}>;
-
-export type PublishedWholeFileReflink = PreparedWholeFileReflinkCommit & Readonly<{
-  publication: PublishedPreparedMutationCommit;
-}>;
-
 function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
   return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
 }
@@ -2030,16 +2012,6 @@ function assertAuthenticatedMetadataMutationPreparationAllowed({
   assertPublicationAllowed();
 }
 
-export type PublishedExplicitBulkCommit = Readonly<{
-  commitPayload: FileSystemCommitPayload;
-  publication: PublishedPreparedMutationCommit;
-}>;
-
-type MutationCandidatePreparedObserver = ({ candidate, commitPayload }: {
-  candidate: PreparedMutationCommitCandidate;
-  commitPayload: FileSystemCommitPayload;
-}) => PreparedMutationCommitCandidate;
-
 type AuthenticatedMetadataMutationPreparationMode =
   | "build"
   | "update";
@@ -2423,307 +2395,6 @@ async function prepareAuthenticatedOrdinaryEntryRemoval({
       target,
     }),
   });
-}
-
-
-/**
- * Joins one already validated private explicit-bulk candidate to authenticated
- * metadata writes and one converged Commit publication. Target freshness and
- * owner lifecycle remain caller obligations; this boundary owns only the
- * secret-bearing page and authority composition.
- */
-export async function publishAuthenticatedExplicitBulkCommit({
-  assertPublicationAllowed,
-  authority,
-  baseCommit,
-  baseSuperblock,
-  candidate,
-  directoryImportLimits,
-  indexDiagnostics,
-  mutationId,
-  onCandidatePrepared,
-}: Readonly<{
-  assertPublicationAllowed: () => void;
-  authority: AuthenticatedMetadataMutationAuthority;
-  baseCommit: FileSystemCommitPayload;
-  baseSuperblock: OpenedSuperblockCopies;
-  candidate: SealedExplicitBulkCandidate;
-  directoryImportLimits: StreamingDirectoryImportLimits;
-  indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  mutationId: MutationId;
-  onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
-}>): Promise<PublishedExplicitBulkCommit> {
-  try {
-    const { commitPayload } = await prepareAuthenticatedExplicitBulkCommit({
-      assertPublicationAllowed,
-      authority,
-      baseCommit,
-      baseSuperblock,
-      candidate,
-      directoryImportLimits,
-      indexDiagnostics,
-      mutationId,
-    });
-    const publication = await publishPreparedMutationCommit({
-      assertPublicationAllowed,
-      base: baseSuperblock,
-      commitPayload,
-      onCandidatePrepared: onCandidatePrepared === undefined
-        ? undefined
-        : ({ candidate: preparedCandidate }) => onCandidatePrepared({
-          candidate: preparedCandidate,
-          commitPayload,
-        }),
-      publicationPort: authority,
-    });
-    return { commitPayload, publication };
-  } catch (cause: unknown) {
-    authority.abandon();
-    throw cause;
-  }
-}
-
-export async function publishAuthenticatedOrdinaryEntryCreate({
-  assertPublicationAllowed,
-  authority,
-  indexDiagnostics,
-  baseCommit,
-  baseSuperblock,
-  maximumKnownInodeNumber,
-  mutationId,
-  onCandidatePrepared,
-  operationTimestamp,
-  parent,
-  request,
-  target,
-}: Readonly<{
-  assertPublicationAllowed: () => void;
-  authority: AuthenticatedMetadataMutationAuthority;
-  indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  baseCommit: FileSystemCommitPayload;
-  baseSuperblock: OpenedSuperblockCopies;
-  maximumKnownInodeNumber: InodeNumber | undefined;
-  mutationId: MutationId;
-  onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
-  operationTimestamp: TimestampMilliseconds;
-  parent: DirectoryInodeEntry;
-  request: OrdinaryEntryCreateRequest;
-  target: OrdinaryEntryCreateTarget;
-}>): Promise<PublishedOrdinaryEntryCreate> {
-  try {
-    const prepared = await prepareAuthenticatedOrdinaryEntryCreate({
-      assertPublicationAllowed,
-      authority,
-      baseCommit,
-      baseSuperblock,
-      indexDiagnostics,
-      maximumKnownInodeNumber,
-      mutationId,
-      operationTimestamp,
-      parent,
-      request,
-      target,
-    });
-    const publication = await publishPreparedMutationCommit({
-      assertPublicationAllowed,
-      base: baseSuperblock,
-      commitPayload: prepared.commitPayload,
-      onCandidatePrepared: onCandidatePrepared === undefined
-        ? undefined
-        : ({ candidate }) => onCandidatePrepared({ candidate, commitPayload: prepared.commitPayload }),
-      publicationPort: authority,
-    });
-    return { ...prepared, publication };
-  } catch (cause: unknown) {
-    authority.abandon();
-    throw cause;
-  }
-}
-
-/**
- * Publishes one already validated ordinary move. Source removal, destination
- * insertion, optional replacement deletion, and both parent revisions share
- * one prepared Commit and therefore one atomic namespace generation.
- */
-export async function publishAuthenticatedOrdinaryEntryMove({
-  assertPublicationAllowed,
-  authority,
-  indexDiagnostics,
-  baseCommit,
-  baseSuperblock,
-  destinationParent,
-  mutationId,
-  onCandidatePrepared,
-  operationTimestamp,
-  plan,
-  sourceParent,
-}: Readonly<{
-  assertPublicationAllowed: () => void;
-  authority: AuthenticatedMetadataMutationAuthority;
-  indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  baseCommit: FileSystemCommitPayload;
-  baseSuperblock: OpenedSuperblockCopies;
-  destinationParent: DirectoryInodeEntry;
-  mutationId: MutationId;
-  onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
-  operationTimestamp: TimestampMilliseconds;
-  plan: OrdinaryEntryMovePlan;
-  sourceParent: DirectoryInodeEntry;
-}>): Promise<PublishedOrdinaryEntryMove> {
-  try {
-    const prepared = await prepareAuthenticatedOrdinaryEntryMove({
-      assertPublicationAllowed,
-      authority,
-      baseCommit,
-      baseSuperblock,
-      destinationParent,
-      indexDiagnostics,
-      mutationId,
-      operationTimestamp,
-      plan,
-      sourceParent,
-    });
-    const publication = await publishPreparedMutationCommit({
-      assertPublicationAllowed,
-      base: baseSuperblock,
-      commitPayload: prepared.commitPayload,
-      onCandidatePrepared: onCandidatePrepared === undefined
-        ? undefined
-        : ({ candidate }) => onCandidatePrepared({ candidate, commitPayload: prepared.commitPayload }),
-      publicationPort: authority,
-    });
-    return { ...prepared, publication };
-  } catch (cause: unknown) {
-    authority.abandon();
-    throw cause;
-  }
-}
-
-
-/**
- * Publishes one whole-file reflink without copying extent-backed content. The
- * fresh inode, destination binding, optional replacement deletion, allocator
- * advance, and destination-parent revision share one File System Commit.
- */
-export async function publishAuthenticatedWholeFileReflink({
-  assertPublicationAllowed,
-  authority,
-  indexDiagnostics,
-  baseCommit,
-  baseSuperblock,
-  destinationParent,
-  maximumKnownInodeNumber,
-  mutationId,
-  onCandidatePrepared,
-  operationTimestamp,
-  source,
-  target,
-}: Readonly<{
-  assertPublicationAllowed: () => void;
-  authority: AuthenticatedMetadataMutationAuthority;
-  indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  baseCommit: FileSystemCommitPayload;
-  baseSuperblock: OpenedSuperblockCopies;
-  destinationParent: DirectoryInodeEntry;
-  maximumKnownInodeNumber: InodeNumber | undefined;
-  mutationId: MutationId;
-  onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
-  operationTimestamp: TimestampMilliseconds;
-  source: WholeFileReflinkSource;
-  target: WholeFileReflinkTarget;
-}>): Promise<PublishedWholeFileReflink> {
-  try {
-    const prepared = await prepareAuthenticatedWholeFileReflink({
-      assertPublicationAllowed,
-      authority,
-      baseCommit,
-      baseSuperblock,
-      destinationParent,
-      indexDiagnostics,
-      maximumKnownInodeNumber,
-      mutationId,
-      operationTimestamp,
-      source,
-      target,
-    });
-    const publication = await publishPreparedMutationCommit({
-      assertPublicationAllowed,
-      base: baseSuperblock,
-      commitPayload: prepared.commitPayload,
-      onCandidatePrepared: onCandidatePrepared === undefined
-        ? undefined
-        : ({ candidate }) => onCandidatePrepared({ candidate, commitPayload: prepared.commitPayload }),
-      publicationPort: authority,
-    });
-    return { ...prepared, publication };
-  } catch (cause: unknown) {
-    authority.abandon();
-    throw cause;
-  }
-}
-
-/**
- * Publishes one already validated ordinary-entry removal without exposing
- * authenticated metadata or Superblock authority to filesystem code.
- */
-export async function publishAuthenticatedOrdinaryEntryRemoval({
-  assertPublicationAllowed,
-  authority,
-  indexDiagnostics,
-  baseCommit,
-  baseSuperblock,
-  mutationId,
-  onCandidatePrepared,
-  operationTimestamp,
-  parent,
-  openDirectory,
-  recursive,
-  source,
-  target,
-}: Readonly<{
-  assertPublicationAllowed: () => void;
-  authority: AuthenticatedMetadataMutationAuthority;
-  indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  baseCommit: FileSystemCommitPayload;
-  baseSuperblock: OpenedSuperblockCopies;
-  mutationId: MutationId;
-  onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
-  operationTimestamp: TimestampMilliseconds;
-  parent: DirectoryInodeEntry;
-  openDirectory: OpenOrdinaryRemovalDirectory;
-  recursive: boolean;
-  source: OrdinaryEntryRemovalSource;
-  target: OrdinaryEntryRemovalTarget;
-}>): Promise<PublishedOrdinaryEntryRemoval> {
-  try {
-    const prepared = await prepareAuthenticatedOrdinaryEntryRemoval({
-      assertPublicationAllowed,
-      authority,
-      baseCommit,
-      baseSuperblock,
-      indexDiagnostics,
-      mutationId,
-      operationTimestamp,
-      parent,
-      openDirectory,
-      recursive,
-      source,
-      target,
-    });
-    const publication = await publishPreparedMutationCommit({
-      assertPublicationAllowed,
-      base: baseSuperblock,
-      commitPayload: prepared.commitPayload,
-      onCandidatePrepared: onCandidatePrepared === undefined
-        ? undefined
-        : ({ candidate }) => onCandidatePrepared({ candidate, commitPayload: prepared.commitPayload }),
-      publicationPort: authority,
-    });
-    return { ...prepared, publication };
-  } catch (cause: unknown) {
-    authority.abandon();
-    throw cause;
-  }
 }
 
 type AuthenticatedWritableApplicationGeneration =
@@ -6278,7 +5949,6 @@ const BROWSER_BENCHMARK_RUNTIME_POLICY: HizoFSRuntimePolicy = Object.freeze({
     ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
     publicationModeRequest: "automatic",
   }),
-  maxDirectoryIteratorEntries: 16_384,
   maxHeldLockNames: 4_096,
   maxMaintenanceRootRegistrations: 4_096,
   maxReaderPins: 512,

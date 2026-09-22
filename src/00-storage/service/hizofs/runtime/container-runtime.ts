@@ -2,7 +2,6 @@ import {
   encodeBase64UrlUnpadded,
   sameFileSystemCommitPayloadFields,
   encodeHomeRecordReference,
-  type DirectoryLeafEntry,
   type HomeRecordReference,
   type SegmentId,
 } from "@/00-storage/service/hizofs/00-format";
@@ -19,10 +18,6 @@ import {
   type ActiveSegmentReference,
   type ActiveSegmentReferenceKind,
 } from "@/00-storage/service/hizofs/runtime/active-segment-registry";
-import {
-  CapturedDirectoryIterator,
-  type CapturedDirectoryGeneration,
-} from "@/00-storage/service/hizofs/runtime/captured-directory-iterator";
 import type { ContainerCoordinationScope } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import {
   CrossRealmLockCoordinator,
@@ -568,7 +563,6 @@ export class ContainerRuntimeSession {
   private coordinationKey: ContainerCoordinationKey;
   private crossRealm: CrossRealmLockCoordinator;
   private lifecycle: SessionLifecycle;
-  private limits: HizoFSRuntimePolicy;
   private readerPins: ReaderPinRegistry;
   private resources: SharedSessionResourceLifetime;
   private runtimeCoordination: RuntimeCoordinationRegistry;
@@ -578,7 +572,6 @@ export class ContainerRuntimeSession {
     captureInFlightPublication,
     coordinationKey,
     crossRealm,
-    limits,
     readerPins,
     releaseResources,
     runtimeCoordination,
@@ -587,7 +580,6 @@ export class ContainerRuntimeSession {
     captureInFlightPublication: () => Promise<void> | undefined;
     coordinationKey: ContainerCoordinationKey;
     crossRealm: CrossRealmLockCoordinator;
-    limits: HizoFSRuntimePolicy;
     readerPins: ReaderPinRegistry;
     releaseResources: () => Promise<void>;
     runtimeCoordination: RuntimeCoordinationRegistry;
@@ -596,7 +588,6 @@ export class ContainerRuntimeSession {
     this.captureInFlightPublication = captureInFlightPublication;
     this.coordinationKey = coordinationKey;
     this.crossRealm = crossRealm;
-    this.limits = limits;
     this.readerPins = readerPins;
     this.resources = new SharedSessionResourceLifetime({ releaseResources });
     this.runtimeCoordination = runtimeCoordination;
@@ -726,33 +717,6 @@ export class ContainerRuntimeSession {
       }
       if (failures.length === 1) throw failures[0];
       throw new AggregateError(failures, "detached reader snapshot acquisition cleanup failed");
-    }
-  }
-
-  async createDirectoryIterator({ entries, generation }: {
-    entries: readonly DirectoryLeafEntry[];
-    generation: CapturedDirectoryGeneration;
-  }): Promise<CapturedDirectoryIterator> {
-    const pin = await this.acquireReaderPinInternal({
-      commitReference: generation.commitReference,
-      ownedBySession: false,
-    });
-    try {
-      return new CapturedDirectoryIterator({
-        entries,
-        generation,
-        maxEntries: this.limits.maxDirectoryIteratorEntries,
-        pin,
-        session: this.lifecycle,
-      });
-    } catch (cause: unknown) {
-      try {
-        pin.release();
-        await pin.released;
-      } catch (cleanupCause: unknown) {
-        throw new AggregateError([cause, cleanupCause], "directory iterator creation and pin cleanup both failed");
-      }
-      throw cause;
     }
   }
 
@@ -2186,7 +2150,6 @@ export class ContainerRuntime {
       captureInFlightPublication: () => this.flushOperation,
       coordinationKey: this.scope.key,
       crossRealm: this.crossRealm,
-      limits: this.limits,
       readerPins: this.readerPins,
       releaseResources,
       runtimeCoordination: this.runtimeCoordination,
@@ -2276,16 +2239,6 @@ export class ContainerRuntime {
     }
     default: return resolution satisfies never;
     }
-  }
-
-  async resolveWorkingCandidateOutcomeUnknown({ observedDurableIdentity }: {
-    observedDurableIdentity: DurableGenerationIdentity;
-  }): Promise<WorkingCandidateOutcomeUnknownResolution> {
-    const resolution = this.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
-      observedDurableIdentity,
-    });
-    await this.runtimeOwner.releaseIfIdleAndSafe();
-    return resolution;
   }
 
   async beginCleanHeadMaintenanceRootCapture(): Promise<ContainerRuntimeMaintenanceRootCapture> {

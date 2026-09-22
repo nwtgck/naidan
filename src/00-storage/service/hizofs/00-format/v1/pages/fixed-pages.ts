@@ -375,16 +375,6 @@ function encodeRelocationLeafPage({ entries, header }: {
   return bytes;
 }
 
-export function encodeRelocationLeafIndexPage({ entries, isRoot }: {
-  entries: readonly RelocationLeafEntry[];
-  isRoot: boolean;
-}): Uint8Array {
-  return encodeRelocationLeafPage({
-    entries,
-    header: encodeCommonPageHeader({ family: 'relocation', header: { itemCount: entries.length, level: 0 }, isRoot }),
-  });
-}
-
 export function decodeRelocationIndexPage({ bytes, isRoot }: { bytes: Uint8Array; isRoot: boolean }): RelocationIndexPage {
   const header = decodeCommonPageHeader({ bytes, family: 'relocation', isRoot });
   const expectedLength = COMMON_PAGE_HEADER_SIZE + header.itemCount * FIXED_SIZES.relocationLeafEntry;

@@ -11,7 +11,6 @@ import {
   createSubvolumeId,
   createTimestampMilliseconds,
   createUInt64,
-  createUnlockSequence,
   parseFileSystemId,
   parseMutationId,
   parsePublicationId,
@@ -27,9 +26,7 @@ import type {
 } from "@/00-storage/service/hizofs/api";
 import { HizoFSStorageFileSystemSession } from "@/00-storage/service/hizofs/api/storage-file-system-session";
 import {
-  createInitialBootstrapSegment,
   readBootstrapRoot,
-  readInitialBootstrapRoot,
 } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
 import {
   createEmptyEncryptedContainer,
@@ -38,12 +35,10 @@ import {
   type OpenedEmptyEncryptedContainer,
 } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { createInitialUnlockEnvelopeCopies } from "@/00-storage/service/hizofs/authenticated-store/unlock-envelope-store";
-import { createAuthenticatedMetadataMutationAuthority } from "@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority";
 import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import {
-  createInitialSuperblockCopies,
   openSuperblockCopies,
 } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
 import {
@@ -52,7 +47,6 @@ import {
   type FileSystemRootKeyProofDerivationCapability,
   type RandomByteSource,
 } from "@/00-storage/service/hizofs/01-crypto";
-import { ExplicitBulkCandidate } from "@/00-storage/service/hizofs/filesystem/bulk/explicit-bulk-candidate";
 import { createCandidateFrameOrdinalAuthority } from "@/00-storage/service/hizofs/authenticated-store/candidate-frame-ordinal-authority";
 import { createMaintenancePolicy } from "@/00-storage/service/hizofs/maintenance/maintenance-policy";
 import { createMaintenanceRootSnapshot } from "@/00-storage/service/hizofs/maintenance/maintenance-root-snapshot";
@@ -111,8 +105,6 @@ import {
   openAuthenticatedReadOnlyContainerCapability,
   openAuthenticatedRootKeyProofContainerCapability,
   openAuthenticatedReadWriteApplicationSession,
-  publishAuthenticatedExplicitBulkCommit,
-  publishAuthenticatedOrdinaryEntryCreate,
   replaceAuthenticatedDevelopmentWritableSessionPassphrase,
   withAuthenticatedDevelopmentWritableSessionReadAuthority,
   withAuthenticatedDevelopmentWritableSessionRetainedCredentials,
@@ -298,7 +290,6 @@ function runtimeHost({
     crossRealmLockPort,
     policy: {
       lazyDurability,
-      maxDirectoryIteratorEntries: 32,
       maxHeldLockNames: 64,
       maxMaintenanceRootRegistrations: 64,
       maxReaderPins: 16,
@@ -424,85 +415,46 @@ async function createNonemptyPortableFixtureBackend(): Promise<
   return backend;
 }
 
-async function writableFixture() {
+async function writableSessionFixture({
+  registerRuntimeSession,
+}: {
+  registerRuntimeSession: Parameters<typeof openAuthenticatedReadWriteApplicationSession>[0]["registerRuntimeSession"];
+}) {
   const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
   const randomSource = deterministicRandomSource();
-  const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
   const supportedFeatureBits = createFeatureBits({ value: 0n });
-  const rootKey = generateFileSystemRootKey({ randomSource });
-  const bootstrap = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
-  const baseCommitRoot = await readInitialBootstrapRoot({
-    ...bootstrap,
+  const passphrase = "correct horse battery staple";
+  const opened = await createEmptyEncryptedContainer({
     backend,
-    fileSystemId,
-    rootKey,
-  });
-  const baseSuperblock = await createInitialSuperblockCopies({
-    backend,
-    fileSystemId,
-    logicalState: {
-      activeCommitHomeRef: bootstrap.activeCommitHomeRef,
-      activeCommitSequence: bootstrap.activeCommitSequence,
-      activeMutationId: bootstrap.activeMutationId,
-      fallbackCommitHomeRef: null,
-      minimumUnlockSequence: createUnlockSequence({ value: 1n }),
-      relocationIndexRootPhysicalRef: null,
-      requiredFeatureBits: supportedFeatureBits,
-    },
+    passphrase,
     randomSource,
-    rootKey,
     supportedFeatureBits,
   });
-  const authority = await createAuthenticatedMetadataMutationAuthority({
-    backend,
-    fileSystemId,
-    randomSource,
-    relocationIndexRootPhysicalRef: null,
-    rootKey,
-    supportedFeatureBits,
+  const host = immediateRuntimeHost();
+  const session = await openAuthenticatedReadWriteApplicationSession({
+    captureAuthority: async () => ({ revision: 1 }),
+    recheckAuthority: async () => undefined,
+    registerRuntimeSession,
+    runtimeHost: host,
+    verifyCapturedAuthority: async () => ({
+      backend,
+      canonicalBackingLocation: "memory://publication-session.hizofs",
+      explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+      fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+      opened,
+      operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+      randomSource,
+      removalLimits: { deleteBatchSize: 2 },
+      recheckDurableGenerationAuthority: async () => undefined,
+      rootSubvolumeId: createSubvolumeId({ value: 1n }),
+      supportedFeatureBits,
+      writableProfile: "release-qualified",
+    }),
   });
-  return {
-    authority,
-    backend,
-    baseCommitRoot,
-    baseSuperblock,
-    fileSystemId,
-    rootKey,
-    supportedFeatureBits,
-  };
-}
-
-function ordinaryCreateRequest({
-  authority,
-  baseCommitRoot,
-  baseSuperblock,
-  assertPublicationAllowed,
-}: Readonly<{
-  assertPublicationAllowed: () => void;
-  authority: Awaited<ReturnType<typeof writableFixture>>["authority"];
-  baseCommitRoot: Awaited<ReturnType<typeof writableFixture>>["baseCommitRoot"];
-  baseSuperblock: Awaited<ReturnType<typeof writableFixture>>["baseSuperblock"];
-}>): Parameters<typeof publishAuthenticatedOrdinaryEntryCreate>[0] {
-  return {
-    assertPublicationAllowed,
-    authority,
-    baseCommit: baseCommitRoot.commit,
-    baseSuperblock,
-    indexDiagnostics: undefined,
-    maximumKnownInodeNumber: baseCommitRoot.rootDirectoryInode.inodeNumber,
-    mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(23) }),
-    onCandidatePrepared: undefined,
-    operationTimestamp: createTimestampMilliseconds({ value: 1_700_000_000_000n }),
-    parent: baseCommitRoot.rootDirectoryInode,
-    request: { type: "file" },
-    target: {
-      destinationExists: false,
-      entryName: "created",
-      parentAccess: "read_write",
-      parentDirectoryInodeNumber: baseCommitRoot.rootDirectoryInode.inodeNumber,
-      parentSubvolumeId: createSubvolumeId({ value: 1n }),
-    },
-  };
+  if (!(session instanceof HizoFSStorageFileSystemSession)) {
+    throw new Error("expected concrete HizoFS application session");
+  }
+  return { backend, host, opened, passphrase, session, supportedFeatureBits };
 }
 
 describe("HizoFS worker composition root", () => {
@@ -3320,130 +3272,189 @@ describe("HizoFS worker composition root", () => {
     expect(opened.rootKey.isDestroyed()).toBe(true);
   });
 
-  it("publishes one explicit bulk candidate through authenticated metadata and converged Superblocks", async () => {
-    const fixture = await writableFixture();
-    const candidate = new ExplicitBulkCandidate({
-      limits: { maxEntries: 8, maxInlineFileBytesTotal: 64 },
-      nextInodeNumber: fixture.baseCommitRoot.commit.nextInodeNumber,
-      rootDirectory: fixture.baseCommitRoot.rootDirectoryInode,
-    });
-    candidate.createEmptyFile({
-      name: "bulk-created",
-      parentDirectoryInodeNumber: fixture.baseCommitRoot.rootDirectoryInode.inodeNumber,
-      timestamp: createTimestampMilliseconds({ value: 1_700_000_000_000n }),
-    });
-
-    const result = await publishAuthenticatedExplicitBulkCommit({
-      assertPublicationAllowed: () => undefined,
-      authority: fixture.authority,
-      baseCommit: fixture.baseCommitRoot.commit,
-      baseSuperblock: fixture.baseSuperblock,
-      candidate: candidate.seal(),
-      directoryImportLimits: { maximumEntryMutationsPerBatch: 4 },
-      indexDiagnostics: undefined,
-      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(24) }),
-      onCandidatePrepared: undefined,
-    });
-
-    expect(fixture.authority.state()).toBe("closed");
-    expect(result.commitPayload.commitSequence).toBe(2n);
-    expect(result.publication.superblock.copyState).toBe("normal");
-    const reopened = await readBootstrapRoot({
-      authority: {
-        commitHomeRef: result.publication.commitHomeRef,
-        commitSequence: result.commitPayload.commitSequence,
-        mutationId: result.commitPayload.mutationId,
-        type: "active",
-      },
-      backend: fixture.backend,
-      fileSystemId: fixture.fileSystemId,
-      relocationIndexRootPhysicalRef: null,
-      rootKey: fixture.rootKey,
-    });
-    if (reopened.rootDirectoryInode.content.type !== "inline") throw new Error("expected inline root directory");
-    expect(reopened.rootDirectoryInode.content.entries).toEqual([{
-      inodeKind: "file",
-      inodeNumber: 2n,
-      name: "bulk-created",
-      targetType: "inode",
-    }]);
-    fixture.rootKey.destroy();
-  });
-
-  it("publishes an ordinary create through authenticated metadata and converged Superblocks", async () => {
-    const fixture = await writableFixture();
-    const result = await publishAuthenticatedOrdinaryEntryCreate(ordinaryCreateRequest({
-      assertPublicationAllowed: () => undefined,
-      authority: fixture.authority,
-      baseCommitRoot: fixture.baseCommitRoot,
-      baseSuperblock: fixture.baseSuperblock,
-    }));
-
-    expect(fixture.authority.state()).toBe("closed");
-    expect(result.commitPayload.commitSequence).toBe(2n);
-    expect(result.publication.superblock.copyState).toBe("normal");
-    expect(result.publication.superblock.logicalState.activeCommitHomeRef).toEqual(result.publication.commitHomeRef);
-    const reopened = await readBootstrapRoot({
-      authority: {
-        commitHomeRef: result.publication.commitHomeRef,
-        commitSequence: result.commitPayload.commitSequence,
-        mutationId: result.commitPayload.mutationId,
-        type: "active",
-      },
-      backend: fixture.backend,
-      fileSystemId: fixture.fileSystemId,
-      relocationIndexRootPhysicalRef: null,
-      rootKey: fixture.rootKey,
-    });
-    expect(reopened.rootDirectoryInode).toMatchObject({
-      inodeKind: "directory",
-      inodeRevision: 2n,
-    });
-    if (reopened.rootDirectoryInode.content.type !== "inline") throw new Error("expected inline root directory");
-    expect(reopened.rootDirectoryInode.content.entries).toEqual([{
-      inodeKind: "file",
-      inodeNumber: 2n,
-      name: "created",
-      targetType: "inode",
-    }]);
-    await expect(openSuperblockCopies({
-      backend: fixture.backend,
-      fileSystemId: fixture.fileSystemId,
-      rootKey: fixture.rootKey,
-      supportedFeatureBits: fixture.supportedFeatureBits,
-    })).resolves.toMatchObject({
-      copyState: "normal",
-      logicalState: { activeCommitSequence: 2n },
-    });
-    fixture.rootKey.destroy();
-  });
-
-  it("closes mutation authority and preserves the selected Superblock when any publication gate rejects", async () => {
-    for (const blockedGateCall of [1, 2, 3]) {
-      const fixture = await writableFixture();
-      let gateCall = 0;
-      await expect(publishAuthenticatedOrdinaryEntryCreate(ordinaryCreateRequest({
-        assertPublicationAllowed: () => {
-          gateCall += 1;
-          if (gateCall === blockedGateCall) throw new Error(`blocked gate ${blockedGateCall}`);
-        },
-        authority: fixture.authority,
-        baseCommitRoot: fixture.baseCommitRoot,
-        baseSuperblock: fixture.baseSuperblock,
-      }))).rejects.toThrow(`blocked gate ${blockedGateCall}`);
-      expect(fixture.authority.state()).toBe("closed");
-      await expect(openSuperblockCopies({
+  it("publishes one explicit bulk candidate through the immediate session and converged Superblocks", async () => {
+    const fixture = await writableSessionFixture({ registerRuntimeSession: undefined });
+    try {
+      const target = await fixture.session.root.getDirectoryHandle({ create: true, name: "bulk" });
+      const before = await openSuperblockCopies({
         backend: fixture.backend,
-        fileSystemId: fixture.fileSystemId,
-        rootKey: fixture.rootKey,
+        fileSystemId: fixture.opened.fileSystemId,
+        rootKey: fixture.opened.rootKey,
         supportedFeatureBits: fixture.supportedFeatureBits,
-      })).resolves.toMatchObject({
-        copyState: "normal",
-        logicalState: { activeCommitSequence: 1n },
       });
-      fixture.rootKey.destroy();
+      const openExplicitBulk = fixture.session.port.openExplicitBulk;
+      if (openExplicitBulk === undefined) throw new Error("expected explicit bulk support");
+      const bulk = await openExplicitBulk({ path: ["bulk"] });
+      await bulk.createEmptyFile({ name: "bulk-created" });
+      await bulk.commit();
+      const after = await openSuperblockCopies({
+        backend: fixture.backend,
+        fileSystemId: fixture.opened.fileSystemId,
+        rootKey: fixture.opened.rootKey,
+        supportedFeatureBits: fixture.supportedFeatureBits,
+      });
+      expect(after.copyState).toBe("normal");
+      expect(after.logicalState.activeCommitSequence).toBe(before.logicalState.activeCommitSequence + 1n);
+      await expect(target.getFileHandle({ create: false, name: "bulk-created" }))
+        .resolves.toMatchObject({ name: "bulk-created" });
+      expect(fixture.host.workingCandidatePublicationState()).toBe("empty");
+    } finally {
+      await fixture.session.close();
+    }
+    const reopened = await openEmptyEncryptedContainer({
+      backend: fixture.backend,
+      passphrase: fixture.passphrase,
+      supportedFeatureBits: fixture.supportedFeatureBits,
+    });
+    const resources = createAuthenticatedApplicationReadSessionResources({ backend: fixture.backend, opened: reopened });
+    try {
+      await expect(resources.namespace.stat({ pathComponents: ["bulk", "bulk-created"] }))
+        .resolves.toMatchObject({ fileSize: 0n, inodeNumber: 3n, kind: "file" });
+    } finally {
+      await resources.releaseResources();
     }
   });
+
+  it("publishes an ordinary create through the immediate session and converged Superblocks", async () => {
+    const fixture = await writableSessionFixture({ registerRuntimeSession: undefined });
+    try {
+      await fixture.session.root.getFileHandle({ create: true, name: "created" });
+      const superblock = await openSuperblockCopies({
+        backend: fixture.backend,
+        fileSystemId: fixture.opened.fileSystemId,
+        rootKey: fixture.opened.rootKey,
+        supportedFeatureBits: fixture.supportedFeatureBits,
+      });
+      expect(superblock.copyState).toBe("normal");
+      expect(superblock.logicalState.activeCommitSequence).toBe(2n);
+      const reopened = await readBootstrapRoot({
+        authority: {
+          commitHomeRef: superblock.logicalState.activeCommitHomeRef,
+          commitSequence: superblock.logicalState.activeCommitSequence,
+          mutationId: superblock.logicalState.activeMutationId,
+          type: "active",
+        },
+        backend: fixture.backend,
+        fileSystemId: fixture.opened.fileSystemId,
+        relocationIndexRootPhysicalRef: superblock.logicalState.relocationIndexRootPhysicalRef,
+        rootKey: fixture.opened.rootKey,
+      });
+      expect(reopened.commit.commitSequence).toBe(2n);
+      expect(reopened.commit.mutationId).toEqual(superblock.logicalState.activeMutationId);
+      expect(reopened.rootDirectoryInode).toMatchObject({
+        inodeKind: "directory",
+        inodeRevision: 2n,
+      });
+      if (reopened.rootDirectoryInode.content.type !== "inline") throw new Error("expected inline root directory");
+      expect(reopened.rootDirectoryInode.content.entries).toEqual([{
+        inodeKind: "file",
+        inodeNumber: 2n,
+        name: "created",
+        targetType: "inode",
+      }]);
+      expect(fixture.host.workingCandidatePublicationState()).toBe("empty");
+    } finally {
+      await fixture.session.close();
+    }
+  });
+
+  it.each(["before_metadata", "after_metadata", "after_candidate_install"] as const)(
+    "releases mutation authority without publishing when the session gate rejects %s",
+    async blockedPhase => {
+      let rejectGate: (() => void) | undefined;
+      const fixture = await writableSessionFixture({
+        registerRuntimeSession: ({ runtimeSession }) => {
+          // Preserve the real writer lifecycle and add only a deterministic gate failure.
+          const acquireWriter = runtimeSession.acquireWriter.bind(runtimeSession);
+          vi.spyOn(runtimeSession, "acquireWriter").mockImplementation(async () => {
+            const writer = await acquireWriter();
+            return {
+              close: async () => await writer.close(),
+              runPublication: async ({ operation }) => await writer.runPublication({
+                operation: async ({ authority }) => await operation({
+                  authority: {
+                    ...authority,
+                    assertPublicationAllowed: () => {
+                      authority.assertPublicationAllowed();
+                      rejectGate?.();
+                    },
+                  },
+                }),
+              }),
+            };
+          });
+        },
+      });
+      const metadataModule = await import("@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority");
+      const createAuthority = metadataModule.createAuthenticatedMetadataMutationAuthority;
+      const authorities: Awaited<ReturnType<typeof createAuthority>>[] = [];
+      const createAuthoritySpy = vi.spyOn(metadataModule, "createAuthenticatedMetadataMutationAuthority")
+        .mockImplementation(async request => {
+          const authority = await createAuthority(request);
+          authorities.push(authority);
+          return authority;
+        });
+      let metadataWritten = false;
+      let superblockWritten = false;
+      const writeAt = fixture.backend.writeAt.bind(fixture.backend);
+      fixture.backend.writeAt = async request => {
+        if (request.file.path.includes("segments/metadata/")) metadataWritten = true;
+        if (request.file.path.includes("superblock")) superblockWritten = true;
+        await writeAt(request);
+      };
+      const failure = new Error(`publication revoked ${blockedPhase}`);
+      let rejected = false;
+      rejectGate = () => {
+        const shouldReject = (() => {
+          switch (blockedPhase) {
+          case "before_metadata": return authorities.length > 0 && !metadataWritten;
+          case "after_metadata": return metadataWritten;
+          case "after_candidate_install": return fixture.host.workingCandidatePublicationState() === "installed";
+          default: return blockedPhase satisfies never;
+          }
+        })();
+        if (shouldReject) {
+          rejected = true;
+          throw failure;
+        }
+      };
+      try {
+        await expect(fixture.session.root.getFileHandle({ create: true, name: "created" }))
+          .rejects.toThrow(failure.message);
+        expect(rejected).toBe(true);
+        expect(superblockWritten).toBe(false);
+        expect(authorities).toHaveLength(1);
+        expect(authorities[0]!.state()).toBe("closed");
+        expect(fixture.host.workingCandidatePublicationState()).toBe("empty");
+        await expect(openSuperblockCopies({
+          backend: fixture.backend,
+          fileSystemId: fixture.opened.fileSystemId,
+          rootKey: fixture.opened.rootKey,
+          supportedFeatureBits: fixture.supportedFeatureBits,
+        })).resolves.toMatchObject({
+          copyState: "normal",
+          logicalState: { activeCommitSequence: 1n },
+        });
+        rejectGate = undefined;
+        await expect(fixture.session.root.getEntryHandle({ name: "created" })).rejects.toBeDefined();
+        await fixture.session.root.getFileHandle({ create: true, name: "after-rejection" });
+        expect(authorities[1]!.state()).toBe("closed");
+        await expect(openSuperblockCopies({
+          backend: fixture.backend,
+          fileSystemId: fixture.opened.fileSystemId,
+          rootKey: fixture.opened.rootKey,
+          supportedFeatureBits: fixture.supportedFeatureBits,
+        })).resolves.toMatchObject({
+          copyState: "normal",
+          logicalState: { activeCommitSequence: 2n },
+        });
+      } finally {
+        rejectGate = undefined;
+        createAuthoritySpy.mockRestore();
+        await fixture.session.close();
+      }
+    },
+  );
   it("verifies external proof through a callback-scoped root-key capability", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const supportedFeatureBits = createFeatureBits({ value: 0n });

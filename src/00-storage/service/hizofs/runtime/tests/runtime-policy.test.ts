@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, createRuntimePolicy, resolvePublicationModeApplied } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 
 describe("HizoFS runtime policy", () => {
-  it("freezes explicit non-persisted memory and enumeration bounds", () => {
+  it("freezes explicit non-persisted resource bounds", () => {
     const policy = createRuntimePolicy({
       lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-      maxDirectoryIteratorEntries: 64,
       maxHeldLockNames: 128,
       maxMaintenanceRootRegistrations: 128,
       maxReaderPins: 32,
@@ -13,7 +12,6 @@ describe("HizoFS runtime policy", () => {
     });
     expect(policy).toEqual({
       lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-      maxDirectoryIteratorEntries: 64,
       maxHeldLockNames: 128,
       maxMaintenanceRootRegistrations: 128,
       maxReaderPins: 32,
@@ -28,7 +26,6 @@ describe("HizoFS runtime policy", () => {
       maximumAcceptedMutationsPerDirtyEpoch: 512,
       maximumDirtyAgeMilliseconds: 2_000,
       maximumDirtyMetadataBytes: 32 * 1_024 * 1_024,
-      maximumMutationAdmissionWaiters: 128,
       maximumSyncWaiters: 128,
       maximumUnpublishedPhysicalBytes: 64 * 1_024 * 1_024,
       publicationModeRequest: "automatic",
@@ -39,7 +36,6 @@ describe("HizoFS runtime policy", () => {
   it("rejects zero, negative, fractional, and unsafe bounds", () => {
     const baseline = {
       lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-      maxDirectoryIteratorEntries: 64,
       maxHeldLockNames: 128,
       maxMaintenanceRootRegistrations: 128,
       maxReaderPins: 32,
@@ -73,7 +69,6 @@ describe("HizoFS runtime policy", () => {
         ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
         publicationModeRequest: "unknown" as "automatic",
       },
-      maxDirectoryIteratorEntries: 64,
       maxHeldLockNames: 128,
       maxMaintenanceRootRegistrations: 128,
       maxReaderPins: 32,

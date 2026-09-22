@@ -9,7 +9,6 @@ import {
 
 const policy: HizoFSRuntimePolicy = {
   lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-  maxDirectoryIteratorEntries: 32,
   maxHeldLockNames: 64,
   maxMaintenanceRootRegistrations: 32,
   maxReaderPins: 16,

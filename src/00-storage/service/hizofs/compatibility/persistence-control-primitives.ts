@@ -2,7 +2,6 @@ import {
   decodeBase64UrlUnpadded,
   encodeBase64UrlUnpadded,
   decodeRestrictedCanonicalJson,
-  decodeUtf8Strict,
   encodeCanonicalAsciiString,
   encodeFilenameComponent,
   encodeSymlinkTarget,
@@ -35,10 +34,6 @@ export function encodePortableFilenameComponent({ value }: { value: string }): U
 
 export function encodePortableSymlinkTarget({ value }: { value: string }): Uint8Array {
   return encodeSymlinkTarget({ value });
-}
-
-export function decodePersistenceControlUtf8({ bytes }: { bytes: Uint8Array }): string {
-  return decodeUtf8Strict({ bytes, label: 'persistence control UTF-8' });
 }
 
 export function encodePersistenceControlUtf8({ value }: { value: string }): Uint8Array {

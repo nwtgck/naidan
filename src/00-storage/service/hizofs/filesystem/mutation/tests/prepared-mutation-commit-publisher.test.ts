@@ -25,7 +25,6 @@ import {
   publishPreparedMutationCommitCandidateThroughPort,
   type PreparedMutationCommitPublicationPort,
 } from "@/00-storage/service/hizofs/filesystem/mutation/prepared-mutation-commit-publisher";
-import { WriterMutationLifecycleError } from "@/00-storage/service/hizofs/filesystem/mutation/writer-mutation-lifecycle";
 
 function homeReference({ kind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit, offset }: { kind?: number; offset: bigint }) {
   return createHomeRecordReference({ fields: {
@@ -208,6 +207,30 @@ describe("prepared mutation Commit publisher", () => {
     expect(appendCandidate).not.toHaveBeenCalled();
   });
 
+
+  it.each([
+    { mismatch: "sequence", message: "prepared Commit Sequence does not match the mutation candidate plan" },
+    { mismatch: "mutation-id", message: "prepared Commit requires a fresh Mutation ID" },
+  ] as const)("rejects a Commit $mismatch conflict with durable authority before publication I/O", async ({ mismatch, message }) => {
+    const base = baseAuthority();
+    const commitPayload = createFileSystemCommitPayload({ payload: {
+      ...preparedCommit(),
+      ...(mismatch === "sequence"
+        ? { commitSequence: base.logicalState.activeCommitSequence }
+        : { mutationId: base.logicalState.activeMutationId }),
+    } });
+    const { appendCandidate, port, publishCandidate } = successfulPort();
+
+    await expect(publishPreparedMutationCommit({
+      assertPublicationAllowed: () => undefined,
+      base,
+      commitPayload,
+      onCandidatePrepared: undefined,
+      publicationPort: port,
+    })).rejects.toThrow(message);
+    expect(appendCandidate).not.toHaveBeenCalled();
+    expect(publishCandidate).not.toHaveBeenCalled();
+  });
 
   it("passes the exact reserved publication plan through the injected port", async () => {
     const base = baseAuthority();
@@ -418,6 +441,7 @@ describe("prepared mutation Commit publisher", () => {
   });
 
   it("abandons a detached authority when publication is revoked before its first call", async () => {
+    const revocation = new Error("runtime authority changed after candidate detach");
     let gateChecks = 0;
     const commitPayload = preparedCommit();
     const { port } = successfulPort();
@@ -433,17 +457,14 @@ describe("prepared mutation Commit publisher", () => {
       assertPublicationAllowed: () => {
         gateChecks += 1;
         if (gateChecks === 2) {
-          throw new WriterMutationLifecycleError({
-            code: "publication_revoked",
-            message: "runtime authority changed after candidate detach",
-          });
+          throw revocation;
         }
       },
       base: baseAuthority(),
       commitPayload,
       onCandidatePrepared: undefined,
       publicationPort,
-    })).rejects.toMatchObject({ code: "publication_revoked" });
+    })).rejects.toBe(revocation);
 
     expect(detachedPublish).not.toHaveBeenCalled();
     expect(abandon).toHaveBeenCalledOnce();
@@ -468,44 +489,44 @@ describe("prepared mutation Commit publisher", () => {
   });
 
   it("rejects owner closing before invoking the publication port", async () => {
+    const revocation = new Error("writer owner is closing");
     const { appendCandidate, port, publishCandidate } = successfulPort();
     await expect(publishPreparedMutationCommit({
       assertPublicationAllowed: () => {
-        throw new WriterMutationLifecycleError({ code: "publication_revoked", message: "writer owner is closing" });
+        throw revocation;
       },
       base: baseAuthority(),
       commitPayload: preparedCommit(),
       onCandidatePrepared: undefined,
       publicationPort: port,
-    })).rejects.toMatchObject({ code: "publication_revoked" });
+    })).rejects.toBe(revocation);
     expect(appendCandidate).not.toHaveBeenCalled();
     expect(publishCandidate).not.toHaveBeenCalled();
   });
 
   it("leaves an appended candidate unpublished when owner closes before durable publication", async () => {
+    const revocation = new Error("writer owner closed after candidate append");
     let gateChecks = 0;
     const { appendCandidate, port, publishCandidate } = successfulPort();
     await expect(publishPreparedMutationCommit({
       assertPublicationAllowed: () => {
         gateChecks += 1;
         if (gateChecks === 2) {
-          throw new WriterMutationLifecycleError({
-            code: "publication_revoked",
-            message: "writer owner closed after candidate append",
-          });
+          throw revocation;
         }
       },
       base: baseAuthority(),
       commitPayload: preparedCommit(),
       onCandidatePrepared: undefined,
       publicationPort: port,
-    })).rejects.toMatchObject({ code: "publication_revoked" });
+    })).rejects.toBe(revocation);
     expect(gateChecks).toBe(2);
     expect(appendCandidate).toHaveBeenCalledTimes(1);
     expect(publishCandidate).not.toHaveBeenCalled();
   });
 
   it("rethrows late owner revocation immediately before the first authority write", async () => {
+    const revocation = new Error("writer owner started closing");
     let gateChecks = 0;
     const commitPayload = preparedCommit();
     const publicationPort: PreparedMutationCommitPublicationPort = {
@@ -522,14 +543,14 @@ describe("prepared mutation Commit publisher", () => {
       assertPublicationAllowed: () => {
         gateChecks += 1;
         if (gateChecks === 3) {
-          throw new WriterMutationLifecycleError({ code: "publication_revoked", message: "writer owner started closing" });
+          throw revocation;
         }
       },
       base: baseAuthority(),
       commitPayload,
       onCandidatePrepared: undefined,
       publicationPort,
-    })).rejects.toMatchObject({ code: "publication_revoked" });
+    })).rejects.toBe(revocation);
     expect(gateChecks).toBe(3);
   });
 });

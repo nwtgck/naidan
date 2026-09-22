@@ -677,7 +677,7 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
       if (entry === undefined) throw new ReadOnlyNamespaceError({ code: "not_found", message: "path component does not exist" });
       switch (entry.targetType) {
       case "subvolume":
-        throw new ReadOnlyNamespaceError({ code: "subvolume_boundary", message: "nested Subvolume traversal belongs to the Subvolume slice" });
+        throw new ReadOnlyNamespaceError({ code: "subvolume_boundary", message: "ordinary Inode Table traversal cannot cross a nested Subvolume boundary" });
       case "inode": {
         const inode = await getInodeUnderNamespaceGraphProof({ inodeNumber: entry.inodeNumber });
         if (inode.inodeKind !== entry.inodeKind) {
@@ -718,7 +718,7 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
       case "subvolume":
         throw new ReadOnlyNamespaceError({
           code: "subvolume_boundary",
-          message: "nested Subvolume traversal belongs to the Subvolume slice",
+          message: "ordinary Inode Table traversal cannot cross a nested Subvolume boundary",
         });
       case "inode": {
         const inode = await getInodeUnderNamespaceGraphProof({ inodeNumber: entry.inodeNumber });

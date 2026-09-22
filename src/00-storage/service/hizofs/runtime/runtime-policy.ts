@@ -6,16 +6,10 @@ export type HizoFSPublicationModeApplied =
   | "immediate_publication"
   | "lazy_publication";
 
-export type HizoFSWritableDurabilityProfile =
-  | "development-unverified"
-  | "release-qualified";
-
-
 export type HizoFSLazyDurabilityPolicy = Readonly<{
   maximumAcceptedMutationsPerDirtyEpoch: number;
   maximumDirtyAgeMilliseconds: number;
   maximumDirtyMetadataBytes: number;
-  maximumMutationAdmissionWaiters: number;
   maximumSyncWaiters: number;
   maximumUnpublishedPhysicalBytes: number;
   publicationModeRequest: HizoFSPublicationModeRequest;
@@ -23,7 +17,6 @@ export type HizoFSLazyDurabilityPolicy = Readonly<{
 
 export type HizoFSRuntimePolicy = Readonly<{
   lazyDurability: HizoFSLazyDurabilityPolicy;
-  maxDirectoryIteratorEntries: number;
   maxHeldLockNames: number;
   maxMaintenanceRootRegistrations: number;
   maxReaderPins: number;
@@ -34,7 +27,6 @@ export const DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY: HizoFSLazyDurabilityPolicy =
   maximumAcceptedMutationsPerDirtyEpoch: 512,
   maximumDirtyAgeMilliseconds: 2_000,
   maximumDirtyMetadataBytes: 32 * 1_024 * 1_024,
-  maximumMutationAdmissionWaiters: 128,
   maximumSyncWaiters: 128,
   maximumUnpublishedPhysicalBytes: 64 * 1_024 * 1_024,
   publicationModeRequest: "automatic",
@@ -94,17 +86,15 @@ export function resolvePublicationModeApplied({
 /**
  * Runtime tuning is deliberately explicit and never persisted. Validating all
  * bounds at composition time prevents a typo from silently disabling memory
- * limits in a later iterator, pin, Segment, lock, or lazy-publication path.
+ * limits in a later pin, Segment, lock, or lazy-publication path.
  */
 export function createRuntimePolicy({
   lazyDurability,
-  maxDirectoryIteratorEntries,
   maxHeldLockNames,
   maxMaintenanceRootRegistrations,
   maxReaderPins,
   maxSegmentReferences,
 }: HizoFSRuntimePolicy): HizoFSRuntimePolicy {
-  validateLimit({ name: "maxDirectoryIteratorEntries", value: maxDirectoryIteratorEntries });
   validateLimit({ name: "maxHeldLockNames", value: maxHeldLockNames });
   validateLimit({ name: "maxMaintenanceRootRegistrations", value: maxMaintenanceRootRegistrations });
   validateLimit({ name: "maxReaderPins", value: maxReaderPins });
@@ -122,10 +112,6 @@ export function createRuntimePolicy({
     value: lazyDurability.maximumDirtyMetadataBytes,
   });
   validateLimit({
-    name: "lazyDurability.maximumMutationAdmissionWaiters",
-    value: lazyDurability.maximumMutationAdmissionWaiters,
-  });
-  validateLimit({
     name: "lazyDurability.maximumSyncWaiters",
     value: lazyDurability.maximumSyncWaiters,
   });
@@ -136,7 +122,6 @@ export function createRuntimePolicy({
   validatePublicationModeRequest({ value: lazyDurability.publicationModeRequest });
   return Object.freeze({
     lazyDurability: Object.freeze({ ...lazyDurability }),
-    maxDirectoryIteratorEntries,
     maxHeldLockNames,
     maxMaintenanceRootRegistrations,
     maxReaderPins,

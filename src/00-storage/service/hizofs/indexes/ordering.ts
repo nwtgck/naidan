@@ -28,23 +28,6 @@ export type GetImmutableBTreeEntryKey<TKey, TEntry> = ({ entry }: Readonly<{
   entry: TEntry;
 }>) => TKey;
 
-export function lowerBoundIndex<TKey>({ compareKeys, keys, target }: {
-  compareKeys: CompareImmutableBTreeKeys<TKey>;
-  keys: readonly TKey[];
-  target: TKey;
-}): number {
-  let lower = 0;
-  let upper = keys.length;
-  while (lower < upper) {
-    const middle = lower + Math.floor((upper - lower) / 2);
-    const key = keys[middle];
-    if (key === undefined) throw new Error("B-tree binary-search index invariant failed");
-    if (compareKeys({ left: key, right: target }) < 0) lower = middle + 1;
-    else upper = middle;
-  }
-  return lower;
-}
-
 export function findBranchChildIndex<TKey, TReference>({ children, compareKeys, key }: {
   children: readonly ImmutableBTreeBranchChild<TKey, TReference>[];
   compareKeys: CompareImmutableBTreeKeys<TKey>;

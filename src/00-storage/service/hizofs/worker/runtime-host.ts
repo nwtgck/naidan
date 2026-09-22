@@ -1,5 +1,4 @@
 import {
-  createHizoFSReadApi,
   createHizoFSStorageFileSystemSession,
   createRuntimeBoundHizoFSApplicationSessionPort,
   type HizoFSApplicationMutationPort,
@@ -9,8 +8,6 @@ import {
   type HizoFSApplicationSessionNamespace,
   type HizoFSApplicationSessionPort,
   type HizoFSApplicationStableReadNamespaceCapture,
-  type HizoFSReadApi,
-  type HizoFSReadApiNamespace,
   type HizoFSWorkerMountGrantIssuer,
 } from "@/00-storage/service/hizofs/api";
 import type { StorageFileSystemSession } from "@/00-storage/service/storage-file-system/types";
@@ -612,52 +609,6 @@ export class HizoFSWorkerRuntimeHost {
       return await closeRuntimeSessionAfterFailure({
         cause,
         message: "application session construction and runtime session cleanup both failed",
-        session,
-      });
-    }
-  }
-
-  async openReadApi<Captured, Verified>({
-    captureAuthority,
-    createReadSessionResources,
-    recheckAuthority,
-    verifyCapturedAuthority,
-  }: {
-    captureAuthority: () => Promise<Captured>;
-    createReadSessionResources: ({ captured, verified }: {
-      captured: Captured;
-      verified: Verified;
-    }) => Readonly<{
-      namespace: HizoFSReadApiNamespace;
-      releaseResources: () => Promise<void>;
-    }>;
-    recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
-    verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
-  }): Promise<HizoFSReadApi> {
-    let namespace: HizoFSReadApiNamespace | undefined;
-    const session = await this.runtime.openSessionWithAuthorityHandshake({
-      captureAuthority,
-      createSessionResources: ({ captured, verified }) => {
-        const resources = createReadSessionResources({ captured, verified });
-        namespace = resources.namespace;
-        return { releaseResources: resources.releaseResources };
-      },
-      recheckAuthority,
-      verifyCapturedAuthority,
-    });
-    if (namespace === undefined) {
-      return await closeRuntimeSessionAfterFailure({
-        cause: new Error("runtime session opened without its read namespace"),
-        message: "read session resource rejection and runtime session cleanup both failed",
-        session,
-      });
-    }
-    try {
-      return createHizoFSReadApi({ namespace, session });
-    } catch (cause: unknown) {
-      return await closeRuntimeSessionAfterFailure({
-        cause,
-        message: "read API construction and runtime session cleanup both failed",
         session,
       });
     }

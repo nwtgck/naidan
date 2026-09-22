@@ -1,4 +1,4 @@
-// TODO(hizofs-v1:I0005): Retain HIZOFS_TRIAL_DEBUG_001 until the user explicitly
+// TODO: Retain HIZOFS_TRIAL_DEBUG_001 until the user explicitly
 // declares HizoFS complete or requests its removal.
 export const HIZOFS_TRIAL_DEBUG_MARKER = 'HIZOFS_TRIAL_DEBUG_001';
 

@@ -26,7 +26,6 @@ type RuntimeOptions = Parameters<typeof TEST_ONLY.createDevelopmentOpfsPersisten
 
 const runtimePolicy: RuntimeOptions['runtimePolicy'] = {
   lazyDurability: NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY,
-  maxDirectoryIteratorEntries: 32,
   maxHeldLockNames: 64,
   maxMaintenanceRootRegistrations: 32,
   maxReaderPins: 16,

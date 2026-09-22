@@ -136,7 +136,6 @@ function runtime() {
     lockManager: lockManager(),
     runtimePolicy: {
       lazyDurability: NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY,
-      maxDirectoryIteratorEntries: 4_096,
       maxHeldLockNames: 1_024,
       maxMaintenanceRootRegistrations: 1_024,
       maxReaderPins: 256,
