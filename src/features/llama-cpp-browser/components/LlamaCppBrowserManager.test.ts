@@ -46,6 +46,36 @@ const wrappers: VueWrapper[] = [];
 function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserManager); wrappers.push(wrapper); return wrapper;
 }
+// Entry callbacks are asynchronous even though drag data must be captured during
+// dispatch. Plain files-only drop mocks miss both that gap and focus/list races.
+function deferredFileDrop({ file }: { file: File }) {
+  const read = Promise.withResolvers<File>();
+  const entry = {
+    isFile: true, isDirectory: false, name: file.name,
+    file: (resolve: FileCallback, reject: ErrorCallback) => {
+      void read.promise.then(resolve, reject);
+    },
+  };
+  let readable = true;
+  const transfer = {
+    types: ['Files'],
+    get items() {
+      return readable ? [{ kind: 'file', webkitGetAsEntry: () => entry }] : [];
+    },
+    get files() {
+      return readable ? [file] : [];
+    },
+  } as unknown as DataTransfer;
+  return { transfer, read, protect: () => {
+    readable = false;
+  } };
+}
+function dispatchDrop({ wrapper, transfer }: { wrapper: VueWrapper, transfer: DataTransfer }): Event {
+  const event = new Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', { value: transfer });
+  wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').element.dispatchEvent(event);
+  return event;
+}
 beforeEach(async () => {
   vi.clearAllMocks(); notifications.capabilities.clear(); notifications.state.clear(); notifications.models.clear();
   vi.mocked(llamaCppBrowserService.getProfileState).mockReturnValue({ status: 'idle' });
@@ -219,6 +249,181 @@ describe('local GGUF manager', () => {
     expect(vi.mocked(llamaCppBrowserService.importModel).mock.calls[0]?.[0].file).toBe(file);
     expect(input.element.value).toBe('');
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
+  });
+  it('accepts a drop while returning window focus is still refreshing the model list', async () => {
+    const wrapper = render(); await flushPromises();
+    const listing = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(listing.promise).mockResolvedValue([storedModel]);
+    window.dispatchEvent(new Event('focus')); await flushPromises();
+    expect(wrapper.find('[data-testid="llama-cpp-browser-list-loading"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(false);
+    const transfer = { files: [new File(['fixture'], 'local.gguf')], types: ['Files'], dropEffect: 'none' };
+    const zone = wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]');
+    await zone.trigger('dragenter', { dataTransfer: transfer });
+    await zone.trigger('dragover', { dataTransfer: transfer });
+    expect(transfer.dropEffect).toBe('copy');
+    await zone.trigger('drop', { dataTransfer: transfer }); await flushPromises();
+    // Do not wait for listing before accepting or reading the user's drop.
+    expect(llamaCppBrowserService.importModel).toHaveBeenCalledOnce();
+    expect(vi.mocked(llamaCppBrowserService.importModel).mock.calls[0]?.[0].file).toBe(transfer.files[0]);
+    listing.resolve([]); await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(3);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
+    expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(false);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+  it('accepts a drop before the initial local listing has finished', async () => {
+    const listing = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(listing.promise).mockResolvedValue([storedModel]);
+    const wrapper = render(); await flushPromises();
+    await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', {
+      dataTransfer: { files: [new File(['fixture'], 'local.gguf')], types: ['Files'] },
+    });
+    await flushPromises();
+    expect(llamaCppBrowserService.importModel).toHaveBeenCalledOnce();
+    listing.resolve([]); await flushPromises();
+    expect(wrapper.emitted('modelsChanged')).toEqual([[ [storedModel] ]]);
+  });
+  it.each(['file', 'directory'] as const)('keeps a %s picker result when focus refresh overlaps change', async source => {
+    const wrapper = render(); await flushPromises();
+    const listing = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(listing.promise).mockResolvedValue([storedModel]);
+    window.dispatchEvent(new Event('focus')); await flushPromises();
+    const file = new File(['fixture'], 'weights.gguf');
+    if (source === 'directory') Object.defineProperty(file, 'webkitRelativePath', { value: 'original-GGUF/nested/weights.gguf' });
+    const input = wrapper.get<HTMLInputElement>(`[data-testid="llama-cpp-browser-${source}"]`);
+    Object.defineProperty(input.element, 'files', { value: [file] });
+    expect(input.element.matches(':disabled')).toBe(false);
+    await input.trigger('change'); await flushPromises();
+    if (source === 'directory') {
+      expect(llamaCppBrowserService.importDirectory).toHaveBeenCalledWith({ directory: { name: 'original-GGUF', files: [{ path: 'nested/weights.gguf', file }] }, signal: expect.any(AbortSignal) });
+      expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+    } else {
+      expect(llamaCppBrowserService.importModel).toHaveBeenCalledWith({ file, signal: expect.any(AbortSignal) });
+      expect(llamaCppBrowserService.importDirectory).not.toHaveBeenCalled();
+    }
+    expect(input.element.value).toBe('');
+    listing.resolve([]); await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+  it('captures drag entries during dispatch and retains them across a later focus refresh', async () => {
+    const wrapper = render(); await flushPromises();
+    const file = new File(['fixture'], 'local.gguf');
+    const drop = deferredFileDrop({ file });
+    const event = dispatchDrop({ wrapper, transfer: drop.transfer });
+    // A real DataTransfer stops exposing entries/files when dispatch ends.
+    drop.protect();
+    expect(event.defaultPrevented).toBe(true);
+    const listing = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(listing.promise).mockResolvedValue([storedModel]);
+    window.dispatchEvent(new Event('focus')); await flushPromises();
+    drop.read.resolve(file); await flushPromises();
+    expect(llamaCppBrowserService.importModel).toHaveBeenCalledWith({ file, signal: expect.any(AbortSignal) });
+    listing.resolve([]); await flushPromises();
+    expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
+  });
+  it('retains a dropped directory and its relative paths across focus refresh during traversal', async () => {
+    const wrapper = render(); await flushPromises();
+    const file = new File(['fixture'], 'weights.gguf');
+    const read = Promise.withResolvers<File>();
+    const child = {
+      isFile: true, isDirectory: false, name: file.name,
+      file: (resolve: FileCallback, reject: ErrorCallback) => {
+        void read.promise.then(resolve, reject);
+      },
+    };
+    function directoryEntry({ name, entries }: { name: string, entries: unknown[] }) {
+      return { isDirectory: true, isFile: false, name, createReader: () => {
+        let delivered = false;
+        return { readEntries: (resolve: (entries: unknown[]) => void) => {
+          const batch = delivered ? [] : entries; delivered = true;
+          queueMicrotask(() => resolve(batch));
+        } };
+      } };
+    }
+    const folder = directoryEntry({ name: 'original-GGUF', entries: [directoryEntry({ name: 'nested', entries: [child] })] });
+    const items = [{ kind: 'file', webkitGetAsEntry: () => folder }];
+    dispatchDrop({ wrapper, transfer: { items, files: [], types: ['Files'] } as unknown as DataTransfer });
+    items.splice(0); await flushPromises();
+    const listing = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(listing.promise).mockResolvedValue([storedModel]);
+    window.dispatchEvent(new Event('focus')); await flushPromises();
+    read.resolve(file); await flushPromises();
+    expect(llamaCppBrowserService.importDirectory).toHaveBeenCalledWith({ directory: { name: 'original-GGUF', files: [{ path: 'nested/weights.gguf', file }] }, signal: expect.any(AbortSignal) });
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+    listing.resolve([]); await flushPromises();
+    expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(false);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+  it('reserves the import before asynchronous drop enumeration and rejects a second drop', async () => {
+    const wrapper = render(); await flushPromises();
+    const file = new File(['first'], 'first.gguf');
+    const drop = deferredFileDrop({ file });
+    dispatchDrop({ wrapper, transfer: drop.transfer }); drop.protect(); await flushPromises();
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(true);
+    expect(wrapper.findComponent({ name: 'LlamaCppBrowserHuggingFaceManager' }).props('disabled')).toBe(true);
+    const second = new File(['second'], 'second.gguf');
+    await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', {
+      dataTransfer: { files: [second], types: ['Files'] },
+    });
+    await flushPromises();
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+    drop.read.resolve(file); await flushPromises();
+    expect(vi.mocked(llamaCppBrowserService.importModel).mock.calls.map(([input]) => input.file)).toEqual([file]);
+    // The lane is released once this import (and its list refresh) has completed.
+    await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', {
+      dataTransfer: { files: [second], types: ['Files'] },
+    });
+    await flushPromises();
+    expect(vi.mocked(llamaCppBrowserService.importModel).mock.calls.map(([input]) => input.file)).toEqual([file, second]);
+  });
+  it.each(['cancel', 'unmount'] as const)('does not import a late entry after %s during drop enumeration', async action => {
+    const wrapper = render(); await flushPromises();
+    const file = new File(['fixture'], 'late.gguf');
+    const drop = deferredFileDrop({ file });
+    dispatchDrop({ wrapper, transfer: drop.transfer }); drop.protect(); await flushPromises();
+    if (action === 'cancel') await wrapper.get('[data-testid="llama-cpp-browser-cancel"]').trigger('click');
+    else {
+      wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1);
+    }
+    drop.read.resolve(file); await flushPromises();
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+    expect(llamaCppBrowserService.importDirectory).not.toHaveBeenCalled();
+    if (action === 'cancel') {
+      expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(false);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(false);
+    } else expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+  });
+  it('reports entry read failures without raw paths and releases the import controls for retry', async () => {
+    const wrapper = render(); await flushPromises();
+    const file = new File(['fixture'], 'local.gguf');
+    const drop = deferredFileDrop({ file });
+    dispatchDrop({ wrapper, transfer: drop.transfer }); drop.protect(); await flushPromises();
+    drop.read.reject(new DOMException('/private/path/local.gguf', 'NotReadableError')); await flushPromises();
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alert"]').text()).not.toContain('/private/path');
+    expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(false);
+    await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', {
+      dataTransfer: { files: [file], types: ['Files'] },
+    });
+    await flushPromises();
+    expect(llamaCppBrowserService.importModel).toHaveBeenCalledOnce();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+  it('still refuses a local drop while the runtime is working', async () => {
+    vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'working', progress: { phase: 'generating', completed: 1, total: 0 } });
+    const wrapper = render(); await flushPromises();
+    const file = new File(['fixture'], 'local.gguf');
+    const drop = deferredFileDrop({ file });
+    dispatchDrop({ wrapper, transfer: drop.transfer }); drop.protect();
+    drop.read.resolve(file); await flushPromises();
+    expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(true);
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+    expect(llamaCppBrowserService.importDirectory).not.toHaveBeenCalled();
   });
   it('imports dropped files sequentially and refreshes the list', async () => {
     const wrapper = render(); await flushPromises();

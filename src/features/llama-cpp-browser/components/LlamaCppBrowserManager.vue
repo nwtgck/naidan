@@ -152,26 +152,39 @@ async function selectReadyModel({ model }: { model: LocalModel }): Promise<void>
   const available = models.value.find(entry => entry.id === model.id);
   if (available) emit('modelSelected', available.name);
 }
-async function importFiles({ files, directories }: { files: File[], directories: ModelDirectoryInput[] }): Promise<void> {
-  if (disposed || unavailable.value || busy.value || refreshing.value || (files.length === 0 && directories.length === 0)) return;
+type ImportInput = { files: File[], directories: ModelDirectoryInput[] };
+async function importFiles({ collect }: { collect: () => ImportInput | Promise<ImportInput> }): Promise<void> {
+  // Returning focus from a native drag or file picker starts a read-only list
+  // refresh. That refresh must not disable imports or silently discard the input.
+  if (disposed || unavailable.value || busy.value) return;
   localError.value = undefined;
-  if (files.some(file => !file.name.toLowerCase().endsWith('.gguf'))) {
-    localError.value = 'invalid-gguf'; return;
-  }
+  // Reserve the operation before asynchronous entry traversal, not just before
+  // writing files. Cancellation/unmount must prevent late writes, and a second
+  // drop, download, or deletion must not take over while an entry callback is pending.
   const controller = new AbortController(); active.value = controller;
+  let needsRefresh = false;
   try {
+    // Invoke collect during dispatch, before the first await: DataTransfer entries
+    // must be captured while the browser still exposes the drop's data store.
+    const { files, directories } = await collect();
+    if (disposed || controller.signal.aborted) return;
+    if (files.some(file => !file.name.toLowerCase().endsWith('.gguf'))) {
+      localError.value = 'invalid-gguf'; return;
+    }
     for (const directory of directories) {
       if (controller.signal.aborted) break;
+      needsRefresh = true;
       await llamaCppBrowserService.importDirectory({ directory, signal: controller.signal });
     }
     for (const file of files) {
       if (controller.signal.aborted) break;
+      needsRefresh = true;
       await llamaCppBrowserService.importModel({ file, signal: controller.signal });
     }
   } catch (error) {
-    if (!controller.signal.aborted) localError.value = errorCode({ error });
+    if (!disposed && !controller.signal.aborted) localError.value = errorCode({ error });
   } finally {
-    if (!disposed) await refresh();
+    if (!disposed && needsRefresh) await refresh();
     active.value = undefined;
   }
 }
@@ -179,34 +192,28 @@ async function importFile({ event }: { event: Event }): Promise<void> {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
   const files = Array.from(input.files ?? []); input.value = '';
-  await importFiles({ files, directories: [] });
+  if (!files.length) return;
+  await importFiles({ collect: () => ({ files, directories: [] }) });
 }
 async function importDirectory({ event }: { event: Event }): Promise<void> {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
   const files = Array.from(input.files ?? []); input.value = '';
   if (!files.length) return;
-  try {
-    await importFiles({ files: [], directories: [directoryFromFiles({ files })] });
-  } catch (error) {
-    localError.value = errorCode({ error });
-  }
+  await importFiles({ collect: () => ({ files: [], directories: [directoryFromFiles({ files })] }) });
 }
 function dragEnter({ event }: { event: DragEvent }): void {
-  if (unavailable.value || busy.value || refreshing.value || !event.dataTransfer?.types.includes('Files')) return;
+  if (unavailable.value || busy.value || !event.dataTransfer?.types.includes('Files')) return;
   dragDepth.value++;
 }
 function dragOver({ event }: { event: DragEvent }): void {
-  if (event.dataTransfer) event.dataTransfer.dropEffect = unavailable.value || busy.value || refreshing.value ? 'none' : 'copy';
+  if (event.dataTransfer) event.dataTransfer.dropEffect = unavailable.value || busy.value ? 'none' : 'copy';
 }
 async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
   dragDepth.value = 0;
-  if (!event.dataTransfer || disposed || unavailable.value || busy.value || refreshing.value) return;
-  try {
-    await importFiles(await droppedModels({ transfer: event.dataTransfer }));
-  } catch (error) {
-    localError.value = errorCode({ error });
-  }
+  const transfer = event.dataTransfer;
+  if (!transfer) return;
+  await importFiles({ collect: () => droppedModels({ transfer }) });
 }
 async function remove({ id }: { id: string }): Promise<void> {
   if (disposed || unavailable.value || active.value || downloading.value || queuedDownloadBusy.value || refreshing.value) return;
@@ -267,7 +274,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p>{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     </div>
     <LlamaCppBrowserHuggingFaceManager :model-preset="props.modelPreset" :disabled="unavailable || active !== undefined || refreshing" @busy="downloading = $event" @changed="refresh" @model-ready="selectReadyModel({ model: $event })" @selection-changed="modelSelectionVersion++" />
-    <fieldset :disabled="unavailable || busy || refreshing" tw-class="space-y-3 disabled:opacity-50">
+    <fieldset :disabled="unavailable || busy" tw-class="space-y-3 disabled:opacity-50">
       <legend tw-class="w-full flex items-center gap-2 pb-2 mb-3 border-b border-gray-100 dark:border-gray-800">
         <FileUpIcon tw-class="w-5 h-5 text-purple-500" />
         <span tw-class="text-sm font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.llamaCppBrowser__gguf_model_files() }}</span>
