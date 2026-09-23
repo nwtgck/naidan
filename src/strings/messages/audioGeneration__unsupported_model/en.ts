@@ -1,0 +1,1 @@
+export const audioGeneration__unsupported_model = (): string => "This model pair does not expose a supported audio-generation pipeline. Choose matching Qwen3-TTS Base or Pocket files, not a chat model or vision projector.";

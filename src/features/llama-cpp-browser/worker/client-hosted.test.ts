@@ -1,9 +1,12 @@
+import { audioResult } from '@/features/audio-generation/test-utils/wav';
+import { defaultAudioParameters, type AudioGenerationInput } from '@/features/audio-generation/types';
+import type { Progress } from '@/features/llama-cpp-browser/types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
-const transport = vi.hoisted(() => ({ remote: { probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
+const transport = vi.hoisted(() => ({ remote: { generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
   releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
 class TestWorker extends EventTarget {
@@ -18,7 +21,7 @@ beforeEach(() => {
   vi.stubGlobal('Worker', TestWorker);
   transport.remote.listModels.mockResolvedValue([]);
   transport.remote.cancelGeneration.mockResolvedValue(undefined);
-  transport.remote.generate.mockReset();
+  transport.remote.generate.mockReset(); transport.remote.generateAudio.mockReset(); transport.remote.generateAudio.mockResolvedValue(audioResult());
   transport.remote.importModel.mockReset(); transport.remote.importDirectory.mockReset();
 });
 afterEach(() => {
@@ -309,5 +312,44 @@ describe('single-file import cancellation', () => {
     controller.abort();
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private path', cancelable: true }));
     await rejected; expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce(); expect(client.canReuse()).toBe(false);
+  });
+});
+
+function audioInput(): AudioGenerationInput {
+  return { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', options: { profile: 'cpu-wasm32' }, debug: 'off' };
+}
+describe('hosted audio transport', () => {
+  it('validates and returns WAV output through the dedicated method', async () => {
+    const client = createLlamaCppWorkerClient();
+    expect(await client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: undefined })).toEqual(audioResult());
+    expect(transport.remote.generate).not.toHaveBeenCalled(); expect(transport.remote.generateAudio.mock.calls[0]?.[0]).toMatchObject({ generationId: 1, model: 'user/voice' }); client.dispose();
+  });
+  it('rejects unresolved automatic profiles before the audio RPC', async () => {
+    const client = createLlamaCppWorkerClient();
+    await expect(client.generateAudio({ request: { ...audioInput(), options: { profile: 'auto' } }, onProgress: () => {}, signal: undefined })).rejects.toThrow();
+    expect(transport.remote.generateAudio).not.toHaveBeenCalled(); client.dispose();
+  });
+  it('rejects malformed results', async () => {
+    transport.remote.generateAudio.mockResolvedValueOnce({ ...audioResult(), wav: new Uint8Array(1) }); const client = createLlamaCppWorkerClient();
+    await expect(client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: undefined })).rejects.toThrow(); client.dispose();
+  });
+  it('waits for cooperative cleanup and suppresses cancelled or stale audio progress', async () => {
+    const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
+    const client = createLlamaCppWorkerClient(); const controller = new AbortController(); const progress = vi.fn();
+    const pending = client.generateAudio({ request: audioInput(), onProgress: progress, signal: controller.signal });
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    const onProgress = transport.remote.generateAudio.mock.calls[0]?.[1] as (progress: Progress) => void;
+    controller.abort(); expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: 1 });
+    onProgress({ phase: 'generating', completed: 1, total: 2 }); expect(progress).not.toHaveBeenCalled();
+    gate.resolve(audioResult()); await rejected; expect(client.canReuse()).toBe(true);
+    await client.generateAudio({ request: audioInput(), onProgress: progress, signal: undefined });
+    onProgress({ phase: 'generating', completed: 2, total: 2 }); expect(progress).not.toHaveBeenCalled(); client.dispose();
+  });
+  it('terminates hung native audio after the existing cancellation grace period', async () => {
+    vi.useFakeTimers(); transport.remote.generateAudio.mockReturnValueOnce(new Promise(() => {}));
+    const client = createLlamaCppWorkerClient(); const controller = new AbortController();
+    const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: controller.signal }); const rejected = expect(pending).rejects.toThrow('aborted');
+    controller.abort(); await vi.advanceTimersByTimeAsync(4999); expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); await rejected; expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
   });
 });

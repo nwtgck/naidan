@@ -1,9 +1,10 @@
+import { audioGenerationResultSchema } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { workerProxy, type WorkerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
-import { workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
+import { workerAudioCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
 // Both transports share cancellation, validation and callback lifetime rules.
 export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTransport, getAssetBaseURL }: {
@@ -179,6 +180,30 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
         }, abortTimeoutMs: 5000 });
         return generationResultSchema.parse(result);
+      } finally {
+        acceptingEvents = false;
+      }
+    },
+    generateAudio: async ({ request, onProgress, signal }) => {
+      const accepted = workerAudioCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      let acceptingEvents = true;
+      try {
+        const result = await invoke({ call: () => remote.generateAudio(accepted,
+          workerProxy({ value: ({ ...event }) => {
+            if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+          } }),
+          workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
+            if (!acceptingEvents || disposed || signal?.aborted) return;
+            debugEnabled = accepted.debug === 'on';
+            const checkpoint = diagnosticSchema.parse(diagnostic);
+            if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+            if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
+            if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
+            if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+          } })), signal, onAbort: () => {
+          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+        }, abortTimeoutMs: 5000 });
+        return audioGenerationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
       }

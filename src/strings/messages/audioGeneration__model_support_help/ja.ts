@@ -1,0 +1,1 @@
+export const audioGeneration__model_support_help = (): string => "対象はQwen3-TTS BaseとPocket TTSのネイティブ生成経路です。この画面はCustomVoiceとVoiceDesignには対応していません。対応可否はファイル名から推測せず、読み込み後に確認します。実行プロファイルの設定はブラウザ内のチャット推論と共通です。";

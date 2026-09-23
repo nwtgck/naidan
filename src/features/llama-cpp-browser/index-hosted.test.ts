@@ -1,9 +1,11 @@
+import { defaultAudioParameters } from '@/features/audio-generation/types';
+import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import { listStoredModels, removeStoredModel } from './runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { LlamaCppBrowserService } from './service-contract';
-const worker = vi.hoisted(() => ({ subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
+const worker = vi.hoisted(() => ({ generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => worker));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
@@ -15,7 +17,7 @@ beforeEach(async () => {
     { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
   ] });
   worker.canReuse.mockReturnValue(true); vi.mocked(listStoredModels).mockResolvedValue([]); vi.mocked(removeStoredModel).mockResolvedValue('deleted');
-  worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+  worker.generateAudio.mockResolvedValue(audioResult()); worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   service = (await import('./index-hosted')).llamaCppBrowserService;
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
@@ -238,5 +240,40 @@ describe('tool work holds the generation lane', () => {
     expect(worker.generate).toHaveBeenCalledOnce();
     releaseTool(); await rejected; await second;
     expect(worker.generate).toHaveBeenCalledTimes(2);
+  });
+});
+
+function audioInput(): Parameters<LlamaCppBrowserService['generateAudio']>[0]['input'] {
+  return { ...defaultAudioParameters(), model: 'user/voice', text: 'Original audio text', debug: 'off' };
+}
+describe('audio sharing the serialized inference lane', () => {
+  it('resolves runtime on the same Worker and uses the audio API, not chat generation', async () => {
+    expect(await service.generateAudio({ input: audioInput(), signal: undefined })).toEqual(audioResult());
+    expect(worker.generate).not.toHaveBeenCalled(); expect(worker.generateAudio).toHaveBeenCalledOnce();
+    expect(worker.generateAudio.mock.calls[0]?.[0].request.options).toEqual({ profile: 'cpu-wasm32' });
+  });
+  it('snapshots audio settings before queueing behind a chat and never overlaps their model lifetimes', async () => {
+    const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
+    const chat = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
+    service.setOptions({ options: { profile: 'cpu-wasm32' } }); const pendingInput = audioInput();
+    const audio = service.generateAudio({ input: pendingInput, signal: undefined });
+    pendingInput.text = 'mutated'; pendingInput.contextTokens = 8192; service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    expect(worker.generateAudio).not.toHaveBeenCalled();
+    gate.resolve({ content: 'chat', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await chat; await audio;
+    expect(worker.generateAudio.mock.calls[0]?.[0].request).toMatchObject({ text: 'Original audio text', contextTokens: 4096, options: { profile: 'cpu-wasm32' } });
+  });
+  it('cancels queued audio without cancelling the active chat', async () => {
+    const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
+    const chat = service.generate({ input: input(), onEvent: () => {}, signal: undefined }); await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
+    const controller = new AbortController(); const audio = service.generateAudio({ input: audioInput(), signal: controller.signal });
+    const rejected = expect(audio).rejects.toThrow('aborted'); controller.abort();
+    expect(worker.generate.mock.calls[0]?.[0].signal?.aborted).not.toBe(true); expect(worker.dispose).not.toHaveBeenCalled();
+    gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await chat; await rejected;
+    expect(worker.generateAudio).not.toHaveBeenCalled();
+  });
+  it('fails invalid input before entering the Worker lane', async () => {
+    expect(() => service.generateAudio({ input: { ...audioInput(), text: ' ' }, signal: undefined })).toThrow();
+    expect(factory).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,1 @@
+export const audioGeneration__processor_help = (): string => "This controls the audio companion only; the backbone uses the shared runtime profile. CPU execution may be slow. GPU execution and trained-model audio output are not yet verified in this snapshot.";

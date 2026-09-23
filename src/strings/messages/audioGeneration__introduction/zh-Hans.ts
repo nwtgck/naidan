@@ -1,0 +1,1 @@
+export const audioGeneration__introduction = (): string => "Experimental local text-to-speech, separate from chat. Text and reference audio are processed in this browser, not sent to an inference server. Model and runtime downloads still require a connection.";

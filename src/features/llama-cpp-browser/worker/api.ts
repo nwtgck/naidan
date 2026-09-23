@@ -1,3 +1,6 @@
+import { audioGenerationResultSchema } from '@/features/audio-generation/types';
+import { generateAudio } from './audio-generation';
+import { workerTransfer } from '@/utils/worker-transport';
 import { probeRuntimeProfiles } from '@/features/llama-cpp-browser/runtime/detect-profile';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
@@ -10,7 +13,7 @@ import { errorCode, modelDirectoryInputSchema, generationResultSchema, generatio
 import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreLock } from "@/features/llama-cpp-browser/runtime/model-store";
 import { invalidateStoredModel, releaseSession } from "./session";
 import { generate } from "./generation";
-import { workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
+import { workerAudioCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
 
 async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   try {
@@ -73,6 +76,36 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     }
   }
   return {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with top-level proxy callbacks.
+    async generateAudio(request, onProgress, onDiagnostic) {
+      const { generationId, ...accepted } = workerAudioCallSchema.parse(request);
+      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      const controller = new AbortController(); active = { generationId, controller };
+      const events = eventQueue();
+      const unsubscribe = subscribeDiagnostics({ debug: accepted.debug, listener: ({ diagnostic }) => {
+        if (!controller.signal.aborted) return Promise.resolve(onDiagnostic({ diagnostic }));
+        return undefined;
+      } });
+      try {
+        const result = audioGenerationResultSchema.parse(await guarded({ operation: () => generateAudio({
+          request: accepted, signal: controller.signal, onProgress: ({ progress }) => {
+            events.send({ operation: () => {
+              if (!controller.signal.aborted) return onProgress(progress);
+            } });
+          },
+        }) }));
+        // Native memory was already copied and released. Transfer the owned bytes,
+        // rather than cloning a second full waveform across the worker boundary.
+        return workerTransfer({ value: result, transferables: [result.wav.buffer as ArrayBuffer] });
+      } finally {
+        unsubscribe();
+        try {
+          await events.finish();
+        } finally {
+          active = undefined;
+        }
+      }
+    },
     verifyStorage,
     async probeProfiles() {
       if (active) throw new LlamaCppBrowserError({ code: 'busy' });

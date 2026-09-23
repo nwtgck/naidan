@@ -1,0 +1,1 @@
+export const audioGeneration__limit_reached = (): string => "Stopped at the configured step or context limit. This audio may end before the text is complete. Increase the limit or shorten the text before trying again.";

@@ -19,7 +19,7 @@ import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.v
 
 import { resolveProfilePreference, type ProfileCapabilities, type ProfileState, type ProfileUnavailableReason } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
-const props = defineProps<{ modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel }>();
+const props = defineProps<{ suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel }>();
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [name: string], runtimeReady: [ready: boolean] }>();
 const id = useId();
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
@@ -308,7 +308,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <!-- Privacy: bundled suggestions render without external I/O. Only explicit
          inspect/download actions (or a model-preset URL) authorize Hugging Face. -->
-    <LlamaCppBrowserModelSuggestions :models="models" :disabled="unavailable || active !== undefined || refreshing" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" @select-default="defaultSelection = $event" />
+    <LlamaCppBrowserModelSuggestions v-if="props.suggestions !== 'none'" :models="models" :disabled="unavailable || active !== undefined || refreshing" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" @select-default="defaultSelection = $event" />
     <section tw-class="space-y-4">
       <div tw-class="flex items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
         <h3 tw-class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white"><HardDriveIcon tw-class="w-4 h-4 text-purple-500" />{{ lazyStrings.llamaCppBrowser__imported_models() }}<span tw-class="text-xs text-gray-400 tabular-nums">{{ nameFilter.trim() ? `${filteredModels.length} / ${models.length}` : models.length }}</span></h3>
