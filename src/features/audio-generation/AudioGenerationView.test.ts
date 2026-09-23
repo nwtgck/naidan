@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, nextTick } from 'vue';
+import { defineComponent, nextTick, ref } from 'vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { setLocale } from '@/strings';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -9,13 +10,14 @@ import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { audioResult } from './test-utils/wav';
 import AudioGenerationView from './AudioGenerationView.vue';
 import type { inspectStoredAudioModel } from './model-detection';
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ availableModels: ref([]), isFetchingModels: ref(false), fetchModels: vi.fn() }) }));
 const detection = vi.hoisted(() => ({ inspect: vi.fn<typeof inspectStoredAudioModel>() }));
 vi.mock('./model-detection', async importOriginal => ({ ...await importOriginal<typeof import('./model-detection')>(), inspectStoredAudioModel: detection.inspect }));
 
 const service = vi.hoisted(() => ({
   getState: vi.fn<LlamaCppBrowserService['getState']>(), getOptions: vi.fn<LlamaCppBrowserService['getOptions']>(),
   subscribe: vi.fn<LlamaCppBrowserService['subscribe']>(), generateAudio: vi.fn<LlamaCppBrowserService['generateAudio']>(),
-  cancel: vi.fn(), release: vi.fn(), setOptions: vi.fn(), unsubscribe: vi.fn(),
+  restartRuntime: vi.fn<LlamaCppBrowserService['restartRuntime']>(), cancel: vi.fn(), release: vi.fn(), setOptions: vi.fn(), unsubscribe: vi.fn(),
 }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({ default: defineComponent({
@@ -26,6 +28,7 @@ let wrapper: VueWrapper | undefined;
 beforeEach(async () => {
   vi.resetAllMocks();
   service.getState.mockReturnValue({ status: 'idle' }); service.getOptions.mockReturnValue({ profile: 'cpu-wasm32' });
+  service.restartRuntime.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
   service.subscribe.mockReturnValue(service.unsubscribe); service.generateAudio.mockResolvedValue(audioResult());
   urls.create.mockReturnValue('blob:generated-audio');
   detection.inspect.mockResolvedValue({ status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
@@ -58,7 +61,7 @@ describe('independent audio generation screen', () => {
     const view = await ready();
     expect(view.findComponent({ name: 'LlamaCppBrowserManager' }).props('suggestions')).toBe('none');
     expect(service.generateAudio).not.toHaveBeenCalled(); expect(service.setOptions).not.toHaveBeenCalled();
-    expect(view.get<HTMLSelectElement>('[data-testid="audio-model"]').element.value).toBe('user/voice');
+    expect(view.findComponent(ModelSelector).props('modelValue')).toBe('user/voice');
   });
   it('starts with the interface language and displays localized/native names', async () => {
     await ensureAllStringsForTest({ locale: 'ja' });
@@ -207,10 +210,10 @@ describe('audio candidates and in-memory history in the view', () => {
     wrapper = mount(AudioGenerationView); const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
     manager.vm.$emit('modelsChanged', [{ id: 'user/chat', name: 'Chat', size: 10, importedAt: 1 }, { id: 'user/voice', name: 'Voice', size: 100, importedAt: 1 }]);
     manager.vm.$emit('runtimeReady', true); await flushPromises();
-    const select = wrapper.get<HTMLSelectElement>('[data-testid="audio-model"]');
-    expect(select.element.value).toBe('user/voice'); expect(select.findAll('option')).toHaveLength(2);
+    const select = wrapper.findComponent(ModelSelector);
+    expect(select.props('modelValue')).toBe('user/voice'); expect(select.props('models')).toEqual(['user/voice']);
     await wrapper.get('[data-testid="audio-all-models"]').setValue(true);
-    expect(select.findAll('option')).toHaveLength(3); await select.setValue('user/chat');
+    expect(select.props('models')).toEqual(['user/chat', 'user/voice']); select.vm.$emit('update:modelValue', 'user/chat'); await nextTick();
     await wrapper.get('[data-testid="audio-text"]').setValue('Unknown candidate'); await submit({ view: wrapper });
     expect(service.generateAudio.mock.calls[0]![0].input.model).toBe('user/chat');
   });
@@ -218,10 +221,10 @@ describe('audio candidates and in-memory history in the view', () => {
     detection.inspect.mockRejectedValue(new Error('storage temporarily unavailable'));
     wrapper = mount(AudioGenerationView); const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
     manager.vm.$emit('modelsChanged', [{ id: 'user/model', name: 'Model', size: 100, importedAt: 1 }]); await flushPromises();
-    expect(wrapper.get<HTMLSelectElement>('[data-testid="audio-model"]').element.value).toBe('');
+    expect(wrapper.findComponent(ModelSelector).props('modelValue')).toBeUndefined();
     await wrapper.get('[data-testid="audio-show-all"]').trigger('click');
-    await wrapper.get('[data-testid="audio-model"]').setValue('user/model');
-    expect(wrapper.get<HTMLSelectElement>('[data-testid="audio-model"]').element.value).toBe('user/model');
+    wrapper.findComponent(ModelSelector).vm.$emit('update:modelValue', 'user/model'); await nextTick();
+    expect(wrapper.findComponent(ModelSelector).props('modelValue')).toBe('user/model');
   });
   it('retains old audio during a pending generation, a failed attempt and invalid input', async () => {
     const view = await ready(); await submit({ view }); const pending = Promise.withResolvers<ReturnType<typeof audioResult>>();
@@ -272,5 +275,51 @@ describe('audio candidates and in-memory history in the view', () => {
     expect(view.get<HTMLInputElement>('[data-testid="audio-context"]').element.value).toBe('4096');
     await setLocale({ locale: 'ja' }); await flushPromises();
     expect(view.text()).not.toContain('8192は全モデル共通の上限ではありません');
+  });
+});
+
+
+describe('non-destructive runtime recovery in the audio workspace', () => {
+  it('re-enables generation after a failed runtime is checked again without losing results or input', async () => {
+    const view = await ready(); await submit({ view });
+    service.generateAudio.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'worker-failed' }));
+    await submit({ view });
+    const manager = view.findComponent({ name: 'LlamaCppBrowserManager' });
+    manager.vm.$emit('runtimeReady', false); notify({ state: { status: 'error', code: 'worker-failed' } }); await nextTick();
+    expect(view.get('[data-testid="audio-generate"]').attributes('disabled')).toBeDefined();
+    const pending = Promise.withResolvers<Awaited<ReturnType<LlamaCppBrowserService['restartRuntime']>>>();
+    service.restartRuntime.mockReturnValueOnce(pending.promise);
+    await view.get('[data-testid="audio-restart-runtime"]').trigger('click');
+    expect(view.get('[data-testid="audio-restart-runtime"]').attributes('disabled')).toBeDefined();
+    expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(1);
+    pending.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    manager.vm.$emit('runtimeReady', true); notify({ state: { status: 'idle' } }); await flushPromises();
+    expect(view.get('[data-testid="audio-generate"]').attributes('disabled')).toBeUndefined();
+    expect(view.get<HTMLTextAreaElement>('[data-testid="audio-text"]').element.value).toBe('Hello');
+    expect(view.find('[data-testid="audio-error"]').exists()).toBe(false);
+    expect(service.generateAudio).toHaveBeenCalledTimes(2); expect(urls.revoke).not.toHaveBeenCalled();
+    await submit({ view }); expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(2);
+  });
+  it('keeps reinitialization failures visible and allows another explicit attempt', async () => {
+    const view = await ready(); service.restartRuntime.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'unavailable' }));
+    await view.get('[data-testid="audio-restart-runtime"]').trigger('click'); await flushPromises();
+    expect(view.get('[data-testid="audio-error"]').text()).toContain('unavailable');
+    expect(view.get('[data-testid="audio-restart-runtime"]').attributes('disabled')).toBeUndefined();
+    await view.get('[data-testid="audio-restart-runtime"]').trigger('click'); await flushPromises();
+    expect(service.restartRuntime).toHaveBeenCalledTimes(2);
+  });
+  it('does not restart while another operation is working', async () => {
+    const view = await ready();
+    notify({ state: { status: 'working', progress: { phase: 'generating', completed: 1, total: 2 } } }); await nextTick();
+    await view.get('[data-testid="audio-restart-runtime"]').trigger('click');
+    expect(service.restartRuntime).not.toHaveBeenCalled(); expect(service.release).not.toHaveBeenCalled();
+  });
+  it('detaches only its recovery observer when the route is left', async () => {
+    const view = await ready(); const pending = Promise.withResolvers<Awaited<ReturnType<LlamaCppBrowserService['restartRuntime']>>>();
+    service.restartRuntime.mockReturnValueOnce(pending.promise);
+    await view.get('[data-testid="audio-restart-runtime"]').trigger('click'); view.unmount(); wrapper = undefined;
+    expect(service.restartRuntime.mock.calls[0]![0].signal?.aborted).toBe(true);
+    expect(service.release).not.toHaveBeenCalled(); expect(service.cancel).not.toHaveBeenCalled();
+    pending.reject(new Error('late recovery failure')); await flushPromises();
   });
 });

@@ -277,3 +277,44 @@ describe('audio sharing the serialized inference lane', () => {
     expect(factory).not.toHaveBeenCalled();
   });
 });
+
+
+describe('explicit runtime recovery', () => {
+  it('retires an idle worker, reprobes and keeps saved models and options unchanged', async () => {
+    service.setOptions({ options: { profile: 'cpu-wasm32' } });
+    await service.probeProfiles({ signal: undefined });
+    await service.restartRuntime({ signal: undefined });
+    expect(worker.dispose).toHaveBeenCalledOnce(); expect(factory).toHaveBeenCalledTimes(2);
+    expect(worker.probeProfiles).toHaveBeenCalledTimes(2);
+    expect(service.getOptions()).toEqual({ profile: 'cpu-wasm32' });
+    expect(worker.removeModel).not.toHaveBeenCalled(); expect(removeStoredModel).not.toHaveBeenCalled();
+    expect(worker.generate).not.toHaveBeenCalled(); expect(worker.generateAudio).not.toHaveBeenCalled();
+    expect(service.getProfileState().status).toBe('ready');
+  });
+  it('recovers after an audio worker failure without another page load', async () => {
+    worker.generateAudio.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'worker-failed' }));
+    const audioInput = { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', debug: 'off' as const };
+    await expect(service.generateAudio({ input: audioInput, signal: undefined })).rejects.toThrow('worker-failed');
+    expect(service.getProfileState().status).toBe('idle');
+    await service.restartRuntime({ signal: undefined });
+    await expect(service.generateAudio({ input: audioInput, signal: undefined })).resolves.toMatchObject({ frames: audioResult().frames });
+    expect(worker.generateAudio).toHaveBeenCalledTimes(2); expect(factory).toHaveBeenCalledTimes(2);
+  });
+  it('refuses to restart an owned lane even before it publishes working progress', async () => {
+    const gate = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
+    let ownerSignal: AbortSignal | undefined;
+    const running = service.runGenerationOperation({ signal: new AbortController().signal, operation: async ({ scope }) => {
+      ownerSignal = scope.signal; entered.resolve(); await gate.promise;
+    } });
+    await entered.promise;
+    expect(service.getState().status).toBe('idle');
+    await expect(service.restartRuntime({ signal: undefined })).rejects.toThrow('busy');
+    expect(ownerSignal?.aborted).toBe(false); expect(worker.dispose).not.toHaveBeenCalled();
+    gate.resolve(); await running;
+  });
+  it('does not discard a healthy worker for a pre-cancelled recovery', async () => {
+    await service.probeProfiles({ signal: undefined }); const controller = new AbortController(); controller.abort();
+    await expect(service.restartRuntime({ signal: controller.signal })).rejects.toThrow('aborted');
+    expect(worker.dispose).not.toHaveBeenCalled(); expect(service.getProfileState().status).toBe('ready');
+  });
+});

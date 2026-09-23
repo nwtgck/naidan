@@ -24,6 +24,7 @@ export interface LlamaCppBrowserService {
     signal: AbortSignal | undefined,
     operation: ({ scope }: { scope: LlamaCppGenerationScope }) => Promise<void>,
   }): Promise<void>;
+  restartRuntime({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;
   cancel(): void;
   release(): void;
 }

@@ -334,6 +334,16 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       if (!callbackCompleted || observedFailure === undefined) throw error;
     }
   },
+  async restartRuntime({ signal }) {
+    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    // State may still be idle while a tool callback owns the lane. Inspect the
+    // owner, not the last progress message, before retiring a shared Worker.
+    if (activeController) throw new LlamaCppBrowserError({ code: 'busy' });
+    llamaCppBrowserService.release();
+    // Probe through the existing serialized lane. No model/cache deletion and
+    // no automatic generation. The next request lazily reloads native weights.
+    return llamaCppBrowserService.probeProfiles({ signal });
+  },
   cancel() {
     activeController?.abort();
   },

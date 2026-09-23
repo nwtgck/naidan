@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useId } from 'vue';
-import { AudioLinesIcon, Loader2Icon } from 'lucide-vue-next';
+import { AudioLinesIcon, Loader2Icon, RefreshCcwIcon } from 'lucide-vue-next';
 import { currentLocale, lazyStrings } from '@/strings';
 import { audioLanguageOptions, defaultAudioLanguage } from './languages';
 import { audioFieldLabel, audioFieldValidationMessage, audioValidationFields } from './validation';
@@ -13,8 +13,13 @@ import { inspectStoredAudioModel } from './model-detection';
 import { useAudioModels } from './composables/useAudioModels';
 import { captureAudioSettings, useAudioHistory } from './composables/useAudioHistory';
 import AudioHistoryResult from './components/AudioHistoryResult.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
+import LlamaCppBrowserRepositoryCatalog from '@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryCatalog.vue';
+import { audioModelCatalog } from './model-catalog';
 
 const id = useId();
+const manager = ref<InstanceType<typeof LlamaCppBrowserManager>>();
+const recovery = shallowRef<AbortController>();
 const { models, model, scope: modelScope, scanState, visibleModels, detectedCount, detections,
   updateModels, selectModel, selectionChanged, scopeChanged, showAllModels } = useAudioModels({ inspect: inspectStoredAudioModel });
 const { entries: history, totalBytes, append: appendHistory, remove: removeHistory, clear: clearHistory } = useAudioHistory();
@@ -33,12 +38,44 @@ const invalidFields = ref<string[]>([]);
 const invalid = computed(() => invalidFields.value.length > 0);
 const failure = ref<ErrorCode>();
 const busy = computed(() => controller.value !== undefined);
-const blocked = computed(() => busy.value || state.value.status === 'working');
+const blocked = computed(() => recovery.value !== undefined || busy.value || state.value.status === 'working');
 const canGenerate = computed(() => !blocked.value && runtimeReady.value && models.value.some(entry => entry.id === model.value));
 let disposed = false;
 let generation = 0;
 let unsubscribe: (() => void) | undefined;
 
+const selectableModelIds = computed(() => visibleModels.value.map(entry => entry.id));
+const modelLabels = computed(() => Object.fromEntries(visibleModels.value.map(entry => {
+  const status = detections.value.get(entry.id)?.status;
+  let label: string;
+  switch (status) {
+  case 'detected': label = entry.name; break;
+  case 'unverified': case undefined: {
+    const suffix = lazyStrings.audioGeneration__not_detected_as_audio();
+    label = suffix === undefined ? entry.name : `${entry.name} · ${suffix}`; break;
+  }
+  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  }
+  return [entry.id, label];
+})));
+function chooseModel({ value }: { value: string | undefined }): void {
+  if (blocked.value || value === undefined || !selectableModelIds.value.includes(value)) return;
+  model.value = value; selectionChanged();
+}
+async function restartRuntime(): Promise<void> {
+  if (blocked.value || disposed) return;
+  const controller = new AbortController(); recovery.value = controller;
+  try {
+    await llamaCppBrowserService.restartRuntime({ signal: controller.signal });
+    if (!disposed && !controller.signal.aborted) {
+      failure.value = undefined; stopped.value = false;
+    }
+  } catch (error) {
+    if (!disposed && !controller.signal.aborted) failure.value = errorCode({ error });
+  } finally {
+    if (!disposed && recovery.value === controller) recovery.value = undefined;
+  }
+}
 const languages = computed(() => audioLanguageOptions({ locale: currentLocale.value }));
 const progressLabel = computed(() => {
   if (stopping.value) return lazyStrings.audioGeneration__stopping();
@@ -98,7 +135,9 @@ function revealInvalidField({ field }: { field: string }): void {
     if (parent instanceof HTMLDetailsElement) parent.open = true;
     parent = parent.parentElement;
   }
-  element.focus({ preventScroll: true });
+  // ModelSelector owns a button rather than a native select.
+  const focusTarget = element.matches('input,select,textarea,button') ? element : element.querySelector<HTMLElement>('button');
+  focusTarget?.focus({ preventScroll: true });
   element.scrollIntoView?.({ block: 'nearest' });
 }
 async function generate(): Promise<void> {
@@ -143,7 +182,7 @@ onMounted(() => {
   } });
 });
 onUnmounted(() => {
-  disposed = true; generation++; controller.value?.abort(); unsubscribe?.();
+  disposed = true; generation++; recovery.value?.abort(); controller.value?.abort(); unsubscribe?.();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -160,7 +199,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="mt-4 max-h-[65dvh] min-h-0 overflow-y-auto overscroll-y-contain space-y-4 pr-2" data-testid="audio-model-manager-scroll">
           <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_setup_help() }}</p>
           <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_support_help() }}</p>
-          <LlamaCppBrowserManager suggestions="none" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ name: $event })" @runtime-ready="runtimeReady = $event" />
+          <LlamaCppBrowserManager ref="manager" suggestions="none" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ name: $event })" @runtime-ready="runtimeReady = $event">
+            <template #catalog="{ disabled, inspect }">
+              <LlamaCppBrowserRepositoryCatalog :entries="audioModelCatalog" :disabled="disabled" @inspect="inspect({ input: $event })" />
+            </template>
+          </LlamaCppBrowserManager>
         </div>
       </details>
       <form ref="form" novalidate @submit.prevent="generate" tw-class="space-y-5">
@@ -174,10 +217,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <fieldset :disabled="blocked" tw-class="space-y-5 disabled:opacity-60">
           <div tw-class="space-y-2">
             <label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__audio_model() }}</label>
-            <select :id="`${id}-model`" v-model="model" @change="selectionChanged" required data-testid="audio-model" data-audio-field="model" :aria-invalid="invalidFields.includes('model') || undefined" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 text-sm">
-              <option value="" disabled>{{ lazyStrings.audioGeneration__choose_model() }}</option>
-              <option v-for="entry in visibleModels" :key="entry.id" :value="entry.id">{{ entry.name }}<template v-if="detections.get(entry.id)?.status !== 'detected'"> · {{ lazyStrings.audioGeneration__not_detected_as_audio() }}</template></option>
-            </select>
+            <ModelSelector :input-id="`${id}-model`" :model-value="model || undefined" :models="selectableModelIds" :model-labels="modelLabels" :loading="scanState === 'scanning'" :disabled="blocked" :invalid="invalidFields.includes('model')" :placeholder="lazyStrings.audioGeneration__choose_model()" data-testid="audio-model" data-audio-field="model" @update:model-value="chooseModel({ value: $event })" @refresh="manager?.refresh()" />
             <p v-if="scanState === 'scanning'" role="status" data-testid="audio-model-scanning" tw-class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-3 w-3 animate-spin motion-reduce:animate-none" />{{ lazyStrings.audioGeneration__checking_local_model_metadata() }}</p>
             <p v-else-if="detectedCount === 0" data-testid="audio-no-detected-models" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__no_audio_models_detected() }} <button type="button" @click="showAllModels" data-testid="audio-show-all" tw-class="underline text-purple-600 dark:text-purple-400">{{ lazyStrings.audioGeneration__show_all_models() }}</button></p>
             <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_detection_help() }}</p>
@@ -234,8 +274,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="flex flex-wrap items-center gap-3">
           <button type="submit" :disabled="!canGenerate" data-testid="audio-generate" tw-class="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"><AudioLinesIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__generate_audio() }}</button>
           <button v-if="busy" type="button" :disabled="stopping" @click="stop" data-testid="audio-stop" tw-class="rounded-xl border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__stop_generation() }}</button>
+          <button type="button" :disabled="blocked" @click="restartRuntime" data-testid="audio-restart-runtime" tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"><RefreshCcwIcon :tw-class="['h-4 w-4', { 'animate-spin motion-reduce:animate-none': recovery !== undefined }]" />{{ recovery ? lazyStrings.audioGeneration__reinitializing_runtime() : lazyStrings.audioGeneration__reinitialize_runtime() }}</button>
           <p v-if="!runtimeReady" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__runtime_unavailable() }}</p>
         </div>
+        <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reinitialize_runtime_help() }}</p>
         <p v-if="busy" role="status" data-testid="audio-progress" tw-class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ progressLabel }}</p>
         <p v-if="stopped" role="status" data-testid="audio-stopped" tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__generation_stopped() }}</p>
 

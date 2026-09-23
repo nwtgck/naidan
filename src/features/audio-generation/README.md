@@ -140,3 +140,53 @@ URLs and unmount players, stopping playback and detaching decoded sources. Store
 one Blob URL per result rather than retaining an extra WAV byte array. Report
 WAV byte totals (not total browser memory); avoid silently evicting old results.
 Users can save WAVs or explicitly delete results to reclaim their owned data.
+
+
+## Model controls and reusable composition
+
+The page's native `details` element is the disclosure and scroll boundary only.
+`LlamaCppBrowserManager` coordinates the inventory, removals, subscriptions, and
+child controls; it is not a second settings modal. Repository inspection already
+lives in `LlamaCppBrowserHuggingFaceManager`, and the chat recommendation catalog
+remains in its existing components. Device file/folder import and runtime settings
+are independent `LlamaCppBrowserModelImport` and `LlamaCppBrowserRuntimeSettings`
+components. Preserve settings-modal behavior when composing them elsewhere.
+
+The manager's optional `catalog` slot provides an explicit repository-inspection
+action and its disabled state. The static `LlamaCppBrowserRepositoryCatalog`
+renders the audio page's two user-selected repository references. Opening the
+page/disclosure is not permission to contact Hugging Face. Check model uses the
+existing inspector, displays the resolved quantization and same-repository
+companion, and still requires the user to press Download. Do not hard-code remote
+file names or bypass download planning, integrity, or storage locks.
+
+Audio choices use the shared `ModelSelector` with an explicit list of stable IDs
+and separate display labels. Searching considers both. Refresh explicitly reloads
+the local inventory; it must not fetch an unrelated chat provider. Candidate
+filtering, the all-models escape hatch, and user-selection preservation are unchanged.
+
+## Recovery after runtime errors
+
+A failed generation can retire the shared Worker and invalidate its capability
+report, making `runtimeReady` false. The explicit Reinitialize runtime action
+releases an idle runtime and probes its replacement through the existing queue.
+It does not clear model storage, reference input, text, history, or options, and
+it does not generate automatically. The next generation loads model weights as usual.
+
+The service checks the lane owner synchronously before releasing anything, not
+only the UI progress state: a chat tool callback can own the lane while the last
+reported state is idle. Recovery rejects with busy in that case and does not abort
+the owner. Leaving this page aborts only its recovery observer. Unsupported
+profiles, incompatible models, memory exhaustion, and permanently hung active
+operations are not claimed to be fixed by this control. The existing manager's
+explicit Release runtime control retains its pre-refactor cancellation semantics.
+
+## Result text and compact playback
+
+Each result shows a two-line clamped preview outside its settings disclosure.
+Inside the disclosure, Copy text copies the exact submission text including
+whitespace; denied/unavailable clipboard access presents a manual selected-text
+fallback. A pending copy may not select content after the result is deleted.
+The player and WAV link share one nonwrapping flex row. At narrow widths the save
+label is visually hidden, not removed from its accessible name. No custom player,
+streaming, autoplay, persistence, or lcore modification is introduced.

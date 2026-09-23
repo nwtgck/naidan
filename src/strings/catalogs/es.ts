@@ -1904,6 +1904,12 @@ import { audioGeneration__automatic_profile } from '@/strings/messages/audioGene
 import { audioGeneration__delete_all_audio } from '@/strings/messages/audioGeneration__delete_all_audio/es';
 import { audioGeneration__history_memory_usage } from '@/strings/messages/audioGeneration__history_memory_usage/es';
 
+import { audioGeneration__reinitialize_runtime } from '@/strings/messages/audioGeneration__reinitialize_runtime/es';
+import { audioGeneration__reinitializing_runtime } from '@/strings/messages/audioGeneration__reinitializing_runtime/es';
+import { audioGeneration__reinitialize_runtime_help } from '@/strings/messages/audioGeneration__reinitialize_runtime_help/es';
+import { audioGeneration__copy_text } from '@/strings/messages/audioGeneration__copy_text/es';
+import { audioGeneration__text_copied } from '@/strings/messages/audioGeneration__text_copied/es';
+import { audioGeneration__copy_failed_select_text } from '@/strings/messages/audioGeneration__copy_failed_select_text/es';
 export const catalog = {
   audioGeneration__not_detected_as_audio,
   audioGeneration__checking_local_model_metadata,
@@ -3804,4 +3810,10 @@ export const catalog = {
   audioGeneration__integer_range,
   audioGeneration__number_range,
   audioGeneration__invalid_top_p,
+  audioGeneration__reinitialize_runtime,
+  audioGeneration__reinitializing_runtime,
+  audioGeneration__reinitialize_runtime_help,
+  audioGeneration__copy_text,
+  audioGeneration__text_copied,
+  audioGeneration__copy_failed_select_text,
 } satisfies Strings;

@@ -14,6 +14,9 @@ const props = defineProps<{
   models?: readonly string[],
   disabled?: boolean,
   clearLabel?: string,
+  modelLabels?: Readonly<Record<string, string>>,
+  inputId?: string,
+  invalid?: boolean,
 }>();
 
 const emit = defineEmits<{
@@ -26,9 +29,12 @@ const instance = getCurrentInstance();
 const { availableModels: settingsModels, isFetchingModels: isInternalFetching, fetchModels: internalFetch } = useSettings();
 
 const availableModels = computed(() => props.models ?? settingsModels.value);
-const isFetchingModels = computed(() => props.loading || (isInternalFetching?.value ?? false));
+const isFetchingModels = computed(() => props.models !== undefined ? !!props.loading : props.loading || (isInternalFetching?.value ?? false));
+function modelLabel({ model }: { model: string }): string {
+  return props.modelLabels?.[model] ?? model;
+}
 
-const displayModelName = computed(() => props.modelValue || props.placeholder || lazyStrings.ModelSelector__select_a_model());
+const displayModelName = computed(() => props.modelValue ? modelLabel({ model: props.modelValue }) : props.placeholder || lazyStrings.ModelSelector__select_a_model());
 
 const modelNameParts = computed(() => {
   const name = displayModelName.value;
@@ -48,7 +54,7 @@ const modelNameParts = computed(() => {
 const searchableModels = computed(() => {
   return availableModels.value.map(m => ({
     original: m,
-    lower: m.toLowerCase(),
+    lower: `${m} ${modelLabel({ model: m })}`.toLowerCase(),
   }));
 });
 
@@ -141,6 +147,7 @@ const floatingStyle = computed((): CSSProperties => {
 });
 
 function toggleDropdown() {
+  if (props.disabled) return;
   if (isOpen.value) {
     isOpen.value = false;
   } else {
@@ -158,6 +165,7 @@ function toggleDropdown() {
 }
 
 function selectModel({ model }: { model: string | undefined }) {
+  if (props.disabled || (model !== undefined && !availableModels.value.includes(model))) return;
   emit('update:modelValue', model);
   isOpen.value = false;
 }
@@ -181,6 +189,7 @@ function scrollToHighlighted() {
 }
 
 function handleKeydown({ event }: { event: KeyboardEvent }) {
+  if (props.disabled) return;
   if (!isOpen.value) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
       event.preventDefault();
@@ -192,11 +201,13 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
   switch (event.key) {
   case 'ArrowDown':
     event.preventDefault();
+    if (!combinedOptions.value.length) return;
     highlightedIndex.value = (highlightedIndex.value + 1) % combinedOptions.value.length;
     scrollToHighlighted();
     break;
   case 'ArrowUp':
     event.preventDefault();
+    if (!combinedOptions.value.length) return;
     highlightedIndex.value = (highlightedIndex.value - 1 + combinedOptions.value.length) % combinedOptions.value.length;
     scrollToHighlighted();
     break;
@@ -218,11 +229,13 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
 
 async function handleRefresh({ event }: { event: Event }) {
   event.stopPropagation();
+  if (props.disabled || isFetchingModels.value) return;
   // Check if parent has a listener for 'refresh' (onRefresh)
   const hasRefreshListener = !!(instance?.vnode.props?.onRefresh || attrs.onRefresh);
   if (hasRefreshListener) {
     emit('refresh');
-  } else {
+  } else if (props.models === undefined) {
+    // Explicit lists must not refresh an unrelated chat provider.
     await internalFetch({});
   }
 }
@@ -248,6 +261,10 @@ watch(searchQuery, () => {
 
 // Close on width resize to prevent floating detached dropdown (e.g. orientation change)
 // We ignore height changes to prevent closing when mobile software keyboard appears
+watch(() => props.disabled, disabled => {
+  if (disabled) isOpen.value = false;
+});
+
 watch(windowWidth, () => {
   if (isOpen.value) isOpen.value = false;
 });
@@ -267,6 +284,9 @@ defineExpose({
     <!-- Trigger -->
     <button
       type="button"
+      :id="inputId"
+      :aria-invalid="invalid || undefined"
+      :aria-expanded="isOpen"
       @click="toggleDropdown"
       :disabled="disabled"
       :tw-class="['w-full flex items-center justify-between gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 outline-none focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300 dark:hover:border-gray-600 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed', { 'ring-4 ring-blue-500/10 border-blue-500/50': isOpen }]"
@@ -315,19 +335,20 @@ defineExpose({
               :placeholder="lazyStrings.ModelSelector__filter_models()"
               @click.stop
             />
-            <button
-              v-if="searchQuery"
-              @click="searchQuery = ''"
-              tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"
+            <button type="button"
+                    v-if="searchQuery"
+                    @click="searchQuery = ''"
+                    tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"
             >
               <XIcon tw-class="w-3 h-3" />
             </button>
           </div>
-          <button
-            @click="handleRefresh({ event: $event })"
-            tw-class="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors shadow-sm disabled:opacity-50"
-            :disabled="isFetchingModels"
-            :title="lazyStrings.ModelSelector__refresh_model_list()"
+          <button type="button"
+                  data-testid="model-selector-refresh"
+                  @click="handleRefresh({ event: $event })"
+                  tw-class="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors shadow-sm disabled:opacity-50"
+                  :disabled="isFetchingModels"
+                  :title="lazyStrings.ModelSelector__refresh_model_list()"
           >
             <RefreshCwIcon :tw-class="['w-3.5 h-3.5', { 'animate-spin': isFetchingModels }]" />
           </button>
@@ -336,20 +357,20 @@ defineExpose({
         <!-- List -->
         <div ref="listContainerRef" class="custom-scrollbar" tw-class="max-h-60 overflow-y-auto py-1 overscroll-contain">
           <!-- Inherited / Default option -->
-          <button
-            v-if="allowClear"
-            @click="selectModel({ model: undefined })"
-            :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1',
-                        !modelValue
-                          ? 'text-blue-600 dark:text-blue-400 font-bold'
-                          : 'text-gray-500 dark:text-gray-400',
-                        highlightedIndex === 0
-                          ? 'bg-gray-100 dark:bg-gray-700/50'
-                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-            ]"
-            data-testid="model-selector-clear"
-            data-index="0"
-            @mouseenter="highlightedIndex = 0"
+          <button type="button"
+                  v-if="allowClear"
+                  @click="selectModel({ model: undefined })"
+                  :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1',
+                              !modelValue
+                                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                                : 'text-gray-500 dark:text-gray-400',
+                              highlightedIndex === 0
+                                ? 'bg-gray-100 dark:bg-gray-700/50'
+                                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  ]"
+                  data-testid="model-selector-clear"
+                  data-index="0"
+                  @mouseenter="highlightedIndex = 0"
           >
             <div tw-class="flex items-center gap-2">
               <XIcon v-if="modelValue" tw-class="w-3.5 h-3.5" />
@@ -361,22 +382,23 @@ defineExpose({
           <div v-if="filteredModels.length === 0" tw-class="px-4 py-8 text-center">
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSelector__no_models_found() }}</p>
           </div>
-          <button
-            v-for="(model, index) in filteredModels"
-            :key="model"
-            @click="selectModel({ model })"
-            :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors',
-                        model === modelValue
-                          ? 'text-blue-600 dark:text-blue-400 font-bold'
-                          : 'text-gray-700 dark:text-gray-300',
-                        highlightedIndex === (allowClear ? index + 1 : index)
-                          ? 'bg-gray-100 dark:bg-gray-700/50'
-                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-            ]"
-            :data-index="allowClear ? index + 1 : index"
-            @mouseenter="highlightedIndex = allowClear ? index + 1 : index"
+          <button type="button"
+                  v-for="(model, index) in filteredModels"
+                  :key="model"
+                  data-testid="model-selector-option"
+                  @click="selectModel({ model })"
+                  :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors',
+                              model === modelValue
+                                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                                : 'text-gray-700 dark:text-gray-300',
+                              highlightedIndex === (allowClear ? index + 1 : index)
+                                ? 'bg-gray-100 dark:bg-gray-700/50'
+                                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  ]"
+                  :data-index="allowClear ? index + 1 : index"
+                  @mouseenter="highlightedIndex = allowClear ? index + 1 : index"
           >
-            <span tw-class="break-all whitespace-normal pr-2">{{ model }}</span>
+            <span tw-class="break-all whitespace-normal pr-2">{{ modelLabel({ model }) }}</span>
             <CheckIcon v-if="model === modelValue" tw-class="w-3.5 h-3.5 shrink-0" />
           </button>
         </div>
