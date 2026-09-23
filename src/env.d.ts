@@ -13,6 +13,7 @@ declare global {
   const __BUILD_MODE_IS_HOSTED__: boolean;
   const __BUILD_MODE_IS_TEST__: true;
   const __APP_VERSION__: string;
+  const __PWA_BUILD_ID__: string;
 }
 
 export {};

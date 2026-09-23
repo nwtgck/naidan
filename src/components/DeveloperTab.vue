@@ -19,16 +19,40 @@ const emit = defineEmits<{
 
 const { createSampleChat, createLongSampleChat } = useSampleChat();
 const canOpenModelSupportInvestigation = computed(() => isModelSupportInvestigationAvailable);
-const { needRefresh, setNeedRefresh } = usePWAUpdate();
+const { status: pwaStatus, setUpdateState } = usePWAUpdate();
+const hasPWAUpdate = computed(() => {
+  const status = pwaStatus.value;
+  switch (status) {
+  case 'idle': return false;
+  case 'preparing':
+  case 'ready':
+  case 'applying': return true;
+  default: {
+    const exhaustive: never = status;
+    return exhaustive;
+  }
+  }
+});
 
-function togglePWAUpdate() {
-  setNeedRefresh({
-    refresh: !needRefresh.value,
-    handler: !needRefresh.value ? async () => {
+function togglePWAUpdate(): void {
+  const status = pwaStatus.value;
+  switch (status) {
+  case 'idle':
+    setUpdateState({ next: { kind: 'ready', handler: async () => {
       console.log('PWA Update triggered via Developer Tab');
       window.location.reload();
-    } : undefined,
-  });
+    } } });
+    return;
+  case 'preparing':
+  case 'ready':
+  case 'applying':
+    setUpdateState({ next: { kind: 'idle' } });
+    return;
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
+  }
 }
 
 
@@ -114,19 +138,19 @@ defineExpose({
         <div tw-class="space-y-2">
           <button
             @click="togglePWAUpdate"
-            :tw-class="['w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left', { 'ring-2 ring-emerald-500/20 border-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-900/10': needRefresh }]"
+            :tw-class="['w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left', { 'ring-2 ring-emerald-500/20 border-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-900/10': hasPWAUpdate }]"
             data-testid="toggle-pwa-update-button"
           >
             <div tw-class="flex items-center gap-2">
               <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-                <RefreshCwIcon :class="needRefresh ? 'animate-spin-slow' : ''" :tw-class="['w-4 h-4', needRefresh ? 'text-emerald-500' : 'text-gray-400']" />
+                <RefreshCwIcon :class="hasPWAUpdate ? 'animate-spin-slow' : ''" :tw-class="['w-4 h-4', hasPWAUpdate ? 'text-emerald-500' : 'text-gray-400']" />
               </div>
               <div tw-class="flex flex-col">
                 <span tw-class="text-sm font-bold">{{ lazyStrings.DeveloperTab__simulate_pwa_update() }}</span>
                 <span tw-class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__toggle_update_notification() }}</span>
               </div>
             </div>
-            <div v-if="needRefresh" tw-class="flex h-2 w-2 relative">
+            <div v-if="hasPWAUpdate" tw-class="flex h-2 w-2 relative">
               <span tw-class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span tw-class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </div>

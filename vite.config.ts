@@ -37,6 +37,7 @@ import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
+import { createPWABuild } from './build/pwa';
 
 const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
@@ -158,6 +159,7 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone';
+  const pwaBuild = createPWABuild();
   const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
   const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode });
   const isHosted = mode === 'hosted';
@@ -201,6 +203,7 @@ export default defineConfig(({ mode }) => {
     },
     // Inject global constants for compile-time conditional logic (tree-shaking)
     define: {
+      ...pwaBuild.define,
       __BUILD_MODE_IS_STANDALONE__: JSON.stringify(isStandalone),
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(isHosted || mode === 'development'),
       __BUILD_MODE_IS_TEST__: JSON.stringify(mode === 'test'),
@@ -347,35 +350,7 @@ export default defineConfig(({ mode }) => {
       }),
       // Hosted: Copy the previously generated Zip into the hosted output
       !isStandalone && copyZipPlugin(),
-      !isStandalone && VitePWA({
-        registerType: 'prompt',
-        includeAssets: ['favicon.svg', 'naidan-standalone.zip'],
-        manifest: {
-          name: 'Naidan',
-          short_name: 'Naidan',
-          description: 'A privacy-focused, local-first AI interface',
-          theme_color: '#030712',
-          background_color: '#030712',
-          icons: [
-            {
-              src: 'favicon.svg',
-              sizes: 'any',
-              type: 'image/svg+xml',
-              purpose: 'any maskable',
-            },
-          ],
-        },
-        workbox: {
-          // Cache all assets to ensure offline support for future extensions (onnx, gguf, zstd, etc.)
-          // We use '**/*' to avoid missing any critical files as per Murphy's Law.
-          globPatterns: ['**/*'],
-          // Exclude source maps to save user bandwidth and storage. Locale-specific
-          // standalone ZIPs are served by hosted deployments but intentionally not
-          // precached; the universal naidan-standalone.zip stays cached for offline use.
-          globIgnores: ['**/*.map', '**/naidan-standalone-*.zip'],
-          maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
-        },
-      }),
+      !isStandalone && VitePWA(pwaBuild.options),
     ].filter((p): p is import('vite').PluginOption => !!p),
     build: {
       outDir,
