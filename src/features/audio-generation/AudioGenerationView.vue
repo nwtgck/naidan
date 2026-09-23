@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useId } from 'vue';
-import { AudioLinesIcon, DownloadIcon, Loader2Icon } from 'lucide-vue-next';
+import { AudioLinesIcon, Loader2Icon } from 'lucide-vue-next';
 import { currentLocale, lazyStrings } from '@/strings';
 import { audioLanguageOptions, defaultAudioLanguage } from './languages';
 import { audioFieldLabel, audioFieldValidationMessage, audioValidationFields } from './validation';
 import LlamaCppBrowserManager from '@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
-import { errorCode, type EngineState, type ErrorCode, type LocalModel } from '@/features/llama-cpp-browser/types';
-import { audioGenerationInputSchema, audioGenerationResultSchema, defaultAudioParameters, type AudioGenerationResult } from './types';
+import { errorCode, type EngineState, type ErrorCode } from '@/features/llama-cpp-browser/types';
+import { audioGenerationInputSchema, audioGenerationResultSchema, defaultAudioParameters } from './types';
 import { validateAudioWav } from './wav';
+import { inspectStoredAudioModel } from './model-detection';
+import { useAudioModels } from './composables/useAudioModels';
+import { captureAudioSettings, useAudioHistory } from './composables/useAudioHistory';
+import AudioHistoryResult from './components/AudioHistoryResult.vue';
 
 const id = useId();
-const models = shallowRef<LocalModel[]>([]);
-const model = ref('');
+const { models, model, scope: modelScope, scanState, visibleModels, detectedCount, detections,
+  updateModels, selectModel, selectionChanged, scopeChanged, showAllModels } = useAudioModels({ inspect: inspectStoredAudioModel });
+const { entries: history, totalBytes, append: appendHistory, remove: removeHistory, clear: clearHistory } = useAudioHistory();
 const text = ref('');
 const reference = shallowRef<File>();
 const referenceInput = ref<HTMLInputElement>();
@@ -27,7 +32,6 @@ const stopped = ref(false);
 const invalidFields = ref<string[]>([]);
 const invalid = computed(() => invalidFields.value.length > 0);
 const failure = ref<ErrorCode>();
-const output = shallowRef<{ result: AudioGenerationResult, url: string, modelName: string }>();
 const busy = computed(() => controller.value !== undefined);
 const blocked = computed(() => busy.value || state.value.status === 'working');
 const canGenerate = computed(() => !blocked.value && runtimeReady.value && models.value.some(entry => entry.id === model.value));
@@ -72,14 +76,6 @@ const errorMessage = computed(() => {
   default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
   }
 });
-function updateModels({ entries }: { entries: LocalModel[] }): void {
-  models.value = entries;
-  if (!entries.some(entry => entry.id === model.value)) model.value = '';
-}
-function selectModel({ name }: { name: string }): void {
-  const matches = models.value.filter(entry => entry.name === name);
-  if (matches.length === 1) model.value = matches[0]!.id;
-}
 function chooseReference({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLInputElement)) return;
   reference.value = event.target.files?.[0];
@@ -88,10 +84,6 @@ function chooseReference({ event }: { event: Event }): void {
 function clearReference(): void {
   reference.value = undefined;
   if (referenceInput.value) referenceInput.value.value = '';
-}
-function clearOutput(): void {
-  if (output.value) URL.revokeObjectURL(output.value.url);
-  output.value = undefined;
 }
 function fieldError({ field }: { field: string }): string | undefined {
   return invalidFields.value.includes(field) ? audioFieldValidationMessage({ field }) : undefined;
@@ -122,14 +114,13 @@ async function generate(): Promise<void> {
   const { options: _options, ...input } = accepted.data;
   const request = ++generation; const active = new AbortController(); controller.value = active; stopping.value = false;
   const modelName = models.value.find(entry => entry.id === input.model)!.name;
-  clearOutput();
+  const settings = captureAudioSettings({ input: accepted.data, modelName });
   try {
     const result = audioGenerationResultSchema.parse(await llamaCppBrowserService.generateAudio({ input, signal: active.signal }));
     // An RPC may finish after Stop or route unmount. Never publish that old result.
     if (disposed || request !== generation || active.signal.aborted) return;
     validateAudioWav(result);
-    const blob = new Blob([new Uint8Array(result.wav)], { type: 'audio/wav' });
-    output.value = { result, url: URL.createObjectURL(blob), modelName };
+    appendHistory({ result, settings });
   } catch (error) {
     if (disposed || request !== generation) return;
     const code = errorCode({ error });
@@ -152,7 +143,7 @@ onMounted(() => {
   } });
 });
 onUnmounted(() => {
-  disposed = true; generation++; controller.value?.abort(); unsubscribe?.(); clearOutput();
+  disposed = true; generation++; controller.value?.abort(); unsubscribe?.();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -183,10 +174,18 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <fieldset :disabled="blocked" tw-class="space-y-5 disabled:opacity-60">
           <div tw-class="space-y-2">
             <label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__audio_model() }}</label>
-            <select :id="`${id}-model`" v-model="model" required data-testid="audio-model" data-audio-field="model" :aria-invalid="invalidFields.includes('model') || undefined" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 text-sm">
+            <select :id="`${id}-model`" v-model="model" @change="selectionChanged" required data-testid="audio-model" data-audio-field="model" :aria-invalid="invalidFields.includes('model') || undefined" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 text-sm">
               <option value="" disabled>{{ lazyStrings.audioGeneration__choose_model() }}</option>
-              <option v-for="entry in models" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              <option v-for="entry in visibleModels" :key="entry.id" :value="entry.id">{{ entry.name }}<template v-if="detections.get(entry.id)?.status !== 'detected'"> · {{ lazyStrings.audioGeneration__not_detected_as_audio() }}</template></option>
             </select>
+            <p v-if="scanState === 'scanning'" role="status" data-testid="audio-model-scanning" tw-class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-3 w-3 animate-spin motion-reduce:animate-none" />{{ lazyStrings.audioGeneration__checking_local_model_metadata() }}</p>
+            <p v-else-if="detectedCount === 0" data-testid="audio-no-detected-models" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__no_audio_models_detected() }} <button type="button" @click="showAllModels" data-testid="audio-show-all" tw-class="underline text-purple-600 dark:text-purple-400">{{ lazyStrings.audioGeneration__show_all_models() }}</button></p>
+            <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_detection_help() }}</p>
+            <details tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3" data-testid="audio-model-selection-details">
+              <summary tw-class="cursor-pointer text-xs font-medium">{{ lazyStrings.audioGeneration__advanced_model_selection() }}</summary>
+              <label tw-class="mt-3 flex items-start gap-2 text-sm"><input v-model="modelScope" true-value="all" false-value="detected" type="checkbox" @change="scopeChanged" data-testid="audio-all-models" />{{ lazyStrings.audioGeneration__show_all_llama_cpp_browser_models() }}</label>
+              <p tw-class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__all_models_help() }}</p>
+            </details>
           </div>
           <div tw-class="space-y-2">
             <label :for="`${id}-text`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__input_text() }}</label>
@@ -226,6 +225,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <label tw-class="space-y-1 text-sm"><span>{{ lazyStrings.audioGeneration__seed() }}</span><input v-model.number="parameters.seed" data-testid="audio-seed" data-audio-field="seed" :aria-invalid="invalidFields.includes('seed') || undefined" type="number" min="0" max="4294967295" step="1" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2" /><span v-if="fieldError({ field: 'seed' })" tw-class="block text-xs text-red-700 dark:text-red-400">{{ fieldError({ field: 'seed' }) }}</span></label>
               </div>
               <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__context_help() }}</p>
+              <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__step_limit_help() }}</p>
               <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__sampling_help() }}</p>
               <label tw-class="flex items-center gap-2 text-sm"><input v-model="debug" type="checkbox" />{{ lazyStrings.audioGeneration__native_diagnostics() }}</label>
             </div>
@@ -240,13 +240,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-if="stopped" role="status" data-testid="audio-stopped" tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__generation_stopped() }}</p>
 
       </form>
-      <section v-if="output" tw-class="rounded-2xl border border-gray-200 dark:border-gray-700 p-5 space-y-4" data-testid="audio-result">
-        <h2 tw-class="text-lg font-semibold">{{ lazyStrings.audioGeneration__generated_audio() }}</h2>
-        <p tw-class="break-all text-xs text-gray-500 dark:text-gray-400">{{ output.modelName }} · {{ output.result.pipeline }} · {{ (output.result.samples / output.result.sampleRate).toFixed(2) }} s · {{ output.result.sampleRate }} Hz</p>
-        <audio :src="output.url" controls preload="metadata" :aria-label="lazyStrings.audioGeneration__generated_audio()" data-testid="audio-player" tw-class="w-full" />
-        <p v-if="output.result.finishReason !== 'stop'" role="status" data-testid="audio-truncated" tw-class="text-sm text-amber-700 dark:text-amber-400">{{ lazyStrings.audioGeneration__limit_reached() }}</p>
-        <a :href="output.url" download="naidan-audio.wav" data-testid="audio-download" tw-class="inline-flex items-center gap-2 rounded-lg bg-gray-100 dark:bg-gray-800 px-4 py-2 text-sm font-medium"><DownloadIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__save_wav() }}</a>
-        <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__output_lifetime() }}</p>
+      <section v-if="history.length" tw-class="space-y-4" data-testid="audio-history">
+        <div tw-class="flex flex-wrap items-center justify-between gap-3">
+          <h2 tw-class="text-lg font-semibold">{{ lazyStrings.audioGeneration__generated_audio() }}</h2>
+          <button type="button" @click="clearHistory" data-testid="audio-delete-all" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">{{ lazyStrings.audioGeneration__delete_all_audio() }}</button>
+        </div>
+        <p tw-class="text-xs text-gray-500 dark:text-gray-400" data-testid="audio-history-usage">{{ lazyStrings.audioGeneration__history_memory_usage({ count: history.length, mebibytes: (totalBytes / (1024 * 1024)).toFixed(2) }) }}</p>
+        <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__output_lifetime() }}</p>
+        <AudioHistoryResult v-for="entry in history" :key="entry.id" :entry="entry" @remove="removeHistory({ id: $event })" />
       </section>
     </main>
   </div>

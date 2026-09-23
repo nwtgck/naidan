@@ -8,6 +8,9 @@ import type { EngineState } from '@/features/llama-cpp-browser/types';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { audioResult } from './test-utils/wav';
 import AudioGenerationView from './AudioGenerationView.vue';
+import type { inspectStoredAudioModel } from './model-detection';
+const detection = vi.hoisted(() => ({ inspect: vi.fn<typeof inspectStoredAudioModel>() }));
+vi.mock('./model-detection', async importOriginal => ({ ...await importOriginal<typeof import('./model-detection')>(), inspectStoredAudioModel: detection.inspect }));
 
 const service = vi.hoisted(() => ({
   getState: vi.fn<LlamaCppBrowserService['getState']>(), getOptions: vi.fn<LlamaCppBrowserService['getOptions']>(),
@@ -25,13 +28,16 @@ beforeEach(async () => {
   service.getState.mockReturnValue({ status: 'idle' }); service.getOptions.mockReturnValue({ profile: 'cpu-wasm32' });
   service.subscribe.mockReturnValue(service.unsubscribe); service.generateAudio.mockResolvedValue(audioResult());
   urls.create.mockReturnValue('blob:generated-audio');
+  detection.inspect.mockResolvedValue({ status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   vi.stubGlobal('URL', class extends URL {
     static override createObjectURL = urls.create; static override revokeObjectURL = urls.revoke;
   });
   await ensureAllStringsForTest({ locale: 'en' });
 });
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
+  wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 async function ready(): Promise<VueWrapper> {
   wrapper = mount(AudioGenerationView);
@@ -126,7 +132,7 @@ describe('independent audio generation screen', () => {
     expect(service.generateAudio.mock.calls[0]?.[0].input).not.toHaveProperty('messages');
     const player = view.get('[data-testid="audio-player"]'); expect(player.attributes('src')).toBe('blob:generated-audio');
     expect(player.attributes()).not.toHaveProperty('autoplay');
-    expect(view.get('[data-testid="audio-download"]').attributes('download')).toBe('naidan-audio.wav');
+    expect(view.get('[data-testid="audio-download"]').attributes('download')).toBe('naidan-audio-1.wav');
     expect(urls.create.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
     expect((urls.create.mock.calls[0]?.[0] as Blob).type).toBe('audio/wav');
     expect(view.find('[data-testid="audio-truncated"]').exists()).toBe(false);
@@ -169,9 +175,9 @@ describe('independent audio generation screen', () => {
     expect(service.generateAudio.mock.calls[0]?.[0].signal?.aborted).toBe(true); expect(service.unsubscribe).toHaveBeenCalledOnce();
     pending.resolve(audioResult()); await flushPromises(); expect(urls.create).not.toHaveBeenCalled();
   });
-  it('revokes output URLs on replacement and unmount', async () => {
+  it('retains previous output URLs on new generation and revokes all on unmount', async () => {
     const view = await ready(); await submit({ view }); await submit({ view });
-    expect(urls.revoke).toHaveBeenCalledExactlyOnceWith('blob:generated-audio'); view.unmount(); wrapper = undefined;
+    expect(urls.revoke).not.toHaveBeenCalled(); expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(2); view.unmount(); wrapper = undefined;
     expect(urls.revoke).toHaveBeenCalledTimes(2);
   });
   it.each(['audio-model-unsupported', 'audio-reference-required', 'audio-reference-invalid', 'audio-output-empty', 'context-full'] as const)('shows a specific failure without producing audio: %s', async code => {
@@ -191,4 +197,80 @@ it('distinguishes waveform decoding from frame generation without a misleading p
   expect(view.get('[data-testid="audio-progress"]').text()).toContain('Decoding');
   expect(view.get('[data-testid="audio-progress"]').text()).not.toContain('%');
   pending.resolve(audioResult()); await flushPromises();
+});
+
+
+describe('audio candidates and in-memory history in the view', () => {
+  it('selects a metadata-detected model and offers the all-models override', async () => {
+    detection.inspect.mockImplementation(async ({ id }) => id === 'user/chat'
+      ? { status: 'unverified', reason: 'architecture' } : { status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
+    wrapper = mount(AudioGenerationView); const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
+    manager.vm.$emit('modelsChanged', [{ id: 'user/chat', name: 'Chat', size: 10, importedAt: 1 }, { id: 'user/voice', name: 'Voice', size: 100, importedAt: 1 }]);
+    manager.vm.$emit('runtimeReady', true); await flushPromises();
+    const select = wrapper.get<HTMLSelectElement>('[data-testid="audio-model"]');
+    expect(select.element.value).toBe('user/voice'); expect(select.findAll('option')).toHaveLength(2);
+    await wrapper.get('[data-testid="audio-all-models"]').setValue(true);
+    expect(select.findAll('option')).toHaveLength(3); await select.setValue('user/chat');
+    await wrapper.get('[data-testid="audio-text"]').setValue('Unknown candidate'); await submit({ view: wrapper });
+    expect(service.generateAudio.mock.calls[0]![0].input.model).toBe('user/chat');
+  });
+  it('keeps the escape hatch accessible when no metadata can be read', async () => {
+    detection.inspect.mockRejectedValue(new Error('storage temporarily unavailable'));
+    wrapper = mount(AudioGenerationView); const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
+    manager.vm.$emit('modelsChanged', [{ id: 'user/model', name: 'Model', size: 100, importedAt: 1 }]); await flushPromises();
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="audio-model"]').element.value).toBe('');
+    await wrapper.get('[data-testid="audio-show-all"]').trigger('click');
+    await wrapper.get('[data-testid="audio-model"]').setValue('user/model');
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="audio-model"]').element.value).toBe('user/model');
+  });
+  it('retains old audio during a pending generation, a failed attempt and invalid input', async () => {
+    const view = await ready(); await submit({ view }); const pending = Promise.withResolvers<ReturnType<typeof audioResult>>();
+    service.generateAudio.mockReturnValueOnce(pending.promise); await submit({ view });
+    expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(1); expect(urls.revoke).not.toHaveBeenCalled();
+    pending.reject(new Error('failure')); await flushPromises(); expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(1);
+    await view.get('[data-testid="audio-text"]').setValue(''); await submit({ view });
+    expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(1); expect(urls.revoke).not.toHaveBeenCalled();
+  });
+  it('captures settings at submit rather than from the subsequently edited form', async () => {
+    const view = await ready(); const pending = Promise.withResolvers<ReturnType<typeof audioResult>>(); service.generateAudio.mockReturnValueOnce(pending.promise);
+    service.getOptions.mockReturnValue({ profile: 'auto' }); await view.get('[data-testid="audio-language"]').setValue('ja');
+    await submit({ view });
+    // Programmatic events can mutate a disabled input; delayed completion must
+    // still use the submission snapshot, not the current reactive values.
+    await view.get('[data-testid="audio-text"]').setValue('Changed after submit');
+    await view.get('[data-testid="audio-language"]').setValue('de');
+    pending.resolve(audioResult()); await flushPromises();
+    expect(view.get('[data-testid="audio-result-text"]').text()).toBe('Hello');
+    expect(view.get('[data-testid="audio-result-language"]').text()).toContain('Japanese');
+    expect(view.get('[data-testid="audio-result-settings"]').text()).toContain('4096');
+    expect(view.get('[data-testid="audio-result-settings"]').text()).toContain('1024');
+    expect(view.get('[data-testid="audio-result-settings"]').text()).toContain('Random');
+    await view.get('[data-testid="audio-text"]').setValue('Second text'); await submit({ view });
+    expect(view.findAll('[data-testid="audio-result-text"]').map(e => e.text())).toEqual(['Second text', 'Hello']);
+  });
+  it('deletes one result or all results, stops players and permits deletion during generation', async () => {
+    urls.create.mockReturnValueOnce('blob:first').mockReturnValueOnce('blob:second').mockReturnValueOnce('blob:third');
+    const view = await ready(); await submit({ view }); await submit({ view });
+    await view.findAll('[data-testid="audio-delete"]')[1]!.trigger('click');
+    expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(1); expect(urls.revoke).toHaveBeenCalledWith('blob:first');
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled(); expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
+    const pending = Promise.withResolvers<ReturnType<typeof audioResult>>(); service.generateAudio.mockReturnValueOnce(pending.promise); await submit({ view });
+    await view.get('[data-testid="audio-delete-all"]').trigger('click');
+    expect(view.find('[data-testid="audio-history"]').exists()).toBe(false);
+    pending.resolve(audioResult()); await flushPromises(); expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(1);
+    expect(view.get('[data-testid="audio-player"]').attributes('src')).toBe('blob:third');
+  });
+  it('does not clear completed history when a later generation is stopped', async () => {
+    const view = await ready(); await submit({ view }); const pending = Promise.withResolvers<ReturnType<typeof audioResult>>();
+    service.generateAudio.mockReturnValueOnce(pending.promise); await submit({ view }); await view.get('[data-testid="audio-stop"]').trigger('click');
+    pending.resolve(audioResult()); await flushPromises();
+    expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(1); expect(urls.create).toHaveBeenCalledOnce();
+  });
+  it('uses the larger step cap without changing context default or retaining obsolete wording', async () => {
+    const view = await ready();
+    expect(view.get<HTMLInputElement>('[data-testid="audio-max-frames"]').element.value).toBe('1024');
+    expect(view.get<HTMLInputElement>('[data-testid="audio-context"]').element.value).toBe('4096');
+    await setLocale({ locale: 'ja' }); await flushPromises();
+    expect(view.text()).not.toContain('8192は全モデル共通の上限ではありません');
+  });
 });

@@ -37,8 +37,7 @@ support in the pinned llama.cpp helper.
 
 ## Context and offline execution
 
-8192 was the initial application input limit, not a universal model limit. The
-transport accepts a wider positive integer range. The session still bounds the
+The transport accepts a positive integer context request. The session bounds the
 requested context by `llama_model_n_ctx_train` and can retry smaller allocations.
 4096 remains the default. Increasing capacity is not a speed setting and does
 not prove that enough memory is available. The native context-ready diagnostic
@@ -93,3 +92,51 @@ Do not invent a replacement artifact commit or bypass manifest verification.
 This change does not alter the runtime profile policy or standalone bundle set:
 chat and audio still share the same loader, worker lane, and embedded profiles.
 The app, runtime, and model files must remain available for offline use.
+
+## Candidate discovery and defaults
+
+Audio candidates are detected from bounded local GGUF metadata, not file names.
+Read the backbone architecture and the selected companion's generation metadata.
+Known Qwen3-TTS and Pocket TTS pairs are suggestions, not compatibility proofs.
+Unknown metadata, incomplete pairs, and future architectures remain selectable
+through the explicit all-models mode. This scan must not download files, load
+Wasm, occupy the inference lane, or persist metadata into the shared model store.
+
+The context default remains 4096 to limit eager allocation; generation now allows
+up to 1024 steps rather than 256. A native stop still ends generation sooner.
+For Qwen's 24,000 Hz / 1,920-sample frame configuration, these step caps correspond
+to approximately 81.92 and 20.48 seconds, respectively, not execution time.
+Neither bound guarantees that arbitrary text will fit; context and step limits
+remain independently enforced.
+
+Metadata references (pinned llama.cpp, not a downstream model implementation):
+- https://github.com/ggml-org/llama.cpp/blob/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/conversion/qwen3tts.py
+- https://github.com/ggml-org/llama.cpp/blob/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/conversion/pockettts.py
+- https://github.com/ggml-org/llama.cpp/blob/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/gguf-py/gguf/constants.py
+- https://huggingface.co/Qwen/Qwen3-TTS-Tokenizer-12Hz/blob/main/config.json
+
+
+Candidate ordering is deterministic: a detected model that does not require a
+reference is preferred, followed by smaller stored file size, then stable model
+ID. This is a convenience default, not a quality or peak-memory ranking. Refresh
+must preserve a manual selection and a still-detected automatic selection. A new
+inventory aborts the old scan; late results cannot replace current choices.
+Metadata read/format limits yield an unverified model, never an execution ban.
+
+## In-memory results
+
+Each successful completion prepends an audio result without clearing older ones
+on submit, failure, validation errors, or cancellation. Capture settings before
+awaiting inference; never read current form values when a result arrives. Keep
+text, language, model identity/name, and requested numeric/runtime parameters.
+Do not store the reference audio Blob or its file bytes in a history entry.
+Requested profile/context are not necessarily the resolved native profile/context;
+a random seed sentinel is not the actual sampled seed. This is an inspection
+record, not a promise of exact reproducibility.
+
+The page owns this history. Nothing is persisted to browser storage or chat.
+Leaving the route/reloading clears it. Individual and bulk deletion revoke Blob
+URLs and unmount players, stopping playback and detaching decoded sources. Store
+one Blob URL per result rather than retaining an extra WAV byte array. Report
+WAV byte totals (not total browser memory); avoid silently evicting old results.
+Users can save WAVs or explicitly delete results to reclaim their owned data.

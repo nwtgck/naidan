@@ -38,7 +38,7 @@ export type AudioGenerationResult = z.infer<typeof audioGenerationResultSchema>;
 export type AudioBackend = z.infer<typeof audioBackendSchema>;
 
 export function defaultAudioParameters(): Omit<AudioGenerationInput, 'model' | 'text' | 'reference' | 'options' | 'debug'> {
-  return { language: 'en', audioBackend: 'profile', contextTokens: 4096, maxFrames: 256, temperature: 0.9, topK: 50, topP: 1, seed: 4294967295 };
+  return { language: 'en', audioBackend: 'profile', contextTokens: 4096, maxFrames: 1024, temperature: 0.9, topK: 50, topP: 1, seed: 4294967295 };
 }
 export const TEST_ONLY = {
 };

@@ -1,1 +1,1 @@
-export const audioGeneration__output_lifetime = (): string => "Results remain only on this screen. Save the WAV before leaving. Playback never starts automatically.";
+export const audioGeneration__output_lifetime = (): string => "Los audios terminados y sus ajustes permanecen en memoria mientras esta página esté abierta, incluso durante la siguiente generación. Puedes eliminarlos uno a uno o todos. No se guardan automáticamente: guarda los WAV necesarios antes de salir o recargar. La reproducción no se inicia sola.";

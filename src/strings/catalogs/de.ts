@@ -1886,7 +1886,43 @@ import { audioGeneration__generation_failed } from '@/strings/messages/audioGene
 import { audioGeneration__runtime_unavailable } from '@/strings/messages/audioGeneration__runtime_unavailable/de';
 import { audioGeneration__steps_completed } from '@/strings/messages/audioGeneration__steps_completed/de';
 
+import { audioGeneration__not_detected_as_audio } from '@/strings/messages/audioGeneration__not_detected_as_audio/de';
+import { audioGeneration__checking_local_model_metadata } from '@/strings/messages/audioGeneration__checking_local_model_metadata/de';
+import { audioGeneration__no_audio_models_detected } from '@/strings/messages/audioGeneration__no_audio_models_detected/de';
+import { audioGeneration__show_all_models } from '@/strings/messages/audioGeneration__show_all_models/de';
+import { audioGeneration__model_detection_help } from '@/strings/messages/audioGeneration__model_detection_help/de';
+import { audioGeneration__advanced_model_selection } from '@/strings/messages/audioGeneration__advanced_model_selection/de';
+import { audioGeneration__show_all_llama_cpp_browser_models } from '@/strings/messages/audioGeneration__show_all_llama_cpp_browser_models/de';
+import { audioGeneration__all_models_help } from '@/strings/messages/audioGeneration__all_models_help/de';
+import { audioGeneration__step_limit_help } from '@/strings/messages/audioGeneration__step_limit_help/de';
+import { audioGeneration__delete_audio } from '@/strings/messages/audioGeneration__delete_audio/de';
+import { audioGeneration__generation_settings } from '@/strings/messages/audioGeneration__generation_settings/de';
+import { audioGeneration__recorded_settings_help } from '@/strings/messages/audioGeneration__recorded_settings_help/de';
+import { audioGeneration__random_seed } from '@/strings/messages/audioGeneration__random_seed/de';
+import { audioGeneration__requested_profile } from '@/strings/messages/audioGeneration__requested_profile/de';
+import { audioGeneration__automatic_profile } from '@/strings/messages/audioGeneration__automatic_profile/de';
+import { audioGeneration__delete_all_audio } from '@/strings/messages/audioGeneration__delete_all_audio/de';
+import { audioGeneration__history_memory_usage } from '@/strings/messages/audioGeneration__history_memory_usage/de';
+
 export const catalog = {
+  audioGeneration__not_detected_as_audio,
+  audioGeneration__checking_local_model_metadata,
+  audioGeneration__no_audio_models_detected,
+  audioGeneration__show_all_models,
+  audioGeneration__model_detection_help,
+  audioGeneration__advanced_model_selection,
+  audioGeneration__show_all_llama_cpp_browser_models,
+  audioGeneration__all_models_help,
+  audioGeneration__step_limit_help,
+  audioGeneration__delete_audio,
+  audioGeneration__generation_settings,
+  audioGeneration__recorded_settings_help,
+  audioGeneration__random_seed,
+  audioGeneration__requested_profile,
+  audioGeneration__automatic_profile,
+  audioGeneration__delete_all_audio,
+  audioGeneration__history_memory_usage,
+
 
   SHARED__all_chats,
   SHARED__assistant,
