@@ -1,0 +1,1 @@
+export const audioGeneration__automatic_requires_runtime = (): string => "O idioma automático requer um ambiente de execução mais recente com esse suporte. O ambiente atual permite selecionar um idioma.";

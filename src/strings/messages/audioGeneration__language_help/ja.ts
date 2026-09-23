@@ -1,1 +1,1 @@
-export const audioGeneration__language_help = (): string => "Qwen Baseは選択した言語を使用します（既定値は英語）。Pocketの言語はモデルの重みで決まり、この設定は使用しません。";
+export const audioGeneration__language_help = (): string => "初期値は、対応していればアプリの表示言語に合わせます。「自動」は対応するQwenモデルに言語を固定せず発声を任せます。短い文や複数言語が混ざる文では、言語を明示した方がよい場合があります。「モデルの既定」はQwenでは英語です。Pocketではこの設定にかかわらず、モデルが学習した言語で生成します。";

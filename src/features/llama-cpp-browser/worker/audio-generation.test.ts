@@ -53,6 +53,25 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
     expect(native.api.mtmd_bitmap_free).toHaveBeenCalledExactlyOnceWith(50n);
     expect(native.owned.size).toBe(0);
   });
+  it.each(['missing', 'unsupported'] as const)('never turns unsupported auto into English: %s', async mode => {
+    const native = audioNativeFixture({ pointerBytes });
+    if (mode === 'unsupported') Reflect.set(native.api, 'mtmd_helper_gen_audio_supports_language_auto', vi.fn(async () => 0));
+    await expect(synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: { ...request(), language: 'auto' }, signal: undefined, onProgress: () => {} })).rejects.toThrow('unsupported-input');
+    expect(native.api.mtmd_helper_gen_audio_set_input).not.toHaveBeenCalled();
+    expect(native.api.mtmd_helper_gen_audio_free).toHaveBeenCalledOnce(); expect(native.owned.size).toBe(0);
+  });
+  it('passes native auto only after the loaded helper reports support', async () => {
+    const native = audioNativeFixture({ pointerBytes }); const query = vi.fn(async () => 1);
+    Reflect.set(native.api, 'mtmd_helper_gen_audio_supports_language_auto', query);
+    let language: string | undefined;
+    native.api.mtmd_helper_gen_audio_set_input.mockImplementation(async () => {
+      const pointer = BigInt(native.fields.get('mtmd_helper_gen_audio_inp.lang')!);
+      language = new TextDecoder().decode(native.core.bytes({ pointer, length: 4 }).subarray(0, 4));
+      return 0;
+    });
+    await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: { ...request(), language: 'auto' }, signal: undefined, onProgress: () => {} });
+    expect(query).toHaveBeenCalledOnce(); expect(language).toBe('auto'); expect(native.owned.size).toBe(0);
+  });
   it('uses a greedy backbone sampler only when temperature is zero', async () => {
     const native = audioNativeFixture({ pointerBytes });
     await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: { ...request(), temperature: 0 }, signal: undefined, onProgress: () => {} });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick } from 'vue';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
+import { setLocale } from '@/strings';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
 import type { EngineState } from '@/features/llama-cpp-browser/types';
@@ -53,10 +54,59 @@ describe('independent audio generation screen', () => {
     expect(service.generateAudio).not.toHaveBeenCalled(); expect(service.setOptions).not.toHaveBeenCalled();
     expect(view.get<HTMLSelectElement>('[data-testid="audio-model"]').element.value).toBe('user/voice');
   });
+  it('starts with the interface language and displays localized/native names', async () => {
+    await ensureAllStringsForTest({ locale: 'ja' });
+    const view = await ready();
+    const select = view.get<HTMLSelectElement>('[data-testid="audio-language"]');
+    expect(select.element.value).toBe('ja');
+    expect(view.get('option[value="en"]').text()).toBe('英語 (English)');
+    expect(view.get('option[value="ja"]').text()).toBe('日本語');
+    expect(view.get('option[value="zh"]').text()).toBe('中国語 (中文)');
+  });
+  it('updates labels after a real interface locale switch without overwriting the speech selection', async () => {
+    const view = await ready(); await view.get('[data-testid="audio-language"]').setValue('de');
+    await setLocale({ locale: 'ja' }); await flushPromises();
+    expect(view.get('option[value="en"]').text()).toBe('英語 (English)');
+    expect(view.get<HTMLSelectElement>('[data-testid="audio-language"]').element.value).toBe('de');
+  });
+  it('keeps model-native auto visible but disabled for an older runtime artifact', async () => {
+    const view = await ready();
+    expect(view.get<HTMLOptionElement>('option[value="auto"]').element.disabled).toBe(true);
+  });
+  it('renders separate feature-scoped scrolling containers', async () => {
+    const view = await ready();
+    expect(view.get('[data-testid="audio-generation-scroll"]').find('[data-testid="audio-generation-page"]').exists()).toBe(true);
+    expect(view.get('[data-testid="audio-model-manager"]').find('[data-testid="audio-model-manager-scroll"]').exists()).toBe(true);
+  });
+  it('reveals invalid fields hidden inside advanced details instead of relying on browser form validation', async () => {
+    const view = await ready();
+    expect(view.get<HTMLFormElement>('form').element.noValidate).toBe(true);
+    const context = view.get<HTMLInputElement>('[data-testid="audio-context"]');
+    const details = context.element.closest('details')!;
+    expect(details.open).toBe(false);
+    await context.setValue('1'); await submit({ view });
+    expect(details.open).toBe(true);
+    expect(context.attributes('aria-invalid')).toBe('true');
+    expect(view.get('[data-testid="audio-error"]').text()).toContain('1024');
+    expect(service.generateAudio).not.toHaveBeenCalled();
+  });
+  it('reports empty text in the page and removes old validation errors on a successful retry', async () => {
+    const view = await ready(); await view.get('[data-testid="audio-text"]').setValue('   '); await submit({ view });
+    expect(service.generateAudio).not.toHaveBeenCalled();
+    expect(view.get('[data-testid="audio-error"]').text()).toContain('text');
+    await view.get('[data-testid="audio-text"]').setValue('Hello'); await submit({ view });
+    expect(service.generateAudio).toHaveBeenCalledOnce(); expect(view.find('[data-testid="audio-error"]').exists()).toBe(false);
+  });
+  it('accepts context requests above the old 8192 UI limit', async () => {
+    const view = await ready(); const context = view.get('[data-testid="audio-context"]');
+    expect(context.attributes('max')).not.toBe('8192');
+    await context.setValue('32768'); await submit({ view });
+    expect(service.generateAudio.mock.calls[0]?.[0].input.contextTokens).toBe(32768);
+  });
   it('uses the local model ID and emits a downloadable WAV without autoplay', async () => {
     const view = await ready(); await view.get('[data-testid="audio-language"]').setValue('ja'); await submit({ view });
     expect(service.generateAudio).toHaveBeenCalledOnce();
-    expect(service.generateAudio.mock.calls[0]?.[0].input).toMatchObject({ model: 'user/voice', text: 'Hello', language: 'ja', audioBackend: 'cpu', contextTokens: 4096, debug: 'off' });
+    expect(service.generateAudio.mock.calls[0]?.[0].input).toMatchObject({ model: 'user/voice', text: 'Hello', language: 'ja', audioBackend: 'profile', contextTokens: 4096, debug: 'off' });
     expect(service.generateAudio.mock.calls[0]?.[0].input).not.toHaveProperty('messages');
     const player = view.get('[data-testid="audio-player"]'); expect(player.attributes('src')).toBe('blob:generated-audio');
     expect(player.attributes()).not.toHaveProperty('autoplay');

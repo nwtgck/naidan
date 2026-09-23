@@ -3,7 +3,10 @@ import { modelSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/
 
 export const MAX_REFERENCE_BYTES = 16 * 1024 * 1024;
 export const MAX_AUDIO_BYTES = 64 * 1024 * 1024;
-export const audioLanguageSchema = z.enum(['default', 'en', 'ja', 'zh', 'de', 'it', 'pt', 'es', 'ko', 'fr', 'ru']);
+// Transport bound, not a shared model limit. Session allocation is capped by
+// llama_model_n_ctx_train and may retry smaller contexts on allocation failure.
+export const MAX_AUDIO_CONTEXT_TOKENS = 2147483647;
+export const audioLanguageSchema = z.enum(['auto', 'default', 'en', 'ja', 'zh', 'de', 'it', 'pt', 'es', 'ko', 'fr', 'ru']);
 export const audioBackendSchema = z.enum(['profile', 'cpu']);
 export const audioGenerationInputSchema = z.object({
   model: modelSchema.shape.id,
@@ -11,7 +14,7 @@ export const audioGenerationInputSchema = z.object({
   reference: z.instanceof(Blob).refine(value => value.size > 0 && value.size <= MAX_REFERENCE_BYTES).optional(),
   language: audioLanguageSchema,
   audioBackend: audioBackendSchema,
-  contextTokens: z.number().int().min(1024).max(8192),
+  contextTokens: z.number().int().min(1024).max(MAX_AUDIO_CONTEXT_TOKENS),
   maxFrames: z.number().int().min(1).max(2048),
   temperature: z.number().finite().min(0).max(2),
   topK: z.number().int().min(1).max(256),
@@ -33,7 +36,7 @@ export type AudioGenerationResult = z.infer<typeof audioGenerationResultSchema>;
 export type AudioBackend = z.infer<typeof audioBackendSchema>;
 
 export function defaultAudioParameters(): Omit<AudioGenerationInput, 'model' | 'text' | 'reference' | 'options' | 'debug'> {
-  return { language: 'en', audioBackend: 'cpu', contextTokens: 4096, maxFrames: 256, temperature: 0.9, topK: 50, topP: 1, seed: 4294967295 };
+  return { language: 'en', audioBackend: 'profile', contextTokens: 4096, maxFrames: 256, temperature: 0.9, topK: 50, topP: 1, seed: 4294967295 };
 }
 export const TEST_ONLY = {
 };

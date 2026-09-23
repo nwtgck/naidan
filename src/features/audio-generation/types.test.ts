@@ -16,10 +16,16 @@ describe('audio request boundaries', () => {
   });
   it.each([
     { model: '../../voice' }, { maxFrames: 0 }, { maxFrames: 2049 }, { contextTokens: 0 },
-    { contextTokens: 8193 }, { temperature: NaN }, { topP: 0 }, { topK: 0 }, { seed: -1 },
-    { seed: 4294967296 }, { language: 'auto' }, { audioBackend: 'cuda' },
+    { contextTokens: 2147483648 }, { temperature: NaN }, { topP: 0 }, { topK: 0 }, { seed: -1 },
+    { seed: 4294967296 }, { language: 'xx' }, { audioBackend: 'cuda' },
   ])('rejects invalid or unsupported parameters: %o', change => {
     expect(audioGenerationInputSchema.safeParse({ ...input(), ...change }).success).toBe(false);
+  });
+  it.each([8193, 16384, 32768])('accepts a requested context of %i and leaves the actual model cap to the worker', contextTokens => {
+    expect(audioGenerationInputSchema.parse({ ...input(), contextTokens }).contextTokens).toBe(contextTokens);
+  });
+  it('accepts model-native automatic language as an explicit request', () => {
+    expect(audioGenerationInputSchema.parse({ ...input(), language: 'auto' }).language).toBe('auto');
   });
   it('checks reference byte limits before crossing the worker boundary', () => {
     expect(audioGenerationInputSchema.safeParse({ ...input(), reference: new Blob([]) }).success).toBe(false);

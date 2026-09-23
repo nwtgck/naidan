@@ -1,0 +1,1 @@
+export const audioGeneration__context_help = (): string => "8192 no es un límite común a todos los modelos. Este es el contexto solicitado; la asignación se limita al contexto de entrenamiento del modelo y puede reducirse si falta memoria. Un contexto mayor usa más memoria, pero no acelera la generación. El límite de pasos de audio es independiente.";

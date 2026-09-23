@@ -1,1 +1,1 @@
-export const audioGeneration__language_help = (): string => "Qwen Base uses the selected language (its default is English). Pocket uses the language of its weights and ignores this setting.";
+export const audioGeneration__language_help = (): string => "Die Anfangssprache folgt nach Möglichkeit der App-Sprache. Automatisch lässt ein kompatibles Qwen-Modell ohne Sprachvorgabe sprechen; bei kurzen oder gemischten Texten kann eine feste Wahl sinnvoll sein. Qwens Modellstandard ist Englisch. Pocket verwendet seine Trainingssprache.";

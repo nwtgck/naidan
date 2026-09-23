@@ -1,0 +1,1 @@
+export const audioGeneration__automatic_requires_runtime = (): string => "Die automatische Sprachwahl erfordert eine neuere Laufzeit mit dieser Funktion. Eine Sprache lässt sich weiterhin manuell auswählen.";

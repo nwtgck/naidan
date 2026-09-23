@@ -3,7 +3,9 @@ import { validateAudioWav } from '@/features/audio-generation/wav';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError, type Progress } from '@/features/llama-cpp-browser/types';
 import { logFailure, logOperation, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
+import { AUDIO_LANGUAGE_AUTO_QUERY } from '@/features/llama-cpp-browser/runtime/audio-capabilities';
 import { prepareAudioSession, releaseSession } from './session';
+import { createAudioCooperator } from './audio-cooperate';
 import { readAudioField, readAudioScalar } from './audio-memory';
 import type { WorkerAudioInput } from './types';
 
@@ -52,15 +54,13 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  const yieldControl = async (): Promise<void> => {
-    // A resolved Promise only yields to microtasks, starving the cancel RPC on CPU.
-    await new Promise<void>(resolve => setTimeout(resolve, 0)); checkCancelled();
-  };
+  const yieldControl = createAudioCooperator({ signal });
   const checked = async ({ call }: { call: () => Promise<number> }): Promise<number> => {
     checkCancelled();
     await logOperation({ diagnostic: { event: 'operation-start', stage, mediaType: 'audio' } });
+    const started = performance.now();
     const status = await call();
-    await logOperation({ diagnostic: { event: 'operation-complete', stage, mediaType: 'audio', statusCode: status } });
+    await logOperation({ diagnostic: { event: 'operation-complete', stage, mediaType: 'audio', statusCode: status, elapsedMs: performance.now() - started } });
     checkCancelled(); return status;
   };
   try {
@@ -88,6 +88,13 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     await api.llama_set_abort_callback(context, BigInt(abortCallback), 0n);
     helper = await api.mtmd_helper_gen_audio_init(context, projector);
     if (!helper) throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
+    if (accepted.language === 'auto' && capabilities.language === 'selectable') {
+      const query: unknown = Reflect.get(api, AUDIO_LANGUAGE_AUTO_QUERY);
+      // Missing support must never silently become English, or a guessed script.
+      if (typeof query !== 'function' || await Reflect.apply(query, api, [helper]) !== 1) {
+        throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+      }
+    }
     const params = record({ name: 'mtmd_helper_gen_audio_inp' });
     const language = capabilities.language === 'weights' || accepted.language === 'default' ? 0n : string({ text: accepted.language });
     for (const [field, value] of Object.entries({ seq_id: 0, prompt: string({ text: accepted.text }), prompt_len: BigInt(new TextEncoder().encode(accepted.text).length), speaker_ref: speaker, lang: language, top_k: accepted.topK, top_p: accepted.topP, seed: accepted.seed, out_type: core.constant({ name: 'MTMD_HELPER_GEN_AUDIO_OUTTYPE_WAV' }) })) {
@@ -100,7 +107,7 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     stage = 'audio-prompt';
     let processed = 0;
     while (true) {
-      await yieldControl();
+      await yieldControl({ force: false });
       const remaining = await checked({ call: () => api.mtmd_helper_gen_audio_step_prompt(helper, 128) });
       if (remaining < 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });
       processed = await api.llama_memory_seq_pos_max(memory, 0) + 1;
@@ -121,7 +128,7 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     if (!hidden) throw new LlamaCppBrowserError({ code: 'runtime-error' });
     let frames = 0; let finishReason: AudioGenerationResult['finishReason'] = 'frame-limit';
     while (frames < accepted.maxFrames) {
-      await yieldControl();
+      await yieldControl({ force: false });
       if (await api.llama_memory_seq_pos_max(memory, 0) + 1 >= capacity) {
         finishReason = 'context-limit'; break;
       }
@@ -140,7 +147,7 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     }
     stage = 'audio-output';
     onProgress({ progress: { phase: 'decoding-audio', completed: 0, total: 0 } });
-    await yieldControl();
+    await yieldControl({ force: true });
     const rateOut = alloc({ bytes: 4 }); const dataOut = alloc({ bytes: core.pointerBytes });
     const lengthOut = alloc({ bytes: core.pointerBytes }); const samplesOut = alloc({ bytes: 8 });
     if (await checked({ call: () => api.mtmd_helper_gen_audio_get_output(helper, rateOut, dataOut, lengthOut, samplesOut) }) !== 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });

@@ -1,3 +1,10 @@
+import { audioGeneration__automatic_requires_runtime } from '@/strings/messages/audioGeneration__automatic_requires_runtime/en';
+import { audioGeneration__automatic_language } from '@/strings/messages/audioGeneration__automatic_language/en';
+import { audioGeneration__invalid_top_p } from '@/strings/messages/audioGeneration__invalid_top_p/en';
+import { audioGeneration__number_range } from '@/strings/messages/audioGeneration__number_range/en';
+import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/en';
+import { audioGeneration__invalid_text } from '@/strings/messages/audioGeneration__invalid_text/en';
+import { audioGeneration__context_help } from '@/strings/messages/audioGeneration__context_help/en';
 // SHARED__ keys intentionally couple every call site to one product-wide copy decision.
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/en';
@@ -3761,6 +3768,13 @@ export const catalog = {
   audioGeneration__generation_failed,
   audioGeneration__runtime_unavailable,
   audioGeneration__steps_completed,
+  audioGeneration__context_help,
+  audioGeneration__invalid_text,
+  audioGeneration__integer_range,
+  audioGeneration__number_range,
+  audioGeneration__invalid_top_p,
+  audioGeneration__automatic_language,
+  audioGeneration__automatic_requires_runtime,
 } satisfies BoundaryStringCatalog;
 
 export type Strings = typeof catalog;
