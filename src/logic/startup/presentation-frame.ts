@@ -6,9 +6,13 @@ export async function waitForPresentationPaint({ window }: {
    * Waiting for the following frame guarantees the browser had one paint
    * opportunity before startup resumes CPU-heavy module evaluation.
    */
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve());
+      try {
+        window.requestAnimationFrame(() => resolve());
+      } catch (error) {
+        reject(error);
+      }
     });
   });
 }

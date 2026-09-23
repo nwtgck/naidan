@@ -1,36 +1,60 @@
-import { ref } from 'vue';
+import { computed, shallowRef } from 'vue';
 
-const needRefresh = ref(false);
-const updateHandler = ref<(() => Promise<void>) | undefined>(undefined);
+export type PWAUpdateState =
+  | { kind: 'idle' }
+  | { kind: 'preparing'; handler?: () => Promise<void> }
+  | { kind: 'ready'; handler: () => Promise<void> };
+
+type InternalUpdateState = PWAUpdateState | { kind: 'applying' };
+
+// Page-scoped state survives Sidebar and post-startup UI remounts. Publish the
+// action and availability atomically. Preparing permits ONLY an explicit
+// network-update action; it never activates an uninstalled service worker.
+const state = shallowRef<InternalUpdateState>({ kind: 'idle' });
+const status = computed(() => state.value.kind);
+const canUpdate = computed(() => (state.value.kind === 'ready' || state.value.kind === 'preparing') && state.value.handler !== undefined);
 
 export function usePWAUpdate() {
-  const setNeedRefresh = ({ refresh, handler }: {
-    refresh: boolean,
-    handler: (() => Promise<void>) | undefined,
-  }) => {
-    needRefresh.value = refresh;
-    updateHandler.value = handler;
-  };
+  function setUpdateState({ next }: { next: PWAUpdateState }): void {
+    state.value = next;
+  }
 
-  const update = async () => {
-    if (updateHandler.value) {
-      await updateHandler.value();
+  async function update(): Promise<void> {
+    const current = state.value;
+    switch (current.kind) {
+    case 'idle':
+    case 'applying':
+      return;
+    case 'preparing':
+    case 'ready': {
+      if (!current.handler) return;
+      const applying = { kind: 'applying' } as const;
+      state.value = applying;
+      try {
+        await current.handler();
+        // The service worker controls the eventual reload. Do not enable a
+        // second click merely because sending SKIP_WAITING has completed.
+      } catch (error) {
+        if (state.value === applying) state.value = current;
+        throw error;
+      }
+      return;
     }
-  };
+    default: {
+      const exhaustive: never = current;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
 
   return {
-    needRefresh,
+    status,
+    canUpdate,
     update,
-    setNeedRefresh,
-    ...((__BUILD_MODE_IS_TEST__ && {
-      TEST_ONLY: {
-        // Export internal state and logic used only for testing here. Do not reference these in production logic.
-      },
-    }) || {}),
+    setUpdateState,
+    ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }
 
-// Export internal state and logic used only for testing here. Do not reference these in production logic.
-// ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
 };
