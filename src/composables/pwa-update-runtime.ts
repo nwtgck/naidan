@@ -9,7 +9,7 @@ let runtime: { dispose: () => void } | undefined;
 export function startPWAUpdateRuntime(): void {
   if (runtime || !('serviceWorker' in navigator) || (import.meta.env.DEV && !__BUILD_MODE_IS_TEST__)) return;
   const { setUpdateState } = usePWAUpdate();
-  const { addInfoEvent, addErrorEvent } = useGlobalEvents();
+  const { addInfoEvent, addErrorEvent, addEvent } = useGlobalEvents();
   let disposed = false;
   const controller = createPWAUpdateController({
     platform: {
@@ -29,6 +29,17 @@ export function startPWAUpdateRuntime(): void {
       }).catch((error: unknown) => {
         if (!disposed) console.error('[PWA] Failed to load the offline-ready notification.', error);
       });
+    },
+    onDiagnostic: ({ level, message, details }) => {
+      switch (level) {
+      case 'error': console.error(`[PWA] ${message}`, details); break;
+      case 'warn': console.warn(`[PWA] ${message}`, details); break;
+      default: {
+        const exhaustive: never = level;
+        throw new Error(`Unexpected PWA diagnostic level: ${exhaustive}`);
+      }
+      }
+      addEvent({ type: level, source: 'PWA', message, details });
     },
     onError: ({ message, error }) => {
       console.error(`[PWA] ${message}`, error);

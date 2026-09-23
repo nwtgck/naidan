@@ -1,6 +1,7 @@
 import type { PWAUpdateState } from '@/composables/usePWAUpdate';
 import { NETWORK_UPDATE_PARAMETER, PWA_PROTOCOL, networkUpdateToken, networkUpdateUrl } from '@/logic/pwa/protocol';
 import { requestPWAWorker } from '@/logic/pwa/worker-request';
+import { pwaInstallFailureSchema } from '@/logic/pwa/install-diagnostics';
 
 export interface PWAUpdatePlatform {
   serviceWorkers: ServiceWorkerContainer;
@@ -12,13 +13,16 @@ export interface PWAUpdatePlatform {
 }
 
 /** Native browser boundaries only: no substitute App/router/settings dependency graph. */
-export function createPWAUpdateController({ platform, baseUrl, buildId, onState, onOfflineReady, onError }: {
+export function createPWAUpdateController({ platform, baseUrl, buildId, onState, onOfflineReady, onError, onDiagnostic }: {
   platform: PWAUpdatePlatform;
   baseUrl: URL;
   buildId: string;
   onState: ({ next }: { next: PWAUpdateState }) => void;
   onOfflineReady: () => void;
   onError: ({ message, error }: { message: string; error: unknown }) => void;
+  onDiagnostic: ({ level, message, details }: {
+    level: 'warn' | 'error'; message: string; details: Record<string, unknown>;
+  }) => void;
 }): { dispose: () => void } {
   const sw = platform.serviceWorkers;
   let disposed = false;
@@ -32,6 +36,8 @@ export function createPWAUpdateController({ platform, baseUrl, buildId, onState,
   let operation = false;
   let generation = 0;
   const workers = new Map<ServiceWorker, () => void>();
+  const observedInstallers = new WeakSet<ServiceWorker>();
+  const reportedFailures = new WeakSet<ServiceWorker>();
   const info = new Map<ServiceWorker, Promise<{ buildId: string }>>();
   let pendingActivation: { worker: ServiceWorker; finish: ({ error }?: { error?: Error }) => void } | undefined;
 
@@ -175,25 +181,47 @@ export function createPWAUpdateController({ platform, baseUrl, buildId, onState,
   }
 
   function updateCandidate(): { worker: ServiceWorker; ready: boolean } | undefined {
-    const worker = registration?.waiting ?? registration?.installing;
-    if (!worker) return undefined;
-    const state = worker.state;
-    switch (state) {
-    case 'parsed':
-    case 'installing': return { worker, ready: false };
-    case 'installed': return { worker, ready: true };
-    case 'activating':
-    case 'activated':
-    case 'redundant': return undefined;
-    default: {
-      const exhaustive: never = state;
-      throw new Error(`Unexpected service worker state: ${exhaustive}`);
+    // Registration slots and statechange are delivered separately. A retired
+    // waiting slot must not mask a viable installer while those tasks settle.
+    for (const worker of [registration?.waiting, registration?.installing]) {
+      if (!worker) continue;
+      const state = worker.state;
+      switch (state) {
+      case 'parsed':
+      case 'installing': return { worker, ready: false };
+      case 'installed': return { worker, ready: true };
+      case 'activating':
+      case 'activated':
+      case 'redundant': continue;
+      default: {
+        const exhaustive: never = state;
+        throw new Error(`Unexpected service worker state: ${exhaustive}`);
+      }
+      }
     }
-    }
+    return undefined;
+  }
+
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Native ServiceWorkerContainer listener uses the browser's positional event contract.
+  function observeInstallFailure(event: MessageEvent<unknown>): void {
+    if (disposed || event.origin !== baseUrl.origin) return;
+    const worker = event.source;
+    // URL equality alone cannot identify versions: all releases use sw.js.
+    // Remember observed installers weakly so a late message is still accepted
+    // after the redundant worker has left registration.installing.
+    if (!worker || !('scriptURL' in worker) || !observedInstallers.has(worker)) return;
+    const result = pwaInstallFailureSchema.safeParse(event.data);
+    if (!result.success || result.data.scope !== baseUrl.href || reportedFailures.has(worker)) return;
+    reportedFailures.add(worker);
+    onDiagnostic({
+      level: 'error', message: 'Failed to precache an application resource.',
+      details: { ...result.data, workerScriptUrl: worker.scriptURL, pageBuildId: buildId },
+    });
   }
 
   function synchronize(): void {
-    if (disposed || !registration || operation) return;
+    if (disposed || !registration) return;
+    const revision = ++generation;
     const current = registration;
     const candidates = new Set([current.installing, current.waiting, current.active].filter((worker) => worker !== null));
     for (const [worker, listener] of workers) {
@@ -204,23 +232,45 @@ export function createPWAUpdateController({ platform, baseUrl, buildId, onState,
     for (const worker of candidates) {
       if (workers.has(worker)) continue;
       let previous = worker.state;
+      if (previous === 'parsed' || previous === 'installing') observedInstallers.add(worker);
+      const activeWhenObserved = current.active;
+      const waitingWhenObserved = current.waiting;
       const listener = () => {
-        const failed = previous === 'installing' && worker.state === 'redundant';
+        const stopped = (previous === 'parsed' || previous === 'installing') && worker.state === 'redundant';
         previous = worker.state;
-        if (failed) failedUpdate = worker;
+        // Inspect both slots: an older waiting version may outrank a newer
+        // installer for the button, but must not hide that installer's presence.
+        const superseded = [current.installing, current.waiting].some(replacement =>
+          replacement && replacement !== worker && replacement !== waitingWhenObserved && replacement.state !== 'redundant')
+          || (current.active && current.active !== worker && current.active !== activeWhenObserved);
+        if (stopped && !superseded) failedUpdate = worker;
+        if (worker.state === 'redundant' && pendingActivation?.worker === worker) {
+          pendingActivation.finish({ error: new Error('The selected update was replaced or could not activate. Try again.') });
+        }
         synchronize();
-        if (failed) report({ message: 'Failed to prepare the offline application update.', error: new Error('The installing service worker became redundant.') });
+        if (stopped && !superseded && !reportedFailures.has(worker) && !disposed) {
+          // Redundant is a terminal state, NOT an exception or its cause. A
+          // failed install, registration removal or browser termination can all
+          // end here. Prefer an actual Workbox failure message when available;
+          // otherwise record an honest warning, not a synthetic Error stack.
+          onDiagnostic({
+            level: 'warn', message: 'Offline preparation ended before readiness was confirmed; the browser did not provide a cause.',
+            details: { kind: 'worker-became-redundant', workerScriptUrl: worker.scriptURL, scope: baseUrl.href, pageBuildId: buildId },
+          });
+        }
       };
       worker.addEventListener('statechange', listener);
       workers.set(worker, listener);
     }
+    // Continue tracking worker lifetimes while a click/probe blocks UI changes.
+    // Otherwise an installer appearing mid-click can fail without being observed.
+    if (operation) return;
     const pending = updateCandidate();
     const candidate = pending?.worker;
     const ready = pending?.ready ?? false;
     if (candidate && current.active && current.active !== candidate) {
       failedUpdate = undefined;
       if (online()) {
-        const revision = ++generation;
         void workerInfo({ worker: candidate }).then(({ buildId: candidateId }) => {
           if (disposed || revision !== generation || !online()) return;
           if (candidateId === buildId) {
@@ -244,7 +294,6 @@ export function createPWAUpdateController({ platform, baseUrl, buildId, onState,
       publishCandidate({ candidate, ready });
       return;
     }
-    generation++;
     if (failedUpdate && current.active && supportsNetworkUpdate && !online()) {
       // An optional resource can break FULL offline installation while the new
       // app is already usable online. Preserve the explicit network choice.
@@ -270,6 +319,7 @@ export function createPWAUpdateController({ platform, baseUrl, buildId, onState,
   }
 
   sw.addEventListener('controllerchange', observeController);
+  sw.addEventListener('message', observeInstallFailure);
   // Subscribe to the EXISTING registration before register()/update(). A browser-
   // initiated install may already be downloading; queuing register() first can
   // delay our callback until that whole install finishes, defeating early notice.
@@ -287,6 +337,7 @@ export function createPWAUpdateController({ platform, baseUrl, buildId, onState,
       generation++;
       pendingActivation?.finish({ error: new Error('The update runtime was stopped.') });
       sw.removeEventListener('controllerchange', observeController);
+      sw.removeEventListener('message', observeInstallFailure);
       registration?.removeEventListener('updatefound', synchronize);
       for (const [worker, listener] of workers) worker.removeEventListener('statechange', listener);
       workers.clear();

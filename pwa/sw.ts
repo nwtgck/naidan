@@ -3,6 +3,7 @@ import { PrecacheController, PrecacheRoute, cleanupOutdatedCaches } from 'workbo
 import { NavigationRoute, Router } from 'workbox-routing';
 import { PWA_PROTOCOL } from '../src/logic/pwa/protocol';
 import { createNetworkUpdatePolicy } from './network-policy';
+import { createInstallFailureReporter } from './install-diagnostics';
 
 declare const __PWA_BUILD_ID__: string;
 declare const self: ServiceWorkerGlobalScope & {
@@ -11,7 +12,21 @@ declare const self: ServiceWorkerGlobalScope & {
 
 // Keep the full, automatically generated precache manifest. Explicit online
 // updating is a routing choice; it does not split, skip or truncate installation.
-const precache = new PrecacheController();
+const reportInstallFailure = createInstallFailureReporter({
+  scope: self.registration.scope, buildId: __PWA_BUILD_ID__, clients: self.clients,
+});
+const precache = new PrecacheController({
+  plugins: [{
+    async handlerDidError({ request, error, event }) {
+      if (event.type === 'install') {
+        await reportInstallFailure({ resourceUrl: request.url, error });
+      }
+      // Do not return a fallback Response: Workbox must still reject the FULL
+      // installation. Reporting a failure never makes an incomplete cache ready.
+      return undefined;
+    },
+  }],
+});
 precache.precache(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 const router = new Router();

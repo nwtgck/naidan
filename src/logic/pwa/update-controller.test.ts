@@ -3,6 +3,7 @@ import { createPWAUpdateController, type PWAUpdatePlatform } from '@/logic/pwa/u
 import type { PWAUpdateState } from '@/composables/usePWAUpdate';
 import { NETWORK_UPDATE_PARAMETER, PWA_PROTOCOL } from '@/logic/pwa/protocol';
 import { requestPWAWorker } from '@/logic/pwa/worker-request';
+import { createPWAInstallFailure } from '@/logic/pwa/install-diagnostics';
 
 // Replace the browser message transport, typed from its real public contract.
 // App, settings, router, main entry and application imports are not substituted.
@@ -51,9 +52,9 @@ function setup({ online = false, pageBuildId = 'old', existing = true, registerP
     createToken: () => token,
   };
   const states: PWAUpdateState[] = [];
-  const onError = vi.fn(); const onOfflineReady = vi.fn();
+  const onError = vi.fn(); const onOfflineReady = vi.fn(); const onDiagnostic = vi.fn();
   const start = () => {
-    const controller = createPWAUpdateController({ platform, baseUrl: new URL(reg.scope), buildId: pageBuildId, onState: ({ next }) => states.push(next), onError, onOfflineReady });
+    const controller = createPWAUpdateController({ platform, baseUrl: new URL(reg.scope), buildId: pageBuildId, onState: ({ next }) => states.push(next), onError, onOfflineReady, onDiagnostic });
     disposers.push(controller.dispose);
     return controller;
   };
@@ -69,7 +70,7 @@ function setup({ online = false, pageBuildId = 'old', existing = true, registerP
     if (!state || state.kind === 'idle' || !state.handler) throw new Error(`No action in ${state?.kind}`);
     return state.handler();
   };
-  return { old, next, reg, container, platform, fetch, start, states, makeReady, takeControl, action, onError, onOfflineReady };
+  return { old, next, reg, container, platform, fetch, start, states, makeReady, takeControl, action, onError, onOfflineReady, onDiagnostic };
 }
 
 beforeEach(() => {
@@ -200,7 +201,8 @@ describe('post-paint update controller', () => {
   it('keeps the online choice when a detected update fails full precaching', async () => {
     const f = setup(); f.start(); await flush();
     f.reg.installing = null; f.next.transition('redundant'); await flush();
-    expect(f.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Failed to prepare the offline application update.' }));
+    expect(f.onError).not.toHaveBeenCalled();
+    expect(f.onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ level: 'warn', details: expect.objectContaining({ kind: 'worker-became-redundant' }) }));
     expect(f.states.at(-1)).toEqual({ kind: 'preparing', handler: expect.any(Function) });
     await f.action();
     expect(f.platform.navigate).toHaveBeenCalledWith({ href: expect.stringContaining(NETWORK_UPDATE_PARAMETER) });
@@ -243,4 +245,110 @@ describe('post-paint update controller', () => {
     const f = setup({ existing: false }); f.container.register.mockRejectedValue(new Error('registration error'));
     f.start(); await flush(); expect(f.onError).toHaveBeenCalledOnce();
   });
+  it('does not diagnose normal retirement after a worker has installed and activated as an install failure', async () => {
+    const f = setup(); f.start(); await flush(); f.makeReady(); await flush(); f.takeControl(); await flush();
+    f.next.transition('redundant'); await flush();
+    expect(f.onDiagnostic).not.toHaveBeenCalled();
+    expect(f.onError).not.toHaveBeenCalled();
+  });
+
+  it('does not flag a superseded installer or mask its replacement with a retired waiting slot', async () => {
+    const f = setup(); f.start(); await flush();
+    const replacement = new WorkerHandle('newer');
+    // Deliver the old statechange before updatefound, as separate browser tasks.
+    f.reg.waiting = f.next.native(); f.reg.installing = replacement.native();
+    f.next.transition('redundant'); await flush();
+    expect(f.onDiagnostic).not.toHaveBeenCalled();
+    expect(f.states.at(-1)).toEqual({ kind: 'preparing', handler: expect.any(Function) });
+    f.reg.installing = null; replacement.transition('redundant'); await flush();
+    expect(f.onDiagnostic).toHaveBeenCalledOnce();
+    await f.action();
+    expect(f.platform.navigate).toHaveBeenCalledOnce();
+  });
+
+  it('retains an older waiting version without hiding a newer installer stopping', async () => {
+    const f = setup();
+    const waiting = new WorkerHandle('previous'); waiting.state = 'installed'; f.reg.waiting = waiting.native();
+    f.start(); await flush(); f.reg.installing = null; f.next.transition('redundant'); await flush();
+    expect(f.onDiagnostic).toHaveBeenCalledOnce();
+    expect(f.states.at(-1)?.kind).toBe('ready');
+  });
+
+  it('records the actual resource failure once instead of generating a redundant-state Error', async () => {
+    const f = setup(); f.start(); await flush();
+    const failure = createPWAInstallFailure({
+      scope: f.reg.scope, buildId: 'new', resourceUrl: `${f.reg.scope}runtime.wasm.gz`,
+      error: Object.assign(new Error('Cache write failed'), { name: 'QuotaExceededError' }),
+    });
+    const deliver = () => f.container.dispatchEvent(new MessageEvent('message', {
+      origin: new URL(f.reg.scope).origin, source: f.next.native(), data: failure,
+    }));
+    deliver(); f.reg.installing = null; f.next.transition('redundant'); deliver(); await flush();
+    expect(f.onError).not.toHaveBeenCalled();
+    expect(f.onDiagnostic).toHaveBeenCalledExactlyOnceWith({
+      level: 'error', message: 'Failed to precache an application resource.',
+      details: { ...failure, workerScriptUrl: f.next.scriptURL, pageBuildId: 'old' },
+    });
+    await f.action(); expect(f.platform.navigate).toHaveBeenCalledOnce();
+  });
+
+  it('accepts delayed genuine details after redundant, but ignores malformed, cross-scope and unrelated messages', async () => {
+    const f = setup(); const controller = f.start(); await flush();
+    const failure = createPWAInstallFailure({
+      scope: f.reg.scope, buildId: 'new', resourceUrl: `${f.reg.scope}index.html`, error: new TypeError('Failed to fetch'),
+    });
+    const deliver = ({ source, origin, data }: { source: ServiceWorker; origin: string; data: unknown }) => {
+      f.container.dispatchEvent(new MessageEvent('message', { source, origin, data }));
+    };
+    const origin = new URL(f.reg.scope).origin;
+    deliver({ source: new WorkerHandle('unrelated').native(), origin, data: failure });
+    deliver({ source: f.next.native(), origin: 'https://other.test', data: failure });
+    deliver({ source: f.next.native(), origin, data: { ...failure, scope: 'https://example.test/other/' } });
+    deliver({ source: f.next.native(), origin, data: { ...failure, error: { name: 42 } } });
+    expect(f.onDiagnostic).not.toHaveBeenCalled();
+    f.reg.installing = null; f.next.transition('redundant'); await flush();
+    deliver({ source: f.next.native(), origin, data: failure });
+    expect(f.onDiagnostic.mock.calls.map(([diagnostic]) => diagnostic.level)).toEqual(['warn', 'error']);
+    controller.dispose();
+    deliver({ source: f.next.native(), origin, data: failure });
+    expect(f.onDiagnostic).toHaveBeenCalledTimes(2);
+  });
+
+  it('tracks an installer appearing and failing during a pending network probe', async () => {
+    const f = setup(); f.start(); await flush();
+    let reject!: (error: Error) => void;
+    f.fetch.mockImplementationOnce(() => new Promise((_resolve, fail) => {
+      reject = fail;
+    }));
+    const action = f.action(); await flush();
+    const replacement = new WorkerHandle('newer');
+    f.reg.installing = replacement.native();
+    f.reg.dispatchEvent(new Event('updatefound'));
+    f.reg.installing = null; replacement.transition('redundant');
+    reject(new Error('network lost')); await expect(action).rejects.toThrow('network lost');
+    expect(f.onDiagnostic).toHaveBeenCalledOnce();
+    expect(f.states.at(-1)).toEqual({ kind: 'preparing', handler: expect.any(Function) });
+    await f.action(); expect(f.platform.navigate).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a retired selected activation immediately and publishes the replacement action', async () => {
+    const f = setup(); f.start(); await flush(); f.makeReady(); await flush();
+    const action = f.action();
+    const rejection = expect(action).rejects.toThrow('replaced or could not activate');
+    const replacement = new WorkerHandle('newer'); replacement.state = 'installed';
+    f.reg.waiting = replacement.native(); f.next.transition('redundant');
+    await rejection; await flush();
+    expect(f.onDiagnostic).not.toHaveBeenCalled();
+    expect(f.states.at(-1)?.kind).toBe('ready');
+  });
+
+  it('recognizes a replacement installer even when an older waiting version remains available', async () => {
+    const f = setup();
+    const waiting = new WorkerHandle('previous'); waiting.state = 'installed'; f.reg.waiting = waiting.native();
+    f.start(); await flush();
+    f.reg.installing = new WorkerHandle('newer').native(); f.next.transition('redundant'); await flush();
+    expect(f.onDiagnostic).not.toHaveBeenCalled();
+    expect(f.states.at(-1)?.kind).toBe('ready');
+  });
+
 });

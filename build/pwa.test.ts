@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { pwaInstallFailureSchema } from '../src/logic/pwa/install-diagnostics';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -150,4 +151,78 @@ describe('production PWA build and generated worker', () => {
     expect(await (await (await cacheStorage.open('user-model-sentinel')).match(`${scope}saved-model`))?.text()).toBe('keep-model');
     expect(requested.some(item => item.path === 'runtime.wasm.gz' && item.cache === 'no-store')).toBe(true);
   }, 60000);
+  it('reports actual HTTP, network and cache failures while rejecting the generated worker installation', async () => {
+    const version = await bundle({ buildId: 'failed-install' });
+    const scope = 'https://example.test/naidan/';
+    const resourceUrl = `${scope}naidan-standalone.zip`;
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      for (const mode of ['http-404', 'http-503', 'network', 'quota'] as const) {
+        const delivered: unknown[] = [];
+        const unrelated = vi.fn();
+        const clients = new TestClients();
+        const matchAll = vi.spyOn(clients, 'matchAll');
+        clients.clients.set('closing-tab', { id: 'closing-tab', type: 'window', url: scope, postMessage: () => {
+          throw new Error('window closed');
+        } });
+        clients.clients.set('old-tab', { id: 'old-tab', type: 'window', url: scope, postMessage: message => delivered.push(message) });
+        clients.clients.set('other-app', { id: 'other-app', type: 'window', url: 'https://example.test/other/', postMessage: unrelated });
+        const cacheStorage = new MemoryCacheStorage();
+        const cacheError = Object.assign(new Error('Cache storage is full'), { name: 'QuotaExceededError' });
+        const fetchError = new TypeError('Failed to fetch');
+        if (mode === 'quota') {
+          const open = cacheStorage.open.bind(cacheStorage);
+          const wrapped = new WeakSet<Cache>();
+          vi.spyOn(cacheStorage, 'open').mockImplementation(async name => {
+            const cache = await open(name);
+            if (!wrapped.has(cache)) {
+              wrapped.add(cache);
+              const put = cache.put.bind(cache);
+              vi.spyOn(cache, 'put').mockImplementation(async (request, response) => {
+                const url = request instanceof Request ? request.url : String(request);
+                if (new URL(url).pathname === new URL(resourceUrl).pathname) throw cacheError;
+                await put(request, response);
+              });
+            }
+            return cache;
+          });
+        }
+        const network: typeof fetch = async input => {
+          const url = new URL(input instanceof Request ? input.url : String(input));
+          if (url.href === resourceUrl) {
+            switch (mode) {
+            case 'http-404': return new Response('missing', { status: 404 });
+            case 'http-503': return new Response('unavailable', { status: 503 });
+            case 'network': throw fetchError;
+            case 'quota': break;
+            default: {
+              const exhaustive: never = mode;
+              throw new Error(`Unexpected failure mode: ${exhaustive}`);
+            }
+            }
+          }
+          const file = url.pathname.slice('/naidan/'.length) || 'index.html';
+          const bytes = version.files.get(file);
+          return new Response(bytes ? new Uint8Array(bytes) : 'missing', { status: bytes ? 200 : 404 });
+        };
+        const worker = createWorkerHarness({ script: version.script, scope, cacheStorage, clients, fetch: network });
+        const installation = worker.lifecycle('install');
+        if (mode === 'network') await expect(installation).rejects.toBe(fetchError);
+        else if (mode === 'quota') await expect(installation).rejects.toBe(cacheError);
+        else await expect(installation).rejects.toMatchObject({ name: 'bad-precaching-response' });
+        expect(delivered, mode).toHaveLength(1);
+        const failure = pwaInstallFailureSchema.parse(delivered[0]);
+        expect(failure).toMatchObject({ resourceUrl, scope, buildId: 'failed-install' });
+        expect(failure.error.name).toBe(mode === 'quota' ? 'QuotaExceededError' : mode === 'network' ? 'TypeError' : 'bad-precaching-response');
+        if (mode === 'http-404' || mode === 'http-503') expect(failure.error.status).toBe(mode === 'http-404' ? 404 : 503);
+        else expect(failure.error.status).toBeUndefined();
+        expect(matchAll).toHaveBeenCalledWith({ type: 'window', includeUncontrolled: true });
+        expect(unrelated).not.toHaveBeenCalled();
+      }
+    } finally {
+      consoleError.mockRestore();
+      vi.restoreAllMocks();
+    }
+  }, 60000);
+
 });

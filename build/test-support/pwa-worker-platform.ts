@@ -57,7 +57,7 @@ export class MemoryCacheStorage {
   }
 }
 
-export type TestClient = { id: string; type: 'window' | 'worker' | 'sharedworker'; url: string };
+export type TestClient = { id: string; type: 'window' | 'worker' | 'sharedworker'; url: string; postMessage?: (message: unknown) => void };
 export class TestClients {
   readonly clients = new Map<string, TestClient>();
   async get(id: string): Promise<TestClient | undefined> {
@@ -72,13 +72,21 @@ class LifetimeEvent extends Event {
   readonly tasks: Promise<unknown>[] = [];
   waitUntil(promise: Promise<unknown>): void {
     this.tasks.push(promise);
+    // Native waitUntil observes rejections immediately, including tasks added
+    // while an earlier lifetime promise is pending.
+    void promise.catch(() => {});
   }
   async finished(): Promise<void> {
     let count = -1;
+    let failure: PromiseRejectedResult | undefined;
     while (count !== this.tasks.length) {
       count = this.tasks.length;
-      await Promise.all(this.tasks);
+      const results = await Promise.allSettled(this.tasks);
+      failure ??= results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     }
+    // An install fails after its lifetime tasks settle, not before diagnostics
+    // registered during the failure have had their delivery opportunity.
+    if (failure) throw failure.reason;
   }
 }
 
@@ -105,15 +113,35 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
 }) {
   const target = new EventTarget();
   const location = new URL('sw.js', scope);
+  const listeners = new Map<EventListenerOrEventListenerObject, EventListener>();
   const global = {
     location, registration: { scope }, caches: cacheStorage.native(), clients,
-    addEventListener: target.addEventListener.bind(target),
-    removeEventListener: target.removeEventListener.bind(target),
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      let wrapper = listeners.get(listener);
+      if (!wrapper) {
+        // Browsers ignore a listener's return value; Node's EventTarget instead
+        // turns a returned rejected Promise into an uncaught exception. Workbox
+        // registers that SAME promise via waitUntil, which we observe above.
+        wrapper = event => {
+          if (typeof listener === 'function') listener.call(global, event);
+          else listener.handleEvent(event);
+        };
+        listeners.set(listener, wrapper);
+      }
+      target.addEventListener(type, wrapper);
+    },
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      const wrapper = listeners.get(listener);
+      if (wrapper) target.removeEventListener(type, wrapper);
+    },
     skipWaiting: async () => {},
   };
   vm.runInNewContext(script, {
     self: global, location, registration: global.registration,
     navigator: { userAgent: 'Naidan worker test' }, caches: cacheStorage.native(), fetch,
+    // Errors from the host-backed fetch/cache APIs belong to the worker realm
+    // in browsers. Share their constructors so Workbox's instanceof checks match.
+    Error, TypeError, DOMException,
     Request, Response, Headers, URL, URLSearchParams, console,
     ExtendableEvent: LifetimeEvent, FetchEvent: RequestEvent,
     setTimeout, clearTimeout, performance, Promise,
