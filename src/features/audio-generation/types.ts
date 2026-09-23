@@ -6,7 +6,9 @@ export const MAX_AUDIO_BYTES = 64 * 1024 * 1024;
 // Transport bound, not a shared model limit. Session allocation is capped by
 // llama_model_n_ctx_train and may retry smaller contexts on allocation failure.
 export const MAX_AUDIO_CONTEXT_TOKENS = 2147483647;
-export const audioLanguageSchema = z.enum(['auto', 'default', 'en', 'ja', 'zh', 'de', 'it', 'pt', 'es', 'ko', 'fr', 'ru']);
+// Only the current upstream input contract is accepted. Do not reinterpret a
+// retired automatic-language request as the model default or a guessed language.
+export const audioLanguageSchema = z.enum(['default', 'en', 'ja', 'zh', 'de', 'it', 'pt', 'es', 'ko', 'fr', 'ru']);
 export const audioBackendSchema = z.enum(['profile', 'cpu']);
 export const audioGenerationInputSchema = z.object({
   model: modelSchema.shape.id,

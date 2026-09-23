@@ -1,1 +1,1 @@
-export const audioGeneration__language_help = (): string => "支持时，初始语言与应用语言一致。“自动”让兼容的Qwen模型在不固定语言的情况下发声；短文或混合语言仍可能需要手动指定。“模型默认”对Qwen为英语。Pocket始终使用训练语言。";
+export const audioGeneration__language_help = (): string => "如果支持，初始语言会与应用的显示语言一致。请明确选择朗读语言。Qwen 的模型默认语言是英语，并非自动检测。Pocket 使用模型训练时的语言，不受此设置影响。";

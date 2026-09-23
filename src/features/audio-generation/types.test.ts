@@ -24,8 +24,9 @@ describe('audio request boundaries', () => {
   it.each([8193, 16384, 32768])('accepts a requested context of %i and leaves the actual model cap to the worker', contextTokens => {
     expect(audioGenerationInputSchema.parse({ ...input(), contextTokens }).contextTokens).toBe(contextTokens);
   });
-  it('accepts model-native automatic language as an explicit request', () => {
-    expect(audioGenerationInputSchema.parse({ ...input(), language: 'auto' }).language).toBe('auto');
+  it('rejects retired automatic language instead of treating it as the model default', () => {
+    expect(audioGenerationInputSchema.safeParse({ ...input(), language: 'auto' }).success).toBe(false);
+    expect(audioGenerationInputSchema.parse({ ...input(), language: 'default' }).language).toBe('default');
   });
   it('checks reference byte limits before crossing the worker boundary', () => {
     expect(audioGenerationInputSchema.safeParse({ ...input(), reference: new Blob([]) }).success).toBe(false);

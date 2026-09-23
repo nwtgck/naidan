@@ -53,24 +53,30 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
     expect(native.api.mtmd_bitmap_free).toHaveBeenCalledExactlyOnceWith(50n);
     expect(native.owned.size).toBe(0);
   });
-  it.each(['missing', 'unsupported'] as const)('never turns unsupported auto into English: %s', async mode => {
-    const native = audioNativeFixture({ pointerBytes });
-    if (mode === 'unsupported') Reflect.set(native.api, 'mtmd_helper_gen_audio_supports_language_auto', vi.fn(async () => 0));
-    await expect(synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: { ...request(), language: 'auto' }, signal: undefined, onProgress: () => {} })).rejects.toThrow('unsupported-input');
-    expect(native.api.mtmd_helper_gen_audio_set_input).not.toHaveBeenCalled();
-    expect(native.api.mtmd_helper_gen_audio_free).toHaveBeenCalledOnce(); expect(native.owned.size).toBe(0);
+  it.each(['missing', 'legacy'] as const)('rejects a stale auto request before native work even on a %s artifact', async mode => {
+    const native = audioNativeFixture({ pointerBytes }); const legacyQuery = vi.fn(async () => 1);
+    if (mode === 'legacy') Reflect.set(native.api, 'mtmd_helper_gen_audio_supports_language_auto', legacyQuery);
+    const stale = request(); Reflect.set(stale, 'language', 'auto');
+    await expect(synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: stale, signal: undefined, onProgress: () => {} })).rejects.toThrow();
+    expect(legacyQuery).not.toHaveBeenCalled();
+    expect(native.api.mtmd_helper_gen_audio_init).not.toHaveBeenCalled();
+    expect(native.api.mtmd_helper_gen_audio_set_input).not.toHaveBeenCalled(); expect(native.owned.size).toBe(0);
   });
-  it('passes native auto only after the loaded helper reports support', async () => {
-    const native = audioNativeFixture({ pointerBytes }); const query = vi.fn(async () => 1);
-    Reflect.set(native.api, 'mtmd_helper_gen_audio_supports_language_auto', query);
-    let language: string | undefined;
+  it.each(['en', 'ja', 'default'] as const)('passes upstream %s without a downstream capability query', async language => {
+    const native = audioNativeFixture({ pointerBytes }); const legacyQuery = vi.fn(async () => {
+      throw new Error('Retired query must not be used');
+    });
+    Reflect.set(native.api, 'mtmd_helper_gen_audio_supports_language_auto', legacyQuery);
+    let nativeLanguage: string | undefined;
     native.api.mtmd_helper_gen_audio_set_input.mockImplementation(async () => {
       const pointer = BigInt(native.fields.get('mtmd_helper_gen_audio_inp.lang')!);
-      language = new TextDecoder().decode(native.core.bytes({ pointer, length: 4 }).subarray(0, 4));
+      nativeLanguage = pointer === 0n ? undefined : new TextDecoder().decode(native.core.bytes({ pointer, length: 2 }));
       return 0;
     });
-    await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: { ...request(), language: 'auto' }, signal: undefined, onProgress: () => {} });
-    expect(query).toHaveBeenCalledOnce(); expect(language).toBe('auto'); expect(native.owned.size).toBe(0);
+    const result = await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: { ...request(), language }, signal: undefined, onProgress: () => {} });
+    expect(legacyQuery).not.toHaveBeenCalled();
+    expect(nativeLanguage).toBe(language === 'default' ? undefined : language);
+    expect(result).toEqual(audioResult()); expect(native.owned.size).toBe(0);
   });
   it('uses a greedy backbone sampler only when temperature is zero', async () => {
     const native = audioNativeFixture({ pointerBytes });

@@ -3,7 +3,6 @@ import { validateAudioWav } from '@/features/audio-generation/wav';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError, type Progress } from '@/features/llama-cpp-browser/types';
 import { logFailure, logOperation, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
-import { AUDIO_LANGUAGE_AUTO_QUERY } from '@/features/llama-cpp-browser/runtime/audio-capabilities';
 import { prepareAudioSession, releaseSession } from './session';
 import { createAudioCooperator } from './audio-cooperate';
 import { readAudioField, readAudioScalar } from './audio-memory';
@@ -88,13 +87,6 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     await api.llama_set_abort_callback(context, BigInt(abortCallback), 0n);
     helper = await api.mtmd_helper_gen_audio_init(context, projector);
     if (!helper) throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
-    if (accepted.language === 'auto' && capabilities.language === 'selectable') {
-      const query: unknown = Reflect.get(api, AUDIO_LANGUAGE_AUTO_QUERY);
-      // Missing support must never silently become English, or a guessed script.
-      if (typeof query !== 'function' || await Reflect.apply(query, api, [helper]) !== 1) {
-        throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-      }
-    }
     const params = record({ name: 'mtmd_helper_gen_audio_inp' });
     const language = capabilities.language === 'weights' || accepted.language === 'default' ? 0n : string({ text: accepted.language });
     for (const [field, value] of Object.entries({ seq_id: 0, prompt: string({ text: accepted.text }), prompt_len: BigInt(new TextEncoder().encode(accepted.text).length), speaker_ref: speaker, lang: language, top_k: accepted.topK, top_p: accepted.topP, seed: accepted.seed, out_type: core.constant({ name: 'MTMD_HELPER_GEN_AUDIO_OUTTYPE_WAV' }) })) {

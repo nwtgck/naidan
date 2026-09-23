@@ -1,5 +1,3 @@
-import { audioGeneration__automatic_requires_runtime } from '@/strings/messages/audioGeneration__automatic_requires_runtime/ko';
-import { audioGeneration__automatic_language } from '@/strings/messages/audioGeneration__automatic_language/ko';
 import { audioGeneration__invalid_top_p } from '@/strings/messages/audioGeneration__invalid_top_p/ko';
 import { audioGeneration__number_range } from '@/strings/messages/audioGeneration__number_range/ko';
 import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/ko';
@@ -3770,6 +3768,4 @@ export const catalog = {
   audioGeneration__integer_range,
   audioGeneration__number_range,
   audioGeneration__invalid_top_p,
-  audioGeneration__automatic_language,
-  audioGeneration__automatic_requires_runtime,
 } satisfies Strings;

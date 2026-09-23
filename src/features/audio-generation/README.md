@@ -22,18 +22,18 @@ locale. `Intl.DisplayNames` provides localized names and native names are added
 as a second cue, except for the interface's own language. Labels follow locale
 changes without changing a language already selected for speech.
 
-Automatic language selection is **model-native conditioning**, not client-side
-script guessing, an external service, or a detected-language result. An older
-core artifact keeps Auto visible but disabled. The generated ABI schema must
-expose `mtmd_helper_gen_audio_supports_language_auto`, and the worker must check
-that query for the loaded selectable-language pipeline. An unsupported Auto is
-an error, never an English fallback. Qwen uses the official no-forced-language
-prefix added by the accompanying lcore overlay. Pocket's language remains a
-property of its weights; the help explicitly explains that the selector does
-not override it. Short or ambiguous text may benefit from manual selection.
+Only explicit language choices and the upstream model default are exposed. The
+retired downstream automatic-language request is rejected at the input/worker
+boundary, not interpreted as English, guessed from text, or silently mapped to
+another setting. Qwen's model default is English; it is not language detection.
+Pocket's language is a property of its weights and this selector does not override
+it. Localized labels do not imply additional model capabilities.
 
-The special model-default choice is distinct from Auto: Qwen's existing default
-is English. No unknown model is assumed to support extra conditioning.
+No downstream audio-capability query is imported or called, even when an older
+published artifact still contains that export. Restoring automatic language or
+other model-specific conditioning requires upstream support or explicit owner
+approval of a new maintenance exception; a reference demo alone is not proof of
+support in the pinned llama.cpp helper.
 
 ## Context and offline execution
 
@@ -59,11 +59,11 @@ Audio helper operations log their elapsed time in diagnostics. Cooperative task
 yields occur at a bounded cadence rather than an extra timer after every fast
 frame; cancellation still checks before/after calls and the final forced yield.
 
-The lcore follow-up reduces Qwen's final waveform graph to the actual number of
-frames, instead of computing a padded 72-frame window and throwing away its tail.
-This is a native inference optimization, not streaming playback. A full 72-frame
-block is unchanged. Device/model timings and trained-model quality must be
-verified with rebuilt artifacts; synthetic CPU tests are not a WebGPU benchmark.
+Waveform decoding follows the pinned upstream implementation. The downstream
+final-frame graph optimization has been removed from lcore; do not recreate it in
+this feature or in a copied decoder. The frontend's cooperative-wait improvement
+and elapsed-time diagnostics are independent and remain in place. This cleanup
+is not a claim of faster native decoding.
 
 ## Reference audio and instructions
 
@@ -80,11 +80,16 @@ VoiceDesign 1.7B requires their distinct model conversion/loading and prompt
 conditioning, followed by a generic helper capability/input extension. A disabled
 or silently ignored request must not be presented as working style control.
 
-## Artifact prerequisite
+## Artifact transition
 
-The source patches deliberately do not invent a new published core revision or
-hash. Build and publish the patched lcore, then update the actual dependency and
-integrity metadata through Naidan's normal artifact-update flow. UI/layout/form
-improvements work with the old artifact; native Auto and shorter waveform graphs
-require the new artifact. Applying a source patch alone does not replace cached
-Wasm binaries.
+These frontend changes work with the previous and the cleaned core interface.
+The old capability query is not required, and automatic-language input is no
+longer accepted. A source cleanup cannot alter already published or cached Wasm
+bytes. Until the cleaned lcore is built, published, and selected through the
+normal dependency/hash update, an older artifact may still perform its internal
+waveform optimization even though this UI no longer advertises Auto.
+
+Do not invent a replacement artifact commit or bypass manifest verification.
+This change does not alter the runtime profile policy or standalone bundle set:
+chat and audio still share the same loader, worker lane, and embedded profiles.
+The app, runtime, and model files must remain available for offline use.

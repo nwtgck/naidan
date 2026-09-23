@@ -69,9 +69,25 @@ describe('independent audio generation screen', () => {
     expect(view.get('option[value="en"]').text()).toBe('英語 (English)');
     expect(view.get<HTMLSelectElement>('[data-testid="audio-language"]').element.value).toBe('de');
   });
-  it('keeps model-native auto visible but disabled for an older runtime artifact', async () => {
+  it('offers manual language and model default without advertising the removed downstream auto feature', async () => {
     const view = await ready();
-    expect(view.get<HTMLOptionElement>('option[value="auto"]').element.disabled).toBe(true);
+    const select = view.get('[data-testid="audio-language"]');
+    expect(select.find('option[value="auto"]').exists()).toBe(false);
+    expect(select.find('option[value="default"]').exists()).toBe(true);
+    expect(select.findAll('option')).toHaveLength(11);
+    expect(view.find('[data-testid="audio-auto-unavailable"]').exists()).toBe(false);
+    await select.setValue('default'); await submit({ view });
+    expect(service.generateAudio.mock.calls[0]?.[0].input.language).toBe('default');
+  });
+  it('shows a field error for a stale auto value instead of submitting it or falling back', async () => {
+    const view = await ready(); const select = view.get<HTMLSelectElement>('[data-testid="audio-language"]');
+    // Emulate a stale/different caller that can supply a no-longer-offered value.
+    select.element.add(new Option('Retired automatic language', 'auto'));
+    await select.setValue('auto'); await submit({ view });
+    expect(service.generateAudio).not.toHaveBeenCalled();
+    expect(view.get('[data-testid="audio-error"]').text()).toContain('Language');
+    expect(select.attributes('aria-invalid')).toBe('true');
+    expect(select.element.value).toBe('auto');
   });
   it('renders separate feature-scoped scrolling containers', async () => {
     const view = await ready();

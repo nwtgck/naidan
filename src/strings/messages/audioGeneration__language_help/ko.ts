@@ -1,1 +1,1 @@
-export const audioGeneration__language_help = (): string => "지원되는 경우 초기 언어는 앱 언어를 따릅니다. 자동은 호환 Qwen 모델에 언어를 고정하지 않고 발성을 맡깁니다. 짧거나 여러 언어가 섞인 글은 명시적 선택이 나을 수 있습니다. Qwen의 모델 기본값은 영어입니다. Pocket은 학습 언어를 사용합니다.";
+export const audioGeneration__language_help = (): string => "지원되는 경우 초기 언어는 앱의 표시 언어를 따릅니다. 읽을 언어를 직접 선택하세요. Qwen의 모델 기본값은 영어이며 자동 감지가 아닙니다. Pocket은 이 설정과 관계없이 모델이 학습한 언어로 생성합니다.";

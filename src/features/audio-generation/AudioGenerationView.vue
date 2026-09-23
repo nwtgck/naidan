@@ -9,7 +9,6 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, type EngineState, type ErrorCode, type LocalModel } from '@/features/llama-cpp-browser/types';
 import { audioGenerationInputSchema, audioGenerationResultSchema, defaultAudioParameters, type AudioGenerationResult } from './types';
 import { validateAudioWav } from './wav';
-import { nativeAudioCapabilities } from '@/features/llama-cpp-browser/runtime/audio-capabilities';
 
 const id = useId();
 const models = shallowRef<LocalModel[]>([]);
@@ -196,12 +195,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div tw-class="space-y-2">
             <label :for="`${id}-language`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__language() }}</label>
             <select :id="`${id}-language`" v-model="parameters.language" :aria-describedby="`${id}-language-help`" data-testid="audio-language" data-audio-field="language" :aria-invalid="invalidFields.includes('language') || undefined" tw-class="w-full sm:w-64 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 text-sm">
-              <option value="auto" :disabled="!nativeAudioCapabilities.languageAuto">{{ lazyStrings.audioGeneration__automatic_language() }}</option>
               <option value="default">{{ lazyStrings.audioGeneration__model_default() }}</option>
               <option v-for="language in languages" :key="language.value" :value="language.value">{{ language.label }}</option>
             </select>
             <p :id="`${id}-language-help`" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__language_help() }}</p>
-            <p v-if="!nativeAudioCapabilities.languageAuto" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400" data-testid="audio-auto-unavailable">{{ lazyStrings.audioGeneration__automatic_requires_runtime() }}</p>
           </div>
           <div tw-class="space-y-2">
             <label :for="`${id}-reference`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__reference_voice() }}</label>

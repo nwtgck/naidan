@@ -1,5 +1,3 @@
-import { audioGeneration__automatic_requires_runtime } from '@/strings/messages/audioGeneration__automatic_requires_runtime/zh-Hans';
-import { audioGeneration__automatic_language } from '@/strings/messages/audioGeneration__automatic_language/zh-Hans';
 import { audioGeneration__invalid_top_p } from '@/strings/messages/audioGeneration__invalid_top_p/zh-Hans';
 import { audioGeneration__number_range } from '@/strings/messages/audioGeneration__number_range/zh-Hans';
 import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/zh-Hans';
@@ -3770,6 +3768,4 @@ export const catalog = {
   audioGeneration__integer_range,
   audioGeneration__number_range,
   audioGeneration__invalid_top_p,
-  audioGeneration__automatic_language,
-  audioGeneration__automatic_requires_runtime,
 } satisfies Strings;

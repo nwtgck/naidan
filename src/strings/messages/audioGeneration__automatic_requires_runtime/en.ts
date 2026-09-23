@@ -1,1 +1,0 @@
-export const audioGeneration__automatic_requires_runtime = (): string => "Automatic language requires a newer runtime with language-auto support. The current runtime still supports explicit languages.";
