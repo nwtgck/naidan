@@ -589,3 +589,11 @@ describe('cancelled dropped-file retry', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 });
+
+it('lets the independent audio workspace suppress chat suggestions without changing the default elsewhere', async () => {
+  const audio = mount(LlamaCppBrowserManager, { props: { suggestions: 'none' } }); wrappers.push(audio);
+  const chat = render(); await flushPromises();
+  expect(audio.find('[data-testid="llama-model-suggestions"]').exists()).toBe(false);
+  expect(chat.find('[data-testid="llama-model-suggestions"]').exists()).toBe(true);
+  expect(llamaCppBrowserService.setOptions).not.toHaveBeenCalled();
+});

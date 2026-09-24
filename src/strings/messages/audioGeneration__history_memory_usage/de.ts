@@ -1,0 +1,1 @@
+export const audioGeneration__history_memory_usage = ({ count, mebibytes }: { count: number, mebibytes: string }): string => `${count} Ergebnis(se) · ${mebibytes} MiB Audiodaten (zusätzlicher Speicher für die Wiedergabe)`;

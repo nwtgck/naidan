@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { errorCode, errorCodeSchema, profileSchema } from './types';
 
-const stageSchema = z.enum(['media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-probe', 'cache-checkpoint', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
+const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'audio-prompt', 'audio-frame', 'audio-output', 'media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-probe', 'cache-checkpoint', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
   'reasoning-state', 'grammar-switch', 'native-sample', 'reasoning-accept', 'reasoning-replay',
   'token-render', 'partial-parse', 'stream-emit', 'generation-decode', 'final-parse', 'cleanup',
   'worker-operation', 'worker-callback', 'worker-rpc', 'worker-error', 'worker-messageerror']);
@@ -93,11 +93,17 @@ export const diagnosticSchema = z.object({
   nativeShape: z.tuple([z.number().int().positive(), z.number().int().positive(), z.number().int().positive()]).optional(),
 }).strict();
 const stageDescriptions = {
+  'audio-info': 'reading native audio pipeline capabilities',
+  'audio-reference': 'decoding the reference voice',
+  'audio-input': 'preparing the native audio generation input',
+  'audio-prompt': 'evaluating the audio model prompt',
+  'audio-frame': 'generating an audio step',
+  'audio-output': 'decoding the accumulated audio and copying the waveform',
   'media-encode': 'encoding image or audio embeddings with native mtmd',
   'media-decode': 'evaluating a media embedding batch with the language model',
   'model-resolve': 'resolving the model directory layout',
-  'projector-trace': 'reading native image encoder tensor metadata',
-  'projector-load': 'loading the matching image projector',
+  'projector-trace': 'reading native media encoder tensor metadata',
+  'projector-load': 'loading the matching media companion',
   'image-decode': 'decoding an image with the browser',
   'image-tokenize': 'preparing image and text chunks with native mtmd',
   'image-evaluate': 'evaluating image and text chunks with native mtmd',

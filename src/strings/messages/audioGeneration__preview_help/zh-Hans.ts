@@ -1,0 +1,1 @@
+export const audioGeneration__preview_help = (): string => "Adds audio so far to history without ending generation. Qwen waits for a completed waveform block; short requests may finish before a preview is available. No automatic playback.";

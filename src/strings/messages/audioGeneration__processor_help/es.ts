@@ -1,0 +1,1 @@
+export const audioGeneration__processor_help = (): string => "Esta opción solo controla el modelo auxiliar de audio; el principal sigue el perfil compartido. Seguir el perfil permite usar WebGPU cuando esté disponible, aunque algunas operaciones pueden usar la CPU. Forzar la CPU puede ser más lento, pero permite comparar.";

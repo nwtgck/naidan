@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
 import { ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { useLayout } from '@/composables/useLayout';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon } from 'lucide-vue-next';
+import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon, AudioLinesIcon } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 
 defineProps<{
@@ -93,6 +94,15 @@ defineExpose({
             <FolderSearchIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.SidebarDebugControls__file_explorer() }}</span>
           </button>
+          <RouterLink
+            to="/audio-generation"
+            @click="showOpfsMenu = false"
+            tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
+            data-testid="sidebar-audio-generation-link"
+          >
+            <AudioLinesIcon tw-class="w-4 h-4" />
+            <span>{{ lazyStrings.audioGeneration__audio_generation() }}</span>
+          </RouterLink>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"
             tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"

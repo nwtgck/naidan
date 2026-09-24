@@ -1,0 +1,1 @@
+export const audioGeneration__generation_failed = (): string => "Audio generation failed. Report the code below and the [llama-cpp-browser] console diagnostics. GPU failures may require selecting CPU and trying again.";

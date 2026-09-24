@@ -1,3 +1,4 @@
+import { audioGenerationInputSchema } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema, resolveProfilePreference, type ProfileCapabilities, type ProfileState } from './runtime/profile-capabilities';
 import { defaultRuntimeOptions, parseRuntimeOptions } from '@/features/llama-cpp-browser/runtime/profile-policy';
 import { listStoredModels, removeStoredModel, withModelMutationLock } from './runtime/model-store';
@@ -141,6 +142,7 @@ async function run<T>({ signal, operation, kind }: {
       case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model':
       case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'context-full':
       case 'unsupported-input': case 'busy': case 'worker-failed':
+      case 'audio-model-unsupported': case 'audio-reference-required': case 'audio-reference-invalid': case 'audio-output-empty':
         publish({ next: { status: 'error', code } });
         logDiagnostic({ diagnostic: { event: 'failed' } });
         break;
@@ -247,6 +249,15 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       return worker.generate({ request: { ...initialRequest, options: concreteOptions }, onEvent, onProgress: progress, signal });
     } });
   },
+  generateAudio({ input, cancellationSignal, completionSignal, preview }) {
+    const initialRequest = audioGenerationInputSchema.parse({ ...input, options: { ...options } });
+    return run({ kind: 'operation', signal: cancellationSignal, operation: async ({ worker, signal }) => {
+      progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+      const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
+      if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+      return worker.generateAudio({ request: { ...initialRequest, options: concreteOptions }, onProgress: progress, cancellationSignal: signal, completionSignal, preview });
+    } });
+  },
   async runGenerationOperation({ signal, operation }) {
     const acceptedOptions = { ...options };
     let callbackCompleted = false;
@@ -322,6 +333,16 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     } catch (error) {
       if (!callbackCompleted || observedFailure === undefined) throw error;
     }
+  },
+  async restartRuntime({ signal }) {
+    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    // State may still be idle while a tool callback owns the lane. Inspect the
+    // owner, not the last progress message, before retiring a shared Worker.
+    if (activeController) throw new LlamaCppBrowserError({ code: 'busy' });
+    llamaCppBrowserService.release();
+    // Probe through the existing serialized lane. No model/cache deletion and
+    // no automatic generation. The next request lazily reloads native weights.
+    return llamaCppBrowserService.probeProfiles({ signal });
   },
   cancel() {
     activeController?.abort();

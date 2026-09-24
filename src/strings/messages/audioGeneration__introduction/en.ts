@@ -1,0 +1,1 @@
+export const audioGeneration__introduction = (): string => "An independent workspace for on-device speech generation. Once the app, runtime and model are available locally, generation works offline. Your text and reference voice stay in this browser; no inference server is used. A connection is needed only to obtain missing files or updates.";

@@ -1,3 +1,15 @@
+import { audioGeneration__preview_result } from '@/strings/messages/audioGeneration__preview_result/ja';
+import { audioGeneration__preview_help } from '@/strings/messages/audioGeneration__preview_help/ja';
+import { audioGeneration__preview_pending } from '@/strings/messages/audioGeneration__preview_pending/ja';
+import { audioGeneration__capture_preview } from '@/strings/messages/audioGeneration__capture_preview/ja';
+import { audioGeneration__captured_steps } from '@/strings/messages/audioGeneration__captured_steps/ja';
+import { llamaCppBrowserDownloads__required_companion_included } from '@/strings/messages/llamaCppBrowserDownloads__required_companion_included/ja';
+import { llamaCppBrowserDownloads__use_this_model } from '@/strings/messages/llamaCppBrowserDownloads__use_this_model/ja';
+import { audioGeneration__invalid_top_p } from '@/strings/messages/audioGeneration__invalid_top_p/ja';
+import { audioGeneration__number_range } from '@/strings/messages/audioGeneration__number_range/ja';
+import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/ja';
+import { audioGeneration__invalid_text } from '@/strings/messages/audioGeneration__invalid_text/ja';
+import { audioGeneration__context_help } from '@/strings/messages/audioGeneration__context_help/ja';
 // SHARED__ keys intentionally couple every call site to one product-wide copy decision.
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/ja';
@@ -1833,8 +1845,137 @@ import { llamaCppBrowser__loading } from '@/strings/messages/llamaCppBrowser__lo
 import { llamaCppBrowser__prefill } from '@/strings/messages/llamaCppBrowser__prefill/ja';
 import { llamaCppBrowser__generating } from '@/strings/messages/llamaCppBrowser__generating/ja';
 import { llamaCppBrowser__import_then_select } from '@/strings/messages/llamaCppBrowser__import_then_select/ja';
+import { audioGeneration__decoding_audio } from '@/strings/messages/audioGeneration__decoding_audio/ja';
+import { audioGeneration__audio_generation } from '@/strings/messages/audioGeneration__audio_generation/ja';
+import { audioGeneration__introduction } from '@/strings/messages/audioGeneration__introduction/ja';
+import { audioGeneration__manage_models_and_runtime } from '@/strings/messages/audioGeneration__manage_models_and_runtime/ja';
+import { audioGeneration__model_setup_help } from '@/strings/messages/audioGeneration__model_setup_help/ja';
+import { audioGeneration__model_support_help } from '@/strings/messages/audioGeneration__model_support_help/ja';
+import { audioGeneration__audio_model } from '@/strings/messages/audioGeneration__audio_model/ja';
+import { audioGeneration__choose_model } from '@/strings/messages/audioGeneration__choose_model/ja';
+import { audioGeneration__input_text } from '@/strings/messages/audioGeneration__input_text/ja';
+import { audioGeneration__input_placeholder } from '@/strings/messages/audioGeneration__input_placeholder/ja';
+import { audioGeneration__language } from '@/strings/messages/audioGeneration__language/ja';
+import { audioGeneration__model_default } from '@/strings/messages/audioGeneration__model_default/ja';
+import { audioGeneration__language_help } from '@/strings/messages/audioGeneration__language_help/ja';
+import { audioGeneration__reference_voice } from '@/strings/messages/audioGeneration__reference_voice/ja';
+import { audioGeneration__reference_help } from '@/strings/messages/audioGeneration__reference_help/ja';
+import { audioGeneration__clear_reference } from '@/strings/messages/audioGeneration__clear_reference/ja';
+import { audioGeneration__advanced_settings } from '@/strings/messages/audioGeneration__advanced_settings/ja';
+import { audioGeneration__audio_processor } from '@/strings/messages/audioGeneration__audio_processor/ja';
+import { audioGeneration__cpu_audio } from '@/strings/messages/audioGeneration__cpu_audio/ja';
+import { audioGeneration__runtime_audio } from '@/strings/messages/audioGeneration__runtime_audio/ja';
+import { audioGeneration__processor_help } from '@/strings/messages/audioGeneration__processor_help/ja';
+import { audioGeneration__context_tokens } from '@/strings/messages/audioGeneration__context_tokens/ja';
+import { audioGeneration__maximum_steps } from '@/strings/messages/audioGeneration__maximum_steps/ja';
+import { audioGeneration__backbone_temperature } from '@/strings/messages/audioGeneration__backbone_temperature/ja';
+import { audioGeneration__backbone_top_k } from '@/strings/messages/audioGeneration__backbone_top_k/ja';
+import { audioGeneration__backbone_top_p } from '@/strings/messages/audioGeneration__backbone_top_p/ja';
+import { audioGeneration__seed } from '@/strings/messages/audioGeneration__seed/ja';
+import { audioGeneration__sampling_help } from '@/strings/messages/audioGeneration__sampling_help/ja';
+import { audioGeneration__native_diagnostics } from '@/strings/messages/audioGeneration__native_diagnostics/ja';
+import { audioGeneration__generate_audio } from '@/strings/messages/audioGeneration__generate_audio/ja';
+import { audioGeneration__stop_generation } from '@/strings/messages/audioGeneration__stop_generation/ja';
+import { audioGeneration__stopping } from '@/strings/messages/audioGeneration__stopping/ja';
+import { audioGeneration__waiting } from '@/strings/messages/audioGeneration__waiting/ja';
+import { audioGeneration__finish_and_keep_audio } from '@/strings/messages/audioGeneration__finish_and_keep_audio/ja';
+import { audioGeneration__finishing_current_step } from '@/strings/messages/audioGeneration__finishing_current_step/ja';
+import { audioGeneration__finish_audio_help } from '@/strings/messages/audioGeneration__finish_audio_help/ja';
+import { audioGeneration__finished_early } from '@/strings/messages/audioGeneration__finished_early/ja';
+import { audioGeneration__cancel_and_discard } from '@/strings/messages/audioGeneration__cancel_and_discard/ja';
+import { audioGeneration__drop_reference_audio } from '@/strings/messages/audioGeneration__drop_reference_audio/ja';
+import { audioGeneration__add_reference_files } from '@/strings/messages/audioGeneration__add_reference_files/ja';
+import { audioGeneration__record_reference } from '@/strings/messages/audioGeneration__record_reference/ja';
+import { audioGeneration__stop_and_use_recording } from '@/strings/messages/audioGeneration__stop_and_use_recording/ja';
+import { audioGeneration__discard_recording } from '@/strings/messages/audioGeneration__discard_recording/ja';
+import { audioGeneration__requesting_microphone } from '@/strings/messages/audioGeneration__requesting_microphone/ja';
+import { audioGeneration__recording_audio } from '@/strings/messages/audioGeneration__recording_audio/ja';
+import { audioGeneration__preparing_recording } from '@/strings/messages/audioGeneration__preparing_recording/ja';
+import { audioGeneration__preparing_references } from '@/strings/messages/audioGeneration__preparing_references/ja';
+import { audioGeneration__recording_help } from '@/strings/messages/audioGeneration__recording_help/ja';
+import { audioGeneration__reference_collection_help } from '@/strings/messages/audioGeneration__reference_collection_help/ja';
+import { audioGeneration__selected_references } from '@/strings/messages/audioGeneration__selected_references/ja';
+import { audioGeneration__deselect_all_references } from '@/strings/messages/audioGeneration__deselect_all_references/ja';
+import { audioGeneration__delete_reference } from '@/strings/messages/audioGeneration__delete_reference/ja';
+import { audioGeneration__delete_all_references } from '@/strings/messages/audioGeneration__delete_all_references/ja';
+import { audioGeneration__no_reference_selected } from '@/strings/messages/audioGeneration__no_reference_selected/ja';
+import { audioGeneration__reference_empty } from '@/strings/messages/audioGeneration__reference_empty/ja';
+import { audioGeneration__reference_too_large } from '@/strings/messages/audioGeneration__reference_too_large/ja';
+import { audioGeneration__reference_too_long } from '@/strings/messages/audioGeneration__reference_too_long/ja';
+import { audioGeneration__reference_decode_failed } from '@/strings/messages/audioGeneration__reference_decode_failed/ja';
+import { audioGeneration__recording_unavailable } from '@/strings/messages/audioGeneration__recording_unavailable/ja';
+import { audioGeneration__reference_library_full } from '@/strings/messages/audioGeneration__reference_library_full/ja';
+import { audioGeneration__microphone_permission_denied } from '@/strings/messages/audioGeneration__microphone_permission_denied/ja';
+import { audioGeneration__microphone_unavailable } from '@/strings/messages/audioGeneration__microphone_unavailable/ja';
+import { audioGeneration__recording_failed } from '@/strings/messages/audioGeneration__recording_failed/ja';
+import { audioGeneration__recording_limited_to_thirty_seconds } from '@/strings/messages/audioGeneration__recording_limited_to_thirty_seconds/ja';
+import { audioGeneration__reference_usage_notes } from '@/strings/messages/audioGeneration__reference_usage_notes/ja';
+import { audioGeneration__generation_stopped } from '@/strings/messages/audioGeneration__generation_stopped/ja';
+import { audioGeneration__generated_audio } from '@/strings/messages/audioGeneration__generated_audio/ja';
+import { audioGeneration__save_wav } from '@/strings/messages/audioGeneration__save_wav/ja';
+import { audioGeneration__limit_reached } from '@/strings/messages/audioGeneration__limit_reached/ja';
+import { audioGeneration__output_lifetime } from '@/strings/messages/audioGeneration__output_lifetime/ja';
+import { audioGeneration__check_parameters } from '@/strings/messages/audioGeneration__check_parameters/ja';
+import { audioGeneration__unsupported_model } from '@/strings/messages/audioGeneration__unsupported_model/ja';
+import { audioGeneration__reference_required } from '@/strings/messages/audioGeneration__reference_required/ja';
+import { audioGeneration__invalid_reference } from '@/strings/messages/audioGeneration__invalid_reference/ja';
+import { audioGeneration__empty_audio } from '@/strings/messages/audioGeneration__empty_audio/ja';
+import { audioGeneration__context_full } from '@/strings/messages/audioGeneration__context_full/ja';
+import { audioGeneration__generation_failed } from '@/strings/messages/audioGeneration__generation_failed/ja';
+import { audioGeneration__runtime_unavailable } from '@/strings/messages/audioGeneration__runtime_unavailable/ja';
+import { audioGeneration__steps_completed } from '@/strings/messages/audioGeneration__steps_completed/ja';
 
+import { audioGeneration__not_detected_as_audio } from '@/strings/messages/audioGeneration__not_detected_as_audio/ja';
+import { audioGeneration__checking_local_model_metadata } from '@/strings/messages/audioGeneration__checking_local_model_metadata/ja';
+import { audioGeneration__no_audio_models_detected } from '@/strings/messages/audioGeneration__no_audio_models_detected/ja';
+import { audioGeneration__show_all_models } from '@/strings/messages/audioGeneration__show_all_models/ja';
+import { audioGeneration__model_detection_help } from '@/strings/messages/audioGeneration__model_detection_help/ja';
+import { audioGeneration__advanced_model_selection } from '@/strings/messages/audioGeneration__advanced_model_selection/ja';
+import { audioGeneration__show_all_llama_cpp_browser_models } from '@/strings/messages/audioGeneration__show_all_llama_cpp_browser_models/ja';
+import { audioGeneration__all_models_help } from '@/strings/messages/audioGeneration__all_models_help/ja';
+import { audioGeneration__step_limit_help } from '@/strings/messages/audioGeneration__step_limit_help/ja';
+import { audioGeneration__delete_audio } from '@/strings/messages/audioGeneration__delete_audio/ja';
+import { audioGeneration__generation_settings } from '@/strings/messages/audioGeneration__generation_settings/ja';
+import { audioGeneration__recorded_settings_help } from '@/strings/messages/audioGeneration__recorded_settings_help/ja';
+import { audioGeneration__random_seed } from '@/strings/messages/audioGeneration__random_seed/ja';
+import { audioGeneration__requested_profile } from '@/strings/messages/audioGeneration__requested_profile/ja';
+import { audioGeneration__automatic_profile } from '@/strings/messages/audioGeneration__automatic_profile/ja';
+import { audioGeneration__delete_all_audio } from '@/strings/messages/audioGeneration__delete_all_audio/ja';
+import { audioGeneration__history_memory_usage } from '@/strings/messages/audioGeneration__history_memory_usage/ja';
+
+import { audioGeneration__reinitialize_runtime } from '@/strings/messages/audioGeneration__reinitialize_runtime/ja';
+import { audioGeneration__reinitializing_runtime } from '@/strings/messages/audioGeneration__reinitializing_runtime/ja';
+import { audioGeneration__reinitialize_runtime_help } from '@/strings/messages/audioGeneration__reinitialize_runtime_help/ja';
+import { audioGeneration__copy_text } from '@/strings/messages/audioGeneration__copy_text/ja';
+import { audioGeneration__text_copied } from '@/strings/messages/audioGeneration__text_copied/ja';
+import { audioGeneration__copy_failed_select_text } from '@/strings/messages/audioGeneration__copy_failed_select_text/ja';
 export const catalog = {
+  audioGeneration__preview_result,
+  audioGeneration__preview_help,
+  audioGeneration__preview_pending,
+  audioGeneration__capture_preview,
+  audioGeneration__captured_steps,
+  llamaCppBrowserDownloads__required_companion_included,
+  llamaCppBrowserDownloads__use_this_model,
+  audioGeneration__not_detected_as_audio,
+  audioGeneration__checking_local_model_metadata,
+  audioGeneration__no_audio_models_detected,
+  audioGeneration__show_all_models,
+  audioGeneration__model_detection_help,
+  audioGeneration__advanced_model_selection,
+  audioGeneration__show_all_llama_cpp_browser_models,
+  audioGeneration__all_models_help,
+  audioGeneration__step_limit_help,
+  audioGeneration__delete_audio,
+  audioGeneration__generation_settings,
+  audioGeneration__recorded_settings_help,
+  audioGeneration__random_seed,
+  audioGeneration__requested_profile,
+  audioGeneration__automatic_profile,
+  audioGeneration__delete_all_audio,
+  audioGeneration__history_memory_usage,
+
+
   SHARED__all_chats,
   SHARED__assistant,
   SHARED__browser_provided,
@@ -3663,4 +3804,94 @@ export const catalog = {
   llamaCppBrowserDownloads__total,
   llamaCppBrowserDownloads__waiting,
   llamaCppBrowserDownloads__find_more,
+  audioGeneration__decoding_audio,
+  audioGeneration__audio_generation,
+  audioGeneration__introduction,
+  audioGeneration__manage_models_and_runtime,
+  audioGeneration__model_setup_help,
+  audioGeneration__model_support_help,
+  audioGeneration__audio_model,
+  audioGeneration__choose_model,
+  audioGeneration__input_text,
+  audioGeneration__input_placeholder,
+  audioGeneration__language,
+  audioGeneration__model_default,
+  audioGeneration__language_help,
+  audioGeneration__reference_voice,
+  audioGeneration__reference_help,
+  audioGeneration__clear_reference,
+  audioGeneration__advanced_settings,
+  audioGeneration__audio_processor,
+  audioGeneration__cpu_audio,
+  audioGeneration__runtime_audio,
+  audioGeneration__processor_help,
+  audioGeneration__context_tokens,
+  audioGeneration__maximum_steps,
+  audioGeneration__backbone_temperature,
+  audioGeneration__backbone_top_k,
+  audioGeneration__backbone_top_p,
+  audioGeneration__seed,
+  audioGeneration__sampling_help,
+  audioGeneration__native_diagnostics,
+  audioGeneration__generate_audio,
+  audioGeneration__stop_generation,
+  audioGeneration__stopping,
+  audioGeneration__waiting,
+  audioGeneration__finish_and_keep_audio,
+  audioGeneration__finishing_current_step,
+  audioGeneration__finish_audio_help,
+  audioGeneration__finished_early,
+  audioGeneration__cancel_and_discard,
+  audioGeneration__drop_reference_audio,
+  audioGeneration__add_reference_files,
+  audioGeneration__record_reference,
+  audioGeneration__stop_and_use_recording,
+  audioGeneration__discard_recording,
+  audioGeneration__requesting_microphone,
+  audioGeneration__recording_audio,
+  audioGeneration__preparing_recording,
+  audioGeneration__preparing_references,
+  audioGeneration__recording_help,
+  audioGeneration__reference_collection_help,
+  audioGeneration__selected_references,
+  audioGeneration__deselect_all_references,
+  audioGeneration__delete_reference,
+  audioGeneration__delete_all_references,
+  audioGeneration__no_reference_selected,
+  audioGeneration__reference_empty,
+  audioGeneration__reference_too_large,
+  audioGeneration__reference_too_long,
+  audioGeneration__reference_decode_failed,
+  audioGeneration__recording_unavailable,
+  audioGeneration__reference_library_full,
+  audioGeneration__microphone_permission_denied,
+  audioGeneration__microphone_unavailable,
+  audioGeneration__recording_failed,
+  audioGeneration__recording_limited_to_thirty_seconds,
+  audioGeneration__reference_usage_notes,
+  audioGeneration__generation_stopped,
+  audioGeneration__generated_audio,
+  audioGeneration__save_wav,
+  audioGeneration__limit_reached,
+  audioGeneration__output_lifetime,
+  audioGeneration__check_parameters,
+  audioGeneration__unsupported_model,
+  audioGeneration__reference_required,
+  audioGeneration__invalid_reference,
+  audioGeneration__empty_audio,
+  audioGeneration__context_full,
+  audioGeneration__generation_failed,
+  audioGeneration__runtime_unavailable,
+  audioGeneration__steps_completed,
+  audioGeneration__context_help,
+  audioGeneration__invalid_text,
+  audioGeneration__integer_range,
+  audioGeneration__number_range,
+  audioGeneration__invalid_top_p,
+  audioGeneration__reinitialize_runtime,
+  audioGeneration__reinitializing_runtime,
+  audioGeneration__reinitialize_runtime_help,
+  audioGeneration__copy_text,
+  audioGeneration__text_copied,
+  audioGeneration__copy_failed_select_text,
 } satisfies Strings;

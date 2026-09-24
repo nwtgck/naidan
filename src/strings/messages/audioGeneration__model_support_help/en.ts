@@ -1,0 +1,1 @@
+export const audioGeneration__model_support_help = (): string => "Supported native pipelines: Qwen3-TTS Base and Pocket TTS. CustomVoice and VoiceDesign are not supported by this screen. Compatibility is checked after loading, not guessed from filenames. Runtime profile settings are shared with browser chat inference.";

@@ -1,0 +1,1 @@
+export const audioGeneration__recorded_settings_help = (): string => "Estos son los ajustes solicitados al iniciar. El contexto asignado y el perfil resuelto pueden variar. El audio de referencia no se conserva en el historial; el valor de una semilla aleatoria no se puede reconstruir con este registro.";

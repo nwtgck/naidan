@@ -1,0 +1,1 @@
+export const audioGeneration__recorded_settings_help = (): string => "These are the settings requested when generation started. Actual context allocation and the resolved profile may differ. Reference audio is not retained in this history; a random seed cannot be reconstructed from this record.";

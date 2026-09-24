@@ -1,0 +1,1 @@
+export const audioGeneration__recording_unavailable = (): string => "Microphone recording or browser audio decoding is unavailable here. Use a supported browser on HTTPS or localhost, or add a WAV, MP3 or FLAC file.";

@@ -1,0 +1,1 @@
+export const audioGeneration__reference_help = (): string => "Qwen Base에서는 선택 사항이며 Pocket에서는 필수입니다. 파일당 최대 16 MiB, 선택한 음성의 총 길이는 최대 30초입니다. WAV, MP3, FLAC은 한 개일 때 직접 사용할 수 있습니다. 다른 형식이나 여러 음성의 연결에는 브라우저 디코딩 기능이 필요합니다. 사용 권한이 있는 음성만 지정하세요.";

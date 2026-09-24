@@ -38,6 +38,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/audio-generation': RouteRecordInfo<
+      '/audio-generation',
+      '/audio-generation',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/chat/[id]': RouteRecordInfo<
       '/chat/[id]',
       '/chat/:id',
@@ -96,6 +103,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/index.vue': {
       routes:
         | '/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/audio-generation.vue': {
+      routes:
+        | '/audio-generation'
       views:
         | never
       pathParamNames:

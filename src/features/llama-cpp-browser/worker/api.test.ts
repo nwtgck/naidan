@@ -1,3 +1,7 @@
+import { audioResult } from '@/features/audio-generation/test-utils/wav';
+import { defaultAudioParameters } from '@/features/audio-generation/types';
+import type { generateAudio } from './audio-generation';
+import type { WorkerAudioCall } from './types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { logNativeDiagnostic, logOperation } from '@/features/llama-cpp-browser/debug-log';
 import type { importStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
@@ -10,9 +14,10 @@ import type { generate } from "./generation";
 
 const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
 const completed = () => ({ ...result, toolCalls: [] });
-const calls = vi.hoisted(() => ({ probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+const calls = vi.hoisted(() => ({ audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
 vi.mock("@/features/llama-cpp-browser/runtime/detect-profile", () => ({ probeRuntimeProfiles: calls.probe }));
 vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
+vi.mock("./audio-generation", () => ({ generateAudio: calls.audio }));
 vi.mock("./generation", () => ({ generate: calls.generate }));
 vi.mock("./session", () => ({ invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
 vi.mock("../runtime/model-store", () => ({ withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
@@ -29,7 +34,7 @@ function deferred() {
   return { promise, resolve };
 }
 beforeEach(() => {
-  vi.clearAllMocks(); calls.list.mockResolvedValue([]); calls.remove.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
+  vi.clearAllMocks(); calls.audio.mockReset(); calls.audio.mockResolvedValue(audioResult()); calls.list.mockResolvedValue([]); calls.remove.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
 });
 describe("generation RPC lifecycle", () => {
   it('probes browser capabilities without loading a model or generating', async () => {
@@ -243,5 +248,112 @@ describe('single-file import RPC cancellation', () => {
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects an invalid single-file cancellation id %s before touching storage', async generationId => {
     await expect(createWorkerApi().importModel({ file: new File(['fixture'], 'same.gguf'), generationId }, () => {})).rejects.toThrow();
     expect(calls.import).not.toHaveBeenCalled();
+  });
+});
+
+function audioRequest({ generationId }: { generationId: number }): WorkerAudioCall {
+  return { ...defaultAudioParameters(), generationId, model: 'user/voice', text: 'Hello', options: { profile: 'cpu-wasm32' }, debug: 'off' };
+}
+describe('audio RPC ownership', () => {
+  it('validates audio inputs before allocating native state', async () => {
+    await expect(createWorkerApi().generateAudio({ ...audioRequest({ generationId: 1 }), text: ' ' }, () => {}, () => {})).rejects.toThrow();
+    expect(calls.audio).not.toHaveBeenCalled();
+  });
+  it('drains progress acknowledgements before permitting another operation', async () => {
+    const gate = deferred(); calls.audio.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress({ progress: { phase: 'generating', completed: 1, total: 2 } }); return audioResult();
+    });
+    const api = createWorkerApi(); let settled = false;
+    const pending = api.generateAudio(audioRequest({ generationId: 1 }), () => gate.promise, () => {}).then(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce()); expect(settled).toBe(false);
+    await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).rejects.toThrow('busy');
+    await expect(api.release()).rejects.toThrow('busy'); gate.resolve(); await pending; await api.release();
+    expect(calls.releaseSession).toHaveBeenCalledWith({ releaseRuntime: true });
+  });
+  it('targets audio cancellation by its ID and prevents chat/audio overlap', async () => {
+    const gate = deferred(); let signal: AbortSignal | undefined;
+    calls.audio.mockImplementationOnce(async args => {
+      signal = args.cancellationSignal; await gate.promise; return audioResult();
+    });
+    const api = createWorkerApi(); const pending = api.generateAudio(audioRequest({ generationId: 7 }), () => {}, () => {});
+    await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
+    await expect(api.generateAudio(audioRequest({ generationId: 8 }), () => {}, () => {})).rejects.toThrow('busy');
+    await api.cancelGeneration({ generationId: 6 }); expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 7 }); expect(signal?.aborted).toBe(true); gate.resolve(); await pending;
+    expect(await api.generateAudio(audioRequest({ generationId: 8 }), () => {}, () => {})).toEqual(audioResult());
+  });
+  it('rejects invalid native results and releases the active operation slot', async () => {
+    calls.audio.mockResolvedValueOnce({ ...audioResult(), sampleRate: 0 }); const api = createWorkerApi();
+    await expect(api.generateAudio(audioRequest({ generationId: 1 }), () => {}, () => {})).rejects.toThrow();
+    expect(await api.generateAudio(audioRequest({ generationId: 2 }), () => {}, () => {})).toEqual(audioResult());
+  });
+  it('propagates callback failure after cleanup rather than leaking an occupied slot', async () => {
+    calls.audio.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress({ progress: { phase: 'generating', completed: 1, total: 2 } }); return audioResult();
+    });
+    const api = createWorkerApi();
+    await expect(api.generateAudio(audioRequest({ generationId: 1 }), () => Promise.reject(new Error('callback failed')), () => {})).rejects.toThrow('worker-failed');
+    await api.release();
+  });
+});
+
+
+describe('request-scoped audio finishing', () => {
+  it('finishes only the matching audio request without aborting its native operation', async () => {
+    const gate = deferred(); calls.audio.mockImplementationOnce(async () => {
+      await gate.promise; return { ...audioResult(), finishReason: 'user-stop' };
+    });
+    const api = createWorkerApi(); const pending = api.generateAudio(audioRequest({ generationId: 71 }), () => {}, () => {});
+    await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
+    const operation = calls.audio.mock.calls[0]![0]; expect(operation.shouldComplete?.()).toBe(false);
+    await api.finishAudioGeneration({ generationId: 70 }); expect(operation.shouldComplete?.()).toBe(false);
+    await api.finishAudioGeneration({ generationId: 71 }); expect(operation.shouldComplete?.()).toBe(true);
+    expect(operation.cancellationSignal?.aborted).toBe(false);
+    gate.resolve(); expect(await pending).toMatchObject({ finishReason: 'user-stop' });
+    await api.finishAudioGeneration({ generationId: 71 });
+    await api.generateAudio(audioRequest({ generationId: 72 }), () => {}, () => {});
+    expect(calls.audio.mock.calls[1]![0].shouldComplete?.()).toBe(false);
+  });
+  it('does not finish or cancel a chat operation, including when its ID matches', async () => {
+    const gate = deferred(); calls.generate.mockImplementationOnce(async () => {
+      await gate.promise; return completed();
+    });
+    const api = createWorkerApi(); const pending = api.generate(request({ generationId: 91 }), async () => {}, () => {});
+    await vi.waitFor(() => expect(calls.generate).toHaveBeenCalledOnce());
+    await api.finishAudioGeneration({ generationId: 91 });
+    expect(calls.generate.mock.calls[0]![0].signal?.aborted).toBe(false); expect(calls.audio).not.toHaveBeenCalled();
+    gate.resolve(); await pending;
+  });
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid finish request ID %s', async generationId => {
+    await expect(createWorkerApi().finishAudioGeneration({ generationId })).rejects.toThrow();
+    expect(calls.audio).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('preview control isolation', () => {
+  it('targets only the owning audio operation, coalesces requests and keeps its lane until final output', async () => {
+    const gate = Promise.withResolvers<void>(); calls.audio.mockImplementationOnce(async () => {
+      await gate.promise; return audioResult();
+    });
+    const api = createWorkerApi(); const onPreview = vi.fn(async () => {});
+    const pending = api.generateAudio(audioRequest({ generationId: 101 }), () => {}, () => {}, onPreview);
+    await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
+    const operation = calls.audio.mock.calls[0]![0];
+    await api.requestAudioPreview({ generationId: 100, requestVersion: 9 }); expect(operation.preview?.requestedVersion()).toBe(0);
+    await api.requestAudioPreview({ generationId: 101, requestVersion: 2 });
+    await api.requestAudioPreview({ generationId: 101, requestVersion: 1 }); expect(operation.preview?.requestedVersion()).toBe(2);
+    await operation.preview!.onPreview({ requestVersion: 2, result: { ...audioResult(), frames: 72, finishReason: 'preview' } });
+    expect(onPreview).toHaveBeenCalledOnce(); expect(operation.cancellationSignal?.aborted).toBe(false); expect(operation.shouldComplete?.()).toBe(false);
+    await expect(api.generateAudio(audioRequest({ generationId: 102 }), () => {}, () => {})).rejects.toThrow('busy');
+    await api.finishAudioGeneration({ generationId: 101 }); await api.requestAudioPreview({ generationId: 101, requestVersion: 3 });
+    expect(operation.preview?.requestedVersion()).toBe(2); gate.resolve(); await pending;
+    await api.requestAudioPreview({ generationId: 101, requestVersion: 4 });
+    expect(operation.preview?.requestedVersion()).toBe(2);
+  });
+  it.each([0, -1, 1.5, Number.NaN])('rejects malformed request version %s before applying intent', async requestVersion => {
+    await expect(createWorkerApi().requestAudioPreview({ generationId: 1, requestVersion })).rejects.toThrow();
   });
 });

@@ -1,9 +1,10 @@
+import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreviewEvent } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { workerProxy, type WorkerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
-import { workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
+import { workerAudioCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
 // Both transports share cancellation, validation and callback lifetime rules.
 export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTransport, getAssetBaseURL }: {
@@ -181,6 +182,67 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         return generationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
+      }
+    },
+    generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
+      const accepted = workerAudioCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      let acceptingEvents = true; let started = false;
+      const finish = (): void => {
+        if (started && acceptingEvents && !disposed && !cancellationSignal?.aborted) {
+          void remote.finishAudioGeneration({ generationId: accepted.generationId }).catch(() => {
+            if (acceptingEvents && !disposed) dispose();
+          });
+        }
+      };
+      // The completion signal requests a normal partial result. It never arms the abort
+      // timeout, terminates the Worker, or reaches the native abort callback.
+      completionSignal?.addEventListener('abort', finish, { once: true });
+      let sentVersion = 0; let deliveredVersion = 0;
+      const requestPreview = (): void => {
+        if (!started || !acceptingEvents || disposed || cancellationSignal?.aborted || completionSignal?.aborted || !preview) return;
+        const requestVersion = preview.requests.version;
+        if (requestVersion <= sentVersion) return;
+        sentVersion = requestVersion;
+        void remote.requestAudioPreview({ generationId: accepted.generationId, requestVersion }).catch(() => {
+          // A late failure for a completed request must not dispose a new owner.
+          if (acceptingEvents && !disposed) dispose();
+        });
+      };
+      const unsubscribePreview = preview?.requests.subscribe({ listener: requestPreview });
+      try {
+        const result = await invoke({ call: () => {
+          const pending = remote.generateAudio(accepted,
+            workerProxy({ value: ({ ...event }) => {
+              if (acceptingEvents && !disposed && !cancellationSignal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+            } }),
+            workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
+              if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+              debugEnabled = accepted.debug === 'on';
+              const checkpoint = diagnosticSchema.parse(diagnostic);
+              if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+              if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
+              if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
+              if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+            } }), preview ? workerProxy({ value: async ({ ...event }: AudioPreviewEvent) => {
+              if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+              const acceptedEvent = audioPreviewEventSchema.parse(event);
+              if (acceptedEvent.requestVersion <= deliveredVersion) return;
+              if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+              deliveredVersion = acceptedEvent.requestVersion;
+              await preview.onPreview(acceptedEvent);
+            } }) : undefined);
+          started = true;
+          if (completionSignal?.aborted) finish();
+          requestPreview();
+          return pending;
+        }, signal: cancellationSignal, onAbort: () => {
+          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+        }, abortTimeoutMs: 5000 });
+        return audioGenerationResultSchema.parse(result);
+      } finally {
+        acceptingEvents = false;
+        completionSignal?.removeEventListener('abort', finish);
+        unsubscribePreview?.();
       }
     },
     canReuse: () => !disposed,
