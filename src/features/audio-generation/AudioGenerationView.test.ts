@@ -9,6 +9,7 @@ import type { EngineState } from '@/features/llama-cpp-browser/types';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { audioResult } from './test-utils/wav';
 import AudioGenerationView from './AudioGenerationView.vue';
+import * as referencePreparation from './reference-audio';
 import type { inspectStoredAudioModel } from './model-detection';
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ availableModels: ref([]), isFetchingModels: ref(false), fetchModels: vi.fn() }) }));
 const detection = vi.hoisted(() => ({ inspect: vi.fn<typeof inspectStoredAudioModel>() }));
@@ -322,4 +323,44 @@ describe('non-destructive runtime recovery in the audio workspace', () => {
     expect(service.release).not.toHaveBeenCalled(); expect(service.cancel).not.toHaveBeenCalled();
     pending.reject(new Error('late recovery failure')); await flushPromises();
   });
+});
+
+
+describe('finish partial audio without discarding history', () => {
+  it('enables finishing only after a frame and records the partial result with original settings', async () => {
+    const view = await ready(); await submit({ view });
+    const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); service.generateAudio.mockReturnValueOnce(gate.promise);
+    await submit({ view }); expect(view.get<HTMLButtonElement>('[data-testid="audio-finish"]').element.disabled).toBe(true);
+    notify({ state: { status: 'working', progress: { phase: 'generating', completed: 1, total: 1024 } } }); await nextTick();
+    expect(view.get<HTMLButtonElement>('[data-testid="audio-finish"]').element.disabled).toBe(false);
+    await view.get('[data-testid="audio-finish"]').trigger('click');
+    const args = service.generateAudio.mock.calls[1]![0]; expect(args.finishSignal?.aborted).toBe(true); expect(args.signal?.aborted).toBe(false);
+    expect(view.get<HTMLButtonElement>('[data-testid="audio-finish"]').element.disabled).toBe(true);
+    notify({ state: { status: 'working', progress: { phase: 'decoding-audio', completed: 0, total: 0 } } }); await nextTick();
+    expect(view.get<HTMLButtonElement>('[data-testid="audio-stop"]').element.disabled).toBe(false);
+    gate.resolve({ ...audioResult(), finishReason: 'user-stop' }); await flushPromises();
+    expect(view.findAll('[data-testid="audio-player"]')).toHaveLength(2);
+    expect(view.findAll('[data-testid="audio-finished-early"]')).toHaveLength(1);
+    expect(view.findAll('[data-testid="audio-truncated"]')).toHaveLength(0);
+  });
+  it('keeps the older result and discards the pending one when cancelled after finish', async () => {
+    const view = await ready(); await submit({ view }); const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); service.generateAudio.mockReturnValueOnce(gate.promise);
+    await submit({ view }); notify({ state: { status: 'working', progress: { phase: 'generating', completed: 1, total: 1024 } } }); await nextTick();
+    await view.get('[data-testid="audio-finish"]').trigger('click'); await view.get('[data-testid="audio-stop"]').trigger('click');
+    gate.resolve({ ...audioResult(), finishReason: 'user-stop' }); await flushPromises();
+    expect(view.findAll('[data-testid="audio-player"]')).toHaveLength(1);
+    expect(service.generateAudio.mock.calls[1]![0].signal?.aborted).toBe(true);
+  });
+});
+
+
+it('can cancel pending browser reference decoding before entering the inference service', async () => {
+  const gate = Promise.withResolvers<Blob | undefined>(); const prepare = vi.spyOn(referencePreparation, 'prepareReferenceAudio').mockReturnValueOnce(gate.promise);
+  const view = await ready(); await submit({ view });
+  expect(prepare).toHaveBeenCalledOnce(); expect(service.generateAudio).not.toHaveBeenCalled();
+  expect(view.get<HTMLButtonElement>('[data-testid="audio-finish"]').element.disabled).toBe(true);
+  await view.get('[data-testid="audio-stop"]').trigger('click'); expect(prepare.mock.calls[0]![0].signal?.aborted).toBe(true);
+  gate.resolve(undefined); await flushPromises(); expect(service.generateAudio).not.toHaveBeenCalled();
+  expect(view.get<HTMLButtonElement>('[data-testid="audio-generate"]').element.disabled).toBe(false);
+  await submit({ view }); expect(service.generateAudio).toHaveBeenCalledOnce();
 });

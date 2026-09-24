@@ -249,13 +249,13 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       return worker.generate({ request: { ...initialRequest, options: concreteOptions }, onEvent, onProgress: progress, signal });
     } });
   },
-  generateAudio({ input, signal }) {
+  generateAudio({ input, signal, finishSignal }) {
     const initialRequest = audioGenerationInputSchema.parse({ ...input, options: { ...options } });
     return run({ kind: 'operation', signal, operation: async ({ worker, signal }) => {
       progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
       const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
       if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-      return worker.generateAudio({ request: { ...initialRequest, options: concreteOptions }, onProgress: progress, signal });
+      return worker.generateAudio({ request: { ...initialRequest, options: concreteOptions }, onProgress: progress, signal, finishSignal });
     } });
   },
   async runGenerationOperation({ signal, operation }) {

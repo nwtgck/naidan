@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
-const transport = vi.hoisted(() => ({ remote: { generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
+const transport = vi.hoisted(() => ({ remote: { finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
   releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
 class TestWorker extends EventTarget {
@@ -20,7 +20,7 @@ beforeEach(() => {
   vi.clearAllMocks(); TestWorker.instances = [];
   vi.stubGlobal('Worker', TestWorker);
   transport.remote.listModels.mockResolvedValue([]);
-  transport.remote.cancelGeneration.mockResolvedValue(undefined);
+  transport.remote.cancelGeneration.mockResolvedValue(undefined); transport.remote.finishAudioGeneration.mockReset(); transport.remote.finishAudioGeneration.mockResolvedValue(undefined);
   transport.remote.generate.mockReset(); transport.remote.generateAudio.mockReset(); transport.remote.generateAudio.mockResolvedValue(audioResult());
   transport.remote.importModel.mockReset(); transport.remote.importDirectory.mockReset();
 });
@@ -351,5 +351,48 @@ describe('hosted audio transport', () => {
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: controller.signal }); const rejected = expect(pending).rejects.toThrow('aborted');
     controller.abort(); await vi.advanceTimersByTimeAsync(4999); expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1); await rejected; expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('hosted audio finish transport', () => {
+  it.each([false, true])('posts a finish request after starting the audio RPC (pre-requested: %s)', async preRequested => {
+    const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
+    const client = createLlamaCppWorkerClient(); const finish = new AbortController(); const abort = new AbortController();
+    if (preRequested) finish.abort();
+    const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: abort.signal, finishSignal: finish.signal });
+    if (!preRequested) finish.abort();
+    expect(transport.remote.finishAudioGeneration).toHaveBeenCalledExactlyOnceWith({ generationId: 1 });
+    expect(transport.remote.generateAudio.mock.invocationCallOrder[0]!).toBeLessThan(transport.remote.finishAudioGeneration.mock.invocationCallOrder[0]!);
+    expect(transport.remote.cancelGeneration).not.toHaveBeenCalled(); expect(abort.signal.aborted).toBe(false);
+    gate.resolve({ ...audioResult(), finishReason: 'user-stop' });
+    expect(await pending).toMatchObject({ finishReason: 'user-stop' }); expect(client.canReuse()).toBe(true); client.dispose();
+  });
+  it('does not arm the five-second cancellation deadline while waveform conversion is pending', async () => {
+    vi.useFakeTimers(); const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
+    const client = createLlamaCppWorkerClient(); const finish = new AbortController();
+    const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: undefined, finishSignal: finish.signal });
+    finish.abort(); await vi.advanceTimersByTimeAsync(60000);
+    expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled(); expect(transport.remote.cancelGeneration).not.toHaveBeenCalled();
+    gate.resolve(audioResult()); await pending; client.dispose();
+  });
+  it('detaches completed request signals and ignores their delayed finish failures', async () => {
+    const finishReply = Promise.withResolvers<void>(); transport.remote.finishAudioGeneration.mockReturnValueOnce(finishReply.promise);
+    const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
+    const client = createLlamaCppWorkerClient(); const finish = new AbortController();
+    const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: undefined, finishSignal: finish.signal });
+    finish.abort(); gate.resolve(audioResult()); await pending;
+    const unused = new AbortController(); await client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: undefined, finishSignal: unused.signal });
+    unused.abort(); expect(transport.remote.finishAudioGeneration).toHaveBeenCalledOnce();
+    finishReply.reject(new Error('late old RPC failure')); await Promise.resolve();
+    expect(client.canReuse()).toBe(true); expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled(); client.dispose();
+  });
+  it('can still cancel and discard after asking for a partial result', async () => {
+    const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
+    const client = createLlamaCppWorkerClient(); const finish = new AbortController(); const abort = new AbortController();
+    const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, signal: abort.signal, finishSignal: finish.signal });
+    const rejected = expect(pending).rejects.toThrow('aborted'); finish.abort(); abort.abort();
+    expect(transport.remote.cancelGeneration).toHaveBeenCalledExactlyOnceWith({ generationId: 1 });
+    gate.resolve({ ...audioResult(), finishReason: 'user-stop' }); await rejected; client.dispose();
   });
 });

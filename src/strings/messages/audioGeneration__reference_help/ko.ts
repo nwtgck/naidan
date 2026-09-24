@@ -1,1 +1,1 @@
-export const audioGeneration__reference_help = (): string => "Qwen Base에서는 선택 사항이며 Pocket에서는 필수입니다. WAV, MP3, FLAC 형식으로 16 MiB 및 30초 이하의 음성을 사용하세요. Qwen 참조 음성에는 단일 스레드 음성 전처리 수정이 포함된 lcore를 다시 빌드하고 업데이트해야 합니다. 기존 런타임만으로는 지원되지 않습니다. 사용 권한이 있는 목소리만 지정하세요. 파일은 채팅 기록에 저장되지 않습니다.";
+export const audioGeneration__reference_help = (): string => "Qwen Base에서는 선택 사항이며 Pocket에서는 필수입니다. 파일당 최대 16 MiB, 선택한 음성의 총 길이는 최대 30초입니다. WAV, MP3, FLAC은 한 개일 때 직접 사용할 수 있습니다. 다른 형식이나 여러 음성의 연결에는 브라우저 디코딩 기능이 필요합니다. 사용 권한이 있는 음성만 지정하세요.";

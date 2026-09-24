@@ -1871,6 +1871,38 @@ import { audioGeneration__generate_audio } from '@/strings/messages/audioGenerat
 import { audioGeneration__stop_generation } from '@/strings/messages/audioGeneration__stop_generation/ja';
 import { audioGeneration__stopping } from '@/strings/messages/audioGeneration__stopping/ja';
 import { audioGeneration__waiting } from '@/strings/messages/audioGeneration__waiting/ja';
+import { audioGeneration__finish_and_keep_audio } from '@/strings/messages/audioGeneration__finish_and_keep_audio/ja';
+import { audioGeneration__finishing_current_step } from '@/strings/messages/audioGeneration__finishing_current_step/ja';
+import { audioGeneration__finish_audio_help } from '@/strings/messages/audioGeneration__finish_audio_help/ja';
+import { audioGeneration__finished_early } from '@/strings/messages/audioGeneration__finished_early/ja';
+import { audioGeneration__cancel_and_discard } from '@/strings/messages/audioGeneration__cancel_and_discard/ja';
+import { audioGeneration__drop_reference_audio } from '@/strings/messages/audioGeneration__drop_reference_audio/ja';
+import { audioGeneration__add_reference_files } from '@/strings/messages/audioGeneration__add_reference_files/ja';
+import { audioGeneration__record_reference } from '@/strings/messages/audioGeneration__record_reference/ja';
+import { audioGeneration__stop_and_use_recording } from '@/strings/messages/audioGeneration__stop_and_use_recording/ja';
+import { audioGeneration__discard_recording } from '@/strings/messages/audioGeneration__discard_recording/ja';
+import { audioGeneration__requesting_microphone } from '@/strings/messages/audioGeneration__requesting_microphone/ja';
+import { audioGeneration__recording_audio } from '@/strings/messages/audioGeneration__recording_audio/ja';
+import { audioGeneration__preparing_recording } from '@/strings/messages/audioGeneration__preparing_recording/ja';
+import { audioGeneration__preparing_references } from '@/strings/messages/audioGeneration__preparing_references/ja';
+import { audioGeneration__recording_help } from '@/strings/messages/audioGeneration__recording_help/ja';
+import { audioGeneration__reference_collection_help } from '@/strings/messages/audioGeneration__reference_collection_help/ja';
+import { audioGeneration__selected_references } from '@/strings/messages/audioGeneration__selected_references/ja';
+import { audioGeneration__deselect_all_references } from '@/strings/messages/audioGeneration__deselect_all_references/ja';
+import { audioGeneration__delete_reference } from '@/strings/messages/audioGeneration__delete_reference/ja';
+import { audioGeneration__delete_all_references } from '@/strings/messages/audioGeneration__delete_all_references/ja';
+import { audioGeneration__no_reference_selected } from '@/strings/messages/audioGeneration__no_reference_selected/ja';
+import { audioGeneration__reference_empty } from '@/strings/messages/audioGeneration__reference_empty/ja';
+import { audioGeneration__reference_too_large } from '@/strings/messages/audioGeneration__reference_too_large/ja';
+import { audioGeneration__reference_too_long } from '@/strings/messages/audioGeneration__reference_too_long/ja';
+import { audioGeneration__reference_decode_failed } from '@/strings/messages/audioGeneration__reference_decode_failed/ja';
+import { audioGeneration__recording_unavailable } from '@/strings/messages/audioGeneration__recording_unavailable/ja';
+import { audioGeneration__reference_library_full } from '@/strings/messages/audioGeneration__reference_library_full/ja';
+import { audioGeneration__microphone_permission_denied } from '@/strings/messages/audioGeneration__microphone_permission_denied/ja';
+import { audioGeneration__microphone_unavailable } from '@/strings/messages/audioGeneration__microphone_unavailable/ja';
+import { audioGeneration__recording_failed } from '@/strings/messages/audioGeneration__recording_failed/ja';
+import { audioGeneration__recording_limited_to_thirty_seconds } from '@/strings/messages/audioGeneration__recording_limited_to_thirty_seconds/ja';
+import { audioGeneration__reference_usage_notes } from '@/strings/messages/audioGeneration__reference_usage_notes/ja';
 import { audioGeneration__generation_stopped } from '@/strings/messages/audioGeneration__generation_stopped/ja';
 import { audioGeneration__generated_audio } from '@/strings/messages/audioGeneration__generated_audio/ja';
 import { audioGeneration__save_wav } from '@/strings/messages/audioGeneration__save_wav/ja';
@@ -3791,6 +3823,38 @@ export const catalog = {
   audioGeneration__stop_generation,
   audioGeneration__stopping,
   audioGeneration__waiting,
+  audioGeneration__finish_and_keep_audio,
+  audioGeneration__finishing_current_step,
+  audioGeneration__finish_audio_help,
+  audioGeneration__finished_early,
+  audioGeneration__cancel_and_discard,
+  audioGeneration__drop_reference_audio,
+  audioGeneration__add_reference_files,
+  audioGeneration__record_reference,
+  audioGeneration__stop_and_use_recording,
+  audioGeneration__discard_recording,
+  audioGeneration__requesting_microphone,
+  audioGeneration__recording_audio,
+  audioGeneration__preparing_recording,
+  audioGeneration__preparing_references,
+  audioGeneration__recording_help,
+  audioGeneration__reference_collection_help,
+  audioGeneration__selected_references,
+  audioGeneration__deselect_all_references,
+  audioGeneration__delete_reference,
+  audioGeneration__delete_all_references,
+  audioGeneration__no_reference_selected,
+  audioGeneration__reference_empty,
+  audioGeneration__reference_too_large,
+  audioGeneration__reference_too_long,
+  audioGeneration__reference_decode_failed,
+  audioGeneration__recording_unavailable,
+  audioGeneration__reference_library_full,
+  audioGeneration__microphone_permission_denied,
+  audioGeneration__microphone_unavailable,
+  audioGeneration__recording_failed,
+  audioGeneration__recording_limited_to_thirty_seconds,
+  audioGeneration__reference_usage_notes,
   audioGeneration__generation_stopped,
   audioGeneration__generated_audio,
   audioGeneration__save_wav,

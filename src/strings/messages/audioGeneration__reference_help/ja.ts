@@ -1,1 +1,1 @@
-export const audioGeneration__reference_help = (): string => "Qwen Baseでは省略でき、Pocketでは必須です。WAV・MP3・FLAC形式で、16 MiB以下、30秒以下の音声を使用してください。Qwenの参照音声には、単一スレッド音声前処理の修正を含むlcoreの再ビルドと更新が必要です。従来の成果物だけでは対応できません。使用する権利のある声だけを指定してください。ファイルはチャット履歴に保存しません。";
+export const audioGeneration__reference_help = (): string => "Qwen Baseでは省略でき、Pocketでは必須です。1ファイル16 MiB以下、選択した音声は合計30秒以下で使用してください。WAV・MP3・FLACは1件なら直接使用でき、それ以外の形式や複数音声の連結にはブラウザのデコード機能が必要です。使用する権利のある声だけを指定してください。";

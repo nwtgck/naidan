@@ -97,9 +97,9 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       parseRuntimeOptions({ options: request.options });
       return (await getClient({ signal })).generate({ request, onEvent, onProgress, signal });
     },
-    generateAudio: async ({ request, onProgress, signal }) => {
+    generateAudio: async ({ request, onProgress, signal, finishSignal }) => {
       parseRuntimeOptions({ options: request.options });
-      return (await getClient({ signal })).generateAudio({ request, onProgress, signal });
+      return (await getClient({ signal })).generateAudio({ request, onProgress, signal, finishSignal });
     },
     canReuse: () => !disposed && (client?.canReuse() ?? true),
     dispose,

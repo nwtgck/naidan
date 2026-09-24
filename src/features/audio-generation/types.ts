@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { modelSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
 
+export const MAX_REFERENCE_SECONDS = 30;
 export const MAX_REFERENCE_BYTES = 16 * 1024 * 1024;
 export const MAX_AUDIO_BYTES = 64 * 1024 * 1024;
 // Transport bound, not a shared model limit. Session allocation is capped by
@@ -31,7 +32,7 @@ export const audioGenerationResultSchema = z.object({
   sampleRate: z.number().int().positive().max(384000),
   samples: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   frames: z.number().int().positive().max(2048),
-  finishReason: z.enum(['stop', 'frame-limit', 'context-limit']),
+  finishReason: z.enum(['stop', 'frame-limit', 'context-limit', 'user-stop']),
   pipeline: z.enum(['qwen3-tts', 'pocket-tts']),
 }).strict();
 export type AudioGenerationResult = z.infer<typeof audioGenerationResultSchema>;

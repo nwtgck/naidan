@@ -298,3 +298,36 @@ describe('audio RPC ownership', () => {
     await api.release();
   });
 });
+
+
+describe('request-scoped audio finishing', () => {
+  it('finishes only the matching audio request without aborting its native operation', async () => {
+    const gate = deferred(); calls.audio.mockImplementationOnce(async () => {
+      await gate.promise; return { ...audioResult(), finishReason: 'user-stop' };
+    });
+    const api = createWorkerApi(); const pending = api.generateAudio(audioRequest({ generationId: 71 }), () => {}, () => {});
+    await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
+    const operation = calls.audio.mock.calls[0]![0]; expect(operation.shouldFinish?.()).toBe(false);
+    await api.finishAudioGeneration({ generationId: 70 }); expect(operation.shouldFinish?.()).toBe(false);
+    await api.finishAudioGeneration({ generationId: 71 }); expect(operation.shouldFinish?.()).toBe(true);
+    expect(operation.signal?.aborted).toBe(false);
+    gate.resolve(); expect(await pending).toMatchObject({ finishReason: 'user-stop' });
+    await api.finishAudioGeneration({ generationId: 71 });
+    await api.generateAudio(audioRequest({ generationId: 72 }), () => {}, () => {});
+    expect(calls.audio.mock.calls[1]![0].shouldFinish?.()).toBe(false);
+  });
+  it('does not finish or cancel a chat operation, including when its ID matches', async () => {
+    const gate = deferred(); calls.generate.mockImplementationOnce(async () => {
+      await gate.promise; return completed();
+    });
+    const api = createWorkerApi(); const pending = api.generate(request({ generationId: 91 }), async () => {}, () => {});
+    await vi.waitFor(() => expect(calls.generate).toHaveBeenCalledOnce());
+    await api.finishAudioGeneration({ generationId: 91 });
+    expect(calls.generate.mock.calls[0]![0].signal?.aborted).toBe(false); expect(calls.audio).not.toHaveBeenCalled();
+    gate.resolve(); await pending;
+  });
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid finish request ID %s', async generationId => {
+    await expect(createWorkerApi().finishAudioGeneration({ generationId })).rejects.toThrow();
+    expect(calls.audio).not.toHaveBeenCalled();
+  });
+});

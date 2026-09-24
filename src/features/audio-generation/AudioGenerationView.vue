@@ -16,6 +16,7 @@ import AudioHistoryResult from './components/AudioHistoryResult.vue';
 import ModelSelector from '@/components/ModelSelector.vue';
 import LlamaCppBrowserRepositoryCatalog from '@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryCatalog.vue';
 import { audioModelCatalog } from './model-catalog';
+import AudioReferenceInput from './components/AudioReferenceInput.vue';
 
 const id = useId();
 const manager = ref<InstanceType<typeof LlamaCppBrowserManager>>();
@@ -24,22 +25,26 @@ const { models, model, scope: modelScope, scanState, visibleModels, detectedCoun
   updateModels, selectModel, selectionChanged, scopeChanged, showAllModels } = useAudioModels({ inspect: inspectStoredAudioModel });
 const { entries: history, totalBytes, append: appendHistory, remove: removeHistory, clear: clearHistory } = useAudioHistory();
 const text = ref('');
-const reference = shallowRef<File>();
-const referenceInput = ref<HTMLInputElement>();
+const referenceInput = ref<InstanceType<typeof AudioReferenceInput>>();
+const referenceBusy = ref(false);
+const preparingReference = ref(false);
 const parameters = ref<ReturnType<typeof defaultAudioParameters>>({ ...defaultAudioParameters(), language: defaultAudioLanguage({ locale: currentLocale.value }) });
 const form = ref<HTMLFormElement>();
 const debug = ref(false);
 const runtimeReady = ref(false);
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const controller = shallowRef<AbortController>();
+const finishController = shallowRef<AbortController>();
+const finishing = ref(false);
 const stopping = ref(false);
+const canFinish = computed(() => busy.value && !preparingReference.value && !stopping.value && !finishing.value && state.value.status === 'working' && state.value.progress.phase === 'generating' && state.value.progress.completed > 0);
 const stopped = ref(false);
 const invalidFields = ref<string[]>([]);
 const invalid = computed(() => invalidFields.value.length > 0);
 const failure = ref<ErrorCode>();
 const busy = computed(() => controller.value !== undefined);
 const blocked = computed(() => recovery.value !== undefined || busy.value || state.value.status === 'working');
-const canGenerate = computed(() => !blocked.value && runtimeReady.value && models.value.some(entry => entry.id === model.value));
+const canGenerate = computed(() => !blocked.value && !referenceBusy.value && runtimeReady.value && models.value.some(entry => entry.id === model.value));
 let disposed = false;
 let generation = 0;
 let unsubscribe: (() => void) | undefined;
@@ -78,7 +83,9 @@ async function restartRuntime(): Promise<void> {
 }
 const languages = computed(() => audioLanguageOptions({ locale: currentLocale.value }));
 const progressLabel = computed(() => {
+  if (preparingReference.value && !stopping.value) return lazyStrings.audioGeneration__preparing_references();
   if (stopping.value) return lazyStrings.audioGeneration__stopping();
+  if (finishing.value && !(state.value.status === 'working' && state.value.progress.phase === 'decoding-audio')) return lazyStrings.audioGeneration__finishing_current_step();
   const current = state.value;
   switch (current.status) {
   case 'idle': case 'error': case 'unavailable': return lazyStrings.audioGeneration__waiting();
@@ -113,15 +120,6 @@ const errorMessage = computed(() => {
   default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
   }
 });
-function chooseReference({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLInputElement)) return;
-  reference.value = event.target.files?.[0];
-  invalidFields.value = []; failure.value = undefined;
-}
-function clearReference(): void {
-  reference.value = undefined;
-  if (referenceInput.value) referenceInput.value.value = '';
-}
 function fieldError({ field }: { field: string }): string | undefined {
   return invalidFields.value.includes(field) ? audioFieldValidationMessage({ field }) : undefined;
 }
@@ -143,7 +141,7 @@ function revealInvalidField({ field }: { field: string }): void {
 async function generate(): Promise<void> {
   if (!canGenerate.value) return;
   failure.value = undefined; invalidFields.value = []; stopped.value = false;
-  const accepted = audioGenerationInputSchema.safeParse({ ...parameters.value, model: model.value, text: text.value, reference: reference.value, debug: debug.value ? 'on' : 'off', options: llamaCppBrowserService.getOptions() });
+  const accepted = audioGenerationInputSchema.safeParse({ ...parameters.value, model: model.value, text: text.value, reference: undefined, debug: debug.value ? 'on' : 'off', options: llamaCppBrowserService.getOptions() });
   if (!accepted.success) {
     invalidFields.value = audioValidationFields({ issues: accepted.error.issues });
     await nextTick();
@@ -152,10 +150,15 @@ async function generate(): Promise<void> {
   }
   const { options: _options, ...input } = accepted.data;
   const request = ++generation; const active = new AbortController(); controller.value = active; stopping.value = false;
+  const finish = new AbortController(); finishController.value = finish; finishing.value = false;
   const modelName = models.value.find(entry => entry.id === input.model)!.name;
   const settings = captureAudioSettings({ input: accepted.data, modelName });
   try {
-    const result = audioGenerationResultSchema.parse(await llamaCppBrowserService.generateAudio({ input, signal: active.signal }));
+    preparingReference.value = true;
+    const reference = await referenceInput.value?.prepare({ signal: active.signal });
+    active.signal.throwIfAborted();
+    preparingReference.value = false;
+    const result = audioGenerationResultSchema.parse(await llamaCppBrowserService.generateAudio({ input: { ...input, reference }, signal: active.signal, finishSignal: finish.signal }));
     // An RPC may finish after Stop or route unmount. Never publish that old result.
     if (disposed || request !== generation || active.signal.aborted) return;
     validateAudioWav(result);
@@ -164,13 +167,17 @@ async function generate(): Promise<void> {
     if (disposed || request !== generation) return;
     const code = errorCode({ error });
     if (active.signal.aborted || code === 'aborted') stopped.value = true;
-    else failure.value = code;
+    else failure.value = preparingReference.value ? 'audio-reference-invalid' : code;
   } finally {
     if (!disposed && request === generation) {
       if (active.signal.aborted) stopped.value = true;
-      controller.value = undefined; stopping.value = false;
+      preparingReference.value = false; controller.value = undefined; finishController.value = undefined; stopping.value = false; finishing.value = false;
     }
   }
+}
+function finishAudio(): void {
+  if (!canFinish.value) return;
+  finishing.value = true; finishController.value?.abort();
 }
 function stop(): void {
   if (!controller.value) return;
@@ -239,12 +246,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             </select>
             <p :id="`${id}-language-help`" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__language_help() }}</p>
           </div>
-          <div tw-class="space-y-2">
-            <label :for="`${id}-reference`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__reference_voice() }}</label>
-            <input :id="`${id}-reference`" ref="referenceInput" type="file" accept=".wav,.mp3,.flac,audio/wav,audio/mpeg,audio/flac" :aria-describedby="`${id}-reference-help`" data-testid="audio-reference" data-audio-field="reference" :aria-invalid="invalidFields.includes('reference') || undefined" tw-class="block w-full text-sm" @change="chooseReference({ event: $event })" />
-            <button v-if="reference" type="button" @click="clearReference" data-testid="audio-clear-reference" tw-class="text-xs text-purple-600 dark:text-purple-400 underline">{{ lazyStrings.audioGeneration__clear_reference() }}</button>
-            <p :id="`${id}-reference-help`" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reference_help() }}</p>
-          </div>
+        </fieldset>
+        <!-- Recording Stop/Discard must remain reachable even if another page's
+             shared runtime starts working. Do not put these inside a disabled fieldset. -->
+        <AudioReferenceInput ref="referenceInput" :disabled="blocked" :invalid="invalidFields.includes('reference')" @busy="referenceBusy = $event" @changed="invalidFields = []; failure = undefined" />
+        <fieldset :disabled="blocked" tw-class="space-y-5 disabled:opacity-60">
           <details tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
             <summary tw-class="cursor-pointer text-sm font-medium">{{ lazyStrings.audioGeneration__advanced_settings() }}</summary>
             <div tw-class="pt-4 space-y-4">
@@ -273,12 +279,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </fieldset>
         <div tw-class="flex flex-wrap items-center gap-3">
           <button type="submit" :disabled="!canGenerate" data-testid="audio-generate" tw-class="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"><AudioLinesIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__generate_audio() }}</button>
-          <button v-if="busy" type="button" :disabled="stopping" @click="stop" data-testid="audio-stop" tw-class="rounded-xl border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__stop_generation() }}</button>
+          <button v-if="busy" type="button" :disabled="!canFinish" @click="finishAudio" data-testid="audio-finish" tw-class="rounded-xl border border-purple-300 dark:border-purple-700 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__finish_and_keep_audio() }}</button>
+          <button v-if="busy" type="button" :disabled="stopping" @click="stop" data-testid="audio-stop" tw-class="rounded-xl border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__cancel_and_discard() }}</button>
           <button type="button" :disabled="blocked" @click="restartRuntime" data-testid="audio-restart-runtime" tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"><RefreshCcwIcon :tw-class="['h-4 w-4', { 'animate-spin motion-reduce:animate-none': recovery !== undefined }]" />{{ recovery ? lazyStrings.audioGeneration__reinitializing_runtime() : lazyStrings.audioGeneration__reinitialize_runtime() }}</button>
           <p v-if="!runtimeReady" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__runtime_unavailable() }}</p>
         </div>
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reinitialize_runtime_help() }}</p>
         <p v-if="busy" role="status" data-testid="audio-progress" tw-class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ progressLabel }}</p>
+        <p v-if="busy" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__finish_audio_help() }}</p>
         <p v-if="stopped" role="status" data-testid="audio-stopped" tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__generation_stopped() }}</p>
 
       </form>

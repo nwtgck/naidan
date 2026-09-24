@@ -4,7 +4,7 @@ import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/
 import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult, GenerationCallback, LocalModel, RuntimeOptions } from './types';
 
 export interface LlamaCppBrowserService {
-  generateAudio({ input, signal }: { input: Omit<AudioGenerationInput, 'options'>, signal: AbortSignal | undefined }): Promise<AudioGenerationResult>;
+  generateAudio({ input, signal, finishSignal }: { input: Omit<AudioGenerationInput, 'options'>, signal: AbortSignal | undefined, finishSignal?: AbortSignal }): Promise<AudioGenerationResult>;
   getProfileState(): ProfileState;
   subscribeProfiles({ listener }: { listener: ({ state }: { state: ProfileState }) => void }): () => void;
   probeProfiles({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;

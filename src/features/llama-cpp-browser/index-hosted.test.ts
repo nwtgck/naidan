@@ -318,3 +318,15 @@ describe('explicit runtime recovery', () => {
     expect(worker.dispose).not.toHaveBeenCalled(); expect(service.getProfileState().status).toBe('ready');
   });
 });
+
+
+it('retains a queued audio finish request without cancelling the active chat', async () => {
+  const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
+  const chat = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+  await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
+  const finish = new AbortController(); const audio = service.generateAudio({ input: audioInput(), signal: undefined, finishSignal: finish.signal });
+  finish.abort(); expect(worker.generate.mock.calls[0]?.[0].signal?.aborted).toBe(false); expect(worker.generateAudio).not.toHaveBeenCalled();
+  gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await chat; await audio;
+  expect(worker.generateAudio.mock.calls[0]?.[0].finishSignal).toBe(finish.signal);
+  expect(worker.generateAudio.mock.calls[0]?.[0].signal?.aborted).toBe(false); expect(worker.dispose).not.toHaveBeenCalled();
+});

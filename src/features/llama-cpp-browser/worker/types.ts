@@ -25,6 +25,7 @@ export interface LlamaCppWorkerApi {
   verifyStorage({ probeId }: { probeId: string }): Promise<boolean>;
   release(): Promise<void>;
   cancelGeneration({ generationId }: { generationId: number }): Promise<void>;
+  finishAudioGeneration({ generationId }: { generationId: number }): Promise<void>;
   listModels(): Promise<LocalModel[]>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
   importModel(request: { file: File, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
@@ -35,7 +36,7 @@ export interface LlamaCppWorkerApi {
   generate(request: WorkerGenerateCall, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
-  generateAudio({ request, onProgress, signal }: { request: AudioGenerationInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<AudioGenerationResult>;
+  generateAudio({ request, onProgress, signal, finishSignal }: { request: AudioGenerationInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, finishSignal?: AbortSignal }): Promise<AudioGenerationResult>;
   subscribeDisposed({ listener }: { listener: () => void }): () => void;
   probeProfiles({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;
   canReuse(): boolean;

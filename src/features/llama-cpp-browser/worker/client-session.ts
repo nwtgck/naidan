@@ -184,28 +184,44 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         acceptingEvents = false;
       }
     },
-    generateAudio: async ({ request, onProgress, signal }) => {
+    generateAudio: async ({ request, onProgress, signal, finishSignal }) => {
       const accepted = workerAudioCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
-      let acceptingEvents = true;
+      let acceptingEvents = true; let started = false;
+      const finish = (): void => {
+        if (started && acceptingEvents && !disposed && !signal?.aborted) {
+          void remote.finishAudioGeneration({ generationId: accepted.generationId }).catch(() => {
+            if (acceptingEvents && !disposed) dispose();
+          });
+        }
+      };
+      // This signal requests a normal partial result. It never arms the abort
+      // timeout, terminates the Worker, or reaches the native abort callback.
+      finishSignal?.addEventListener('abort', finish, { once: true });
       try {
-        const result = await invoke({ call: () => remote.generateAudio(accepted,
-          workerProxy({ value: ({ ...event }) => {
-            if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-          } }),
-          workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
-            if (!acceptingEvents || disposed || signal?.aborted) return;
-            debugEnabled = accepted.debug === 'on';
-            const checkpoint = diagnosticSchema.parse(diagnostic);
-            if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-            if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
-            if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
-            if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-          } })), signal, onAbort: () => {
+        const result = await invoke({ call: () => {
+          const pending = remote.generateAudio(accepted,
+            workerProxy({ value: ({ ...event }) => {
+              if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+            } }),
+            workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
+              if (!acceptingEvents || disposed || signal?.aborted) return;
+              debugEnabled = accepted.debug === 'on';
+              const checkpoint = diagnosticSchema.parse(diagnostic);
+              if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+              if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
+              if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
+              if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+            } }));
+          started = true;
+          if (finishSignal?.aborted) finish();
+          return pending;
+        }, signal, onAbort: () => {
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
         }, abortTimeoutMs: 5000 });
         return audioGenerationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
+        finishSignal?.removeEventListener('abort', finish);
       }
     },
     canReuse: () => !disposed,

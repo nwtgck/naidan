@@ -50,7 +50,7 @@ function eventQueue() {
   };
 }
 export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
-  let active: { generationId: number, controller: AbortController } | undefined;
+  let active: { generationId: number, controller: AbortController, finishAudio?: () => void } | undefined;
   // Single-file and folder imports must share this lifetime: cancellation is
   // acknowledged only after the importer has closed its streams and rolled back.
   async function importWithCancellation({ generationId, report, operation }: {
@@ -80,7 +80,10 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     async generateAudio(request, onProgress, onDiagnostic) {
       const { generationId, ...accepted } = workerAudioCallSchema.parse(request);
       if (active) throw new LlamaCppBrowserError({ code: 'busy' });
-      const controller = new AbortController(); active = { generationId, controller };
+      const controller = new AbortController(); let finishRequested = false;
+      active = { generationId, controller, finishAudio: () => {
+        finishRequested = true;
+      } };
       const events = eventQueue();
       const unsubscribe = subscribeDiagnostics({ debug: accepted.debug, listener: ({ diagnostic }) => {
         if (!controller.signal.aborted) return Promise.resolve(onDiagnostic({ diagnostic }));
@@ -88,7 +91,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       } });
       try {
         const result = audioGenerationResultSchema.parse(await guarded({ operation: () => generateAudio({
-          request: accepted, signal: controller.signal, onProgress: ({ progress }) => {
+          request: accepted, signal: controller.signal, shouldFinish: () => finishRequested, onProgress: ({ progress }) => {
             events.send({ operation: () => {
               if (!controller.signal.aborted) return onProgress(progress);
             } });
@@ -131,6 +134,12 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
       await invalidateStoredModel({ id: plan.id }); return removeStoredModel({ plan });
     } }),
+    // Like cancellation, this control must bypass the lock held by synthesis.
+    // Only its owning audio request is affected, never a chat or import.
+    async finishAudioGeneration({ generationId }) {
+      const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(generationId);
+      if (active?.generationId === id) active.finishAudio?.();
+    },
     // Cancellation intentionally bypasses the store lock held by generation or imports.
     async cancelGeneration({ generationId }) {
       const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(generationId);

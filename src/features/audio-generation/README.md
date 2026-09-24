@@ -190,3 +190,82 @@ fallback. A pending copy may not select content after the result is deleted.
 The player and WAV link share one nonwrapping flex row. At narrow widths the save
 label is visually hidden, not removed from its accessible name. No custom player,
 streaming, autoplay, persistence, or lcore modification is introduced.
+
+## Finish a partial generation, or cancel and discard
+
+`finishSignal` is an independent, optional control signal, not the native abort
+signal. It sends a generation-ID-scoped `finishAudioGeneration` message to the
+same Worker; it never terminates a Worker or arms cancellation's five-second
+cleanup deadline. The server accepts this control message outside the held
+inference lane, but applies it only to the matching active audio request.
+Other chats, imports, old IDs and future requests are unaffected. Signals and
+late failures are detached/ignored when that request is complete.
+
+The native loop checks `shouldFinish` between complete steps, after yielding to
+queued tasks. Once at least one frame exists, it stops generating additional
+frames, calls the existing upstream output helper (which flushes accumulated
+codes), copies the WAV, and cleans up normally. The result reason is `user-stop`,
+not a claim that the text finished. No end token, native patch, per-model graph,
+or streaming playback is introduced. Finishing can still take time for a running
+step and final waveform decoding; the last word can be incomplete. Cancel and
+discard remains available and takes precedence, including during decoding.
+
+## Page-local reference library
+
+`AudioReferenceInput` owns a bounded in-memory library and explicit selection.
+Adding files or a completed recording selects only the latest successful input.
+Check other entries for multiple selection. The order shown (newest first) is the
+concatenation order. Deselecting all keeps files available; deleting never selects
+a different voice implicitly. Delete/unmount revokes URLs, detaches players and
+releases owned file references. Nothing is persisted to model storage or chat.
+This library is separate from generated-audio history; reference bytes and
+recordings are never copied into history settings.
+
+The pinned native helper accepts one speaker bitmap. One selected WAV/MP3/FLAC
+retains the existing native path, without browser decoding/re-encoding. Multiple
+selections and browser-only input containers are decoded sequentially with
+`OfflineAudioContext`, resampled to 24 kHz, downmixed to mono and encoded as
+16-bit PCM WAV. Selected clips are concatenated, NOT superimposed, and a single
+WAV is passed to the existing native input. This does not blend voice identities
+or guarantee useful multi-speaker conditioning; prefer examples of the same
+speaker. A failed clip or excessive total duration rejects preparation rather
+than silently dropping/trimming it. Selection is captured before any await.
+
+Limits: 16 MiB per source file, 32 library entries / 64 MiB source bytes, and
+30 seconds total selected audio. The library reports source bytes, not total
+browser memory. Browser decoding may allocate before duration can be checked;
+these are not hard peak-memory bounds. Single native inputs are still validated
+in the Worker. Browser-only formats depend on the browser's decoders. Users can
+always deselect/delete references or use the original supported single-file path.
+Preparation happens before occupying the shared inference lane and is cancellable
+at asynchronous boundaries; browser decode itself cannot be synchronously aborted.
+
+## Explicit microphone capture
+
+`useReferenceRecording` requests `{audio:true, video:false}` only when Record is
+pressed. There is no permission request on mount, model loading, selection, or
+generation. Keep unavailable controls visible with an explanation. Microphone
+availability depends on the browser, a permitted secure context and user/site
+permissions; a file URL or hosted page is not a blanket permission guarantee.
+
+Capture uses `MediaRecorder` with supported MIME negotiation, accumulates bounded
+chunks, and releases tracks as soon as Stop/discard/error/unmount occurs. It also
+stops streams returned by a late permission response after cancellation. Stop
+waits for the final data event before normalizing to a WAV reference. Capture
+ends automatically after 30 seconds (subject to browser timer scheduling); an
+explicit recording-only policy caps delayed final audio to the first 30 seconds
+and visibly reports trimming. This policy never trims imported/combined clips.
+Permission denials, missing devices, encoder errors and decoder errors remain
+local and retryable. Recording blocks generation but never prevents its own
+Stop/discard controls when another shared inference job becomes busy.
+
+Browser encoding and normalization are separate from lcore. No new library,
+service, native API, upstream patch or standalone runtime is required. Synthetic
+unit tests do not prove real model voice quality or device microphone operation.
+
+Sources used for this feature boundary:
+- https://github.com/ggml-org/llama.cpp/blob/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd-helper.h
+- https://github.com/ggml-org/llama.cpp/blob/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd-helper-gen.cpp
+- https://www.w3.org/TR/mediastream-recording/
+- https://www.w3.org/TR/webaudio/
+- https://www.w3.org/TR/mediacapture-streams/

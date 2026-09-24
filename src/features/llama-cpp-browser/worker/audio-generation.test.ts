@@ -91,6 +91,37 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
     expect(result.finishReason).toBe(reason); expect(result.frames).toBe(1);
     expect(native.owned.size).toBe(0);
   });
+  it('finishes between complete steps and flushes partial WAV through the normal output API', async () => {
+    const native = audioNativeFixture({ pointerBytes }); native.controls.stopAfter = 100;
+    let finish = false;
+    const result = await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), signal: undefined, shouldFinish: () => finish, onProgress: ({ progress }) => {
+      if (progress.phase === 'generating' && progress.completed === 1) finish = true;
+    } });
+    expect(result).toMatchObject({ finishReason: 'user-stop', frames: 1 });
+    expect(result.wav).toEqual(audioResult().wav);
+    expect(native.api.mtmd_helper_gen_audio_step_gen).toHaveBeenCalledOnce();
+    expect(native.api.mtmd_helper_gen_audio_get_output).toHaveBeenCalledOnce();
+    expect(native.api.mtmd_helper_gen_audio_free).toHaveBeenCalledOnce(); expect(native.owned.size).toBe(0);
+  });
+  it('waits for the first complete frame when a finish request was queued during loading', async () => {
+    const native = audioNativeFixture({ pointerBytes });
+    const result = await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), signal: undefined, shouldFinish: () => true, onProgress: () => {} });
+    expect(result).toMatchObject({ finishReason: 'user-stop', frames: 1 });
+    expect(native.api.mtmd_helper_gen_audio_step_gen).toHaveBeenCalledOnce(); expect(native.owned.size).toBe(0);
+  });
+  it('keeps cancellation stronger than a finish request and discards the partial output', async () => {
+    const native = audioNativeFixture({ pointerBytes }); const controller = new AbortController();
+    await expect(synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), signal: controller.signal, shouldFinish: () => true, onProgress: ({ progress }) => {
+      if (progress.phase === 'generating' && progress.completed === 1) controller.abort();
+    } })).rejects.toThrow('aborted');
+    expect(native.api.mtmd_helper_gen_audio_get_output).not.toHaveBeenCalled(); expect(native.owned.size).toBe(0);
+  });
+  it('uses the same finish boundary for continuous Pocket generation without a token sampler', async () => {
+    const native = audioNativeFixture({ pointerBytes }); native.controls.nativeType = 2;
+    const result = await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: { ...request(), reference: reference() }, signal: undefined, shouldFinish: () => true, onProgress: () => {} });
+    expect(result).toMatchObject({ finishReason: 'user-stop', frames: 1, pipeline: 'pocket-tts' });
+    expect(native.api.llama_sampler_sample).not.toHaveBeenCalled(); expect(native.api.mtmd_bitmap_free).toHaveBeenCalledOnce(); expect(native.owned.size).toBe(0);
+  });
   it('rejects an immediate end-of-speech with no frames', async () => {
     const native = audioNativeFixture({ pointerBytes }); native.controls.stopAfter = 0;
     await expect(synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), signal: undefined, onProgress: () => {} })).rejects.toThrow('audio-output-empty');

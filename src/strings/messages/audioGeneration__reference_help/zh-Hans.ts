@@ -1,1 +1,1 @@
-export const audioGeneration__reference_help = (): string => "Qwen Base 可省略，Pocket 必须提供。支持 WAV、MP3、FLAC，最大 16 MiB、最长 30 秒。Qwen 参考音频需要重新构建并更新包含单线程音频预处理修复的 lcore；原有运行时不足以支持。请仅使用您有权使用的声音。文件不会保存到聊天记录中。";
+export const audioGeneration__reference_help = (): string => "Qwen Base 可不提供参考音频，Pocket 则必须提供。每个文件不得超过 16 MiB，所选音频总时长不得超过 30 秒。单个 WAV、MP3 或 FLAC 文件可直接使用；其他格式及多个音频的拼接需要浏览器解码支持。请仅使用您有权使用的声音。";

@@ -1,4 +1,4 @@
-import { audioGenerationInputSchema, audioGenerationResultSchema, MAX_AUDIO_BYTES, type AudioGenerationResult } from '@/features/audio-generation/types';
+import { audioGenerationInputSchema, audioGenerationResultSchema, MAX_REFERENCE_SECONDS, MAX_AUDIO_BYTES, type AudioGenerationResult } from '@/features/audio-generation/types';
 import { validateAudioWav } from '@/features/audio-generation/wav';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError, type Progress } from '@/features/llama-cpp-browser/types';
@@ -16,12 +16,12 @@ export function audioCapabilities({ core, nativeType }: { core: Core, nativeType
 }
 
 /** The wrapper owns model lifetime even if session preparation itself fails. */
-export async function generateAudio({ request, onProgress, signal }: {
-  request: WorkerAudioInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
+export async function generateAudio({ request, onProgress, signal, shouldFinish }: {
+  request: WorkerAudioInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, shouldFinish?: () => boolean,
 }): Promise<AudioGenerationResult> {
   try {
     const { core, context, projector } = await prepareAudioSession({ request, contextTokens: request.contextTokens, audioBackend: request.audioBackend, onProgress, signal });
-    return await synthesizeAudio({ core, context, projector, request, onProgress, signal });
+    return await synthesizeAudio({ core, context, projector, request, onProgress, signal, shouldFinish });
   } finally {
     await releaseSession({ releaseRuntime: false });
   }
@@ -29,9 +29,9 @@ export async function generateAudio({ request, onProgress, signal }: {
 
 /** A model-independent transcription of upstream llama-tts's native helper loop.
  * No chat templates, JS token rendering, or model-specific audio graph in Naidan. */
-export async function synthesizeAudio({ core, context, projector, request, onProgress, signal }: {
+export async function synthesizeAudio({ core, context, projector, request, onProgress, signal, shouldFinish }: {
   core: Core, context: bigint, projector: bigint, request: WorkerAudioInput,
-  onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
+  onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, shouldFinish?: () => boolean,
 }): Promise<AudioGenerationResult> {
   // The wire schema also includes transport-only fields; validate the model input separately.
   const { assetBaseURL: _assetBaseURL, ...input } = request;
@@ -81,7 +81,7 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
       // Bound decoded references too. The native decoder has already allocated its
       // output here; the encoded input cap is a separate, earlier protection.
       const sampleRate = await api.mtmd_get_audio_sample_rate(projector);
-      if (sampleRate <= 0 || await api.mtmd_bitmap_get_n_bytes(speaker) > BigInt(sampleRate * 30 * 4)) throw new LlamaCppBrowserError({ code: 'audio-reference-invalid' });
+      if (sampleRate <= 0 || await api.mtmd_bitmap_get_n_bytes(speaker) > BigInt(sampleRate * MAX_REFERENCE_SECONDS * 4)) throw new LlamaCppBrowserError({ code: 'audio-reference-invalid' });
     }
     abortCallback = core.module.addFunction(() => signal?.aborted ? 1 : 0, core.pointerBytes === 8 ? 'ij' : 'ii');
     await api.llama_set_abort_callback(context, BigInt(abortCallback), 0n);
@@ -121,6 +121,11 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     let frames = 0; let finishReason: AudioGenerationResult['finishReason'] = 'frame-limit';
     while (frames < accepted.maxFrames) {
       await yieldControl({ force: false });
+      // Finish is distinct from cancellation: never interrupt a native frame.
+      // Finalize the accumulator normally, including its remaining waveform tail.
+      if (frames > 0 && shouldFinish?.()) {
+        finishReason = 'user-stop'; break;
+      }
       if (await api.llama_memory_seq_pos_max(memory, 0) + 1 >= capacity) {
         finishReason = 'context-limit'; break;
       }

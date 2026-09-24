@@ -5,7 +5,7 @@ import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-b
 import { createLlamaCppWorkerClient } from './client-standalone';
 
 const calls = vi.hoisted(() => ({ factory: vi.fn(), probe: vi.fn(), release: vi.fn(), remote: {
-  generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn(), release: vi.fn(), verifyStorage: vi.fn(),
+  finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn(), release: vi.fn(), verifyStorage: vi.fn(),
 } }));
 vi.mock('virtual:file-protocol-standalone/worker/llama-cpp-browser', () => ({ createStandaloneWorker: calls.factory }));
 vi.mock('../runtime/shared-storage-probe', () => ({ verifySharedStorage: calls.probe }));
@@ -20,7 +20,7 @@ function request(): GenerateInput {
 beforeEach(() => {
   vi.resetAllMocks(); worker = new TestWorker(); vi.stubGlobal('Worker', TestWorker);
   calls.factory.mockResolvedValue(worker); calls.probe.mockResolvedValue(undefined);
-  calls.remote.generateAudio.mockResolvedValue(audioResult()); calls.remote.listModels.mockResolvedValue([]); calls.remote.release.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
+  calls.remote.finishAudioGeneration.mockResolvedValue(undefined); calls.remote.generateAudio.mockResolvedValue(audioResult()); calls.remote.listModels.mockResolvedValue([]); calls.remote.release.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
   calls.remote.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
 });
 afterEach(() => {
@@ -148,4 +148,15 @@ it('lazily verifies shared storage before dispatching standalone audio', async (
   const result = await client.generateAudio({ request: { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', debug: 'off', options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, signal: undefined });
   expect(calls.factory).toHaveBeenCalledOnce(); expect(calls.probe).toHaveBeenCalledOnce();
   expect(calls.remote.generateAudio).toHaveBeenCalledOnce(); expect(calls.remote.generate).not.toHaveBeenCalled(); expect(result).toEqual(audioResult()); client.dispose();
+});
+
+
+it('forwards an early finish through lazy standalone initialization without loading another runtime', async () => {
+  const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); calls.remote.generateAudio.mockReturnValueOnce(gate.promise);
+  const client = createLlamaCppWorkerClient(); const finish = new AbortController();
+  const pending = client.generateAudio({ request: { ...defaultAudioParameters(), text: 'Hello', model: 'user/voice', debug: 'off', options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, signal: undefined, finishSignal: finish.signal });
+  finish.abort(); await vi.waitFor(() => expect(calls.remote.finishAudioGeneration).toHaveBeenCalledExactlyOnceWith({ generationId: 1 }));
+  expect(calls.remote.cancelGeneration).not.toHaveBeenCalled(); expect(worker.terminate).not.toHaveBeenCalled();
+  expect(calls.factory).toHaveBeenCalledOnce(); expect(calls.remote.generateAudio.mock.calls[0]?.[0].assetBaseURL).toBeUndefined();
+  gate.resolve({ ...audioResult(), finishReason: 'user-stop' }); expect(await pending).toMatchObject({ finishReason: 'user-stop' }); client.dispose();
 });
