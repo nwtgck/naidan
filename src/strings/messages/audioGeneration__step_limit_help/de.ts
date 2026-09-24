@@ -1,0 +1,1 @@
+export const audioGeneration__step_limit_help = (): string => "Die Schrittgrenze ist eine Sicherheitsgrenze, keine Ziellänge. Die Erzeugung endet früher, sobald das Modell fertig ist. Ein höherer Wert erlaubt längere Sprache, kann aber die Wartezeit verlängern, wenn das Modell nicht stoppt.";

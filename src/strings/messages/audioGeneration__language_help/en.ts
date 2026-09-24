@@ -1,0 +1,1 @@
+export const audioGeneration__language_help = (): string => "The initial language follows the app language when supported. Select a language explicitly. Model default uses Qwen English, not automatic detection. Pocket uses its trained language regardless of this setting.";

@@ -1,0 +1,1 @@
+export const audioGeneration__sampling_help = (): string => "Token sampling controls apply to Qwen’s backbone. Top K, top P and seed also pass to the native audio helper. Pocket ignores token sampling and uses its native defaults. Temperature 0 does not guarantee deterministic audio. Step counts are not a predicted completion percentage or a fixed duration.";

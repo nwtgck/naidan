@@ -1,0 +1,1 @@
+export const audioGeneration__reinitialize_runtime_help = (): string => "Tras un error, reinicializa sin recargar la página. Se conservan los modelos guardados, el texto y el historial de audio. No se interrumpen otras tareas activas.";

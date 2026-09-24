@@ -4,16 +4,16 @@ import path from 'node:path';
 import MagicString from 'magic-string';
 import { z } from 'zod';
 import { normalizePath, type Plugin } from 'vite';
-import { profileSchema, type LlamaCppProfile } from './types';
+import { profileSchema, usesWebGpu, type LlamaCppProfile } from './types';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed browser variant artifact commit: 8eb01e7aa8ad0968a6dfba26d938817d4a441b31.
+// Reviewed browser variant artifact commit: 0fc505c5a4a061f4a6601fa6dc69c48895206da6.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 const coreHashes = {
   'webgpu-wasm64-jspi': 'ff3786e68fa11050df3950980116e19988ef790da382b3eb3abd7ef2c5424921',
   'webgpu-wasm32-jspi': 'c676739632d85c50ab7798df591d7fe4b59a5dedfb068756837bf775e9a6f785',
-  'webgpu-wasm32-asyncify': '0bef53602f8502b81779f460e28770057f48d1665238b3537fb943a0fc0cc532',
+  'webgpu-wasm32-asyncify': '16a9d487506b95a2608c439f732afb69d34913cca74872b2fca03783be44e244',
   'cpu-wasm64': '6e499ce22b0eea54a204713d3c8fa99b5971ac9ccf44edc4d7767f50ef7de298',
   'cpu-wasm32': 'd5dc3e3115cacaff3e7dab6122b96b4c77f1a69cc7aee21b8b2844ff31a6bc86',
 } as const satisfies Record<LlamaCppProfile, string>;
@@ -21,8 +21,8 @@ const coreHashes = {
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
 const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: 'e492f5b73ed75ea70f330e18febe90d43a624e3ae2bc2e67e97e10f686fcb507' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '8ea80cff58eb529a31f166628c7797f83142300f01941cf8e0bfb9d2c07589ee' },
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '82c1258bf8acc56c20dd63aa4ac6de16a7d4419958e6e50459eb91dae70ed1ed' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '7a2e054fbbddd313c02f862aeaee2f47c73e7723aca3558a0afa0f1f38c2210a' },
 } as const;
 const manifestSchema = z.object({ formatVersion: z.literal(2), files: z.array(z.object({
   path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
@@ -60,6 +60,14 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     before: 'if(file==wasmBinaryFile&&wasmBinary){return new Uint8Array(wasmBinary)}',
     after: '/* Naidan fix: keep the supplied byte view, including its offset, without copying the complete Wasm. */if(file==wasmBinaryFile&&wasmBinary){assert(ArrayBuffer.isView(wasmBinary)&&wasmBinary.BYTES_PER_ELEMENT===1,"Expected Wasm byte view");return wasmBinary}',
   });
+  if (usesWebGpu({ profile })) {
+    // Scope the compatibility facade to this native module. Never patch the
+    // browser's navigator or GPU prototypes, and never edit the supplied Wasm.
+    replace({
+      before: 'var _scriptName=import.meta.url;',
+      after: 'var _scriptName=import.meta.url;var navigator=Module["naidanNavigator"]??globalThis.navigator;',
+    });
+  }
   return { code: transformed.toString(), map: transformed.generateMap({ source: id, includeContent: true, hires: true }) };
 }
 

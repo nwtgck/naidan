@@ -1,0 +1,1 @@
+export const audioGeneration__introduction = (): string => "Um espaço independente para gerar fala no navegador. Com o aplicativo, o ambiente de execução e o modelo disponíveis localmente, a geração funciona offline. O texto e a voz de referência não são enviados a um servidor. A conexão só é necessária para obter arquivos ausentes ou atualizações.";

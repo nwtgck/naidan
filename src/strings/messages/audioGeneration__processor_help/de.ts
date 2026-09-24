@@ -1,0 +1,1 @@
+export const audioGeneration__processor_help = (): string => "Diese Einstellung betrifft nur das Audio-Begleitmodell; das Hauptmodell folgt dem gemeinsamen Laufzeitprofil. Damit kann WebGPU genutzt werden, einzelne Operationen können aber auf der CPU bleiben. CPU-Zwang kann langsamer sein und dient auch zum Vergleich.";
