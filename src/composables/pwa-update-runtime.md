@@ -1,157 +1,106 @@
-# Post-paint updates with an explicit online transition
+# PWA updates: two paths, one explicit reload
 
-## Contract and startup ownership
+## Startup contract
 
-`main.ts`, `startApp`, `MainApp`, and the existing post-startup/onboarding gate
-remain unchanged. Hosted `AppAuxiliaryUi` owns the lazy `PWAManager`. It waits for
-Vue `nextTick` and the existing two-frame paint helper **before** importing the
-update runtime. This deliberately gives the real Sidebar and routed chat surface
-a paint opportunity first. Do not move registration to the lightweight startup
-shell or `main.ts`, or add a static registration import to the manager.
+`AppAuxiliaryUi` lazily mounts `PWAManager` behind the existing post-startup and
+onboarding gate. The manager waits for Vue's `nextTick` and the existing two-frame
+paint helper **before** importing the runtime. This gives Sidebar and the routed
+chat screen a paint opportunity, not a physical-display guarantee. Hidden tabs
+can defer it. Do not move registration to `main.ts` or the startup shell.
+The browser's own update checks are independent of this application timing.
 
-This is a paint opportunity, not proof of physical frame presentation. Hidden
-tabs may postpone animation callbacks. Normal startup, navigation and interaction
-never await this optional task. The browser can independently check an existing
-service worker on navigation; the gate controls Naidan's own registration work.
+The runtime lives for the page, not the Sidebar. Register only once. Neither
+registration nor offline preparation blocks normal startup or interaction.
 
-The product decision is: clicking the update button may temporarily give up
-complete offline availability in exchange for trying the server's new release
-without waiting for every precache resource. The button explains this. Doing
-nothing retains the ordinary full-precache behavior.
+## The complete update decision
 
-## No resource partition or application-cache deletion
+`src/logic/pwa/update-controller.ts` has one `apply()` transaction:
 
-`build/pwa.ts` shares production options with the generated-worker integration
-test. It switches Vite PWA from `generateSW` to `injectManifest` so `pwa/sw.ts` can
-own routing. The **same automatically discovered all-assets manifest**, 100 MiB
-limit, source-map/locale-ZIP exclusions, and universal standalone ZIP remain.
-New file types remain included by the broad glob; there is no handwritten list
-of essential or deferred application resources.
+1. Re-read the registration at click time, using `preparedWorker()` for the same
+   decision as the button. Initial offline installation is NOT an app update.
+2. If a prepared update exists, send `SKIP_WAITING` and await **activated**.
+   A worker another tab already moved to active/activating uses the same wait.
+   An already activated worker needs no message.
+3. Otherwise, ask the **current controller** to use the network. Wait for its
+   acknowledgement that the opt-in was saved.
+4. Request a full document reload using `location.reload()` in either path.
 
-`PrecacheController.precache` retains Workbox's full install/activate handlers.
-Installation is not truncated, cancelled, or declared complete early. An active
-old worker simply offers a separate network route to an explicitly opted-in
-client while installation proceeds. No `unregister`, CacheStorage-wide deletion,
-IndexedDB deletion, model-store deletion, OPFS removal or localStorage clearing is
-performed. Normal Workbox obsolete-precache cleanup still runs on activation.
+`activate-update.ts` bounds activation at 15 seconds; `worker-request.ts` bounds
+network acknowledgement at 5 seconds. Errors/abort close listeners/ports and
+permit retry. These limits do NOT assume installation finishes within that time,
+and cannot undo browser work already requested (such as a late mode write).
+Update errors retain their original details in the application's event log.
 
-A small scope-specific `naidan-pwa-update-coordination-v1:*` cache contains only
-client-to-page links and page build identifiers, never application resources.
-Only obsolete rows **in this bookkeeping cache** are explicitly deleted. Links
-persist across worker suspension. Missing rows are not negatively cached because
-another worker version may create them concurrently. Known ordinary window clients
-are memoized to avoid per-chunk bookkeeping reads on the initial rendering path;
-a deliberate update performs a full navigation with a new client identifier.
-On storage errors routing
-falls back to live client URLs and in-memory links and logs a warning once.
+`reload-page.ts` must never use `location.replace(currentHref)`, which can be a
+same-document navigation at a hash route. Optional removal of the old
+`__naidan_update` parameter must not prevent the actual reload if history editing
+fails. All other query parameters, routes and history state are preserved.
 
-## Update sequence
+The shared store holds availability and in-flight state separately. New
+candidates are retained during a click; `finally` clears in-flight state even if
+navigation is cancelled. There is no automatic activation, page-version
+negotiation or timer-based reload. A stopped installer is not a synthetic Error;
+normal supersession is not reported as a preparation failure.
 
-1. Obtain and observe the existing registration **before** awaiting `register`.
-   A browser-initiated installation may already be downloading, and registration
-   jobs must not delay the early notification.
-2. Inspect current installing/waiting slots and future state changes. Do not call
-   initial offline installation an update. A ready waiting version remains usable
-   even if another version is installing.
-3. Ask the current controller whether it supports the versioned online-update
-   protocol. Legacy workers retain a disabled preparing state until installation
-   finishes; never pretend that an unsupported early reload will work.
-4. A supported preparing update offers **Reload to Update** immediately. On click,
-   probe just the entry HTML with a random `__naidan_update` query, `cache: no-store`,
-   a bounded timeout and redirects rejected. The old worker recognizes this probe
-   and must not answer it from its precache. Failed HTTP, non-HTML or connection
-   responses leave the old usable page in place and restore the action.
-5. Navigate to that explicit URL, preserving ordinary query parameters and the
-   hash route. Its document and attributable in-scope GET requests go directly
-   to the network instead of the old application cache, including unversioned
-   worker/runtime files. Responses retain their original security headers.
-6. The page reports its compiled build identity. Full installation continues.
-   When the waiting worker has **that exact identity**, it may activate without
-   a second click: this only restores offline support for the version the user
-   already chose. After matching control is confirmed, remove the marker with
-   `history.replaceState`, and announce offline readiness without reloading again.
-7. A different later build still needs an explicit update action. Do not silently
-   switch a running page to a different version's unversioned resources.
+## The worker and its effect on other tabs
 
-A new random build identity is shared between the page and worker in each build;
-package version is unsuitable because deployments can share a development semver.
-Keep the stable protocol backwards compatible when adding fields.
+`pwa/sw.ts` contains the complete custom worker. Workbox installs the **full
+automatically generated manifest** from `build/pwa.ts`, retaining the original
+ZIP/map exclusions and size limit. No minimum-resource list is maintained.
 
-If installation was already complete, use the usual `SKIP_WAITING` path and
-navigate to the canonical URL only after that worker becomes the controller.
-This path does not require an HTML probe and can work offline. Failed full
-precaching does not remove an already-detected online update action.
+The only custom command is `NAIDAN_PWA_USE_NETWORK_V1`. A same-origin, in-scope
+window must supply a reply port. The worker stores its own private build ID in
+ONE record in `naidan-pwa-network-mode:<scope>`, then acknowledges success.
+Afterwards, in-scope, same-origin GET requests use `fetch` with `cache: 'no-store'`.
+Foreign origins, sibling scopes and non-GET requests are not intercepted. This
+avoids wrapping model/API responses and streams. Installation fetches are native
+Workbox fetches and still prepare the full application.
 
-## Lifecycle, ownership and limits
+This mode belongs to a **worker generation and application scope**, not a tab.
+All tabs/workers controlled by that generation become temporarily network-dependent.
+There is no worker-parent inference or per-client map. A new worker has a different
+private ID, so it starts cache-first after its FULL installation and activation.
+The page does not receive or compare build IDs.
 
-The runtime is page-scoped after startup; remounting Sidebar or `PWAManager` does
-not register twice or discard update state. The shared store publishes action
-and availability together, blocks duplicate clicks and restores failures only
-when no newer state has superseded them. Native listeners and message ports have
-explicit cleanup; capability/activation/probe waits are bounded. State enum
-handling is exhaustive. Unrelated tabs are not automatically reloaded by this
-controller. Service-worker activation itself remains registration-wide.
+A failed mode write is not acknowledged; the page stays put. If the stored mode
+cannot be read, log the original failure and use the network, rather than showing
+stale HTML as a successful update or blocking a usable online application. There
+is no old-cache fallback in that exceptional state.
 
-A network probe cannot promise that connectivity will survive the subsequent
-navigation, or that a server deployment is atomic. A connection loss after it
-succeeds can leave the selected page unusable until online again. That is the
-explicit trade-off; do not conceal it with fallback to old HTML plus new assets.
-The old application cache is not destroyed, although ordinary later Workbox
-activation cleanup and browser storage eviction can remove obsolete resources.
-The server/CDN must deploy coherent HTML/assets and preserve the query parameter.
+No model/conversation/settings storage, IndexedDB, OPFS, localStorage or other
+application's cache is cleared. No unregister or explicit app-cache deletion is
+performed. Workbox's ordinary obsolete-precache cleanup remains. Old coordination
+metadata is left untouched, not broadly deleted.
 
-Worker attribution is imperfect: normal worker-script requests can associate a
-resulting client with its initiating page, but a blob/shared worker may not expose
-an attributable owner. While an unfinished online-update window is live, such
-**unattributed worker** in-scope requests conservatively use the network instead
-of old unversioned bytes. This may temporarily affect another tab's unattributed
-worker too. Ordinary window clients stay cached; do not claim absolute per-tab
-isolation. Test the real model workers and browser families before deployment.
+## Offline restoration and migration
 
-An existing client running a pre-protocol release still uses its old update
-logic for the first transition. To validate this feature, first load a release
-containing it, and then deploy a distinct second build.
+After an early network update, press the button **again when preparation is
+complete** to activate the prepared worker and restore offline operation. Closing
+the old clients can also allow normal browser activation. No inferred page version
+silently authorizes activation. Another full reload is an intentional tradeoff.
 
-## Test structure
+There is no HTML probe or promise of uninterrupted access after an early click.
+Connection loss or a partially deployed release may prevent the page from loading.
+If offline preparation fails, the detected update remains an explicit online option;
+original resource errors remain in the service worker console. The short existing
+warning is kept below the button, but does not control update correctness.
 
-No test replaces App/router/settings/theme imports with a maintained stub map.
+Workers from the earlier per-client implementation do not understand the new
+network command. The command times out during that one-time transition; the
+prepared update path remains available. Already-open old pages keep their old
+code and may need a normal browser reload to leave the old "applying" bug.
 
-- `PWAManager.test.ts`: real paint helper, only the typed runtime boundary mocked.
-- `update-controller.test.ts`: native registration/lifecycle boundaries and typed
-  message-transport replacement; no application dependency-graph substitutions.
-- `worker-request.test.ts`: real Node MessageChannel transport, bounded failures.
-- `pwa-update-runtime.test.ts`, notification/store/developer tests: real shared
-  state and UI behavior, including actionable preparation and legacy fallback.
-- `build/pwa-network-policy.test.ts`: native cache/client boundaries, suspension,
-  cross-worker state updates, storage failure, worker attribution and scope rules.
-- `build/pwa.test.ts`: production `createPWABuild` options, actual compiled worker
-  and actual Workbox code. Two independent versions are built. A slow changed ZIP
-  holds full installation open while the new document and unversioned runtime are
-  served online. Full installation then completes and offline reads are checked.
-  The Node worker harness implements browser APIs, not Naidan application modules.
-  This is **not a replacement for real-browser lifecycle/inference validation**.
+## Automated checks
 
-Run with the repository's normal dependencies:
+`npm run test:pwa` runs only Node/Vue unit tests and generated-worker tests using
+the production Workbox configuration. The dedicated config uses the real strings
+and Tailwind transforms without model build initialization. No App/router/settings
+replacement list is maintained. The generated-worker fixture consists of static
+files, not a miniature browser application. Tests hold a new resource fetch,
+validate opt-in acknowledgement, restart the worker, finish installation and
+verify offline reads and unrelated-cache preservation.
 
-```bash
-npm run test:only-failed -- --maxWorkers=2 \
-  build/pwa.test.ts build/pwa-network-policy.test.ts \
-  src/logic/pwa src/logic/startup \
-  src/composables/pwa-update-runtime.test.ts src/composables/usePWAUpdate.test.ts \
-  src/composables/useAppPresentation.test.ts \
-  src/components/PWAManager.test.ts src/components/PWAUpdateNotification.test.ts \
-  src/components/DeveloperTab.test.ts src/components/AppAuxiliaryUi.test.ts \
-  src/components/AppAuxiliaryUi.print-teleport.test.ts \
-  src/App.test.ts src/MainApp.test.ts src/App.print-ownership-contract.test.ts
-npm run typecheck
-npm run lint
-npm run build:standalone
-npm run build:hosted
-```
-
-Real-browser acceptance: install build A, serve build B while delaying a changed
-large ZIP, verify the button is usable after app paint but before ZIP completion,
-and verify the displayed app actually changes to B. Exercise in-page/HTTP/blob
-model workers and two tabs. Finish the ZIP and test all offline functionality
-without a second reload. Also test failed probes, failed full precaching, a third
-build arriving, a scoped deployment path, and reload with a still-present marker.
+Browser automation, browser fixtures and browser setup commands are deliberately
+not part of this repository's PWA changes. The Node execution harness implements
+native boundaries and cannot prove browser navigation/lifecycle behavior. The
+normal full-app build and real-browser integration need separate verification.

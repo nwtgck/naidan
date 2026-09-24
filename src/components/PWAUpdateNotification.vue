@@ -27,7 +27,7 @@ async function applyUpdate(): Promise<void> {
   try {
     await update();
   } catch (error) {
-    // The store restores the action after failure, allowing a deliberate retry.
+    // The store releases the in-flight flag while retaining the latest action.
     console.error('[PWA] Failed to apply the update.', error);
   }
 }

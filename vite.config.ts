@@ -203,7 +203,6 @@ export default defineConfig(({ mode }) => {
     },
     // Inject global constants for compile-time conditional logic (tree-shaking)
     define: {
-      ...pwaBuild.define,
       __BUILD_MODE_IS_STANDALONE__: JSON.stringify(isStandalone),
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(isHosted || mode === 'development'),
       __BUILD_MODE_IS_TEST__: JSON.stringify(mode === 'test'),

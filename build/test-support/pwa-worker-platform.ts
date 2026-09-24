@@ -153,35 +153,35 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     return event.finished();
   }
 
-  async function request({ url, clientId = '', resultingClientId = '', navigation = false, destination = '', referrer = '' }: {
+  async function request({ url, clientId = '', resultingClientId = '', navigation = false, destination = '', referrer = '', method = 'GET' }: {
     url: string;
     clientId?: string;
     resultingClientId?: string;
     navigation?: boolean;
     destination?: string;
     referrer?: string;
+    method?: string;
   }): Promise<Response> {
     // Node's Request constructor cannot create browser-generated navigate
     // requests, so supply their read-only event metadata explicitly.
-    const request = new Request(url, referrer ? { referrer } : undefined);
+    const request = new Request(url, { method, ...(referrer ? { referrer } : {}) });
     Object.defineProperty(request, 'destination', { value: destination });
     if (navigation) Object.defineProperty(request, 'mode', { value: 'navigate' });
     const event = new RequestEvent(request);
     event.clientId = clientId; event.resultingClientId = resultingClientId;
     target.dispatchEvent(event);
-    if (!event.response) throw new Error('No service-worker response');
-    const response = await event.response;
+    const response = await (event.response ?? fetch(request));
     await event.finished();
     return response;
   }
 
-  async function message({ data, clientId }: { data: unknown; clientId: string }): Promise<unknown> {
+  async function message({ data, clientId, origin = new URL(scope).origin, replyPort = true }: { data: unknown; clientId: string; origin?: string; replyPort?: boolean }): Promise<unknown> {
     let reply: unknown;
     const event = Object.assign(new LifetimeEvent('message'), {
-      data, source: clients.clients.get(clientId),
-      ports: [{ postMessage(value: unknown) {
+      data, origin, source: clients.clients.get(clientId),
+      ports: replyPort ? [{ postMessage(value: unknown) {
         reply = value;
-      } }],
+      }, close() {} }] : [],
     });
     target.dispatchEvent(event); await event.finished();
     return reply;

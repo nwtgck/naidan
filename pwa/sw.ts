@@ -1,89 +1,84 @@
 /// <reference lib="webworker" />
 import { PrecacheController, PrecacheRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { NavigationRoute, Router } from 'workbox-routing';
-import { PWA_PROTOCOL } from '../src/logic/pwa/protocol';
-import { createNetworkUpdatePolicy } from './network-policy';
-import { createInstallFailureReporter } from './install-diagnostics';
+import { USE_NETWORK_MESSAGE } from '../src/logic/pwa/protocol';
 
 declare const __PWA_BUILD_ID__: string;
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
 };
 
-// Keep the full, automatically generated precache manifest. Explicit online
-// updating is a routing choice; it does not split, skip or truncate installation.
-const reportInstallFailure = createInstallFailureReporter({
-  scope: self.registration.scope, buildId: __PWA_BUILD_ID__, clients: self.clients,
+// One opt-in record per application scope, NOT per tab/resource. Its value is
+// THIS worker's build ID. A replacement worker starts cache-first, even after a
+// browser restart. The page never negotiates versions or tries to restore mode.
+const scope = new URL(self.registration.scope);
+const modeCache = `naidan-pwa-network-mode:${scope.href}`;
+const modeKey = new URL('__network_mode__', scope).href;
+let networkOnly = caches.open(modeCache).then(async cache =>
+  (await (await cache.match(modeKey))?.text()) === __PWA_BUILD_ID__).catch(error => {
+  // An unreadable opt-in must not serve stale HTML as a successful update, but
+  // must not block the online application either. There is no cache fallback.
+  console.error('[PWA] Failed to read network update mode; using the network.', error);
+  return true;
 });
+
 const precache = new PrecacheController({
-  plugins: [{
-    async handlerDidError({ request, error, event }) {
-      if (event.type === 'install') {
-        await reportInstallFailure({ resourceUrl: request.url, error });
-      }
-      // Do not return a fallback Response: Workbox must still reject the FULL
-      // installation. Reporting a failure never makes an incomplete cache ready.
-      return undefined;
-    },
-  }],
+  plugins: [{ async handlerDidError({ request, error, event }) {
+    if (event.type === 'install') console.error('[PWA] Failed to precache an application resource.', request.url, error);
+    // Report the ORIGINAL error; never turn an incomplete install into success.
+    return undefined;
+  } }],
 });
+// Full, automatically generated manifest: no minimum-files list or partial install.
 precache.precache(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 const router = new Router();
 router.registerRoute(new PrecacheRoute(precache));
 router.registerRoute(new NavigationRoute(precache.createHandlerBoundToURL('index.html')));
-const policy = createNetworkUpdatePolicy({
-  scope: self.registration.scope,
-  buildId: __PWA_BUILD_ID__,
-  clients: self.clients,
-  storage: self.caches,
-});
 
-// One dispatcher owns respondWith. An async match callback registered after
-// Workbox's precache route would be too late to prevent the old-cache response.
-self.addEventListener('fetch', (event) => {
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  // Leave other origins, scopes and methods to the browser. In particular,
+  // this worker does not wrap model/API requests or their response streams.
+  if (event.request.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
   const response = (async () => {
-    if (await policy.needsNetwork({ event })) {
-      return fetch(event.request, { cache: 'no-store' });
-    }
+    // The deliberate tradeoff is SCOPE-wide: all tabs/workers still controlled
+    // by this generation use the network. This avoids guessing worker ancestry,
+    // mixing old fixed-name runtime files, or changing any model/user cache.
+    if (await networkOnly) return fetch(event.request, { cache: 'no-store' });
     return router.handleRequest({ request: event.request, event }) ?? fetch(event.request);
   })();
   event.respondWith(response);
-  // Keep the event extendable while policy IO completes; Workbox may add its own
-  // waitUntil work when the asynchronous dispatcher reaches its handler.
   event.waitUntil(response.then(() => undefined, () => undefined));
 });
 
-self.addEventListener('message', (event) => {
-  const data: unknown = event.data;
-  if (typeof data !== 'object' || data === null || !('type' in data)) return;
-  if (data.type === 'SKIP_WAITING') {
-    event.waitUntil(self.skipWaiting());
-    return;
-  }
-  if (!('protocol' in data) || data.protocol !== PWA_PROTOCOL) return;
+self.addEventListener('message', event => {
   const source = event.source;
-  if (!source || !('id' in source)) return;
+  if (event.origin !== scope.origin || !source || !('url' in source) || !('type' in source) || source.type !== 'window') return;
+  if (!source.url.startsWith(scope.href)) return;
+  const data: unknown = event.data;
+  if (!data || typeof data !== 'object' || !('type' in data)) return;
+  if (data.type === 'SKIP_WAITING') {
+    event.waitUntil(self.skipWaiting()); return;
+  }
+  if (data.type !== USE_NETWORK_MESSAGE) return;
+  // Do not switch mode without a caller that can receive the acknowledgement.
+  const reply = event.ports[0];
+  if (!reply) return;
   event.waitUntil((async () => {
-    let ok = false;
-    switch (data.type) {
-    case 'info':
-      ok = true;
-      break;
-    case 'bind-page':
-    case 'complete-page':
-      if ('buildId' in data && typeof data.buildId === 'string') {
-        ok = await policy.bindPage({ clientId: source.id, pageBuildId: data.buildId, complete: data.type === 'complete-page' });
-      }
-      break;
-    default: return;
+    try {
+      // Persist BEFORE acknowledging, so a reload/worker restart cannot return
+      // to old caches. Installation uses native fetch and is unaffected.
+      await (await caches.open(modeCache)).put(modeKey, new Response(__PWA_BUILD_ID__));
+      networkOnly = Promise.resolve(true);
+      // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- One scoped command with a literal acknowledgement, not a long-lived worker API.
+      reply.postMessage(USE_NETWORK_MESSAGE);
+    } catch (error) {
+      console.error('[PWA] Failed to enable network updating.', error);
+      // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Failure acknowledgement lets the page stay usable and offer a retry.
+      reply.postMessage(false);
+    } finally {
+      reply.close();
     }
-    // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Versioned one-shot SW reply; input and source are validated above, no Comlink endpoint.
-    event.ports[0]?.postMessage({ protocol: PWA_PROTOCOL, buildId: __PWA_BUILD_ID__, ok });
-    if (data.type === 'complete-page' && ok) await policy.collectClosedClients();
-  })().catch((error: unknown) => {
-    console.error('[PWA] Network update coordination failed.', error);
-    // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Versioned one-shot SW reply; input and source are validated above, no Comlink endpoint.
-    event.ports[0]?.postMessage({ protocol: PWA_PROTOCOL, buildId: __PWA_BUILD_ID__, ok: false });
-  }));
+  })());
 });

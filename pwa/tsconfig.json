@@ -17,7 +17,6 @@
     "erasableSyntaxOnly": true
   },
   "include": [
-    "sw.ts",
-    "network-policy.ts"
+    "sw.ts"
   ]
 }

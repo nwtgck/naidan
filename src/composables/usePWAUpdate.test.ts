@@ -22,16 +22,17 @@ describe('usePWAUpdate', () => {
     expect(status.value).toBe(kind);
   });
 
-  it('executes the ready handler only once, including after sending completes', async () => {
+  it('prevents concurrent clicks but permits retry if navigation does not unload the page', async () => {
     const handler = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     setUpdateState({ next: { kind: 'ready', handler } });
     const pending = update();
     expect(status.value).toBe('applying');
     await update();
     await pending;
-    await update();
     expect(handler).toHaveBeenCalledOnce();
-    expect(status.value).toBe('applying');
+    expect(status.value).toBe('ready');
+    await update();
+    expect(handler).toHaveBeenCalledTimes(2);
   });
 
   it('accepts the explicit early network action and restores it on failure', async () => {
@@ -42,8 +43,8 @@ describe('usePWAUpdate', () => {
     expect(status.value).toBe('preparing');
     expect(usePWAUpdate().canUpdate.value).toBe(true);
     await update();
-    expect(status.value).toBe('applying');
-    expect(usePWAUpdate().canUpdate.value).toBe(false);
+    expect(status.value).toBe('preparing');
+    expect(usePWAUpdate().canUpdate.value).toBe(true);
   });
 
   it('publishes the handler atomically with ready status', async () => {
@@ -79,7 +80,24 @@ describe('usePWAUpdate', () => {
     expect(status.value).toBe('preparing');
   });
 
-  it('clears the action together with availability', async () => {
+  it('retains a new action during a pending click without permitting a concurrent click', async () => {
+    let finish!: () => void;
+    const first = vi.fn(() => new Promise<void>(resolve => {
+      finish = resolve;
+    }));
+    const second = vi.fn(async () => {});
+    setUpdateState({ next: { kind: 'preparing', handler: first } });
+    const pending = update();
+    setUpdateState({ next: { kind: 'ready', handler: second } });
+    expect(status.value).toBe('applying');
+    await update();
+    expect(second).not.toHaveBeenCalled();
+    finish(); await pending;
+    expect(status.value).toBe('ready');
+    await update(); expect(second).toHaveBeenCalledOnce();
+  });
+
+  it('clears the action together with availability' , async () => {
     const handler = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     setUpdateState({ next: { kind: 'ready', handler } });
     setUpdateState({ next: { kind: 'idle' } });

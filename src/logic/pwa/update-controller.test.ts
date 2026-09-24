@@ -1,354 +1,215 @@
+// @vitest-environment node
+import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPWAUpdateController, type PWAUpdatePlatform } from '@/logic/pwa/update-controller';
+import { createPWAUpdateController, type PWAUpdatePlatform } from './update-controller';
 import type { PWAUpdateState } from '@/composables/usePWAUpdate';
-import { NETWORK_UPDATE_PARAMETER, PWA_PROTOCOL } from '@/logic/pwa/protocol';
-import { requestPWAWorker } from '@/logic/pwa/worker-request';
-import { createPWAInstallFailure } from '@/logic/pwa/install-diagnostics';
+import { USE_NETWORK_MESSAGE } from './protocol';
 
-// Replace the browser message transport, typed from its real public contract.
-// App, settings, router, main entry and application imports are not substituted.
-vi.mock('@/logic/pwa/worker-request', () => ({ requestPWAWorker: vi.fn() }));
-const ask = vi.mocked(requestPWAWorker);
 class WorkerHandle extends EventTarget {
   state: ServiceWorkerState = 'installing';
   scriptURL = 'https://example.test/naidan/sw.js';
-  postMessage = vi.fn();
-  readonly buildId: string;
-  constructor(buildId: string) {
-    super(); this.buildId = buildId;
-  }
+  postMessage = vi.fn((_data: unknown, ports?: MessagePort[]) => ports?.[0]?.postMessage(USE_NETWORK_MESSAGE));
   native(): ServiceWorker {
     return this as unknown as ServiceWorker;
   }
-  transition(state: ServiceWorkerState) {
+  transition(state: ServiceWorkerState): void {
     this.state = state; this.dispatchEvent(new Event('statechange'));
   }
 }
 const disposers: Array<() => void> = [];
 const flush = async () => {
-  for (let i = 0; i < 30; i++) await Promise.resolve();
+  for (let n = 0; n < 12; n++) await Promise.resolve();
 };
-const token = '01234567-1234-1234-1234-0123456789ab';
-
-function setup({ online = false, pageBuildId = 'old', existing = true, registerPending = false } = {}) {
-  const old = new WorkerHandle('old'); old.state = 'activated';
-  const next = new WorkerHandle('new');
-  const reg = Object.assign(new EventTarget(), { scope: 'https://example.test/naidan/', active: old.native(), installing: next.native() as ServiceWorker | null, waiting: null as ServiceWorker | null });
+function setup({ registerPending = false, firstInstall = false } = {}) {
+  const old = new WorkerHandle(); old.state = 'activated';
+  const next = new WorkerHandle();
+  const reg = Object.assign(new EventTarget(), {
+    scope: 'https://example.test/naidan/', active: firstInstall ? null : old.native(),
+    installing: next.native() as ServiceWorker | null, waiting: null as ServiceWorker | null,
+  });
   const container = Object.assign(new EventTarget(), {
-    controller: old.native() as ServiceWorker | null,
-    getRegistration: vi.fn().mockResolvedValue(existing ? reg : undefined),
+    controller: firstInstall ? null : old.native(),
+    getRegistration: vi.fn().mockResolvedValue(reg),
     register: vi.fn().mockImplementation(() => registerPending ? new Promise(() => {}) : Promise.resolve(reg)),
   });
-  let href = `https://example.test/naidan/?other=keep${online ? `&${NETWORK_UPDATE_PARAMETER}=${token}` : ''}#/chat/42`;
-  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => new Response('<!doctype html><title>Naidan</title>', { headers: { 'content-type': 'text/html' } }));
-  const platform: PWAUpdatePlatform = {
-    serviceWorkers: container as unknown as ServiceWorkerContainer,
-    getHref: () => href,
-    navigate: vi.fn(),
-    replaceHistory: vi.fn(({ href: next }: { href: string }) => {
-      href = next;
-    }),
-    fetch,
-    createToken: () => token,
-  };
   const states: PWAUpdateState[] = [];
-  const onError = vi.fn(); const onOfflineReady = vi.fn(); const onDiagnostic = vi.fn();
-  const start = () => {
-    const controller = createPWAUpdateController({ platform, baseUrl: new URL(reg.scope), buildId: pageBuildId, onState: ({ next }) => states.push(next), onError, onOfflineReady, onDiagnostic });
-    disposers.push(controller.dispose);
-    return controller;
+  const platform: PWAUpdatePlatform = { serviceWorkers: container as unknown as ServiceWorkerContainer, reload: vi.fn() };
+  const onError = vi.fn(), onWarning = vi.fn(), onOfflineReady = vi.fn();
+  const controller = createPWAUpdateController({ platform, baseUrl: new URL(reg.scope), onState: ({ next }) => states.push(next), onError, onWarning, onOfflineReady });
+  disposers.push(controller.dispose);
+  const ready = () => {
+    reg.installing = null; reg.waiting = next.native(); next.transition('installed');
   };
-  const makeReady = () => {
-    reg.waiting = next.native(); reg.installing = null; next.transition('installed');
-  };
-  const takeControl = () => {
-    reg.active = next.native(); reg.waiting = null; next.state = 'activated';
-    container.controller = next.native(); container.dispatchEvent(new Event('controllerchange'));
+  const activate = () => {
+    reg.active = next.native(); reg.waiting = null; reg.installing = null;
+    // Deliberately NO controllerchange: the ready path must not depend on it.
+    next.transition('activated');
   };
   const action = () => {
     const state = states.at(-1);
-    if (!state || state.kind === 'idle' || !state.handler) throw new Error(`No action in ${state?.kind}`);
+    if (!state || state.kind === 'idle' || !state.handler) throw new Error('No action');
     return state.handler();
   };
-  return { old, next, reg, container, platform, fetch, start, states, makeReady, takeControl, action, onError, onOfflineReady, onDiagnostic };
+  return { old, next, reg, container, platform, states, controller, ready, activate, action, onError, onWarning, onOfflineReady };
 }
-
-beforeEach(() => {
-  ask.mockReset();
-  ask.mockImplementation(async ({ worker }) => ({ protocol: PWA_PROTOCOL, ok: true, buildId: (worker as unknown as WorkerHandle).buildId }));
-});
+beforeEach(() => vi.stubGlobal('MessageChannel', MessageChannel));
 afterEach(() => {
-  disposers.splice(0).forEach(dispose => dispose()); vi.useRealTimers();
+  disposers.splice(0).forEach(dispose => dispose());
+  vi.useRealTimers(); vi.unstubAllGlobals();
 });
 
-describe('post-paint update controller', () => {
-  it('observes an existing downloading update without waiting for register to finish', async () => {
-    const f = setup({ registerPending: true }); f.start(); await flush();
-    expect(f.states.at(-1)).toEqual({ kind: 'preparing', handler: expect.any(Function) });
-    expect(f.container.getRegistration).toHaveBeenCalledWith(f.reg.scope);
+describe('auditable two-path PWA update', () => {
+  it('observes the existing installer while register is still queued', async () => {
+    const f = setup({ registerPending: true }); await flush();
+    expect(f.states.at(-1)?.kind).toBe('preparing');
     expect(f.container.register).toHaveBeenCalledWith('https://example.test/naidan/sw.js', { scope: f.reg.scope, updateViaCache: 'none' });
-  });
-
-  it('allows an immediate NETWORK reload while full precaching remains installing', async () => {
-    const f = setup({ registerPending: true }); f.start(); await flush();
     await f.action();
     expect(f.next.state).toBe('installing');
     expect(f.next.postMessage).not.toHaveBeenCalled();
-    expect(f.fetch).toHaveBeenCalledOnce();
-    const destination = new URL(vi.mocked(f.platform.navigate).mock.calls[0]![0].href);
-    expect(destination.searchParams.get(NETWORK_UPDATE_PARAMETER)).toBe(token);
-    expect(destination.searchParams.get('other')).toBe('keep');
-    expect(destination.hash).toBe('#/chat/42');
-    expect(f.fetch).toHaveBeenCalledWith(destination.href, expect.objectContaining({ cache: 'no-store', redirect: 'error' }));
+    expect(f.old.postMessage.mock.calls[0]?.[0]).toEqual({ type: USE_NETWORK_MESSAGE });
+    expect(f.platform.reload).toHaveBeenCalledOnce();
   });
-
-  it('keeps the existing page usable on a failed HTML probe, then permits retry', async () => {
-    const f = setup(); f.start(); await flush();
-    f.fetch.mockRejectedValueOnce(new TypeError('offline'));
-    await expect(f.action()).rejects.toThrow('offline');
-    expect(f.platform.navigate).not.toHaveBeenCalled();
-    expect(f.onError).toHaveBeenCalledOnce();
-    await f.action();
-    expect(f.platform.navigate).toHaveBeenCalledOnce();
-  });
-
-  it.each([404, 500])('rejects HTTP %s instead of abandoning a usable page', async status => {
-    const f = setup(); f.start(); await flush();
-    f.fetch.mockResolvedValueOnce(new Response('error', { status, headers: { 'content-type': 'text/html' } }));
-    await expect(f.action()).rejects.toThrow('not available');
-    expect(f.platform.navigate).not.toHaveBeenCalled();
-  });
-
-  it('rejects a success response that is not an HTML application document', async () => {
-    const f = setup(); f.start(); await flush();
-    f.fetch.mockResolvedValueOnce(new Response('{}', { headers: { 'content-type': 'application/json' } }));
-    await expect(f.action()).rejects.toThrow('not available');
-    expect(f.platform.navigate).not.toHaveBeenCalled();
-  });
-
-  it('uses the ordinary offline-capable path when a waiting update is ready', async () => {
-    const f = setup(); f.reg.installing = null; f.reg.waiting = f.next.native(); f.next.state = 'installed';
-    f.start(); await flush();
+  it('waits for ACTUAL activation then reloads without controllerchange', async () => {
+    const f = setup(); await flush(); f.ready();
     const action = f.action();
     expect(f.next.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
-    expect(f.fetch).not.toHaveBeenCalled(); expect(f.platform.navigate).not.toHaveBeenCalled();
-    f.takeControl(); await action;
-    expect(f.platform.navigate).toHaveBeenCalledWith({ href: 'https://example.test/naidan/?other=keep#/chat/42' });
+    expect(f.old.postMessage).not.toHaveBeenCalled();
+    expect(f.platform.reload).not.toHaveBeenCalled();
+    f.next.transition('activating'); await flush();
+    expect(f.platform.reload).not.toHaveBeenCalled();
+    f.activate(); await action;
+    expect(f.platform.reload).toHaveBeenCalledOnce();
   });
-
-  it('rechecks waiting at click time rather than starting an unnecessary online session', async () => {
-    const f = setup(); f.start(); await flush();
+  it('rechecks readiness rather than following a stale preparing action', async () => {
+    const f = setup(); await flush();
     const state = f.states.at(-1)!;
-    expect(state.kind).toBe('preparing');
-    f.reg.installing = null; f.reg.waiting = f.next.native(); f.next.state = 'installed';
+    f.ready();
     const action = state.kind === 'preparing' ? state.handler!() : Promise.reject(new Error('bad test state'));
-    expect(f.fetch).not.toHaveBeenCalled(); f.takeControl(); await action;
+    expect(f.old.postMessage).not.toHaveBeenCalled();
+    f.activate(); await action;
+    expect(f.platform.reload).toHaveBeenCalledOnce();
   });
-
-  it('does not promise network bypass with a legacy controller', async () => {
-    const f = setup(); ask.mockRejectedValue(new Error('unsupported')); f.start(); await flush();
-    expect(f.states.at(-1)).toEqual({ kind: 'preparing' });
-    f.makeReady(); await flush();
-    expect(f.states.at(-1)).toEqual({ kind: 'ready', handler: expect.any(Function) });
-  });
-
-  it('restores FULL offline support for the already-running build without another reload', async () => {
-    const f = setup({ online: true, pageBuildId: 'new' }); f.start(); await flush();
-    expect(f.states.at(-1)?.kind).toBe('idle');
-    expect(f.next.postMessage).not.toHaveBeenCalled();
-    expect(f.platform.replaceHistory).not.toHaveBeenCalled();
-    f.makeReady(); await flush();
-    expect(f.next.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'SKIP_WAITING' });
-    f.takeControl(); await flush();
-    expect(f.platform.navigate).not.toHaveBeenCalled();
-    expect(f.platform.replaceHistory).toHaveBeenCalledWith({ href: 'https://example.test/naidan/?other=keep#/chat/42' });
-    expect(f.onOfflineReady).toHaveBeenCalledOnce();
-    expect(ask).toHaveBeenCalledWith({ worker: f.next.native(), request: { protocol: PWA_PROTOCOL, type: 'complete-page', buildId: 'new' } });
-  });
-
-  it('does not automatically activate a DIFFERENT later build during an online session', async () => {
-    const f = setup({ online: true, pageBuildId: 'running-other-build' }); f.start(); await flush();
-    f.makeReady(); await flush();
-    expect(f.next.postMessage).not.toHaveBeenCalled();
-    expect(f.states.at(-1)?.kind).toBe('ready');
-    expect(f.platform.replaceHistory).not.toHaveBeenCalled();
-  });
-
-  it('publishes readiness that arrived during a failing network probe instead of restoring a stale action', async () => {
-    const f = setup(); f.start(); await flush();
-    let reject!: (error: Error) => void;
-    f.fetch.mockImplementationOnce(() => new Promise((_resolve, fail) => {
-      reject = fail;
-    }));
-    const action = f.action(); await flush(); f.makeReady();
-    reject(new Error('network lost')); await expect(action).rejects.toThrow('network lost');
-    expect(f.states.at(-1)?.kind).toBe('ready');
-    const retry = f.action(); f.takeControl(); await retry;
-    expect(f.fetch).toHaveBeenCalledOnce();
-  });
-
-  it('keeps an explicit action when a waiting worker cannot answer the cross-version identity protocol', async () => {
-    const f = setup({ online: true, pageBuildId: 'running' });
-    ask.mockImplementation(async ({ worker }) => {
-      if (worker === f.next.native()) throw new Error('legacy candidate');
-      return { protocol: PWA_PROTOCOL, ok: true, buildId: 'old' };
-    });
-    f.start(); await flush(); f.makeReady(); await flush();
-    expect(f.states.at(-1)?.kind).toBe('ready');
-    expect(f.next.postMessage).not.toHaveBeenCalled();
-  });
-
-  it('keeps the online choice when a detected update fails full precaching', async () => {
-    const f = setup(); f.start(); await flush();
-    f.reg.installing = null; f.next.transition('redundant'); await flush();
-    expect(f.onError).not.toHaveBeenCalled();
-    expect(f.onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ level: 'warn', details: expect.objectContaining({ kind: 'worker-became-redundant' }) }));
-    expect(f.states.at(-1)).toEqual({ kind: 'preparing', handler: expect.any(Function) });
+  it('only reloads when another tab has already activated the update', async () => {
+    const f = setup(); await flush(); f.ready(); f.activate();
     await f.action();
-    expect(f.platform.navigate).toHaveBeenCalledWith({ href: expect.stringContaining(NETWORK_UPDATE_PARAMETER) });
+    expect(f.old.postMessage).not.toHaveBeenCalled();
+    expect(f.next.postMessage).not.toHaveBeenCalled();
+    expect(f.platform.reload).toHaveBeenCalledOnce();
   });
-
-  it('does not label first installation as an update', async () => {
-    const f = setup({ existing: false }); f.reg.active = null as unknown as ServiceWorker; f.container.controller = null;
-    f.start(); await flush();
-    expect(f.states.at(-1)?.kind).toBe('idle');
-    f.reg.active = f.next.native(); f.reg.installing = null; f.next.transition('activated'); await flush();
+  it('keeps a failed installer as an explicit network option, not a synthetic error', async () => {
+    const f = setup(); await flush(); f.reg.installing = null; f.next.transition('redundant');
+    expect(f.onWarning).toHaveBeenCalledOnce(); expect(f.onError).not.toHaveBeenCalled();
+    await f.action(); expect(f.platform.reload).toHaveBeenCalledOnce();
+  });
+  it('first offline preparation is not an application update', async () => {
+    const f = setup({ firstInstall: true }); await flush();
+    expect(f.states.at(-1)).toEqual({ kind: 'idle' });
+    f.activate();
+    expect(f.onOfflineReady).toHaveBeenCalledOnce();
+    expect(f.states.at(-1)).toEqual({ kind: 'idle' });
+  });
+  it('does not call the first installed worker an update before activation', async () => {
+    const f = setup({ firstInstall: true }); await flush(); f.ready();
+    expect(f.states.at(-1)).toEqual({ kind: 'idle' });
+    f.reg.active = f.next.native(); f.next.transition('activating');
+    expect(f.states.at(-1)).toEqual({ kind: 'idle' });
+    f.activate();
+    expect(f.states.at(-1)).toEqual({ kind: 'idle' });
     expect(f.onOfflineReady).toHaveBeenCalledOnce();
   });
-
-  it('does not automatically reload unrelated tabs on controllerchange', async () => {
-    const f = setup(); f.start(); await flush(); f.takeControl(); await flush();
-    expect(f.platform.navigate).not.toHaveBeenCalled();
-  });
-
-  it('stops a disposed runtime from navigating after a delayed successful probe', async () => {
-    const f = setup(); const controller = f.start(); await flush();
-    let resolve!: (response: Response) => void;
-    f.fetch.mockImplementationOnce(() => new Promise(r => {
-      resolve = r;
-    }));
-    const action = f.action(); await flush(); controller.dispose();
-    resolve(new Response('html', { headers: { 'content-type': 'text/html' } }));
-    await expect(action).rejects.toThrow('stopped');
-    expect(f.platform.navigate).not.toHaveBeenCalled();
-  });
-
-  it('times out a ready activation and permits retry instead of indefinitely disabling the button', async () => {
-    vi.useFakeTimers();
-    const f = setup(); f.start(); await flush(); f.makeReady(); await flush();
-    const action = f.action(); const rejected = expect(action).rejects.toThrow('did not activate');
-    await vi.advanceTimersByTimeAsync(15001); await rejected;
-    const retry = f.action(); f.takeControl(); await retry;
-  });
-
-  it('reports a registration error without an unhandled rejection', async () => {
-    const f = setup({ existing: false }); f.container.register.mockRejectedValue(new Error('registration error'));
-    f.start(); await flush(); expect(f.onError).toHaveBeenCalledOnce();
-  });
-  it('does not diagnose normal retirement after a worker has installed and activated as an install failure', async () => {
-    const f = setup(); f.start(); await flush(); f.makeReady(); await flush(); f.takeControl(); await flush();
-    f.next.transition('redundant'); await flush();
-    expect(f.onDiagnostic).not.toHaveBeenCalled();
-    expect(f.onError).not.toHaveBeenCalled();
-  });
-
-  it('does not flag a superseded installer or mask its replacement with a retired waiting slot', async () => {
-    const f = setup(); f.start(); await flush();
-    const replacement = new WorkerHandle('newer');
-    // Deliver the old statechange before updatefound, as separate browser tasks.
-    f.reg.waiting = f.next.native(); f.reg.installing = replacement.native();
-    f.next.transition('redundant'); await flush();
-    expect(f.onDiagnostic).not.toHaveBeenCalled();
-    expect(f.states.at(-1)).toEqual({ kind: 'preparing', handler: expect.any(Function) });
-    f.reg.installing = null; replacement.transition('redundant'); await flush();
-    expect(f.onDiagnostic).toHaveBeenCalledOnce();
-    await f.action();
-    expect(f.platform.navigate).toHaveBeenCalledOnce();
-  });
-
-  it('retains an older waiting version without hiding a newer installer stopping', async () => {
-    const f = setup();
-    const waiting = new WorkerHandle('previous'); waiting.state = 'installed'; f.reg.waiting = waiting.native();
-    f.start(); await flush(); f.reg.installing = null; f.next.transition('redundant'); await flush();
-    expect(f.onDiagnostic).toHaveBeenCalledOnce();
-    expect(f.states.at(-1)?.kind).toBe('ready');
-  });
-
-  it('records the actual resource failure once instead of generating a redundant-state Error', async () => {
-    const f = setup(); f.start(); await flush();
-    const failure = createPWAInstallFailure({
-      scope: f.reg.scope, buildId: 'new', resourceUrl: `${f.reg.scope}runtime.wasm.gz`,
-      error: Object.assign(new Error('Cache write failed'), { name: 'QuotaExceededError' }),
-    });
-    const deliver = () => f.container.dispatchEvent(new MessageEvent('message', {
-      origin: new URL(f.reg.scope).origin, source: f.next.native(), data: failure,
-    }));
-    deliver(); f.reg.installing = null; f.next.transition('redundant'); deliver(); await flush();
-    expect(f.onError).not.toHaveBeenCalled();
-    expect(f.onDiagnostic).toHaveBeenCalledExactlyOnceWith({
-      level: 'error', message: 'Failed to precache an application resource.',
-      details: { ...failure, workerScriptUrl: f.next.scriptURL, pageBuildId: 'old' },
-    });
-    await f.action(); expect(f.platform.navigate).toHaveBeenCalledOnce();
-  });
-
-  it('accepts delayed genuine details after redundant, but ignores malformed, cross-scope and unrelated messages', async () => {
-    const f = setup(); const controller = f.start(); await flush();
-    const failure = createPWAInstallFailure({
-      scope: f.reg.scope, buildId: 'new', resourceUrl: `${f.reg.scope}index.html`, error: new TypeError('Failed to fetch'),
-    });
-    const deliver = ({ source, origin, data }: { source: ServiceWorker; origin: string; data: unknown }) => {
-      f.container.dispatchEvent(new MessageEvent('message', { source, origin, data }));
-    };
-    const origin = new URL(f.reg.scope).origin;
-    deliver({ source: new WorkerHandle('unrelated').native(), origin, data: failure });
-    deliver({ source: f.next.native(), origin: 'https://other.test', data: failure });
-    deliver({ source: f.next.native(), origin, data: { ...failure, scope: 'https://example.test/other/' } });
-    deliver({ source: f.next.native(), origin, data: { ...failure, error: { name: 42 } } });
-    expect(f.onDiagnostic).not.toHaveBeenCalled();
-    f.reg.installing = null; f.next.transition('redundant'); await flush();
-    deliver({ source: f.next.native(), origin, data: failure });
-    expect(f.onDiagnostic.mock.calls.map(([diagnostic]) => diagnostic.level)).toEqual(['warn', 'error']);
-    controller.dispose();
-    deliver({ source: f.next.native(), origin, data: failure });
-    expect(f.onDiagnostic).toHaveBeenCalledTimes(2);
-  });
-
-  it('tracks an installer appearing and failing during a pending network probe', async () => {
-    const f = setup(); f.start(); await flush();
-    let reject!: (error: Error) => void;
-    f.fetch.mockImplementationOnce(() => new Promise((_resolve, fail) => {
-      reject = fail;
-    }));
-    const action = f.action(); await flush();
-    const replacement = new WorkerHandle('newer');
-    f.reg.installing = replacement.native();
-    f.reg.dispatchEvent(new Event('updatefound'));
-    f.reg.installing = null; replacement.transition('redundant');
-    reject(new Error('network lost')); await expect(action).rejects.toThrow('network lost');
-    expect(f.onDiagnostic).toHaveBeenCalledOnce();
-    expect(f.states.at(-1)).toEqual({ kind: 'preparing', handler: expect.any(Function) });
-    await f.action(); expect(f.platform.navigate).toHaveBeenCalledOnce();
-  });
-
-  it('rejects a retired selected activation immediately and publishes the replacement action', async () => {
-    const f = setup(); f.start(); await flush(); f.makeReady(); await flush();
+  it('waits for an update another tab has already moved to the active slot', async () => {
+    const f = setup(); await flush(); f.ready();
+    f.reg.waiting = null; f.reg.active = f.next.native(); f.next.transition('activating');
     const action = f.action();
-    const rejection = expect(action).rejects.toThrow('replaced or could not activate');
-    const replacement = new WorkerHandle('newer'); replacement.state = 'installed';
-    f.reg.waiting = replacement.native(); f.next.transition('redundant');
-    await rejection; await flush();
-    expect(f.onDiagnostic).not.toHaveBeenCalled();
-    expect(f.states.at(-1)?.kind).toBe('ready');
+    await flush();
+    expect(f.platform.reload).not.toHaveBeenCalled();
+    expect(f.old.postMessage).not.toHaveBeenCalled();
+    f.activate(); await action;
+    expect(f.platform.reload).toHaveBeenCalledOnce();
   });
-
-  it('recognizes a replacement installer even when an older waiting version remains available', async () => {
-    const f = setup();
-    const waiting = new WorkerHandle('previous'); waiting.state = 'installed'; f.reg.waiting = waiting.native();
-    f.start(); await flush();
-    f.reg.installing = new WorkerHandle('newer').native(); f.next.transition('redundant'); await flush();
-    expect(f.onDiagnostic).not.toHaveBeenCalled();
+  it('retains the first active worker as baseline for a page initially without a controller', async () => {
+    const f = setup({ firstInstall: true }); await flush(); f.activate();
+    const later = new WorkerHandle(); later.state = 'activated';
+    f.reg.active = later.native(); f.container.controller = later.native();
+    f.container.dispatchEvent(new Event('controllerchange'));
     expect(f.states.at(-1)?.kind).toBe('ready');
+    await f.action();
+    expect(later.postMessage).not.toHaveBeenCalled();
+    expect(f.platform.reload).toHaveBeenCalledOnce();
   });
-
+  it('does not report a normally superseded installer as a preparation failure', async () => {
+    const f = setup(); await flush();
+    f.reg.installing = new WorkerHandle().native(); f.next.transition('redundant');
+    expect(f.onWarning).not.toHaveBeenCalled();
+    expect(f.states.at(-1)?.kind).toBe('preparing');
+  });
+  it('times out an unsupported/legacy network command without reloading', async () => {
+    vi.useFakeTimers(); const f = setup(); await flush(); f.old.postMessage.mockImplementation(() => {});
+    const rejected = expect(f.action()).rejects.toThrow('did not enable');
+    await vi.advanceTimersByTimeAsync(5000); await rejected;
+    expect(f.onError).toHaveBeenCalledWith({ message: 'Failed to apply the application update.', error: expect.any(Error) });
+    expect(f.platform.reload).not.toHaveBeenCalled();
+    expect(f.states.at(-1)?.kind).toBe('preparing');
+  });
+  it('bounds activation waits and keeps the prepared action retryable', async () => {
+    vi.useFakeTimers(); const f = setup(); await flush(); f.ready();
+    const rejected = expect(f.action()).rejects.toThrow('did not activate');
+    await vi.advanceTimersByTimeAsync(15000); await rejected;
+    expect(f.platform.reload).not.toHaveBeenCalled();
+    const retry = f.action(); f.activate(); await retry;
+    expect(f.platform.reload).toHaveBeenCalledOnce();
+  });
+  it('rejects a replaced waiting worker without waiting for the timeout', async () => {
+    const f = setup(); await flush(); f.ready();
+    const rejected = expect(f.action()).rejects.toThrow('replaced');
+    f.next.transition('redundant'); await rejected;
+    expect(f.platform.reload).not.toHaveBeenCalled();
+  });
+  it('aborts an outstanding action on disposal and never reloads later', async () => {
+    const f = setup(); await flush(); f.ready();
+    const rejected = expect(f.action()).rejects.toThrow('stopped');
+    f.controller.dispose(); await rejected; f.activate();
+    expect(f.platform.reload).not.toHaveBeenCalled();
+  });
+  it('retains replacement updates that appear during a pending click', async () => {
+    const f = setup(); await flush(); f.ready();
+    const action = f.action();
+    const newer = new WorkerHandle();
+    f.reg.installing = newer.native(); f.container.dispatchEvent(new Event('controllerchange'));
+    f.reg.active = f.next.native(); f.reg.waiting = null; f.next.transition('activated');
+    await action;
+    f.reg.waiting = newer.native(); f.reg.installing = null; newer.transition('installed');
+    expect(f.states.at(-1)?.kind).toBe('ready');
+    const again = f.action();
+    expect(newer.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+    f.reg.active = newer.native(); f.reg.waiting = null; newer.transition('activated');
+    await again;
+    expect(f.platform.reload).toHaveBeenCalledTimes(2);
+  });
+  it('retains observation and prepared updates after a register failure', async () => {
+    const f = setup(); f.container.register.mockRejectedValue(new Error('registration offline'));
+    await flush();
+    expect(f.onError).toHaveBeenCalledWith({ message: 'Failed to register the service worker.', error: expect.any(Error) });
+    f.ready(); const action = f.action(); f.activate(); await action;
+    expect(f.platform.reload).toHaveBeenCalledOnce();
+  });
+  it('does not register after disposal while an existing registration is being read', async () => {
+    const f = setup(); f.controller.dispose(); await flush();
+    expect(f.container.register).not.toHaveBeenCalled();
+    expect(f.states).toEqual([]);
+  });
+  it('disables early updating when the page has lost its controller but retains prepared updates', async () => {
+    const f = setup(); await flush(); f.container.controller = null;
+    f.container.dispatchEvent(new Event('controllerchange'));
+    expect(f.states.at(-1)).toEqual({ kind: 'preparing', handler: undefined });
+    f.ready(); const action = f.action(); f.activate(); await action;
+    expect(f.platform.reload).toHaveBeenCalledOnce();
+    expect(f.old.postMessage).not.toHaveBeenCalled();
+  });
+  it('never sends a network command to an unrelated scope controller', async () => {
+    const f = setup(); await flush(); f.container.controller = new WorkerHandle().native();
+    await expect(f.action()).rejects.toThrow('not controlled');
+    expect(f.old.postMessage).not.toHaveBeenCalled();
+    expect(f.platform.reload).not.toHaveBeenCalled();
+  });
 });

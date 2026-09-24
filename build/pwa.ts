@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { VitePWAOptions } from 'vite-plugin-pwa';
 
-/** One identifier per build, shared by the page and worker (not package semver). */
+/** Worker-private generation ID: an online opt-in must not leak into the next worker. */
 export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } = {}) {
   const define = { __PWA_BUILD_ID__: JSON.stringify(buildId) };
   const options: Partial<VitePWAOptions> = {
@@ -28,7 +28,7 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
       buildPlugins: { vite: [{ name: 'naidan-pwa-build-identity', config: () => ({ define }) }] },
     },
   };
-  return { define, options };
+  return { options };
 }
 
 export const TEST_ONLY = {};

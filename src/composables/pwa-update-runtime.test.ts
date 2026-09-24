@@ -37,20 +37,23 @@ describe('page-scoped PWA runtime', () => {
     startPWAUpdateRuntime(); TEST_ONLY.reset(); expect(dispose).toHaveBeenCalledOnce();
     expect(usePWAUpdate().status.value).toBe('idle');
   });
-  it('keeps structured install details and warning severity in the real event store', () => {
+  it('keeps original update errors in the application event log', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    startPWAUpdateRuntime();
+    const error = new Error('worker did not activate');
+    start.mock.calls[0]![0].onError({ message: 'Failed to apply the application update.', error });
+    expect(useGlobalEvents().events.value).toEqual([
+      expect.objectContaining({ type: 'error', source: 'PWA', message: 'Failed to apply the application update.' }),
+    ]);
+    expect(useGlobalEvents().events.value[0]?.details).toBe(error);
+  });
+  it('records an honest warning without synthesizing a resource failure', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     startPWAUpdateRuntime();
-    const onDiagnostic = start.mock.calls[0]![0].onDiagnostic;
-    const details = { resourceUrl: 'https://example.test/runtime.wasm.gz', error: { name: 'QuotaExceededError', message: 'cache full' } };
-    onDiagnostic({ level: 'error', message: 'Precache failed', details });
-    onDiagnostic({ level: 'warn', message: 'Cause unavailable', details: { kind: 'worker-became-redundant' } });
-    const events = useGlobalEvents();
-    expect(events.events.value).toEqual([
-      expect.objectContaining({ type: 'error', source: 'PWA', message: 'Precache failed', details }),
-      expect.objectContaining({ type: 'warn', source: 'PWA', message: 'Cause unavailable' }),
+    start.mock.calls[0]![0].onWarning({ message: 'Preparation stopped; check worker console.' });
+    expect(useGlobalEvents().events.value).toEqual([
+      expect.objectContaining({ type: 'warn', source: 'PWA', message: 'Preparation stopped; check worker console.' }),
     ]);
-    expect(events.errorCount.value).toBe(1);
+    expect(useGlobalEvents().errorCount.value).toBe(0);
   });
-
 });

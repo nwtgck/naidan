@@ -2,6 +2,7 @@ import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { ensureStrings } from '@/strings';
 import { createPWAUpdateController } from '@/logic/pwa/update-controller';
+import { reloadPWAPage } from '@/logic/pwa/reload-page';
 
 let runtime: { dispose: () => void } | undefined;
 
@@ -14,14 +15,9 @@ export function startPWAUpdateRuntime(): void {
   const controller = createPWAUpdateController({
     platform: {
       serviceWorkers: navigator.serviceWorker,
-      getHref: () => window.location.href,
-      navigate: ({ href }) => window.location.replace(href),
-      replaceHistory: ({ href }) => window.history.replaceState(window.history.state, '', href),
-      fetch: (input, init) => window.fetch(input, init),
-      createToken: () => window.crypto.randomUUID(),
+      reload: () => reloadPWAPage({ location: window.location, history: window.history }),
     },
     baseUrl: new URL(import.meta.env.BASE_URL, window.location.href),
-    buildId: __PWA_BUILD_ID__,
     onState: ({ next }) => setUpdateState({ next }),
     onOfflineReady: () => {
       void ensureStrings.PWAManager__app_ready_to_work_offline().then((message) => {
@@ -30,16 +26,9 @@ export function startPWAUpdateRuntime(): void {
         if (!disposed) console.error('[PWA] Failed to load the offline-ready notification.', error);
       });
     },
-    onDiagnostic: ({ level, message, details }) => {
-      switch (level) {
-      case 'error': console.error(`[PWA] ${message}`, details); break;
-      case 'warn': console.warn(`[PWA] ${message}`, details); break;
-      default: {
-        const exhaustive: never = level;
-        throw new Error(`Unexpected PWA diagnostic level: ${exhaustive}`);
-      }
-      }
-      addEvent({ type: level, source: 'PWA', message, details });
+    onWarning: ({ message }) => {
+      console.warn(`[PWA] ${message}`);
+      addEvent({ type: 'warn', source: 'PWA', message });
     },
     onError: ({ message, error }) => {
       console.error(`[PWA] ${message}`, error);

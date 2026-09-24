@@ -63,8 +63,9 @@ describe('PWAUpdateNotification', () => {
     expect(button.element.nextElementSibling).toBe(warning.element);
     await button.trigger('click');
     expect(handler).toHaveBeenCalledOnce();
-    expect(button.attributes('disabled')).toBeDefined();
-    expect(wrapper.find('[data-testid="pwa-online-update-warning"]').exists()).toBe(false);
+    // A cancelled navigation must not leave an everlasting applying state.
+    expect(button.attributes('disabled')).toBeUndefined();
+    expect(wrapper.find('[data-testid="pwa-online-update-warning"]').exists()).toBe(true);
   });
 
   it('removes the network warning when the same update becomes offline-ready', async () => {
@@ -99,8 +100,24 @@ describe('PWAUpdateNotification', () => {
     expect(handler).not.toHaveBeenCalled();
     await button.trigger('click');
     expect(handler).toHaveBeenCalledOnce();
+    expect(button.attributes('disabled')).toBeUndefined();
+    expect(button.text()).toContain('Reload to Update');
+  });
+
+  it('shows applying only while the real action is pending', async () => {
+    let finish!: () => void;
+    const handler = () => new Promise<void>(resolve => {
+      finish = resolve;
+    });
+    setUpdateState({ next: { kind: 'ready', handler } });
+    const wrapper = mount(PWAUpdateNotification);
+    const button = wrapper.get('[data-testid="pwa-update-button"]');
+    await button.trigger('click');
+    expect(status.value).toBe('applying');
     expect(button.attributes('disabled')).toBeDefined();
-    expect(button.text()).toContain('Applying update');
+    finish(); await flushPromises();
+    expect(status.value).toBe('ready');
+    expect(button.attributes('disabled')).toBeUndefined();
   });
 
   it('renders an update already detected before the sidebar mounted', () => {
