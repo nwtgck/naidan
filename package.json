@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && npm run build:all",
+    "build": "vue-tsc -b && tsc --noEmit -p pwa/tsconfig.json && npm run build:all",
     "build:all": "npm run build:standalone && npm run build:hosted",
     "build:standalone": "vite build --mode standalone --logLevel warn",
     "build:hosted": "vite build --mode hosted --logLevel warn",
     "preview": "vite preview",
     "test": "vitest",
+    "test:pwa": "vitest run --config vitest.pwa.config.ts",
     "test:only-failed": "vitest --reporter=./src/FailedOnlyReporter.ts --run",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
   },
@@ -82,6 +83,8 @@
     "vite-plugin-static-copy": "^4.1.1",
     "vite-plugin-vue-devtools": "^8.1.5",
     "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.6"
+    "vue-tsc": "^3.3.6",
+    "workbox-precaching": "^7.4.1",
+    "workbox-routing": "^7.4.1"
   }
 }

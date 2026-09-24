@@ -1,15 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
 import DeveloperTab from './DeveloperTab.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSampleChat } from '@/composables/useSampleChat';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-
-vi.mock('../composables/usePWAUpdate', () => ({
-  usePWAUpdate: vi.fn(),
-}));
 
 vi.mock('../composables/useConfirm', () => ({
   useConfirm: vi.fn(),
@@ -31,8 +26,7 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('DeveloperTab', () => {
-  const needRefresh = ref(false);
-  const setNeedRefresh = vi.fn();
+  const { status, setUpdateState } = usePWAUpdate();
   const createSampleChat = vi.fn();
   const createLongSampleChat = vi.fn();
   const showConfirm = vi.fn();
@@ -52,12 +46,7 @@ describe('DeveloperTab', () => {
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
-    needRefresh.value = false;
-
-    (usePWAUpdate as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      needRefresh,
-      setNeedRefresh,
-    });
+    setUpdateState({ next: { kind: 'idle' } });
 
     (useConfirm as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       showConfirm,
@@ -117,19 +106,25 @@ describe('DeveloperTab', () => {
     const button = wrapper.find('[data-testid="toggle-pwa-update-button"]');
     await button.trigger('click');
 
-    expect(setNeedRefresh).toHaveBeenCalledWith({
-      refresh: true,
-      handler: expect.any(Function),
-    });
+    expect(status.value).toBe('ready');
+    await button.trigger('click');
+    expect(status.value).toBe('idle');
   });
 
-  it('applies active styles when needRefresh is true', () => {
-    needRefresh.value = true;
+  it('applies active styles when an update is ready', () => {
+    setUpdateState({ next: { kind: 'ready', handler: async () => {} } });
     const wrapper = mountDeveloperTab();
 
     const button = wrapper.find('[data-testid="toggle-pwa-update-button"]');
     expect(button.classes()).toContain('bg-emerald-50/30');
     expect(wrapper.find('.animate-spin-slow').exists()).toBe(true);
+  });
+
+  it('can clear a preparing notification through the developer toggle', async () => {
+    setUpdateState({ next: { kind: 'preparing' } });
+    const wrapper = mountDeveloperTab();
+    await wrapper.get('[data-testid="toggle-pwa-update-button"]').trigger('click');
+    expect(status.value).toBe('idle');
   });
 
   it('uses the data deletion panel for Cache Storage deletion through the factory reset preset', async () => {

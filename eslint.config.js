@@ -99,7 +99,7 @@ export default tseslint.config(
         parser: tseslint.parser,
         extraFileExtensions: ['.vue'],
         sourceType: 'module',
-        project: ['./tsconfig.app.json', './tsconfig.node.json'],
+        project: ['./tsconfig.app.json', './tsconfig.node.json', './pwa/tsconfig.json'],
         tsconfigRootDir: import.meta.dirname,
       },
       globals: {
@@ -109,6 +109,7 @@ export default tseslint.config(
         __BUILD_MODE_IS_HOSTED__: 'readonly',
         __BUILD_MODE_IS_TEST__: 'readonly',
         __APP_VERSION__: 'readonly',
+        __PWA_BUILD_ID__: 'readonly',
       },
     },
     rules: {

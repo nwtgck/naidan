@@ -884,6 +884,9 @@ import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingM
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/zh-Hans';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/zh-Hans';
 import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/zh-Hans';
+import { PWAUpdateNotification__preparing_update } from '@/strings/messages/PWAUpdateNotification__preparing_update/zh-Hans';
+import { PWAUpdateNotification__temporary_online_update } from '@/strings/messages/PWAUpdateNotification__temporary_online_update/zh-Hans';
+import { PWAUpdateNotification__applying_update } from '@/strings/messages/PWAUpdateNotification__applying_update/zh-Hans';
 import { PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser } from '@/strings/messages/PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser/zh-Hans';
 import { PromptApiStatus__browser_provided_model_is_not_available_on_this_device } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_not_available_on_this_device/zh-Hans';
 import { PromptApiStatus__browser_provided_model_is_ready } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_ready/zh-Hans';
@@ -2681,6 +2684,9 @@ export const catalog = {
   OnboardingModal__value,
   PWAManager__app_ready_to_work_offline,
   PWAUpdateNotification__reload_to_update,
+  PWAUpdateNotification__preparing_update,
+  PWAUpdateNotification__temporary_online_update,
+  PWAUpdateNotification__applying_update,
   PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser,
   PromptApiStatus__browser_provided_model_is_not_available_on_this_device,
   PromptApiStatus__browser_provided_model_is_ready,
