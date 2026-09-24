@@ -83,7 +83,7 @@ export const diagnosticSchema = z.object({
   nativeValue: z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeSingleTokenValue: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).optional(),
-  nativeOperation: z.enum(['encode-batch', 'copy-image', 'output-embedding', 'preprocess-image', 'bf16-f32', 'matmul-placement', 'unsupported-image-ops', 'image-graph']).optional(),
+  nativeOperation: z.enum(['encode-batch', 'copy-image', 'output-embedding', 'preprocess-image', 'bf16-f32', 'matmul-placement', 'unsupported-image-ops', 'image-graph', 'dispatch-split']).optional(),
   nativeEntries: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeGridX: z.number().int().min(-2147483648).max(2147483647).optional(),
   nativeGridY: z.number().int().min(-2147483648).max(2147483647).optional(),

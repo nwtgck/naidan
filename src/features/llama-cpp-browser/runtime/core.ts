@@ -4,7 +4,9 @@ import rawSchema from 'llama-cpp-browser-core/api/schema.mjs';
 import type { LowLevelFunctions } from 'llama-cpp-browser-core/api/functions.js';
 import type { MainModule } from 'llama-cpp-browser-core/profiles/cpu-wasm64/browser/core.mjs';
 import type { ChatParams, NativeChat } from './chat-bindings';
-import type { LlamaCppProfile } from '@/features/llama-cpp-browser/types';
+import { usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
+import { createCoreWebGpuNavigator } from './webgpu-dispatch';
+import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 
 // Direct access is restricted to width-independent runtime exports. Size-dependent
 // C fields use the generated schema; correlated Embind handles use chat-bindings.
@@ -194,7 +196,14 @@ export type Core = ReturnType<typeof attachCore> & { chat: NativeChat };
 export async function createCore({ profile, baseURL, moduleOptions }: {
   profile: LlamaCppProfile, baseURL: URL | string | undefined, moduleOptions: CoreModuleOptions,
 }): Promise<Core> {
-  const { module, chat } = await loadCoreModule({ profile, baseURL, moduleOptions });
+  const options: CoreModuleOptions = usesWebGpu({ profile }) ? {
+    ...moduleOptions,
+    naidanNavigator: createCoreWebGpuNavigator({ navigator: globalThis.navigator, report({ axis, count, limit, chunks }) {
+      logDiagnostic({ diagnostic: { event: 'native-info', nativeOperation: 'dispatch-split', nativeBackend: 'WebGPU',
+        dispatchAxis: axis, dispatchCount: count, dispatchLimit: limit, chunkCount: chunks } });
+    } }),
+  } : moduleOptions;
+  const { module, chat } = await loadCoreModule({ profile, baseURL, moduleOptions: options });
   switch (profile) {
   case 'webgpu-wasm32-asyncify': return { ...attachCore({ module, callMode: 'asyncify' }), chat };
   case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': case 'cpu-wasm64': case 'cpu-wasm32': return { ...attachCore({ module, callMode: 'direct' }), chat };

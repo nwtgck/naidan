@@ -4,7 +4,7 @@ import path from 'node:path';
 import MagicString from 'magic-string';
 import { z } from 'zod';
 import { normalizePath, type Plugin } from 'vite';
-import { profileSchema, type LlamaCppProfile } from './types';
+import { profileSchema, usesWebGpu, type LlamaCppProfile } from './types';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
@@ -60,6 +60,14 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     before: 'if(file==wasmBinaryFile&&wasmBinary){return new Uint8Array(wasmBinary)}',
     after: '/* Naidan fix: keep the supplied byte view, including its offset, without copying the complete Wasm. */if(file==wasmBinaryFile&&wasmBinary){assert(ArrayBuffer.isView(wasmBinary)&&wasmBinary.BYTES_PER_ELEMENT===1,"Expected Wasm byte view");return wasmBinary}',
   });
+  if (usesWebGpu({ profile })) {
+    // Scope the compatibility facade to this native module. Never patch the
+    // browser's navigator or GPU prototypes, and never edit the supplied Wasm.
+    replace({
+      before: 'var _scriptName=import.meta.url;',
+      after: 'var _scriptName=import.meta.url;var navigator=Module["naidanNavigator"]??globalThis.navigator;',
+    });
+  }
   return { code: transformed.toString(), map: transformed.generateMap({ source: id, includeContent: true, hires: true }) };
 }
 
