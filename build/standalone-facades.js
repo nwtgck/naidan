@@ -1,4 +1,6 @@
 export const STANDALONE_FACADES = [
+  { facadePath: '@/features/stable-diffusion-cpp-browser/use-image-generation', standalonePath: 'src/features/stable-diffusion-cpp-browser/use-image-generation-standalone.ts' },
+  { facadePath: '@/features/stable-diffusion-cpp-browser/worker/client', standalonePath: 'src/features/stable-diffusion-cpp-browser/worker/client-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/runtime/artifacts', standalonePath: 'src/features/llama-cpp-browser/runtime/artifacts-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/runtime/profile-policy', standalonePath: 'src/features/llama-cpp-browser/runtime/profile-policy-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/runtime/detect-profile', standalonePath: 'src/features/llama-cpp-browser/runtime/detect-profile-standalone.ts' },

@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__local_files_only = (): string => "GGUF files only. Each component uses one unsharded file, read by range without copying the whole file into memory. Opening this page does not download models or initialize inference.";

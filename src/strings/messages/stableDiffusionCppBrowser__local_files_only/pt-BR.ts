@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__local_files_only = (): string => "Somente arquivos GGUF, um arquivo não dividido por componente, lido por intervalos sem cópia integral na memória. Abrir a página não baixa modelos nem inicia inferência.";

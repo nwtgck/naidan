@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__companion_files_help = (): string => "Selecciona cada codificador de texto y VAE como un GGUF independiente sin dividir. Los componentes no son fragmentos GGUF. El backend debe admitir sus formatos de tensor.";

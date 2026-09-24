@@ -73,6 +73,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/image-generation-lab': RouteRecordInfo<
+      '/image-generation-lab',
+      '/image-generation-lab',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/settings/': RouteRecordInfo<
       '/settings/',
       '/settings',
@@ -143,6 +150,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/debug/standalone.vue': {
       routes:
         | '/debug/standalone'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/image-generation-lab.vue': {
+      routes:
+        | '/image-generation-lab'
       views:
         | never
       pathParamNames:

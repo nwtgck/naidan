@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__advanced_parameters_help = (): string => "auto는 모델 기본값을 사용합니다. 시드 -1은 무작위입니다. Qwen Image 2.1의 접두사 캐시는 많은 메모리를 사용할 수 있으며, 모델 인수 qwen_image_2_1_prefix_cache=false로 비활성화할 수 있습니다.";

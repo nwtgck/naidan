@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__companion_files_help = (): string => "Wählen Sie Text-Encoder und VAE jeweils als eigene, ungeteilte GGUF-Datei. Komponenten sind keine GGUF-Shards. Das Backend muss die Tensorformate unterstützen.";

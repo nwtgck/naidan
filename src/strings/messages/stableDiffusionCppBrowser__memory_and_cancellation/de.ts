@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Das GPU-Budget garantiert keinen freien Speicher. Wasm32 bleibt unter 4 GiB; für größeren Arbeitsspeicher wählen Sie Wasm64. Jeder Vorgang nutzt einen eigenen Worker, der beim Abbrechen beendet wird.";

@@ -1952,7 +1952,119 @@ import { audioGeneration__reinitialize_runtime_help } from '@/strings/messages/a
 import { audioGeneration__copy_text } from '@/strings/messages/audioGeneration__copy_text/en';
 import { audioGeneration__text_copied } from '@/strings/messages/audioGeneration__text_copied/en';
 import { audioGeneration__copy_failed_select_text } from '@/strings/messages/audioGeneration__copy_failed_select_text/en';
+import { stableDiffusionCppBrowser__image_generation_lab } from '@/strings/messages/stableDiffusionCppBrowser__image_generation_lab/en';
+import { stableDiffusionCppBrowser__experimental_local_workspace } from '@/strings/messages/stableDiffusionCppBrowser__experimental_local_workspace/en';
+import { stableDiffusionCppBrowser__validation_limits } from '@/strings/messages/stableDiffusionCppBrowser__validation_limits/en';
+import { stableDiffusionCppBrowser__local_files_only } from '@/strings/messages/stableDiffusionCppBrowser__local_files_only/en';
+import { stableDiffusionCppBrowser__artifact_not_installed } from '@/strings/messages/stableDiffusionCppBrowser__artifact_not_installed/en';
+import { stableDiffusionCppBrowser__hosted_build_required } from '@/strings/messages/stableDiffusionCppBrowser__hosted_build_required/en';
+import { stableDiffusionCppBrowser__webgpu_required } from '@/strings/messages/stableDiffusionCppBrowser__webgpu_required/en';
+import { stableDiffusionCppBrowser__jspi_unavailable } from '@/strings/messages/stableDiffusionCppBrowser__jspi_unavailable/en';
+import { stableDiffusionCppBrowser__model_and_runtime } from '@/strings/messages/stableDiffusionCppBrowser__model_and_runtime/en';
+import { stableDiffusionCppBrowser__model_layout } from '@/strings/messages/stableDiffusionCppBrowser__model_layout/en';
+import { stableDiffusionCppBrowser__checkpoint } from '@/strings/messages/stableDiffusionCppBrowser__checkpoint/en';
+import { stableDiffusionCppBrowser__separate_components } from '@/strings/messages/stableDiffusionCppBrowser__separate_components/en';
+import { stableDiffusionCppBrowser__model_file } from '@/strings/messages/stableDiffusionCppBrowser__model_file/en';
+import { stableDiffusionCppBrowser__diffusion_file } from '@/strings/messages/stableDiffusionCppBrowser__diffusion_file/en';
+import { stableDiffusionCppBrowser__vae_file } from '@/strings/messages/stableDiffusionCppBrowser__vae_file/en';
+import { stableDiffusionCppBrowser__clip_l_file } from '@/strings/messages/stableDiffusionCppBrowser__clip_l_file/en';
+import { stableDiffusionCppBrowser__clip_g_file } from '@/strings/messages/stableDiffusionCppBrowser__clip_g_file/en';
+import { stableDiffusionCppBrowser__t5_file } from '@/strings/messages/stableDiffusionCppBrowser__t5_file/en';
+import { stableDiffusionCppBrowser__lm_file } from '@/strings/messages/stableDiffusionCppBrowser__lm_file/en';
+import { stableDiffusionCppBrowser__companion_files_help } from '@/strings/messages/stableDiffusionCppBrowser__companion_files_help/en';
+import { stableDiffusionCppBrowser__profile } from '@/strings/messages/stableDiffusionCppBrowser__profile/en';
+import { stableDiffusionCppBrowser__gpu_budget } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget/en';
+import { stableDiffusionCppBrowser__memory_and_cancellation } from '@/strings/messages/stableDiffusionCppBrowser__memory_and_cancellation/en';
+import { stableDiffusionCppBrowser__prompt } from '@/strings/messages/stableDiffusionCppBrowser__prompt/en';
+import { stableDiffusionCppBrowser__negative_prompt } from '@/strings/messages/stableDiffusionCppBrowser__negative_prompt/en';
+import { stableDiffusionCppBrowser__width } from '@/strings/messages/stableDiffusionCppBrowser__width/en';
+import { stableDiffusionCppBrowser__height } from '@/strings/messages/stableDiffusionCppBrowser__height/en';
+import { stableDiffusionCppBrowser__steps } from '@/strings/messages/stableDiffusionCppBrowser__steps/en';
+import { stableDiffusionCppBrowser__guidance } from '@/strings/messages/stableDiffusionCppBrowser__guidance/en';
+import { stableDiffusionCppBrowser__seed } from '@/strings/messages/stableDiffusionCppBrowser__seed/en';
+import { stableDiffusionCppBrowser__generate } from '@/strings/messages/stableDiffusionCppBrowser__generate/en';
+import { stableDiffusionCppBrowser__cancel } from '@/strings/messages/stableDiffusionCppBrowser__cancel/en';
+import { stableDiffusionCppBrowser__cancelled } from '@/strings/messages/stableDiffusionCppBrowser__cancelled/en';
+import { stableDiffusionCppBrowser__loading_runtime } from '@/strings/messages/stableDiffusionCppBrowser__loading_runtime/en';
+import { stableDiffusionCppBrowser__loading_model } from '@/strings/messages/stableDiffusionCppBrowser__loading_model/en';
+import { stableDiffusionCppBrowser__sampling } from '@/strings/messages/stableDiffusionCppBrowser__sampling/en';
+import { stableDiffusionCppBrowser__encoding } from '@/strings/messages/stableDiffusionCppBrowser__encoding/en';
+import { stableDiffusionCppBrowser__check_inputs } from '@/strings/messages/stableDiffusionCppBrowser__check_inputs/en';
+import { stableDiffusionCppBrowser__generated_images } from '@/strings/messages/stableDiffusionCppBrowser__generated_images/en';
+import { stableDiffusionCppBrowser__history_is_temporary } from '@/strings/messages/stableDiffusionCppBrowser__history_is_temporary/en';
+import { stableDiffusionCppBrowser__no_images_yet } from '@/strings/messages/stableDiffusionCppBrowser__no_images_yet/en';
+import { stableDiffusionCppBrowser__download_png } from '@/strings/messages/stableDiffusionCppBrowser__download_png/en';
+import { stableDiffusionCppBrowser__remove } from '@/strings/messages/stableDiffusionCppBrowser__remove/en';
+import { stableDiffusionCppBrowser__diagnostics } from '@/strings/messages/stableDiffusionCppBrowser__diagnostics/en';
+import { stableDiffusionCppBrowser__memory64_unavailable } from '@/strings/messages/stableDiffusionCppBrowser__memory64_unavailable/en';
+import { stableDiffusionCppBrowser__advanced_parameters } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters/en';
+import { stableDiffusionCppBrowser__advanced_parameters_help } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters_help/en';
+import { stableDiffusionCppBrowser__sampler } from '@/strings/messages/stableDiffusionCppBrowser__sampler/en';
+import { stableDiffusionCppBrowser__scheduler } from '@/strings/messages/stableDiffusionCppBrowser__scheduler/en';
+import { stableDiffusionCppBrowser__distilled_guidance } from '@/strings/messages/stableDiffusionCppBrowser__distilled_guidance/en';
+import { stableDiffusionCppBrowser__conditioning_cache } from '@/strings/messages/stableDiffusionCppBrowser__conditioning_cache/en';
+import { stableDiffusionCppBrowser__vae_tiling } from '@/strings/messages/stableDiffusionCppBrowser__vae_tiling/en';
+import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/stableDiffusionCppBrowser__vae_tile_size/en';
+import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/en';
+import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/en';
 export const catalog = {
+  stableDiffusionCppBrowser__memory64_unavailable,
+  stableDiffusionCppBrowser__advanced_parameters,
+  stableDiffusionCppBrowser__advanced_parameters_help,
+  stableDiffusionCppBrowser__sampler,
+  stableDiffusionCppBrowser__scheduler,
+  stableDiffusionCppBrowser__distilled_guidance,
+  stableDiffusionCppBrowser__conditioning_cache,
+  stableDiffusionCppBrowser__vae_tiling,
+  stableDiffusionCppBrowser__vae_tile_size,
+  stableDiffusionCppBrowser__flash_attention,
+  stableDiffusionCppBrowser__model_arguments,
+
+  stableDiffusionCppBrowser__image_generation_lab,
+  stableDiffusionCppBrowser__experimental_local_workspace,
+  stableDiffusionCppBrowser__validation_limits,
+  stableDiffusionCppBrowser__local_files_only,
+  stableDiffusionCppBrowser__artifact_not_installed,
+  stableDiffusionCppBrowser__hosted_build_required,
+  stableDiffusionCppBrowser__webgpu_required,
+  stableDiffusionCppBrowser__jspi_unavailable,
+  stableDiffusionCppBrowser__model_and_runtime,
+  stableDiffusionCppBrowser__model_layout,
+  stableDiffusionCppBrowser__checkpoint,
+  stableDiffusionCppBrowser__separate_components,
+  stableDiffusionCppBrowser__model_file,
+  stableDiffusionCppBrowser__diffusion_file,
+  stableDiffusionCppBrowser__vae_file,
+  stableDiffusionCppBrowser__clip_l_file,
+  stableDiffusionCppBrowser__clip_g_file,
+  stableDiffusionCppBrowser__t5_file,
+  stableDiffusionCppBrowser__lm_file,
+  stableDiffusionCppBrowser__companion_files_help,
+  stableDiffusionCppBrowser__profile,
+  stableDiffusionCppBrowser__gpu_budget,
+  stableDiffusionCppBrowser__memory_and_cancellation,
+  stableDiffusionCppBrowser__prompt,
+  stableDiffusionCppBrowser__negative_prompt,
+  stableDiffusionCppBrowser__width,
+  stableDiffusionCppBrowser__height,
+  stableDiffusionCppBrowser__steps,
+  stableDiffusionCppBrowser__guidance,
+  stableDiffusionCppBrowser__seed,
+  stableDiffusionCppBrowser__generate,
+  stableDiffusionCppBrowser__cancel,
+  stableDiffusionCppBrowser__cancelled,
+  stableDiffusionCppBrowser__loading_runtime,
+  stableDiffusionCppBrowser__loading_model,
+  stableDiffusionCppBrowser__sampling,
+  stableDiffusionCppBrowser__encoding,
+  stableDiffusionCppBrowser__check_inputs,
+  stableDiffusionCppBrowser__generated_images,
+  stableDiffusionCppBrowser__history_is_temporary,
+  stableDiffusionCppBrowser__no_images_yet,
+  stableDiffusionCppBrowser__download_png,
+  stableDiffusionCppBrowser__remove,
+  stableDiffusionCppBrowser__diagnostics,
+
   audioGeneration__preview_result,
   audioGeneration__preview_help,
   audioGeneration__preview_pending,

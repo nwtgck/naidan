@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__advanced_parameters_help = (): string => "auto usa los valores del modelo. La semilla -1 es aleatoria. La caché de prefijos de Qwen Image 2.1 puede ocupar mucha memoria; se desactiva con qwen_image_2_1_prefix_cache=false en los argumentos del modelo.";
