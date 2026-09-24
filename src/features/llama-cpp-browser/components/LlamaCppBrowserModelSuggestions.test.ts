@@ -1,9 +1,10 @@
+import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { discoverRepository, groupModelFiles } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';
-import { installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { installedSelection, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { getDownloadQueue, TEST_ONLY as queueTest } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
@@ -192,5 +193,55 @@ describe('offline-first suggested model UI', () => {
     await wrapper.setProps({ models: [{ ...local, id: `hf.co/${muse.repository}:model-Q8_0.gguf` }] }); await flushPromises();
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
     expect(discoverRepository).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('the original catalog reused for audio', () => {
+  function audioCatalog(): VueWrapper {
+    const view = mount(LlamaCppBrowserModelSuggestions, { props: { models: [], disabled: false, defaultModel: undefined, defaultActionDisabled: false, suggestions: audioModelCatalog, selectionAction: 'select', memoryFilter: 'hide' } });
+    wrappers.push(view); return view;
+  }
+  it('uses the existing disclosure and never fetches on mount, folding, details or quantization changes', async () => {
+    const view = audioCatalog(); await flushPromises();
+    expect(view.findAll('[data-testid="llama-suggestion-heading"]')).toHaveLength(2);
+    expect(view.find('[data-testid="llama-suggestions-memory"]').exists()).toBe(false);
+    for (const toggle of view.findAll('[data-testid="llama-suggestion-details-toggle"]')) await toggle.trigger('click');
+    for (const select of view.findAll('[data-testid="llama-suggestion-quantization"]')) await select.setValue('q8_0');
+    await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
+    await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click'); await flushPromises();
+    expect(discoverRepository).not.toHaveBeenCalled(); expect(downloadRepository).not.toHaveBeenCalled();
+    expect(view.findAll('[role="switch"]')).toHaveLength(0);
+    expect(view.findAll('[data-testid="llama-suggestion-companion-required"]')).toHaveLength(2);
+  });
+  it('selects a locally installed audio model without changing the chat default or contacting its repository', async () => {
+    const hint = audioModelCatalog[0]!.quantizationHints[0];
+    const saved: LocalModel = { id: `hf.co/${hint.repository}:Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf`, name: 'Saved voice', size: 128, importedAt: 1 };
+    const view = audioCatalog(); await view.setProps({ models: [saved] }); await flushPromises();
+    const row = view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"]');
+    // Required companion mode checks actual stored selection, not just a name.
+    vi.mocked(repositoryDirectories).mockResolvedValue([{ id: saved.id, name: saved.name, modelPath: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', projectorPath: 'mmproj-Q8_0.gguf', files: [] }]);
+    await view.setProps({ models: [{ ...saved, importedAt: 2 }] }); await flushPromises();
+    const action = row.find('[data-testid="llama-suggestion-use"]');
+    expect(action.exists()).toBe(true); await action.trigger('click');
+    expect(view.emitted('select')).toEqual([[{ ...saved, importedAt: 2 }]]);
+    expect(view.emitted('selectDefault')).toBeUndefined();
+    expect(discoverRepository).not.toHaveBeenCalled(); expect(downloadRepository).not.toHaveBeenCalled();
+  });
+  it('resolves the main model and required companion only after a user download action', async () => {
+    const quant = audioModelCatalog[0]!.quantizationHints[0];
+    vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.repository, revision, ...groupModelFiles({ files: ['Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf'].map(path => ({ path, size: 128 })) }) });
+    const view = audioCatalog(); await flushPromises();
+    await view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"] [data-testid="llama-suggestion-download"]').trigger('click');
+    await vi.waitFor(() => expect(downloadRepository).toHaveBeenCalledOnce());
+    expect(vi.mocked(downloadRepository).mock.calls[0]![0].selection.files.map(file => file.path)).toEqual(['Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf']);
+  });
+  it('does not start a main-only download if the required companion cannot be found', async () => {
+    const quant = audioModelCatalog[0]!.quantizationHints[0];
+    vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.repository, revision, ...groupModelFiles({ files: [{ path: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', size: 128 }] }) });
+    const view = audioCatalog(); await flushPromises();
+    await view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"] [data-testid="llama-suggestion-download"]').trigger('click');
+    await vi.waitFor(() => expect(getDownloadQueue().jobs.value.some(job => job.status === 'failed')).toBe(true));
+    expect(downloadRepository).not.toHaveBeenCalled();
   });
 });

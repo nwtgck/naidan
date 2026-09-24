@@ -2,8 +2,9 @@
 
 This feature is independent of chat and the Web Speech reading feature. It uses
 shared model storage and the serialized inference worker, but owns its input,
-result, cancellation, and model lifetime. It returns a complete WAV file. It does
-not play partially generated audio or autoplay.
+result, cancellation, and model lifetime. It returns a final WAV file and can
+add explicitly requested intermediate WAV snapshots to page history. Playback
+remains user-controlled; there is no automatic streaming player or autoplay.
 
 ## Layout and form behavior
 
@@ -152,13 +153,21 @@ remains in its existing components. Device file/folder import and runtime settin
 are independent `LlamaCppBrowserModelImport` and `LlamaCppBrowserRuntimeSettings`
 components. Preserve settings-modal behavior when composing them elsewhere.
 
-The manager's optional `catalog` slot provides an explicit repository-inspection
-action and its disabled state. The static `LlamaCppBrowserRepositoryCatalog`
-renders the audio page's two user-selected repository references. Opening the
-page/disclosure is not permission to contact Hugging Face. Check model uses the
-existing inspector, displays the resolved quantization and same-repository
-companion, and still requires the user to press Download. Do not hard-code remote
-file names or bypass download planning, integrity, or storage locks.
+The audio catalog now uses the original `LlamaCppBrowserModelSuggestions` and
+`LlamaCppBrowserModelSuggestion` UI, outside the model/runtime `details`. Its
+custom disclosure has independent state and inert collapsed contents. The shared
+component accepts optional bundled entries and a local-selection action; settings
+continues to use the original chat catalog and default-model action. The older
+repository-link-only catalog is no longer used on this page.
+
+The two Qwen entries use existing explicit Check/Download handlers, the metadata
+session, download queue, pinned plans, and local storage checks. Mounting,
+folding, unfolding, details, quantization changes, and local-inventory refreshes
+never authorize repository requests. There are no remote icons or eager hints.
+Required audio companions are included in resolved plans and cannot be toggled
+off; ambiguous/missing companions fail instead of downloading only the talker.
+File sizes are rounded editorial hints from the repositories, not identities.
+Audio hides the text-catalog memory filter, which is not a TTS runtime guarantee.
 
 Audio choices use the shared `ModelSelector` with an explicit list of stable IDs
 and separate display labels. Searching considers both. Refresh explicitly reloads
@@ -193,15 +202,16 @@ streaming, autoplay, persistence, or lcore modification is introduced.
 
 ## Finish a partial generation, or cancel and discard
 
-`finishSignal` is an independent, optional control signal, not the native abort
-signal. It sends a generation-ID-scoped `finishAudioGeneration` message to the
-same Worker; it never terminates a Worker or arms cancellation's five-second
+`completionSignal` is an independent, optional control signal.
+`cancellationSignal` discards uncaptured output; it alone reaches native abort
+and the cancellation timeout. `completionSignal` sends a generation-ID-scoped
+`finishAudioGeneration` message to the same Worker; it never terminates a Worker or arms cancellation's five-second
 cleanup deadline. The server accepts this control message outside the held
 inference lane, but applies it only to the matching active audio request.
 Other chats, imports, old IDs and future requests are unaffected. Signals and
 late failures are detached/ignored when that request is complete.
 
-The native loop checks `shouldFinish` between complete steps, after yielding to
+The native loop checks `shouldComplete` between complete steps, after yielding to
 queued tasks. Once at least one frame exists, it stops generating additional
 frames, calls the existing upstream output helper (which flushes accumulated
 codes), copies the WAV, and cleans up normally. The result reason is `user-stop`,
@@ -269,3 +279,49 @@ Sources used for this feature boundary:
 - https://www.w3.org/TR/mediastream-recording/
 - https://www.w3.org/TR/webaudio/
 - https://www.w3.org/TR/mediacapture-streams/
+
+
+## Continuing, user-requested audio snapshots
+
+`generateAudio({ input, cancellationSignal, completionSignal, preview })` separates
+cancellation, graceful completion, and repeatable preview intent. AbortSignals are
+one-shot: repeatable previews use a generation-local versioned request source,
+not an AbortSignal that is silently replaced. A pending request survives queuing
+or lazy standalone initialization. The client forwards only generation ID and
+request version, and detaches its listener after completion. The server applies
+requests only to the matching active audio operation and coalesces duplicates.
+
+The implementation uses the existing output helper; it does not modify lcore or
+llama.cpp, patch generated files, or reimplement the model. It continues using the
+pinned 0fc505c5 artifact / upstream b29c606e. Re-review the following timing
+assumptions when updating upstream:
+
+- Qwen's helper flushes every 72 generated code frames. An arbitrary intermediate
+  `get_output` would flush a partially filled block, whose padded frames advance
+  the original decoder's state. Therefore a preview waits until a 72-frame
+  boundary where the helper has already flushed; the getter then only serializes
+  existing accumulated audio. No early tail flush, replay, or KV-state rewind is
+  used. A short utterance may finish before that point and produce only its final
+  result. The user-requested step and delivered step can differ.
+- Pocket accepts exact-length waveform chunks. Its helper may advance through
+  prompt-chunk transitions, so the UI's generated-step count is not a universal
+  conversion into audio duration and does not pretend to count text tokens.
+- Output is cumulative, not only the newest chunk. Copy borrowed WAV bytes before
+  resuming native generation. Transfer one owned copy and await its callback
+  acknowledgment instead of buffering unlimited cross-worker outputs. Capturing
+  has serialization/copy overhead; it does not cancel or restart inference.
+
+Preview outputs have a separate validated `finishReason: 'preview'` contract;
+the final promise cannot masquerade as a preview. Both final and intermediate
+history entries display the actual completed step count separately from the
+requested maximum. Original text/settings are captured once at submission;
+reference audio is still never retained in result history. Already accepted
+previews survive cancellation/failure of the remaining generation. Route exit
+revokes all URLs and ignores late callbacks. There is no autoplay, background
+capture, persistent audio storage, or additional runtime profile.
+
+Source review:
+- https://github.com/ggml-org/llama.cpp/blob/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd-helper-gen.cpp
+- https://github.com/ggml-org/llama.cpp/blob/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/clip.cpp
+- https://huggingface.co/mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF/tree/main
+- https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF/tree/main

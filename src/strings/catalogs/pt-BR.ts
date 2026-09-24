@@ -1,3 +1,10 @@
+import { audioGeneration__preview_result } from '@/strings/messages/audioGeneration__preview_result/pt-BR';
+import { audioGeneration__preview_help } from '@/strings/messages/audioGeneration__preview_help/pt-BR';
+import { audioGeneration__preview_pending } from '@/strings/messages/audioGeneration__preview_pending/pt-BR';
+import { audioGeneration__capture_preview } from '@/strings/messages/audioGeneration__capture_preview/pt-BR';
+import { audioGeneration__captured_steps } from '@/strings/messages/audioGeneration__captured_steps/pt-BR';
+import { llamaCppBrowserDownloads__required_companion_included } from '@/strings/messages/llamaCppBrowserDownloads__required_companion_included/pt-BR';
+import { llamaCppBrowserDownloads__use_this_model } from '@/strings/messages/llamaCppBrowserDownloads__use_this_model/pt-BR';
 import { audioGeneration__invalid_top_p } from '@/strings/messages/audioGeneration__invalid_top_p/pt-BR';
 import { audioGeneration__number_range } from '@/strings/messages/audioGeneration__number_range/pt-BR';
 import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/pt-BR';
@@ -1943,6 +1950,13 @@ import { audioGeneration__copy_text } from '@/strings/messages/audioGeneration__
 import { audioGeneration__text_copied } from '@/strings/messages/audioGeneration__text_copied/pt-BR';
 import { audioGeneration__copy_failed_select_text } from '@/strings/messages/audioGeneration__copy_failed_select_text/pt-BR';
 export const catalog = {
+  audioGeneration__preview_result,
+  audioGeneration__preview_help,
+  audioGeneration__preview_pending,
+  audioGeneration__capture_preview,
+  audioGeneration__captured_steps,
+  llamaCppBrowserDownloads__required_companion_included,
+  llamaCppBrowserDownloads__use_this_model,
   audioGeneration__not_detected_as_audio,
   audioGeneration__checking_local_model_metadata,
   audioGeneration__no_audio_models_detected,

@@ -74,12 +74,14 @@ defineExpose({ prepare, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
 <template>
   <section tw-class="space-y-3" data-testid="audio-reference-library" data-audio-field="reference" :aria-invalid="invalid || undefined" :aria-labelledby="`${id}-label`">
     <h2 :id="`${id}-label`" tw-class="text-sm font-medium">{{ lazyStrings.audioGeneration__reference_voice() }}</h2>
-    <div @dragover.prevent.stop @dragenter.prevent.stop="dragDepth++" @dragleave.prevent.stop="dragDepth = Math.max(0, dragDepth - 1)" @drop.prevent.stop="drop({ event: $event })" data-testid="audio-reference-drop" :tw-class="['rounded-xl border-2 border-dashed p-5 text-center space-y-3', !locked && dragDepth > 0 ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : 'border-gray-300 dark:border-gray-600', { 'opacity-60': locked }]">
-      <UploadIcon tw-class="mx-auto h-6 w-6 text-purple-500" />
-      <p tw-class="text-sm">{{ lazyStrings.audioGeneration__drop_reference_audio() }}</p>
+    <div @dragover.prevent.stop @dragenter.prevent.stop="dragDepth++" @dragleave.prevent.stop="dragDepth = Math.max(0, dragDepth - 1)" @drop.prevent.stop="drop({ event: $event })" data-testid="audio-reference-drop" :tw-class="['flex flex-wrap items-center gap-2 rounded-xl border border-dashed px-3 py-2.5', !locked && dragDepth > 0 ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : 'border-gray-300 dark:border-gray-600', { 'opacity-60': locked }]">
+      <div tw-class="flex min-w-0 grow basis-48 items-center gap-2">
+        <UploadIcon tw-class="h-4 w-4 shrink-0 text-purple-500" />
+        <p tw-class="min-w-0 flex-1 text-xs">{{ lazyStrings.audioGeneration__drop_reference_audio() }}</p>
+      </div>
       <label :for="`${id}-files`" tw-class="sr-only">{{ lazyStrings.audioGeneration__add_reference_files() }}</label>
       <input :id="`${id}-files`" ref="fileInput" type="file" accept="audio/*,.wav,.mp3,.flac,.webm,.ogg,.m4a,.mp4" multiple :disabled="locked" :aria-invalid="invalid || undefined" data-testid="audio-reference" tw-class="sr-only" @change="choose({ event: $event })" />
-      <button type="button" :disabled="locked" @click="fileInput?.click()" data-testid="audio-reference-browse" tw-class="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__add_reference_files() }}</button>
+      <button type="button" :disabled="locked" @click="fileInput?.click()" data-testid="audio-reference-browse" tw-class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__add_reference_files() }}</button>
     </div>
     <div tw-class="flex flex-wrap items-center gap-2">
       <button type="button" :disabled="locked || !recordingSupported" @click="recordingTrimmed = false; recording.start()" data-testid="audio-reference-record" tw-class="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm disabled:opacity-50"><MicIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__record_reference() }}</button>

@@ -1,4 +1,4 @@
-import { audioGenerationResultSchema } from '@/features/audio-generation/types';
+import { audioGenerationResultSchema, audioPreviewEventSchema } from '@/features/audio-generation/types';
 import { generateAudio } from './audio-generation';
 import { workerTransfer } from '@/utils/worker-transport';
 import { probeRuntimeProfiles } from '@/features/llama-cpp-browser/runtime/detect-profile';
@@ -50,7 +50,7 @@ function eventQueue() {
   };
 }
 export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
-  let active: { generationId: number, controller: AbortController, finishAudio?: () => void } | undefined;
+  let active: { generationId: number, controller: AbortController, finishAudio?: () => void, previewAudio?: ({ requestVersion }: { requestVersion: number }) => void } | undefined;
   // Single-file and folder imports must share this lifetime: cancellation is
   // acknowledged only after the importer has closed its streams and rolled back.
   async function importWithCancellation({ generationId, report, operation }: {
@@ -77,12 +77,14 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
   }
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with top-level proxy callbacks.
-    async generateAudio(request, onProgress, onDiagnostic) {
+    async generateAudio(request, onProgress, onDiagnostic, onPreview) {
       const { generationId, ...accepted } = workerAudioCallSchema.parse(request);
       if (active) throw new LlamaCppBrowserError({ code: 'busy' });
-      const controller = new AbortController(); let finishRequested = false;
+      const controller = new AbortController(); let finishRequested = false; let previewVersion = 0;
       active = { generationId, controller, finishAudio: () => {
         finishRequested = true;
+      }, previewAudio: ({ requestVersion }) => {
+        if (onPreview && !finishRequested && !controller.signal.aborted) previewVersion = Math.max(previewVersion, requestVersion);
       } };
       const events = eventQueue();
       const unsubscribe = subscribeDiagnostics({ debug: accepted.debug, listener: ({ diagnostic }) => {
@@ -91,7 +93,18 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       } });
       try {
         const result = audioGenerationResultSchema.parse(await guarded({ operation: () => generateAudio({
-          request: accepted, signal: controller.signal, shouldFinish: () => finishRequested, onProgress: ({ progress }) => {
+          request: accepted, cancellationSignal: controller.signal, shouldComplete: () => finishRequested,
+          preview: onPreview ? {
+            requestedVersion: () => previewVersion,
+            onPreview: async ({ ...event }) => {
+              if (controller.signal.aborted) return;
+              const acceptedEvent = audioPreviewEventSchema.parse(event);
+              // Acknowledge each user-requested copy before continuing. Do not
+              // build an unbounded event queue of large audio buffers.
+              await onPreview(workerTransfer({ value: acceptedEvent, transferables: [acceptedEvent.result.wav.buffer as ArrayBuffer] }));
+            },
+          } : undefined,
+          onProgress: ({ progress }) => {
             events.send({ operation: () => {
               if (!controller.signal.aborted) return onProgress(progress);
             } });
@@ -139,6 +152,14 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     async finishAudioGeneration({ generationId }) {
       const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(generationId);
       if (active?.generationId === id) active.finishAudio?.();
+    },
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Validate the complete untrusted Comlink request, including extra fields.
+    async requestAudioPreview(request) {
+      const { generationId, requestVersion } = z.object({
+        generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        requestVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      }).strict().parse(request);
+      if (active?.generationId === generationId) active.previewAudio?.({ requestVersion });
     },
     // Cancellation intentionally bypasses the store lock held by generation or imports.
     async cancelGeneration({ generationId }) {

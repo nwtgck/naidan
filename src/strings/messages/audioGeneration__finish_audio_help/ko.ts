@@ -1,1 +1,1 @@
-export const audioGeneration__finish_audio_help = (): string => "Finish after a complete step and keep the partial audio. Waveform conversion still takes time. Cancel discards this attempt.";
+export const audioGeneration__finish_audio_help = (): string => "Finish generation and keep audio ends further steps. Cancel and discard drops audio not yet captured. Audio already added to history remains.";

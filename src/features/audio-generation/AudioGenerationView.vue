@@ -7,14 +7,15 @@ import { audioFieldLabel, audioFieldValidationMessage, audioValidationFields } f
 import LlamaCppBrowserManager from '@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, type EngineState, type ErrorCode } from '@/features/llama-cpp-browser/types';
-import { audioGenerationInputSchema, audioGenerationResultSchema, defaultAudioParameters } from './types';
+import { audioGenerationInputSchema, audioGenerationResultSchema, audioGenerationPreviewSchema, defaultAudioParameters } from './types';
+import { createAudioPreviewRequests } from './preview-requests';
 import { validateAudioWav } from './wav';
 import { inspectStoredAudioModel } from './model-detection';
 import { useAudioModels } from './composables/useAudioModels';
 import { captureAudioSettings, useAudioHistory } from './composables/useAudioHistory';
 import AudioHistoryResult from './components/AudioHistoryResult.vue';
 import ModelSelector from '@/components/ModelSelector.vue';
-import LlamaCppBrowserRepositoryCatalog from '@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryCatalog.vue';
+import LlamaCppBrowserModelSuggestions from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue';
 import { audioModelCatalog } from './model-catalog';
 import AudioReferenceInput from './components/AudioReferenceInput.vue';
 
@@ -34,7 +35,9 @@ const debug = ref(false);
 const runtimeReady = ref(false);
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const controller = shallowRef<AbortController>();
-const finishController = shallowRef<AbortController>();
+const completionController = shallowRef<AbortController>();
+const previews = shallowRef<ReturnType<typeof createAudioPreviewRequests>>();
+const previewPending = ref(false);
 const finishing = ref(false);
 const stopping = ref(false);
 const canFinish = computed(() => busy.value && !preparingReference.value && !stopping.value && !finishing.value && state.value.status === 'working' && state.value.progress.phase === 'generating' && state.value.progress.completed > 0);
@@ -150,7 +153,8 @@ async function generate(): Promise<void> {
   }
   const { options: _options, ...input } = accepted.data;
   const request = ++generation; const active = new AbortController(); controller.value = active; stopping.value = false;
-  const finish = new AbortController(); finishController.value = finish; finishing.value = false;
+  const completion = new AbortController(); completionController.value = completion; finishing.value = false;
+  const captures = createAudioPreviewRequests(); previews.value = captures; previewPending.value = false;
   const modelName = models.value.find(entry => entry.id === input.model)!.name;
   const settings = captureAudioSettings({ input: accepted.data, modelName });
   try {
@@ -158,7 +162,16 @@ async function generate(): Promise<void> {
     const reference = await referenceInput.value?.prepare({ signal: active.signal });
     active.signal.throwIfAborted();
     preparingReference.value = false;
-    const result = audioGenerationResultSchema.parse(await llamaCppBrowserService.generateAudio({ input: { ...input, reference }, signal: active.signal, finishSignal: finish.signal }));
+    const result = audioGenerationResultSchema.parse(await llamaCppBrowserService.generateAudio({
+      input: { ...input, reference }, cancellationSignal: active.signal, completionSignal: completion.signal,
+      preview: { requests: captures.requests, onPreview: ({ result: incoming, requestVersion }) => {
+        if (disposed || request !== generation || active.signal.aborted) return;
+        const result = audioGenerationPreviewSchema.parse(incoming);
+        validateAudioWav(result);
+        appendHistory({ result, settings });
+        if (requestVersion >= captures.requests.version) previewPending.value = false;
+      } },
+    }));
     // An RPC may finish after Stop or route unmount. Never publish that old result.
     if (disposed || request !== generation || active.signal.aborted) return;
     validateAudioWav(result);
@@ -171,13 +184,17 @@ async function generate(): Promise<void> {
   } finally {
     if (!disposed && request === generation) {
       if (active.signal.aborted) stopped.value = true;
-      preparingReference.value = false; controller.value = undefined; finishController.value = undefined; stopping.value = false; finishing.value = false;
+      preparingReference.value = false; controller.value = undefined; completionController.value = undefined; previews.value = undefined; previewPending.value = false; stopping.value = false; finishing.value = false;
     }
   }
 }
+function capturePreview(): void {
+  if (!canFinish.value || previewPending.value || !previews.value) return;
+  previewPending.value = true; previews.value.request();
+}
 function finishAudio(): void {
   if (!canFinish.value) return;
-  finishing.value = true; finishController.value?.abort();
+  finishing.value = true; previewPending.value = false; completionController.value?.abort();
 }
 function stop(): void {
   if (!controller.value) return;
@@ -201,16 +218,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <h1 tw-class="flex items-center gap-3 text-2xl font-semibold tracking-tight"><AudioLinesIcon tw-class="h-7 w-7 text-purple-500" />{{ lazyStrings.audioGeneration__audio_generation() }}</h1>
         <p tw-class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__introduction() }}</p>
       </header>
+      <LlamaCppBrowserModelSuggestions :suggestions="audioModelCatalog" :models="models" :disabled="blocked" :default-model="undefined" :default-action-disabled="blocked" selection-action="select" memory-filter="hide" @select="selectModel({ name: $event.name })" />
       <details :open="models.length === 0" tw-class="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5" data-testid="audio-model-manager">
         <summary tw-class="cursor-pointer text-sm font-semibold">{{ lazyStrings.audioGeneration__manage_models_and_runtime() }}</summary>
         <div tw-class="mt-4 max-h-[65dvh] min-h-0 overflow-y-auto overscroll-y-contain space-y-4 pr-2" data-testid="audio-model-manager-scroll">
           <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_setup_help() }}</p>
           <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_support_help() }}</p>
-          <LlamaCppBrowserManager ref="manager" suggestions="none" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ name: $event })" @runtime-ready="runtimeReady = $event">
-            <template #catalog="{ disabled, inspect }">
-              <LlamaCppBrowserRepositoryCatalog :entries="audioModelCatalog" :disabled="disabled" @inspect="inspect({ input: $event })" />
-            </template>
-          </LlamaCppBrowserManager>
+          <LlamaCppBrowserManager ref="manager" suggestions="none" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ name: $event })" @runtime-ready="runtimeReady = $event" />
         </div>
       </details>
       <form ref="form" novalidate @submit.prevent="generate" tw-class="space-y-5">
@@ -221,7 +235,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </ul>
           <code v-if="failure" tw-class="mt-2 block text-xs">{{ failure }}</code>
         </div>
-        <fieldset :disabled="blocked" tw-class="space-y-5 disabled:opacity-60">
+        <fieldset :disabled="blocked" tw-class="min-w-0 space-y-5 disabled:opacity-60">
           <div tw-class="space-y-2">
             <label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__audio_model() }}</label>
             <ModelSelector :input-id="`${id}-model`" :model-value="model || undefined" :models="selectableModelIds" :model-labels="modelLabels" :loading="scanState === 'scanning'" :disabled="blocked" :invalid="invalidFields.includes('model')" :placeholder="lazyStrings.audioGeneration__choose_model()" data-testid="audio-model" data-audio-field="model" @update:model-value="chooseModel({ value: $event })" @refresh="manager?.refresh()" />
@@ -250,7 +264,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <!-- Recording Stop/Discard must remain reachable even if another page's
              shared runtime starts working. Do not put these inside a disabled fieldset. -->
         <AudioReferenceInput ref="referenceInput" :disabled="blocked" :invalid="invalidFields.includes('reference')" @busy="referenceBusy = $event" @changed="invalidFields = []; failure = undefined" />
-        <fieldset :disabled="blocked" tw-class="space-y-5 disabled:opacity-60">
+        <fieldset :disabled="blocked" tw-class="min-w-0 space-y-5 disabled:opacity-60">
           <details tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
             <summary tw-class="cursor-pointer text-sm font-medium">{{ lazyStrings.audioGeneration__advanced_settings() }}</summary>
             <div tw-class="pt-4 space-y-4">
@@ -279,6 +293,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </fieldset>
         <div tw-class="flex flex-wrap items-center gap-3">
           <button type="submit" :disabled="!canGenerate" data-testid="audio-generate" tw-class="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"><AudioLinesIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__generate_audio() }}</button>
+          <button v-if="busy" type="button" :disabled="!canFinish || previewPending" @click="capturePreview" data-testid="audio-preview" tw-class="inline-flex items-center gap-2 rounded-xl border border-purple-300 dark:border-purple-700 px-4 py-2.5 text-sm font-medium text-purple-700 dark:text-purple-300 disabled:opacity-50 disabled:cursor-not-allowed"><Loader2Icon v-if="previewPending" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ lazyStrings.audioGeneration__capture_preview() }}</button>
           <button v-if="busy" type="button" :disabled="!canFinish" @click="finishAudio" data-testid="audio-finish" tw-class="rounded-xl border border-purple-300 dark:border-purple-700 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__finish_and_keep_audio() }}</button>
           <button v-if="busy" type="button" :disabled="stopping" @click="stop" data-testid="audio-stop" tw-class="rounded-xl border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__cancel_and_discard() }}</button>
           <button type="button" :disabled="blocked" @click="restartRuntime" data-testid="audio-restart-runtime" tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"><RefreshCcwIcon :tw-class="['h-4 w-4', { 'animate-spin motion-reduce:animate-none': recovery !== undefined }]" />{{ recovery ? lazyStrings.audioGeneration__reinitializing_runtime() : lazyStrings.audioGeneration__reinitialize_runtime() }}</button>
@@ -286,6 +301,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reinitialize_runtime_help() }}</p>
         <p v-if="busy" role="status" data-testid="audio-progress" tw-class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ progressLabel }}</p>
+        <p v-if="busy" data-testid="audio-preview-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__preview_help() }}</p>
+        <p v-if="previewPending && !finishing && !stopping" role="status" data-testid="audio-preview-pending" tw-class="text-xs text-purple-600 dark:text-purple-400">{{ lazyStrings.audioGeneration__preview_pending() }}</p>
         <p v-if="busy" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__finish_audio_help() }}</p>
         <p v-if="stopped" role="status" data-testid="audio-stopped" tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__generation_stopped() }}</p>
 

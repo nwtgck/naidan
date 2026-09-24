@@ -1,4 +1,4 @@
-import { audioGenerationInputSchema, audioGenerationResultSchema, MAX_REFERENCE_SECONDS, MAX_AUDIO_BYTES, type AudioGenerationResult } from '@/features/audio-generation/types';
+import { audioGenerationInputSchema, audioGenerationResultSchema, audioGenerationPreviewSchema, type AudioPreviewEvent, MAX_REFERENCE_SECONDS, MAX_AUDIO_BYTES, type AudioGenerationResult } from '@/features/audio-generation/types';
 import { validateAudioWav } from '@/features/audio-generation/wav';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError, type Progress } from '@/features/llama-cpp-browser/types';
@@ -15,13 +15,33 @@ export function audioCapabilities({ core, nativeType }: { core: Core, nativeType
   throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
 }
 
+type NativeAudioPreview = {
+  requestedVersion: () => number,
+  onPreview: ({ result, requestVersion }: AudioPreviewEvent) => Promise<void>,
+};
+/** Reviewed public-helper call timing for the pinned b29c606e upstream.
+ * Qwen automatically flushes 72-code-frame blocks. get_output() at that boundary
+ * only serializes accumulated PCM: an arbitrary tail flush would advance decoder
+ * state through padded frames. Pocket supports exact-length waveform chunks.
+ * No native memory offsets, copied model implementation or upstream patch.
+ * Re-review these boundaries when updating the pinned native helper.
+ */
+export function audioPreviewBoundary({ pipeline, frames }: { pipeline: AudioGenerationResult['pipeline'], frames: number }): boolean {
+  if (frames <= 0) return false;
+  switch (pipeline) {
+  case 'qwen3-tts': return frames % 72 === 0;
+  case 'pocket-tts': return true;
+  default: { const exhaustive: never = pipeline; throw new Error(String(exhaustive)); }
+  }
+}
+
 /** The wrapper owns model lifetime even if session preparation itself fails. */
-export async function generateAudio({ request, onProgress, signal, shouldFinish }: {
-  request: WorkerAudioInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, shouldFinish?: () => boolean,
+export async function generateAudio({ request, onProgress, cancellationSignal, shouldComplete, preview }: {
+  request: WorkerAudioInput, onProgress: ({ progress }: { progress: Progress }) => void, cancellationSignal: AbortSignal | undefined, shouldComplete?: () => boolean, preview?: NativeAudioPreview,
 }): Promise<AudioGenerationResult> {
   try {
-    const { core, context, projector } = await prepareAudioSession({ request, contextTokens: request.contextTokens, audioBackend: request.audioBackend, onProgress, signal });
-    return await synthesizeAudio({ core, context, projector, request, onProgress, signal, shouldFinish });
+    const { core, context, projector } = await prepareAudioSession({ request, contextTokens: request.contextTokens, audioBackend: request.audioBackend, onProgress, signal: cancellationSignal });
+    return await synthesizeAudio({ core, context, projector, request, onProgress, cancellationSignal, shouldComplete, preview });
   } finally {
     await releaseSession({ releaseRuntime: false });
   }
@@ -29,9 +49,9 @@ export async function generateAudio({ request, onProgress, signal, shouldFinish 
 
 /** A model-independent transcription of upstream llama-tts's native helper loop.
  * No chat templates, JS token rendering, or model-specific audio graph in Naidan. */
-export async function synthesizeAudio({ core, context, projector, request, onProgress, signal, shouldFinish }: {
+export async function synthesizeAudio({ core, context, projector, request, onProgress, cancellationSignal, shouldComplete, preview }: {
   core: Core, context: bigint, projector: bigint, request: WorkerAudioInput,
-  onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, shouldFinish?: () => boolean,
+  onProgress: ({ progress }: { progress: Progress }) => void, cancellationSignal: AbortSignal | undefined, shouldComplete?: () => boolean, preview?: NativeAudioPreview,
 }): Promise<AudioGenerationResult> {
   // The wire schema also includes transport-only fields; validate the model input separately.
   const { assetBaseURL: _assetBaseURL, ...input } = request;
@@ -51,9 +71,9 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     const pointer = core.utf8({ text }); allocations.push(pointer); return pointer;
   };
   const checkCancelled = (): void => {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    if (cancellationSignal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  const yieldControl = createAudioCooperator({ signal });
+  const yieldControl = createAudioCooperator({ signal: cancellationSignal });
   const checked = async ({ call }: { call: () => Promise<number> }): Promise<number> => {
     checkCancelled();
     await logOperation({ diagnostic: { event: 'operation-start', stage, mediaType: 'audio' } });
@@ -83,7 +103,7 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
       const sampleRate = await api.mtmd_get_audio_sample_rate(projector);
       if (sampleRate <= 0 || await api.mtmd_bitmap_get_n_bytes(speaker) > BigInt(sampleRate * MAX_REFERENCE_SECONDS * 4)) throw new LlamaCppBrowserError({ code: 'audio-reference-invalid' });
     }
-    abortCallback = core.module.addFunction(() => signal?.aborted ? 1 : 0, core.pointerBytes === 8 ? 'ij' : 'ii');
+    abortCallback = core.module.addFunction(() => cancellationSignal?.aborted ? 1 : 0, core.pointerBytes === 8 ? 'ij' : 'ii');
     await api.llama_set_abort_callback(context, BigInt(abortCallback), 0n);
     helper = await api.mtmd_helper_gen_audio_init(context, projector);
     if (!helper) throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
@@ -118,16 +138,50 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     const hiddenOut = alloc({ bytes: core.pointerBytes }); const stopOut = alloc({ bytes: 1 });
     let hidden = await api.llama_get_embeddings_ith(context, -1);
     if (!hidden) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+    const rateOut = alloc({ bytes: 4 }); const dataOut = alloc({ bytes: core.pointerBytes });
+    const lengthOut = alloc({ bytes: core.pointerBytes }); const samplesOut = alloc({ bytes: 8 });
+    // The returned pointer is borrowed and may change on the next output call.
+    // Always copy before resuming generation or crossing the Worker boundary.
+    const readOutput = async () => {
+      stage = 'audio-output';
+      if (await checked({ call: () => api.mtmd_helper_gen_audio_get_output(helper, rateOut, dataOut, lengthOut, samplesOut) }) !== 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      const sampleRate = Number(readAudioScalar({ core, pointer: rateOut, kind: 'i32' }));
+      const samples = Number(readAudioScalar({ core, pointer: samplesOut, kind: 'i64' }));
+      const length = readAudioScalar({ core, pointer: lengthOut, kind: 'size' });
+      const data = readAudioScalar({ core, pointer: dataOut, kind: 'pointer' });
+      if (!data || length <= 44n || samples <= 0) throw new LlamaCppBrowserError({ code: 'audio-output-empty' });
+      if (length > BigInt(MAX_AUDIO_BYTES) || !Number.isSafeInteger(samples)) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      const wav = new Uint8Array(core.bytes({ pointer: data, length }));
+      validateAudioWav({ wav, sampleRate, samples });
+      return { wav, sampleRate, samples };
+    };
+    let deliveredVersion = 0; let lastPreviewSamples = 0;
     let frames = 0; let finishReason: AudioGenerationResult['finishReason'] = 'frame-limit';
     while (frames < accepted.maxFrames) {
       await yieldControl({ force: false });
       // Finish is distinct from cancellation: never interrupt a native frame.
       // Finalize the accumulator normally, including its remaining waveform tail.
-      if (frames > 0 && shouldFinish?.()) {
+      if (frames > 0 && shouldComplete?.()) {
         finishReason = 'user-stop'; break;
       }
       if (await api.llama_memory_seq_pos_max(memory, 0) + 1 >= capacity) {
         finishReason = 'context-limit'; break;
+      }
+      if (preview && audioPreviewBoundary({ pipeline: capabilities.pipeline, frames })) {
+        const requestVersion = preview.requestedVersion();
+        if (requestVersion > deliveredVersion) {
+          const output = await readOutput();
+          if (output.samples > lastPreviewSamples) {
+            const result = audioGenerationPreviewSchema.parse({ ...output, frames, finishReason: 'preview', pipeline: capabilities.pipeline });
+            await preview.onPreview({ result, requestVersion });
+            deliveredVersion = requestVersion; lastPreviewSamples = output.samples;
+            await yieldControl({ force: true });
+            checkCancelled();
+            if (shouldComplete?.()) {
+              finishReason = 'user-stop'; break;
+            }
+          }
+        }
       }
       stage = 'audio-frame';
       // llama_sampler_sample already accepts the token; do not accept it twice.
@@ -145,20 +199,8 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     stage = 'audio-output';
     onProgress({ progress: { phase: 'decoding-audio', completed: 0, total: 0 } });
     await yieldControl({ force: true });
-    const rateOut = alloc({ bytes: 4 }); const dataOut = alloc({ bytes: core.pointerBytes });
-    const lengthOut = alloc({ bytes: core.pointerBytes }); const samplesOut = alloc({ bytes: 8 });
-    if (await checked({ call: () => api.mtmd_helper_gen_audio_get_output(helper, rateOut, dataOut, lengthOut, samplesOut) }) !== 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-    const sampleRate = Number(readAudioScalar({ core, pointer: rateOut, kind: 'i32' }));
-    const samples = Number(readAudioScalar({ core, pointer: samplesOut, kind: 'i64' }));
-    const length = readAudioScalar({ core, pointer: lengthOut, kind: 'size' });
-    const data = readAudioScalar({ core, pointer: dataOut, kind: 'pointer' });
-    if (!frames || !data || length <= 44n || samples <= 0) throw new LlamaCppBrowserError({ code: 'audio-output-empty' });
-    if (length > BigInt(MAX_AUDIO_BYTES) || !Number.isSafeInteger(samples)) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-    // Native output is borrowed until the helper is freed/reset. Own the copy
-    // before cleanup and before crossing the worker boundary.
-    const wav = new Uint8Array(core.bytes({ pointer: data, length }));
-    validateAudioWav({ wav, sampleRate, samples });
-    return audioGenerationResultSchema.parse({ wav, sampleRate, samples, frames, finishReason, pipeline: capabilities.pipeline });
+    if (!frames) throw new LlamaCppBrowserError({ code: 'audio-output-empty' });
+    return audioGenerationResultSchema.parse({ ...await readOutput(), frames, finishReason, pipeline: capabilities.pipeline });
   } catch (error) {
     logFailure({ stage, error }); throw error;
   } finally {

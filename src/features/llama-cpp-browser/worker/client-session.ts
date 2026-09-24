@@ -1,4 +1,4 @@
-import { audioGenerationResultSchema } from '@/features/audio-generation/types';
+import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreviewEvent } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
@@ -184,44 +184,65 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         acceptingEvents = false;
       }
     },
-    generateAudio: async ({ request, onProgress, signal, finishSignal }) => {
+    generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
       const accepted = workerAudioCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true; let started = false;
       const finish = (): void => {
-        if (started && acceptingEvents && !disposed && !signal?.aborted) {
+        if (started && acceptingEvents && !disposed && !cancellationSignal?.aborted) {
           void remote.finishAudioGeneration({ generationId: accepted.generationId }).catch(() => {
             if (acceptingEvents && !disposed) dispose();
           });
         }
       };
-      // This signal requests a normal partial result. It never arms the abort
+      // The completion signal requests a normal partial result. It never arms the abort
       // timeout, terminates the Worker, or reaches the native abort callback.
-      finishSignal?.addEventListener('abort', finish, { once: true });
+      completionSignal?.addEventListener('abort', finish, { once: true });
+      let sentVersion = 0; let deliveredVersion = 0;
+      const requestPreview = (): void => {
+        if (!started || !acceptingEvents || disposed || cancellationSignal?.aborted || completionSignal?.aborted || !preview) return;
+        const requestVersion = preview.requests.version;
+        if (requestVersion <= sentVersion) return;
+        sentVersion = requestVersion;
+        void remote.requestAudioPreview({ generationId: accepted.generationId, requestVersion }).catch(() => {
+          // A late failure for a completed request must not dispose a new owner.
+          if (acceptingEvents && !disposed) dispose();
+        });
+      };
+      const unsubscribePreview = preview?.requests.subscribe({ listener: requestPreview });
       try {
         const result = await invoke({ call: () => {
           const pending = remote.generateAudio(accepted,
             workerProxy({ value: ({ ...event }) => {
-              if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+              if (acceptingEvents && !disposed && !cancellationSignal?.aborted) onProgress({ progress: progressSchema.parse(event) });
             } }),
             workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
-              if (!acceptingEvents || disposed || signal?.aborted) return;
+              if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
               debugEnabled = accepted.debug === 'on';
               const checkpoint = diagnosticSchema.parse(diagnostic);
               if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
               if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
               if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
               if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-            } }));
+            } }), preview ? workerProxy({ value: async ({ ...event }: AudioPreviewEvent) => {
+              if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+              const acceptedEvent = audioPreviewEventSchema.parse(event);
+              if (acceptedEvent.requestVersion <= deliveredVersion) return;
+              if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+              deliveredVersion = acceptedEvent.requestVersion;
+              await preview.onPreview(acceptedEvent);
+            } }) : undefined);
           started = true;
-          if (finishSignal?.aborted) finish();
+          if (completionSignal?.aborted) finish();
+          requestPreview();
           return pending;
-        }, signal, onAbort: () => {
+        }, signal: cancellationSignal, onAbort: () => {
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
         }, abortTimeoutMs: 5000 });
         return audioGenerationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
-        finishSignal?.removeEventListener('abort', finish);
+        completionSignal?.removeEventListener('abort', finish);
+        unsubscribePreview?.();
       }
     },
     canReuse: () => !disposed,

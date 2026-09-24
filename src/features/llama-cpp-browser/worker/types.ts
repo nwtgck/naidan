@@ -1,4 +1,5 @@
-import { audioGenerationInputSchema, type AudioGenerationInput, type AudioGenerationResult } from '@/features/audio-generation/types';
+import type { AudioPreviewDelivery } from '@/features/audio-generation/preview-requests';
+import { audioGenerationInputSchema, type AudioPreviewEvent, type AudioGenerationInput, type AudioGenerationResult } from '@/features/audio-generation/types';
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { z } from 'zod';
@@ -20,12 +21,13 @@ export type WorkerAudioCall = z.infer<typeof workerAudioCallSchema>;
 
 export interface LlamaCppWorkerApi {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  generateAudio(request: WorkerAudioCall, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<AudioGenerationResult>;
+  generateAudio(request: WorkerAudioCall, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onPreview?: WorkerProxy<({ result, requestVersion }: AudioPreviewEvent) => Promise<void>>): Promise<AudioGenerationResult>;
   probeProfiles(): Promise<ProfileCapabilities>;
   verifyStorage({ probeId }: { probeId: string }): Promise<boolean>;
   release(): Promise<void>;
   cancelGeneration({ generationId }: { generationId: number }): Promise<void>;
   finishAudioGeneration({ generationId }: { generationId: number }): Promise<void>;
+  requestAudioPreview({ generationId, requestVersion }: { generationId: number, requestVersion: number }): Promise<void>;
   listModels(): Promise<LocalModel[]>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
   importModel(request: { file: File, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
@@ -36,7 +38,7 @@ export interface LlamaCppWorkerApi {
   generate(request: WorkerGenerateCall, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
-  generateAudio({ request, onProgress, signal, finishSignal }: { request: AudioGenerationInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, finishSignal?: AbortSignal }): Promise<AudioGenerationResult>;
+  generateAudio({ request, onProgress, cancellationSignal, completionSignal, preview }: { request: AudioGenerationInput, onProgress: ({ progress }: { progress: Progress }) => void, cancellationSignal: AbortSignal | undefined, completionSignal?: AbortSignal, preview?: AudioPreviewDelivery }): Promise<AudioGenerationResult>;
   subscribeDisposed({ listener }: { listener: () => void }): () => void;
   probeProfiles({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;
   canReuse(): boolean;

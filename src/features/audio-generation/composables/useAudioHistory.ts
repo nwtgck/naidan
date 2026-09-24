@@ -1,5 +1,5 @@
 import { computed, onScopeDispose, shallowRef } from 'vue';
-import type { AudioGenerationInput, AudioGenerationResult } from '@/features/audio-generation/types';
+import type { AudioGenerationInput, AudioHistoryOutput } from '@/features/audio-generation/types';
 
 export type AudioHistorySettings = Omit<AudioGenerationInput, 'reference'> & { modelName: string };
 export type AudioHistoryEntry = {
@@ -7,7 +7,7 @@ export type AudioHistoryEntry = {
   createdAt: number,
   url: string,
   bytes: number,
-  result: Omit<AudioGenerationResult, 'wav'>,
+  result: Omit<AudioHistoryOutput, 'wav'>,
   settings: AudioHistorySettings,
 };
 /** Capture before awaiting generation. In particular, never retain a reference
@@ -22,7 +22,7 @@ export function useAudioHistory() {
   const entries = shallowRef<readonly AudioHistoryEntry[]>([]);
   const totalBytes = computed(() => entries.value.reduce((sum, entry) => sum + entry.bytes, 0));
   let sequence = 0;
-  function append({ result, settings }: { result: AudioGenerationResult, settings: AudioHistorySettings }): void {
+  function append({ result, settings }: { result: AudioHistoryOutput, settings: AudioHistorySettings }): void {
     const { wav, ...metadata } = result;
     // The URL owns the Blob. Do not also retain a full WAV Uint8Array per entry.
     const url = URL.createObjectURL(new Blob([new Uint8Array(wav)], { type: 'audio/wav' }));

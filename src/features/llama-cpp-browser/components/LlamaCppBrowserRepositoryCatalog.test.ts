@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h } from 'vue';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
+// This generic slot test retains its independent repository-link fixture.
+// The audio page now uses the original model-suggestions catalog instead.
+const repositoryCatalog = [
+  { name: 'Qwen3-TTS 0.6B Base', input: 'https://huggingface.co/mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF', url: 'https://huggingface.co/mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF' },
+  { name: 'Qwen3-TTS 1.7B Base · Q4_K_M', input: 'hf.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF:Q4_K_M', url: 'https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF' },
+] as const;
 import { discoverRepository, groupModelFiles, parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';
 import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
@@ -32,7 +37,7 @@ function render(): VueWrapper {
   wrapper = mount(LlamaCppBrowserManager, {
     props: { suggestions: 'none' },
     slots: { catalog: ({ disabled, inspect }: { disabled: boolean, inspect: ({ input }: { input: string }) => Promise<void> }) =>
-      h(LlamaCppBrowserRepositoryCatalog, { entries: audioModelCatalog, disabled, onInspect: input => {
+      h(LlamaCppBrowserRepositoryCatalog, { entries: repositoryCatalog, disabled, onInspect: input => {
         void inspect({ input });
       } }) },
   });
@@ -59,7 +64,7 @@ describe('reusable repository catalog and shared model manager', () => {
     const view = render(); await flushPromises();
     const rows = view.findAll('[data-testid="llama-repository-catalog-entry"]');
     expect(rows).toHaveLength(2);
-    expect(rows.map(row => row.get('a').attributes('href'))).toEqual(audioModelCatalog.map(entry => entry.url));
+    expect(rows.map(row => row.get('a').attributes('href'))).toEqual(repositoryCatalog.map(entry => entry.url));
     expect(discoverRepository).not.toHaveBeenCalled(); expect(downloadRepository).not.toHaveBeenCalled();
     expect(view.find('[data-testid="llama-cpp-browser-file"]').exists()).toBe(true);
     expect(view.find('[data-testid="llama-cpp-browser-profile"]').exists()).toBe(true);
@@ -67,15 +72,15 @@ describe('reusable repository catalog and shared model manager', () => {
   it.each([0, 1])('prepares source %i through the shared inspector and includes its companion only on explicit download', async index => {
     const view = render(); await flushPromises();
     await view.findAll('[data-testid="llama-repository-catalog-inspect"]')[index]!.trigger('click'); await flushPromises();
-    expect(discoverRepository).toHaveBeenCalledWith(expect.objectContaining({ input: audioModelCatalog[index]!.input }));
-    expect(view.get<HTMLInputElement>('[data-testid="llama-hf-repository"]').element.value).toBe(audioModelCatalog[index]!.input);
+    expect(discoverRepository).toHaveBeenCalledWith(expect.objectContaining({ input: repositoryCatalog[index]!.input }));
+    expect(view.get<HTMLInputElement>('[data-testid="llama-hf-repository"]').element.value).toBe(repositoryCatalog[index]!.input);
     expect(view.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toContain('Q4_K_M');
     expect(view.get<HTMLSelectElement>('[data-testid="llama-hf-projector"]').element.value).toBe(families[index]!.projector);
     expect(downloadRepository).not.toHaveBeenCalled();
     await view.get('[data-testid="llama-hf-download"]').trigger('click'); await flushPromises();
     expect(downloadRepository).toHaveBeenCalledOnce();
     expect(vi.mocked(downloadRepository).mock.calls[0]![0].selection).toEqual({
-      repository: parseRepository({ input: audioModelCatalog[index]!.input }).repository, revision,
+      repository: parseRepository({ input: repositoryCatalog[index]!.input }).repository, revision,
       files: [{ path: `${families[index]!.name}.Q4_K_M.gguf`, size: 128 }, { path: families[index]!.projector, size: 128 }],
     });
   });

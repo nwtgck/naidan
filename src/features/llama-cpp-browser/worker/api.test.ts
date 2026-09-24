@@ -275,7 +275,7 @@ describe('audio RPC ownership', () => {
   it('targets audio cancellation by its ID and prevents chat/audio overlap', async () => {
     const gate = deferred(); let signal: AbortSignal | undefined;
     calls.audio.mockImplementationOnce(async args => {
-      signal = args.signal; await gate.promise; return audioResult();
+      signal = args.cancellationSignal; await gate.promise; return audioResult();
     });
     const api = createWorkerApi(); const pending = api.generateAudio(audioRequest({ generationId: 7 }), () => {}, () => {});
     await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
@@ -307,14 +307,14 @@ describe('request-scoped audio finishing', () => {
     });
     const api = createWorkerApi(); const pending = api.generateAudio(audioRequest({ generationId: 71 }), () => {}, () => {});
     await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
-    const operation = calls.audio.mock.calls[0]![0]; expect(operation.shouldFinish?.()).toBe(false);
-    await api.finishAudioGeneration({ generationId: 70 }); expect(operation.shouldFinish?.()).toBe(false);
-    await api.finishAudioGeneration({ generationId: 71 }); expect(operation.shouldFinish?.()).toBe(true);
-    expect(operation.signal?.aborted).toBe(false);
+    const operation = calls.audio.mock.calls[0]![0]; expect(operation.shouldComplete?.()).toBe(false);
+    await api.finishAudioGeneration({ generationId: 70 }); expect(operation.shouldComplete?.()).toBe(false);
+    await api.finishAudioGeneration({ generationId: 71 }); expect(operation.shouldComplete?.()).toBe(true);
+    expect(operation.cancellationSignal?.aborted).toBe(false);
     gate.resolve(); expect(await pending).toMatchObject({ finishReason: 'user-stop' });
     await api.finishAudioGeneration({ generationId: 71 });
     await api.generateAudio(audioRequest({ generationId: 72 }), () => {}, () => {});
-    expect(calls.audio.mock.calls[1]![0].shouldFinish?.()).toBe(false);
+    expect(calls.audio.mock.calls[1]![0].shouldComplete?.()).toBe(false);
   });
   it('does not finish or cancel a chat operation, including when its ID matches', async () => {
     const gate = deferred(); calls.generate.mockImplementationOnce(async () => {
@@ -329,5 +329,31 @@ describe('request-scoped audio finishing', () => {
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid finish request ID %s', async generationId => {
     await expect(createWorkerApi().finishAudioGeneration({ generationId })).rejects.toThrow();
     expect(calls.audio).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('preview control isolation', () => {
+  it('targets only the owning audio operation, coalesces requests and keeps its lane until final output', async () => {
+    const gate = Promise.withResolvers<void>(); calls.audio.mockImplementationOnce(async () => {
+      await gate.promise; return audioResult();
+    });
+    const api = createWorkerApi(); const onPreview = vi.fn(async () => {});
+    const pending = api.generateAudio(audioRequest({ generationId: 101 }), () => {}, () => {}, onPreview);
+    await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
+    const operation = calls.audio.mock.calls[0]![0];
+    await api.requestAudioPreview({ generationId: 100, requestVersion: 9 }); expect(operation.preview?.requestedVersion()).toBe(0);
+    await api.requestAudioPreview({ generationId: 101, requestVersion: 2 });
+    await api.requestAudioPreview({ generationId: 101, requestVersion: 1 }); expect(operation.preview?.requestedVersion()).toBe(2);
+    await operation.preview!.onPreview({ requestVersion: 2, result: { ...audioResult(), frames: 72, finishReason: 'preview' } });
+    expect(onPreview).toHaveBeenCalledOnce(); expect(operation.cancellationSignal?.aborted).toBe(false); expect(operation.shouldComplete?.()).toBe(false);
+    await expect(api.generateAudio(audioRequest({ generationId: 102 }), () => {}, () => {})).rejects.toThrow('busy');
+    await api.finishAudioGeneration({ generationId: 101 }); await api.requestAudioPreview({ generationId: 101, requestVersion: 3 });
+    expect(operation.preview?.requestedVersion()).toBe(2); gate.resolve(); await pending;
+    await api.requestAudioPreview({ generationId: 101, requestVersion: 4 });
+    expect(operation.preview?.requestedVersion()).toBe(2);
+  });
+  it.each([0, -1, 1.5, Number.NaN])('rejects malformed request version %s before applying intent', async requestVersion => {
+    await expect(createWorkerApi().requestAudioPreview({ generationId: 1, requestVersion })).rejects.toThrow();
   });
 });

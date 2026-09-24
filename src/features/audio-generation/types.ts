@@ -36,6 +36,14 @@ export const audioGenerationResultSchema = z.object({
   pipeline: z.enum(['qwen3-tts', 'pocket-tts']),
 }).strict();
 export type AudioGenerationResult = z.infer<typeof audioGenerationResultSchema>;
+export const audioGenerationPreviewSchema = audioGenerationResultSchema.extend({ finishReason: z.literal('preview') }).strict();
+export type AudioGenerationPreview = z.infer<typeof audioGenerationPreviewSchema>;
+export type AudioHistoryOutput = AudioGenerationResult | AudioGenerationPreview;
+export const audioPreviewEventSchema = z.object({
+  requestVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  result: audioGenerationPreviewSchema,
+}).strict();
+export type AudioPreviewEvent = z.infer<typeof audioPreviewEventSchema>;
 export type AudioBackend = z.infer<typeof audioBackendSchema>;
 
 export function defaultAudioParameters(): Omit<AudioGenerationInput, 'model' | 'text' | 'reference' | 'options' | 'debug'> {
