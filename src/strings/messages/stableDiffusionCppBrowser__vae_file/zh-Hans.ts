@@ -1,2 +1,1 @@
-// English fallback for this experimental workspace.
-export const stableDiffusionCppBrowser__vae_file = (): string => "Image decoder (VAE), optional";
+export const stableDiffusionCppBrowser__vae_file = (): string => "图像解码器（VAE）";

@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_file_notice = (): string => "Solo se descargan los pesos elegidos. Se verifica SHA-256 de la revisión fijada durante la transferencia, sin dividir ni convertir archivos. Los existentes se verifican y reutilizan, nunca se sobrescriben sin aviso. Revise las condiciones de cada editor.";

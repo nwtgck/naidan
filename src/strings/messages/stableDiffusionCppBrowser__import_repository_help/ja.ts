@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__import_repository_help = (): string => "手元のリポジトリフォルダも追加できます。内部パスを維持してmodels/userに保存します。拡散モデル・画像デコーダー・テキストエンコーダーが別フォルダなら、何回かに分けて追加してください。追加するたびにuserとHugging Faceの保存先から構成部品を探します。Gitの履歴は保存しません。";

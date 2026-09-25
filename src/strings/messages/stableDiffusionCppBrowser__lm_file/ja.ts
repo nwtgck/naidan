@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__lm_file = (): string => "その他のテキストエンコーダー（省略可）";
+export const stableDiffusionCppBrowser__lm_file = (): string => "テキストエンコーダー（言語モデル）";

@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__vae_file = (): string => "画像デコーダー（VAE、省略可）";
+export const stableDiffusionCppBrowser__vae_file = (): string => "画像デコーダー（VAE）";

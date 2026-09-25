@@ -1,2 +1,1 @@
-// English fallback for this experimental workspace.
-export const stableDiffusionCppBrowser__gpu_budget = (): string => "GPU memory budget (MiB)";
+export const stableDiffusionCppBrowser__gpu_budget = (): string => "Meta de memória de trabalho da GPU (MiB)";

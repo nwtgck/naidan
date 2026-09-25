@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__gpu_budget_help = (): string => "먼저 2048 MiB(2 GiB)로 시도하세요. stable-diffusion.cpp가 가중치와 작업 버퍼를 단계적으로 배치하는 예산이며 모델 파일 크기 제한이 아닙니다. 각 실행 구간이 들어가면 더 큰 모델도 가능합니다. 너무 작으면 전송 증가나 실패, 너무 크면 메모리 부족이 발생할 수 있습니다. 브라우저 전체의 상한이나 GPU 여유 메모리 측정값이 아닙니다. Wasm32는 4096 MiB 미만이어야 합니다.";

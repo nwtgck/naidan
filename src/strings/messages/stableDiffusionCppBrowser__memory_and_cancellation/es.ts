@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "El presupuesto GPU no garantiza memoria física disponible. Wasm32 se limita a menos de 4 GiB; usa Wasm64 para más memoria de trabajo. Cada operación usa un Worker que se termina al cancelar.";
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Los archivos se leen por rangos sin dividirlos. Cada generación usa un Worker dedicado; cancelar lo termina. La memoria se ajusta en la configuración avanzada.";

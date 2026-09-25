@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "The GPU budget is not a physical-memory guarantee. Wasm32 accounting stays below 4 GiB; choose Wasm64 when larger working memory is needed. Each operation owns a Worker; cancellation terminates it.";
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Files are read in ranges without re-splitting. Each generation uses a dedicated Worker; cancellation terminates it. Memory staging can be adjusted in advanced settings.";

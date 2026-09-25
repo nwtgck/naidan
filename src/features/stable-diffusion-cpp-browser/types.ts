@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validModelPath } from './logic/model-path';
 import { profileOptions, samplerOptions, schedulerOptions } from './form-options';
 
 export const profileSchema = z.enum(profileOptions);
@@ -52,11 +53,29 @@ export const parametersSchema = z.object({
 
 });
 export const modelSlotSchema = z.enum(['model', 'diffusion', 'vae', 'clipL', 'clipG', 't5', 'lm']);
+const localFileSchema = z.custom<File>(value => typeof File !== 'undefined' && value instanceof File && Number.isSafeInteger(value.size) && value.size >= 8, 'Choose a local model weight or index file');
+const relativePathSchema = z.string().refine(path => validModelPath({ path }));
 export const modelFileSchema = z.object({
   slot: modelSlotSchema,
-  file: z.custom<File>(value => typeof File !== 'undefined' && value instanceof File && Number.isSafeInteger(value.size) && value.size >= 24 && /\.gguf$/i.test(value.name) && !/-[0-9]{5}-of-[0-9]{5}\.gguf$/i.test(value.name), 'Choose one complete, unsharded GGUF per component'),
+  file: localFileSchema,
+  // Relative paths preserve source filenames and index references. Each role
+  // receives its own mount root, so identically named files cannot collide.
+  path: relativePathSchema.optional(),
+  companions: z.array(z.object({ path: relativePathSchema, file: localFileSchema })).max(1024).optional(),
+}).superRefine((model, ctx) => {
+  const paths = [model.path ?? model.file.name, ...(model.companions ?? []).map(file => file.path)];
+  const unique = new Set(paths);
+  if (unique.size !== paths.length || paths.some(path => !validModelPath({ path }))) ctx.addIssue({ code: 'custom', message: 'Model paths must be safe and unique' });
+  for (const path of paths) {
+    const parts = path.split('/'); parts.pop();
+    while (parts.length) {
+      if (unique.has(parts.join('/'))) ctx.addIssue({ code: 'custom', message: 'Model file/directory path conflict' });
+      parts.pop();
+    }
+  }
 });
 export const requestSchema = z.object({
+  debug: z.enum(['off', 'on']).optional(),
   artifact: artifactSchema,
   // The application supplies its own base, never a model-controlled URL.
   baseUrl: z.string().url(),

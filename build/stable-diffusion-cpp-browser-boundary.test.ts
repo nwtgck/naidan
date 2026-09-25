@@ -25,7 +25,7 @@ async function bundleView({ mode, entrySource, injectImageAsset }: {
       if (id === '\0virtual:image-view') return entrySource ?? "export { default } from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationLab.vue';";
       // Locale packaging is tested elsewhere. Keep this test focused on actual
       // Vue, facade, runtime, Worker and Vite output dependencies.
-      if (id === '\0virtual:image-strings') return 'export const lazyStrings = new Proxy({}, { get(_target, key) { return () => String(key); } });';
+      if (id === '\0virtual:image-strings') return 'export const lazyStrings = new Proxy({}, { get(_target, key) { return () => String(key); } }); export const ensureStrings = lazyStrings;';
       return undefined;
     },
     buildStart() {
@@ -64,12 +64,14 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     const local = [...new Set(modules.filter(id => id.includes('/' + feature)).map(id => id.slice(id.indexOf(feature) + feature.length).split('?')[0]))].sort();
-    expect(local).toEqual(['components/ImageGenerationLab.vue', 'form-options.ts', 'form.ts', 'use-image-generation-standalone.ts']);
+    expect(local).toEqual(['components/ImageGenerationLab.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'form-options.ts', 'form.ts', 'library-standalone.ts', 'model-recipes.ts', 'use-image-generation-standalone.ts']);
     expect(workerModules).toEqual([]);
     expect(Object.keys(files).some(name => name.startsWith('stable-diffusion-cpp-runtime/') || /\.wasm(\.|$)/.test(name))).toBe(false);
     const code = Object.values(files).map(file => file.type === 'chunk' ? file.code : '').join('\n');
     expect(code).toContain('image-generation-lab');
     expect(code).toContain('hosted_build_required');
+    expect(code).toContain('image-model-catalog');
+    expect(code).not.toContain('navigator.storage');
     expect(code).not.toContain('FileReaderSync');
     expect(code).not.toContain('new Worker');
     expect(code).not.toContain('WebAssembly.validate');
@@ -80,8 +82,10 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'hosted', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     expect(modules.some(id => id.endsWith('/use-image-generation-hosted.ts'))).toBe(true);
+    expect(modules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(true);
+    expect(modules.some(id => id.endsWith('/diagnostics.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/use-image-generation-standalone.ts'))).toBe(false);
-    for (const name of ['entry.ts', 'session.ts', 'core-loader.ts', 'gguf-file.ts']) {
+    for (const name of ['entry.ts', 'session.ts', 'core-loader.ts', 'gguf-file.ts', 'gpu-diagnostics.ts']) {
       expect(workerModules.some(id => id.endsWith('/stable-diffusion-cpp-browser/worker/' + name)), name).toBe(true);
     }
   }, 60_000);
@@ -92,7 +96,7 @@ describe('hosted-only bicore image boundary', () => {
   it('rejects accidentally emitted image binaries even with the correct facade', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: true })).rejects.toThrow('Image runtime asset');
   }, 60_000);
-  it.each(['worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts'])('guards %s including module queries', relative => {
+  it.each(['worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'diagnostics.ts', 'logic/catalog-download.ts'])('guards %s including module queries', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).toThrow('Hosted image implementation');
   });
 });

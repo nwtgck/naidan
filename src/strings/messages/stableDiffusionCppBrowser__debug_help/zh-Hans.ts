@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__debug_help = (): string => "与 llama.cpp browser 一样，详细日志按每次生成设置，不与其他聊天的开关联动。请在生成前启用，以记录内部日志、张量类型、文件读取和 GPU 活动。运行中、中止或失败后均可复制或保存。Worker 没有通知不代表已卡死。提示词及令牌输出会被抑制，但可能保留文件名等技术信息，分享前请检查。不会上传日志。";

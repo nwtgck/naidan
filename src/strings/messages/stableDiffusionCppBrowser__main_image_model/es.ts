@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__main_image_model = (): string => "Modelo de imagen";

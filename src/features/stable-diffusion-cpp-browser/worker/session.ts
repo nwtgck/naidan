@@ -1,6 +1,8 @@
+import type { ImageDiagnosticInput, createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import type { Request, Progress, ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Core, HostHelpers } from './core-types';
-import { createGgufFileSource, type SyncBlobReader } from './gguf-file';
+import { createModelFileSource, type SyncBlobReader } from './gguf-file';
+import { validateModelMounts } from './model-mounts';
 
 const pathFields = {
   model: 'model_path', diffusion: 'diffusion_model_path', vae: 'vae_path',
@@ -8,11 +10,12 @@ const pathFields = {
 } satisfies Record<ModelSlot, string>;
 
 /** One context per operation is a Naidan policy, not a limitation of the core. */
-export async function runImageGeneration({ core, helpers, request, reader, onProgress, onLog }: {
+export async function runImageGeneration({ core, helpers, request, reader, onProgress, onLog, onDiagnostic }: {
   core: Core, helpers: Pick<HostHelpers, 'mountReadOnlyFile'>, request: Request,
   reader: SyncBlobReader,
   onProgress: ({ event }: { event: Progress }) => void,
-  onLog: ({ message }: { message: string }) => void,
+  onLog: ({ message, level }: { message: string, level?: number }) => void,
+  onDiagnostic?: ReturnType<typeof createImageTrace>['emit'],
 }): Promise<{ pixels: Uint8ClampedArray<ArrayBuffer>, width: number, height: number, modelVersion: string }> {
   if (core.pointerBytes !== 4 && core.pointerBytes !== 8) throw new Error('Unsupported native pointer width');
   const allocations: bigint[] = [];
@@ -25,9 +28,14 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     allocations.push(pointer); return pointer;
   };
   const text = ({ value }: { value: string }) => keep({ pointer: core.utf8(value) });
-  const log = ({ message }: { message: string }) => {
+  const emit = ({ ...event }: ImageDiagnosticInput): void => {
     try {
-      onLog({ message });
+      onDiagnostic?.(event);
+    } catch { /* diagnostic only */ }
+  };
+  const log = ({ message, level }: { message: string, level?: number }) => {
+    try {
+      onLog({ message, level });
     } catch { /* A renderer/listener failure must never unwind native code. */ }
   };
   const notify = ({ event }: { event: Progress }) => {
@@ -40,7 +48,7 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     const logCallback = core.module.addFunction((...args) => {
       try {
         const pointer = args[1];
-        if (pointer !== undefined) log({ message: core.readUtf8(BigInt(pointer), 8192) ?? '' });
+        if (pointer !== undefined) log({ message: core.readUtf8(BigInt(pointer), 8192) ?? '', level: Number(args[0]) });
       } catch { /* Borrowed diagnostic may no longer be readable after a trap. */ }
     }, 'vipp');
     callbacks.push(logCallback);
@@ -54,12 +62,40 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     await core.api.sd_set_progress_callback(BigInt(progressCallback), 0n);
     core.module.FS.mkdir('/models');
     const paths = new Map<ModelSlot, string>();
-    for (const { slot, file } of request.models) {
-      const path = '/models/' + slot + '.gguf';
-      const source = createGgufFileSource({ file, reader });
-      mounts.push(helpers.mountReadOnlyFile(core, path, source, { maxChunkBytes: 8 * 1024 * 1024 }));
-      paths.set(slot, path);
-      log({ message: `Mounted ${slot}: ${file.size} bytes, caller-owned random access (no GGUF split)` });
+    const directories = new Set(['/models']);
+    const capabilities = core.module._sdc_model_io_capabilities?.() ?? 0;
+    for (const input of request.models) {
+      const { slot, file } = input;
+      emit({ event: 'start', stage: 'model-header', message: undefined, fields: { slot, bytes: file.size } });
+      const plan = await validateModelMounts({ input, reader, capabilities });
+      emit({ event: 'file-summary', stage: 'model-header', message: 'File tensor types are source metadata, not proof of CPU/GPU placement', fields: { slot, path: plan.path.slice(0, 512), members: plan.files.length, ...plan.summary } });
+      const root = '/models/' + slot + '/';
+      for (const entry of plan.files) {
+        const path = root + entry.path;
+        const parts = path.split('/').slice(1, -1); let parent = '';
+        for (const part of parts) {
+          parent += '/' + part;
+          if (!directories.has(parent)) {
+            core.module.FS.mkdir(parent); directories.add(parent);
+          }
+        }
+        const source = createModelFileSource({ file: entry.file, reader });
+        let reads = 0, bytes = 0, maxOffset = 0, readMs = 0, reportedAt = 0;
+        mounts.push(helpers.mountReadOnlyFile(core, path, { size: source.size,
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- External filesystem range-reader signature.
+          read(destination, offset) {
+            const began = performance.now(); const count = source.read(destination, offset);
+            reads++; bytes += count; maxOffset = Math.max(maxOffset, offset); readMs += performance.now() - began;
+            if (request.debug === 'on' && (reads === 1 || performance.now() - reportedAt > 1000)) {
+              reportedAt = performance.now();
+              emit({ event: 'file-read', stage: 'generation', message: undefined, fields: { slot, path: entry.path.slice(0, 512), reads, bytes, maxOffset, readMs, fileBytes: source.size } });
+            }
+            return count;
+          },
+        }, { maxChunkBytes: 8 * 1024 * 1024 }));
+      }
+      paths.set(slot, root + plan.path);
+      log({ message: `Mounted ${slot}: ${file.size} bytes; original paths, bounded random access` });
     }
     const ctxParams = keep({ pointer: core.allocRecord('sd_ctx_params_t') });
     await core.api.sd_ctx_params_init(ctxParams);
@@ -72,7 +108,12 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     core.setField('sd_ctx_params_t', ctxParams, 'auto_fit', 0);
     core.setField('sd_ctx_params_t', ctxParams, 'backend', text({ value: 'WebGPU' }));
     core.setField('sd_ctx_params_t', ctxParams, 'params_backend', text({ value: 'disk' }));
+    // Upstream max_vram is GiB of managed weights + runtime buffers. With disk
+    // parameter storage this guides graph segmentation/eviction, NOT a model
+    // file-size check or a hard cap on all browser/driver allocations. Keep an
+    // explicit positive budget: WebGPU cannot report actual free device memory.
     core.setField('sd_ctx_params_t', ctxParams, 'max_vram', text({ value: String(request.gpuBudgetMiB / 1024) }));
+    log({ message: `Managed GPU working-memory target: ${request.gpuBudgetMiB} MiB; disk-backed weights, not a model file-size limit` });
     const { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler,
       distilledGuidance, vaeTiling, vaeTileSize, flashAttention, conditioningCacheSize, modelArguments, ...rest } = request.parameters;
     rest satisfies Record<PropertyKey, never>;
@@ -81,7 +122,9 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     core.setField('sd_ctx_params_t', ctxParams, 'conditioning_cache_size', conditioningCacheSize);
     core.setField('sd_ctx_params_t', ctxParams, 'model_args', modelArguments ? text({ value: modelArguments }) : 0n);
     notify({ event: { phase: 'model', step: 0, steps: 0 } });
+    emit({ event: 'start', stage: 'model-load', message: undefined, fields: { wasmBytes: core.module.HEAPU8?.byteLength ?? 0, gpuBudgetMiB: request.gpuBudgetMiB } });
     context = await core.api.new_sd_ctx(ctxParams);
+    emit({ event: 'complete', stage: 'model-load', message: undefined, fields: { wasmBytes: core.module.HEAPU8?.byteLength ?? 0, created: !!context } });
     if (!context) throw new Error('Model initialization failed; see native diagnostics');
     if (await core.api.sd_ctx_supports_image_generation(context) !== 1) throw new Error('This context does not support image generation');
     const modelVersion = core.readUtf8(await core.api.sd_get_model_version_name(context), 256) ?? 'Unknown';
@@ -123,7 +166,9 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     const imagesOut = keep({ pointer: core.alloc(core.pointerBytes) });
     const countOut = keep({ pointer: core.alloc(4) });
     core.bytes(imagesOut, core.pointerBytes).fill(0); core.bytes(countOut, 4).fill(0);
+    emit({ event: 'start', stage: 'generation', message: 'generate_image includes text encoding, denoising and VAE decoding', fields: { width, height, steps, guidance, sampler: sampleMethod, scheduler: sampleScheduler, vaeTiling, flashAttention } });
     const generated = await core.api.generate_image(context, params, imagesOut, countOut);
+    emit({ event: 'complete', stage: 'generation', message: undefined, fields: { generated, wasmBytes: core.module.HEAPU8?.byteLength ?? 0 } });
     // Recreate views after every native call: Wasm memory may have grown.
     const pointers = core.bytes(imagesOut, core.pointerBytes);
     const pointerView = new DataView(pointers.buffer, pointers.byteOffset, pointers.byteLength);
@@ -147,6 +192,7 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     // If Wasm traps, cleanup may also fail; the client unconditionally destroys
     // this Worker. Do not replace the useful native error with a cleanup error.
     try {
+      emit({ event: 'start', stage: 'cleanup', message: undefined, fields: {} });
       if (images && imageCount > 0 && imageCount <= 64) await core.api.free_sd_images(images, imageCount);
       if (context) await core.api.free_sd_ctx(context);
       await core.api.sd_set_log_callback(0n, 0n);
@@ -155,6 +201,7 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
       for (const pointer of allocations.reverse()) core.free(pointer);
       // A disk-backed parameter source must outlive the complete native context.
       for (const mounted of mounts.reverse()) mounted.remove();
+      emit({ event: 'complete', stage: 'cleanup', message: undefined, fields: {} });
     } catch (error) {
       log({ message: `Native teardown failed; Worker will be terminated: ${String(error)}` });
     }

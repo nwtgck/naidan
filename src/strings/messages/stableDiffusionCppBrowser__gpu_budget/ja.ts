@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__gpu_budget = (): string => "GPUメモリ予算（MiB）";
+export const stableDiffusionCppBrowser__gpu_budget = (): string => "GPU作業メモリの目安（MiB）";

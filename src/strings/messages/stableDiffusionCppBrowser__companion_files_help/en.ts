@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__companion_files_help = (): string => "Choose each required text encoder and VAE as a separate, unsharded GGUF. Components are not GGUF shards. Only tensor formats supported by the pinned backend can run.";
+export const stableDiffusionCppBrowser__companion_files_help = (): string => "Manual files bypass automatic component selection. Use GGUF or safetensors supported by the backend. For repository shards or index files, import the complete folder above.";

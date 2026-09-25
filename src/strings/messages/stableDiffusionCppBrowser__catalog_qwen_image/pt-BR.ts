@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_qwen_image = (): string => "Para texto em imagem, são necessários três arquivos: modelo de difusão, VAE específico do Qwen Image 2.1 e codificador Qwen3-VL-8B. Não use o VAE do Qwen Image anterior. Texto em imagem não precisa de mmproj; esta tela não oferece edição de imagens.";

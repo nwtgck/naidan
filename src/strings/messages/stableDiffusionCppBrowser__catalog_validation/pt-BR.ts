@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_validation = (): string => "São configurações baseadas no projeto original, não resultados de inferência certificados no navegador. A geração e a memória dependem do navegador e do dispositivo. Os tamanhos são downloads aproximados, não requisitos de memória de GPU.";

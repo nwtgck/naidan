@@ -1,3 +1,4 @@
+import type { ImageDiagnosticListener } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import type { WorkerProxy } from '@/utils/worker-transport';
 import type { Request, Progress, Response } from '@/features/stable-diffusion-cpp-browser/types';
 export type Report = ({ event }: { event: Progress }) => void;
@@ -7,7 +8,7 @@ export interface ImageWorker {
   generate(request: Request, report: WorkerProxy<Report>): Promise<Response>;
 }
 export interface ImageClient {
-  generate({ request, signal, onProgress }: { request: Request, signal: AbortSignal, onProgress: Report }): Promise<Response>;
+  generate({ request, signal, onProgress }: { request: Request, signal: AbortSignal, onProgress: Report, onDiagnostic?: ImageDiagnosticListener }): Promise<Response>;
   dispose(): void;
 }
 export const TEST_ONLY = {

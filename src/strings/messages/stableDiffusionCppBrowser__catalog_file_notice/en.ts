@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_file_notice = (): string => "Only selected weights are downloaded, not every file or quantization in a repository. Pinned-source SHA-256 is verified while streaming; files are never split or converted. Existing files are verified and reused, never silently overwritten. Respect each publisher’s terms.";

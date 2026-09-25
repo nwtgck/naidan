@@ -12,7 +12,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 it('keeps profile/source/runtime stage on artifact loading errors', async () => {
   mocks.load.mockRejectedValue(new Error('Image Wasm integrity mismatch'));
-  await expect(createImageWorker().generate(requestFixture(), vi.fn())).rejects.toThrow(
+  await expect(createImageWorker({ reportDiagnostic: undefined }).generate(requestFixture(), vi.fn())).rejects.toThrow(
     `phase=runtime, profile=webgpu-wasm32-asyncify, source=${'a'.repeat(40)}\nImage Wasm integrity mismatch`,
   );
   expect(mocks.run).not.toHaveBeenCalled();
@@ -27,7 +27,7 @@ it('retains the original error and last native diagnostics when model initializa
     for (let index = 0; index < 30; index++) onLog({ message: `native diagnostic ${index}` });
     throw new Error('Model initialization failed');
   });
-  const worker = createImageWorker();
+  const worker = createImageWorker({ reportDiagnostic: undefined });
   const failure = await worker.generate(requestFixture(), vi.fn()).catch((error: unknown) => error);
   expect(failure).toBeInstanceOf(Error);
   if (!(failure instanceof Error)) throw new Error('Expected model failure');

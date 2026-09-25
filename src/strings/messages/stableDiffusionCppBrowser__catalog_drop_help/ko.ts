@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_drop_help = (): string => "위의 저장소별 폴더 세 개를 만들고 내부 경로를 그대로 유지하세요. 공통 상위 폴더가 아닌 세 폴더를 함께 또는 하나씩 로컬 라이브러리에 드롭하세요. 확산 모델을 선택하면 가져온 다른 저장소에서도 호환 구성 요소를 찾습니다.";

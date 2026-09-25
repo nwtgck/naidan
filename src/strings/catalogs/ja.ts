@@ -1,3 +1,19 @@
+import { stableDiffusionCppBrowser__debug_help } from '@/strings/messages/stableDiffusionCppBrowser__debug_help/ja';
+import { stableDiffusionCppBrowser__logs_copy_failed } from '@/strings/messages/stableDiffusionCppBrowser__logs_copy_failed/ja';
+import { stableDiffusionCppBrowser__logs_copied } from '@/strings/messages/stableDiffusionCppBrowser__logs_copied/ja';
+import { stableDiffusionCppBrowser__show_logs } from '@/strings/messages/stableDiffusionCppBrowser__show_logs/ja';
+import { stableDiffusionCppBrowser__save_logs } from '@/strings/messages/stableDiffusionCppBrowser__save_logs/ja';
+import { stableDiffusionCppBrowser__copy_logs } from '@/strings/messages/stableDiffusionCppBrowser__copy_logs/ja';
+import { stableDiffusionCppBrowser__debug_mode } from '@/strings/messages/stableDiffusionCppBrowser__debug_mode/ja';
+import { stableDiffusionCppBrowser__download_failed } from '@/strings/messages/stableDiffusionCppBrowser__download_failed/ja';
+import { stableDiffusionCppBrowser__download_cancelled } from '@/strings/messages/stableDiffusionCppBrowser__download_cancelled/ja';
+import { stableDiffusionCppBrowser__download_complete } from '@/strings/messages/stableDiffusionCppBrowser__download_complete/ja';
+import { stableDiffusionCppBrowser__downloading_selected } from '@/strings/messages/stableDiffusionCppBrowser__downloading_selected/ja';
+import { stableDiffusionCppBrowser__select_saved_recipe } from '@/strings/messages/stableDiffusionCppBrowser__select_saved_recipe/ja';
+import { stableDiffusionCppBrowser__download_and_select } from '@/strings/messages/stableDiffusionCppBrowser__download_and_select/ja';
+import { stableDiffusionCppBrowser__runtime_settings } from '@/strings/messages/stableDiffusionCppBrowser__runtime_settings/ja';
+import { stableDiffusionCppBrowser__selected_model } from '@/strings/messages/stableDiffusionCppBrowser__selected_model/ja';
+import { stableDiffusionCppBrowser__add_models } from '@/strings/messages/stableDiffusionCppBrowser__add_models/ja';
 import { audioGeneration__preview_result } from '@/strings/messages/audioGeneration__preview_result/ja';
 import { audioGeneration__preview_help } from '@/strings/messages/audioGeneration__preview_help/ja';
 import { audioGeneration__preview_pending } from '@/strings/messages/audioGeneration__preview_pending/ja';
@@ -1971,6 +1987,17 @@ import { stableDiffusionCppBrowser__lm_file } from '@/strings/messages/stableDif
 import { stableDiffusionCppBrowser__companion_files_help } from '@/strings/messages/stableDiffusionCppBrowser__companion_files_help/ja';
 import { stableDiffusionCppBrowser__profile } from '@/strings/messages/stableDiffusionCppBrowser__profile/ja';
 import { stableDiffusionCppBrowser__gpu_budget } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget/ja';
+import { stableDiffusionCppBrowser__gpu_budget_help } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget_help/ja';
+import { stableDiffusionCppBrowser__catalog_file_notice } from '@/strings/messages/stableDiffusionCppBrowser__catalog_file_notice/ja';
+import { stableDiffusionCppBrowser__catalog_drop_help } from '@/strings/messages/stableDiffusionCppBrowser__catalog_drop_help/ja';
+import { stableDiffusionCppBrowser__catalog_layout } from '@/strings/messages/stableDiffusionCppBrowser__catalog_layout/ja';
+import { stableDiffusionCppBrowser__catalog_source } from '@/strings/messages/stableDiffusionCppBrowser__catalog_source/ja';
+import { stableDiffusionCppBrowser__catalog_download } from '@/strings/messages/stableDiffusionCppBrowser__catalog_download/ja';
+import { stableDiffusionCppBrowser__catalog_qwen_image } from '@/strings/messages/stableDiffusionCppBrowser__catalog_qwen_image/ja';
+import { stableDiffusionCppBrowser__catalog_z_image } from '@/strings/messages/stableDiffusionCppBrowser__catalog_z_image/ja';
+import { stableDiffusionCppBrowser__catalog_validation } from '@/strings/messages/stableDiffusionCppBrowser__catalog_validation/ja';
+import { stableDiffusionCppBrowser__catalog_help } from '@/strings/messages/stableDiffusionCppBrowser__catalog_help/ja';
+import { stableDiffusionCppBrowser__catalog_title } from '@/strings/messages/stableDiffusionCppBrowser__catalog_title/ja';
 import { stableDiffusionCppBrowser__memory_and_cancellation } from '@/strings/messages/stableDiffusionCppBrowser__memory_and_cancellation/ja';
 import { stableDiffusionCppBrowser__prompt } from '@/strings/messages/stableDiffusionCppBrowser__prompt/ja';
 import { stableDiffusionCppBrowser__negative_prompt } from '@/strings/messages/stableDiffusionCppBrowser__negative_prompt/ja';
@@ -1994,6 +2021,25 @@ import { stableDiffusionCppBrowser__download_png } from '@/strings/messages/stab
 import { stableDiffusionCppBrowser__remove } from '@/strings/messages/stableDiffusionCppBrowser__remove/ja';
 import { stableDiffusionCppBrowser__diagnostics } from '@/strings/messages/stableDiffusionCppBrowser__diagnostics/ja';
 import { stableDiffusionCppBrowser__memory64_unavailable } from '@/strings/messages/stableDiffusionCppBrowser__memory64_unavailable/ja';
+import { stableDiffusionCppBrowser__local_library } from '@/strings/messages/stableDiffusionCppBrowser__local_library/ja';
+import { stableDiffusionCppBrowser__import_repository_help } from '@/strings/messages/stableDiffusionCppBrowser__import_repository_help/ja';
+import { stableDiffusionCppBrowser__choose_repository_folder } from '@/strings/messages/stableDiffusionCppBrowser__choose_repository_folder/ja';
+import { stableDiffusionCppBrowser__refresh_repositories } from '@/strings/messages/stableDiffusionCppBrowser__refresh_repositories/ja';
+import { stableDiffusionCppBrowser__show_all_weights } from '@/strings/messages/stableDiffusionCppBrowser__show_all_weights/ja';
+import { stableDiffusionCppBrowser__main_image_model } from '@/strings/messages/stableDiffusionCppBrowser__main_image_model/ja';
+import { stableDiffusionCppBrowser__components_detected } from '@/strings/messages/stableDiffusionCppBrowser__components_detected/ja';
+import { stableDiffusionCppBrowser__structural_match } from '@/strings/messages/stableDiffusionCppBrowser__structural_match/ja';
+import { stableDiffusionCppBrowser__unverified_candidate } from '@/strings/messages/stableDiffusionCppBrowser__unverified_candidate/ja';
+import { stableDiffusionCppBrowser__incompatible_candidate } from '@/strings/messages/stableDiffusionCppBrowser__incompatible_candidate/ja';
+import { stableDiffusionCppBrowser__component_required } from '@/strings/messages/stableDiffusionCppBrowser__component_required/ja';
+import { stableDiffusionCppBrowser__select_component } from '@/strings/messages/stableDiffusionCppBrowser__select_component/ja';
+import { stableDiffusionCppBrowser__filter_components } from '@/strings/messages/stableDiffusionCppBrowser__filter_components/ja';
+import { stableDiffusionCppBrowser__scanning_repositories } from '@/strings/messages/stableDiffusionCppBrowser__scanning_repositories/ja';
+import { stableDiffusionCppBrowser__importing_repository } from '@/strings/messages/stableDiffusionCppBrowser__importing_repository/ja';
+import { stableDiffusionCppBrowser__incomplete_components } from '@/strings/messages/stableDiffusionCppBrowser__incomplete_components/ja';
+import { stableDiffusionCppBrowser__component_evidence_help } from '@/strings/messages/stableDiffusionCppBrowser__component_evidence_help/ja';
+import { stableDiffusionCppBrowser__inspection_issues } from '@/strings/messages/stableDiffusionCppBrowser__inspection_issues/ja';
+import { stableDiffusionCppBrowser__manual_model_files } from '@/strings/messages/stableDiffusionCppBrowser__manual_model_files/ja';
 import { stableDiffusionCppBrowser__advanced_parameters } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters/ja';
 import { stableDiffusionCppBrowser__advanced_parameters_help } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters_help/ja';
 import { stableDiffusionCppBrowser__sampler } from '@/strings/messages/stableDiffusionCppBrowser__sampler/ja';
@@ -2006,6 +2052,25 @@ import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/s
 import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/ja';
 export const catalog = {
   stableDiffusionCppBrowser__memory64_unavailable,
+  stableDiffusionCppBrowser__local_library,
+  stableDiffusionCppBrowser__import_repository_help,
+  stableDiffusionCppBrowser__choose_repository_folder,
+  stableDiffusionCppBrowser__refresh_repositories,
+  stableDiffusionCppBrowser__show_all_weights,
+  stableDiffusionCppBrowser__main_image_model,
+  stableDiffusionCppBrowser__components_detected,
+  stableDiffusionCppBrowser__structural_match,
+  stableDiffusionCppBrowser__unverified_candidate,
+  stableDiffusionCppBrowser__incompatible_candidate,
+  stableDiffusionCppBrowser__component_required,
+  stableDiffusionCppBrowser__select_component,
+  stableDiffusionCppBrowser__filter_components,
+  stableDiffusionCppBrowser__scanning_repositories,
+  stableDiffusionCppBrowser__importing_repository,
+  stableDiffusionCppBrowser__incomplete_components,
+  stableDiffusionCppBrowser__component_evidence_help,
+  stableDiffusionCppBrowser__inspection_issues,
+  stableDiffusionCppBrowser__manual_model_files,
   stableDiffusionCppBrowser__advanced_parameters,
   stableDiffusionCppBrowser__advanced_parameters_help,
   stableDiffusionCppBrowser__sampler,
@@ -2039,6 +2104,33 @@ export const catalog = {
   stableDiffusionCppBrowser__companion_files_help,
   stableDiffusionCppBrowser__profile,
   stableDiffusionCppBrowser__gpu_budget,
+  stableDiffusionCppBrowser__gpu_budget_help,
+  stableDiffusionCppBrowser__catalog_file_notice,
+  stableDiffusionCppBrowser__catalog_drop_help,
+  stableDiffusionCppBrowser__catalog_layout,
+  stableDiffusionCppBrowser__catalog_source,
+  stableDiffusionCppBrowser__catalog_download,
+  stableDiffusionCppBrowser__catalog_qwen_image,
+  stableDiffusionCppBrowser__catalog_z_image,
+  stableDiffusionCppBrowser__catalog_validation,
+  stableDiffusionCppBrowser__catalog_help,
+  stableDiffusionCppBrowser__add_models,
+  stableDiffusionCppBrowser__selected_model,
+  stableDiffusionCppBrowser__runtime_settings,
+  stableDiffusionCppBrowser__download_and_select,
+  stableDiffusionCppBrowser__select_saved_recipe,
+  stableDiffusionCppBrowser__downloading_selected,
+  stableDiffusionCppBrowser__download_complete,
+  stableDiffusionCppBrowser__download_cancelled,
+  stableDiffusionCppBrowser__download_failed,
+  stableDiffusionCppBrowser__debug_mode,
+  stableDiffusionCppBrowser__copy_logs,
+  stableDiffusionCppBrowser__save_logs,
+  stableDiffusionCppBrowser__show_logs,
+  stableDiffusionCppBrowser__logs_copied,
+  stableDiffusionCppBrowser__logs_copy_failed,
+  stableDiffusionCppBrowser__debug_help,
+  stableDiffusionCppBrowser__catalog_title,
   stableDiffusionCppBrowser__memory_and_cancellation,
   stableDiffusionCppBrowser__prompt,
   stableDiffusionCppBrowser__negative_prompt,

@@ -23,6 +23,9 @@ it('connects the installed bicore image dependency without replacing the llama d
   expect(lock.packages['node_modules/' + name]?.resolved?.split('#')[1]).toBe(specifier?.split('#')[1]);
   expect(lock.packages['node_modules/' + name]?.integrity).toMatch(/^sha512-/);
 
+  const manifest = z.object({ capabilities: z.object({ safetensorsFileOffsetBits: z.literal(64), ggufShards: z.literal(true) }) })
+    .parse(JSON.parse(readFileSync(path.join(rootDir, 'node_modules', name, 'stable-diffusion-cpp/manifest.json'), 'utf8')));
+  expect(manifest.capabilities.ggufShards).toBe(true);
   const result = readImageArtifacts({ rootDir, mode: 'hosted', artifactDir: undefined });
   expect(result.configuration.kind).toBe('available');
   if (result.configuration.kind !== 'available') throw new Error('Install the pinned bicore image dependency with npm ci');

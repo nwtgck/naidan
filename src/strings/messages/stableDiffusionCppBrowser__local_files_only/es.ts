@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__local_files_only = (): string => "Solo archivos GGUF: uno sin dividir por componente, leído por rangos sin copiarlo entero a memoria. Abrir la página no descarga modelos ni inicia la inferencia.";
+export const stableDiffusionCppBrowser__local_files_only = (): string => "La obtención de modelos requiere una acción explícita. La generación lee archivos locales y no descarga componentes faltantes.";

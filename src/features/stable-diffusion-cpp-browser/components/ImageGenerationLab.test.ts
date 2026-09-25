@@ -41,7 +41,47 @@ it('uses independent requests, saves a temporary result, and revokes it on unmou
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
   wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
   await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
-  expect(mocks.generate).toHaveBeenCalledTimes(1); expect(wrapper.findAll('article')).toHaveLength(1);
+  expect(mocks.generate).toHaveBeenCalledTimes(1); expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
   expect(wrapper.get('a[download]').attributes('download')).toBe('naidan-image-42.png');
   wrapper.unmount(); wrapper = undefined; expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-image');
+});
+
+it('keeps the working-memory budget in collapsed advanced settings and the catalog outside the model fieldset', async () => {
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const memory = wrapper.get('[data-testid="image-memory-budget"]');
+  expect(memory.element.closest('details')?.hasAttribute('open')).toBe(false);
+  expect(memory.element.closest('details')?.textContent).toContain('not to limit model file size');
+  expect(wrapper.vm.TEST_ONLY.gpuBudgetMiB.value).toBe(2048);
+  expect(wrapper.get('[data-testid="image-model-catalog"]').element.closest('fieldset')).toBeNull();
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+it('keeps copy/save diagnostics usable while a native request is indefinitely pending', async () => {
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  const writeText = vi.fn(async (_text: string) => undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  let finish: ((value: { png: Blob, width: number, height: number, modelVersion: string }) => void) | undefined;
+  mocks.generate.mockImplementation(({ request, onDiagnostic }) => {
+    expect(request.debug).toBe('on');
+    onDiagnostic({ diagnostic: { event: 'start', stage: 'model-load', elapsedMs: 120, fields: { gpuBudgetMiB: 2048 } } });
+    return new Promise(resolve => {
+      finish = resolve;
+    });
+  });
+  try {
+    wrapper = mount(ImageGenerationLab); await flushPromises();
+    await wrapper.get('[data-testid="image-debug-mode"]').setValue(true);
+    wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'private prompt';
+    const running = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+    expect(wrapper.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(true);
+    const copy = wrapper.get('[data-testid="image-copy-diagnostics"]');
+    expect(copy.element.closest('fieldset')).toBeNull(); expect(copy.element.matches(':disabled')).toBe(false);
+    expect(wrapper.get('[data-testid="image-save-diagnostics"]').element.matches(':disabled')).toBe(false);
+    await copy.trigger('click'); await flushPromises();
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('model-load'));
+    expect(writeText.mock.calls[0]?.[0]).not.toContain('private prompt');
+    finish!({ png: new Blob(['mock PNG'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
+    await running;
+  } finally {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard); else Reflect.deleteProperty(navigator, 'clipboard');
+  }
 });

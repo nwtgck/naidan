@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ImageModelLibrary from './ImageModelLibrary.vue';
+import ImageRepositoryImport from './ImageRepositoryImport.vue';
+import ImageModelCatalog from './ImageModelCatalog.vue';
 import { computed, useId } from 'vue';
 import { ImageIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
@@ -6,8 +9,8 @@ import { profileOptions, samplerOptions, schedulerOptions } from '@/features/sta
 import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation';
 
 const id = useId();
-const { profile, layout, files, parameters, gpuBudgetMiB, progress, failure, invalid, cancelled, results,
-  busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel } = useImageGeneration();
+const { debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, gpuBudgetMiB, progress, failure, invalid, cancelled, results,
+  library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, copyDiagnostics, saveDiagnostics } = useImageGeneration();
 const slots = computed(() => {
   switch (layout.value) {
   case 'checkpoint': return [{ slot: 'model' as const, label: lazyStrings.stableDiffusionCppBrowser__model_file() }];
@@ -45,27 +48,29 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__local_files_only() }}</p>
       </header>
       <p v-if="!supported" role="status" tw-class="rounded-xl border border-gray-300 dark:border-gray-700 p-4 text-sm" data-testid="image-unavailable">{{ unavailable }}</p>
+      <section tw-class="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 space-y-4">
+        <h2 tw-class="font-semibold text-base">{{ lazyStrings.stableDiffusionCppBrowser__add_models() }}</h2>
+        <ImageModelCatalog :disabled="formDisabled" :view="library" />
+        <ImageRepositoryImport :disabled="formDisabled" :view="library" />
+      </section>
       <form @submit.prevent="generate" tw-class="space-y-5">
         <fieldset :disabled="formDisabled" tw-class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
-          <legend tw-class="text-base font-semibold px-2">{{ lazyStrings.stableDiffusionCppBrowser__model_and_runtime() }}</legend>
-          <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__model_layout() }}</span>
-            <select v-model="layout" @change="resetFiles" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2">
-              <option value="checkpoint">{{ lazyStrings.stableDiffusionCppBrowser__checkpoint() }}</option>
-              <option value="components">{{ lazyStrings.stableDiffusionCppBrowser__separate_components() }}</option>
-            </select>
-          </label>
-          <div v-for="item in slots" :key="layout + item.slot" tw-class="space-y-1">
-            <label :for="id + item.slot" tw-class="block text-sm">{{ item.label }}</label>
-            <input :id="id + item.slot" type="file" accept=".gguf" @change="chooseFile({ slot: item.slot, event: $event })" tw-class="block w-full text-sm" :data-testid="'image-file-' + item.slot" />
-          </div>
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__companion_files_help() }}</p>
-          <div tw-class="grid sm:grid-cols-2 gap-4">
-            <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__profile() }}</span>
-              <select v-model="profile" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2"><option v-for="value in profileOptions" :key="value" :value="value">{{ value }}</option></select>
+          <legend tw-class="text-base font-semibold px-2">{{ lazyStrings.stableDiffusionCppBrowser__selected_model() }}</legend>
+          <ImageModelLibrary :view="library" :disabled="formDisabled" />
+          <details tw-class="space-y-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+            <summary tw-class="cursor-pointer text-sm font-medium">{{ lazyStrings.stableDiffusionCppBrowser__manual_model_files() }}</summary>
+            <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__model_layout() }}</span>
+              <select v-model="layout" @change="resetFiles" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2">
+                <option value="checkpoint">{{ lazyStrings.stableDiffusionCppBrowser__checkpoint() }}</option>
+                <option value="components">{{ lazyStrings.stableDiffusionCppBrowser__separate_components() }}</option>
+              </select>
             </label>
-            <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget() }}</span><input v-model.number="gpuBudgetMiB" type="number" min="512" :max="profile === 'webgpu-wasm64-jspi' ? 16384 : 4095" step="1" required tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2" /></label>
-          </div>
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__memory_and_cancellation() }}</p>
+            <div v-for="item in slots" :key="layout + item.slot" tw-class="space-y-1">
+              <label :for="id + item.slot" tw-class="block text-sm">{{ item.label }}</label>
+              <input :id="id + item.slot" :disabled="library.importing.value || library.downloading.value" type="file" accept=".gguf,.safetensors,.sft" @change="chooseFile({ slot: item.slot, event: $event })" tw-class="block w-full text-sm" :data-testid="'image-file-' + item.slot" />
+            </div>
+            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__companion_files_help() }}</p>
+          </details>
         </fieldset>
         <fieldset :disabled="formDisabled" tw-class="space-y-4">
           <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</span><textarea v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 p-3" /></label>
@@ -78,8 +83,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
             <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__seed() }}</span><input v-model="parameters.seed" type="text" inputmode="numeric" maxlength="20" required tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2" /></label>
           </div>
           <details tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
-            <summary tw-class="font-medium cursor-pointer">{{ lazyStrings.stableDiffusionCppBrowser__advanced_parameters() }}</summary>
+            <summary tw-class="font-medium cursor-pointer">{{ lazyStrings.stableDiffusionCppBrowser__runtime_settings() }}</summary>
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__advanced_parameters_help() }}</p>
+            <div tw-class="grid sm:grid-cols-2 gap-4">
+              <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__profile() }}</span>
+                <select v-model="profile" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2"><option v-for="value in profileOptions" :key="value" :value="value">{{ value }}</option></select>
+              </label>
+            </div>
+            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__memory_and_cancellation() }}</p>
+            <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget() }}</span><input v-model.number="gpuBudgetMiB" data-testid="image-memory-budget" type="number" min="512" :max="profile === 'webgpu-wasm64-jspi' ? 16384 : 4095" step="1" required tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2" /></label>
+            <p data-testid="image-memory-budget-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget_help() }}</p>
             <div tw-class="grid sm:grid-cols-2 gap-4">
               <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__sampler() }}</span><select v-model="parameters.sampler" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2"><option v-for="value in samplerOptions" :key="value" :value="value">{{ value }}</option></select></label>
               <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__scheduler() }}</span><select v-model="parameters.scheduler" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2"><option v-for="value in schedulerOptions" :key="value" :value="value">{{ value }}</option></select></label>
@@ -94,12 +107,29 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
         </fieldset>
         <p v-if="invalid" role="alert" tw-class="text-red-600 dark:text-red-400 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
         <div tw-class="flex flex-wrap items-center gap-3">
-          <button type="submit" :disabled="busy || !supported" data-testid="image-generate" tw-class="rounded-xl px-5 py-2.5 bg-blue-600 text-white font-medium disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
+          <button type="submit" :disabled="busy || !supported || library.importing.value || library.downloading.value || (!!library.main.value && !library.ready.value)" data-testid="image-generate" tw-class="rounded-xl px-5 py-2.5 bg-blue-600 text-white font-medium disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
           <button type="button" :disabled="!busy" @click="cancel" data-testid="image-cancel" tw-class="rounded-xl px-5 py-2.5 border border-gray-300 dark:border-gray-600 disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
           <span v-if="busy" role="status" aria-live="polite" tw-class="text-sm">{{ phaseLabel }} <template v-if="progress && progress.steps > 0">{{ progress.step }} / {{ progress.steps }}</template></span>
         </div>
         <p v-if="cancelled" role="status" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__cancelled() }}</p>
       </form>
+      <section tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-3" data-testid="image-live-diagnostics">
+        <div tw-class="flex flex-wrap items-center justify-between gap-3">
+          <h2 tw-class="font-semibold text-sm">{{ lazyStrings.stableDiffusionCppBrowser__diagnostics() }}</h2>
+          <label tw-class="text-sm flex items-center gap-2"><input v-model="debug" type="checkbox" true-value="on" false-value="off" :disabled="formDisabled" data-testid="image-debug-mode" />{{ lazyStrings.stableDiffusionCppBrowser__debug_mode() }}</label>
+        </div>
+        <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__debug_help() }}</p>
+        <p v-if="diagnosticStatus" role="status" tw-class="text-xs font-mono break-words">{{ diagnosticStatus }}</p>
+        <div tw-class="flex flex-wrap gap-3 text-sm">
+          <button type="button" :disabled="!diagnosticText" @click="copyDiagnostics" data-testid="image-copy-diagnostics" tw-class="underline disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__copy_logs() }}</button>
+          <button type="button" :disabled="!diagnosticText" @click="saveDiagnostics" data-testid="image-save-diagnostics" tw-class="underline disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__save_logs() }}</button>
+          <span role="status" tw-class="text-xs">{{ diagnosticFeedback }}</span>
+        </div>
+        <details v-if="diagnosticText">
+          <summary tw-class="text-xs cursor-pointer">{{ lazyStrings.stableDiffusionCppBrowser__show_logs() }}</summary>
+          <pre tw-class="text-xs whitespace-pre-wrap break-all max-h-72 overflow-auto mt-2">{{ diagnosticText }}</pre>
+        </details>
+      </section>
       <details v-if="failure" open tw-class="rounded-xl border border-red-300 dark:border-red-800 p-4">
         <summary tw-class="font-medium">{{ lazyStrings.stableDiffusionCppBrowser__diagnostics() }}</summary><pre role="alert" tw-class="text-xs whitespace-pre-wrap break-words mt-3 max-h-72 overflow-auto">{{ failure }}</pre>
       </details>
@@ -108,7 +138,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__history_is_temporary() }}</p>
         <p v-if="!results.length" tw-class="py-12 text-center text-gray-500 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl">{{ lazyStrings.stableDiffusionCppBrowser__no_images_yet() }}</p>
         <div tw-class="grid sm:grid-cols-2 gap-5">
-          <article v-for="result in results" :key="result.id" tw-class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <article data-testid="image-generated-result" v-for="result in results" :key="result.id" tw-class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
             <img :src="result.url" :alt="result.parameters.prompt" :width="result.parameters.width" :height="result.parameters.height" tw-class="w-full h-auto" />
             <div tw-class="p-4 space-y-2">
               <p tw-class="text-sm whitespace-pre-wrap break-words">{{ result.parameters.prompt }}</p>

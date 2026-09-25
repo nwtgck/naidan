@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__local_files_only = (): string => "仅支持 GGUF，每个组件使用一个未分片文件，按需读取而不预先复制整个文件。打开此页面不会下载模型或初始化推理。";
+export const stableDiffusionCppBrowser__local_files_only = (): string => "获取模型需要明确操作。生成只读取本地文件，不会自动下载缺失组件。";

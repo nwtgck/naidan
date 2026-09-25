@@ -13,9 +13,9 @@ describe('image experiment boundary', () => {
     expect(result.seed).toBe('9223372036854775807'); expect(result.width).toBe(1024);
     expect(parametersSchema.parse({ ...result, seed: '-1' }).seed).toBe('-1');
   });
-  it('rejects two primary models, duplicate slots, empty files, non-GGUF, shards and no primary', () => {
+  it('rejects two primary models, duplicate slots, empty files and no primary', () => {
     const base = requestFixture(); const file = ggufFile();
-    for (const models of [[{ slot: 'model', file }, { slot: 'diffusion', file }], [{ slot: 'model', file }, { slot: 'model', file }], [{ slot: 'vae', file }], [{ slot: 'model', file: new File([], 'empty.gguf') }], [{ slot: 'model', file: new File([new Uint8Array(24)], 'x.safetensors') }], [{ slot: 'model', file: new File([new Uint8Array(24)], 'x-00001-of-00002.gguf') }]]) {
+    for (const models of [[{ slot: 'model', file }, { slot: 'diffusion', file }], [{ slot: 'model', file }, { slot: 'model', file }], [{ slot: 'vae', file }], [{ slot: 'model', file: new File([], 'empty.gguf') }]]) {
       expect(requestSchema.safeParse({ ...base, models }).success).toBe(false);
     }
   });

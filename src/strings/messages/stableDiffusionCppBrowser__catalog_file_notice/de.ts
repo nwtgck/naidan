@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_file_notice = (): string => "Nur ausgewählte Gewichte werden geladen, nicht alle Dateien. SHA-256 der festen Quellrevision wird beim Streaming geprüft. Keine Aufteilung oder Konvertierung. Vorhandene Dateien werden geprüft und wiederverwendet, nicht still überschrieben. Anbieterbedingungen beachten.";

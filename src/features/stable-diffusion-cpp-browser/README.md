@@ -11,7 +11,7 @@ The normal dependency installation now supplies the image runtime separately:
 
 ```text
 stable-diffusion-cpp-browser-core
-  -> github:nwtgck/llama-cpp-browser-core#c3a3a1f27b22d95bdd6ec6c35f3f623e4e18479a
+  -> github:nwtgck/llama-cpp-browser-core#3924d1154e4a03290c96a861031030155998a0f2
 ```
 
 This is a dependency name for the existing **Browser Inference Core (bicore)**
@@ -19,7 +19,7 @@ artifact repository, not a separately published registry package. Keep Naidan's
 existing `llama-cpp-browser-core` dependency and its adapters unchanged. The image
 package's `resolved` and `integrity` lock fields come from the supplied CI-generated
 consumer metadata. The underlying package remains `llama-cpp-browser-core`.
-There is no compiler, postinstall hook, model download or generated-code rewrite.
+Installation has no compiler, postinstall hook, model download or generated-code rewrite. Model acquisition is a separate explicit action in the hosted UI.
 
 ```sh
 npm ci
@@ -28,15 +28,16 @@ npm run build:hosted
 npm run dev
 ```
 
-Open `/#/image-generation-lab` from the sidebar quick-access link, choose complete
-GGUF files and start generation explicitly. No environment variable or manual
+Open `/#/image-generation-lab` from the sidebar quick-access link, import a local repository folder (or use the advanced single-file controls),
+then start generation explicitly. No environment variable or manual
 copy into node_modules is needed with the committed dependency installed.
 
-The initial artifact is source commit
-`1a354989ff799210eaf3b14c26970ada4cf3cbfc`, image ABI 2 / image manifest format 2.
+The pinned artifact is source commit
+`e9b0620fd46b362af3693723425c90aa32587d22`, image ABI 2 / image manifest format 2.
 Its manifest records all three profiles in both variants as compiled and
 browser-smoke validated, including real-Wasm Worker/public-record/callback tests
-and virtual unsplit GGUF reads above 8 GiB. **It does not certify trained-model
+and virtual unsplit GGUF reads above 8 GiB, safetensors above 20 GiB, and standard
+GGUF shard groups (native probes in test variants). **It does not certify trained-model
 loading, actual WebGPU image generation, model compatibility, speed or memory.**
 Naidan ships only the `browser` variants, not the diagnostic `test` variants.
 
@@ -61,8 +62,8 @@ the native-operation controller, runtime configuration/schema, capability probes
 Worker, file reader, model/session code and image Wasm are hosted-only.
 
 The image build plugin refuses non-UI feature imports or image runtime assets in
-standalone output. Its allowlist is deliberately small: the Vue view, form state,
-form options, standalone composable and standalone client stub. Type-only imports
+standalone output. Its allowlist is deliberately small: the Vue views/pickers, display-only library state, form state,
+static acquisition recipes/catalog, form options, standalone composable and standalone client stub. Type-only imports
 do not retain their runtime modules. The build also ignores the optional image
 artifact location in standalone mode, even if that location is invalid.
 
@@ -76,9 +77,78 @@ schema fingerprint, every emitted binary/module/helper and license notice.
 Runtime URLs are same-origin, source-bound paths. The normal hosted build emits
 all three profiles, and generation fetches the selected one. Naidan's existing
 all-assets PWA precache policy may separately cache these runtime assets; this
-feature does not change that policy or download model weights. Wasm decompression is bounded
+feature does not change that policy. Model weights are downloaded only through the explicit catalog action. Wasm decompression is bounded
 by its verified byte count and followed by SHA-256 verification. Core attachment
 checks the schema fingerprint embedded in the compiled binary too.
+
+## Static multi-repository model catalog and acquisition
+
+The page separates **Add models** (catalog or local folders), **Model to use**
+(saved primary and components), generation inputs, and collapsed **Runtime and
+advanced settings**. Live diagnostics are outside the generation form, so logs
+can be copied or saved while model work is still running.
+
+`model-recipes.ts` contains two static recipes: Z-Image-Turbo and Qwen Image 2.1.
+Each role has an option array and explicit default. Unknown substitutions are not
+invented: the model-specific VAE can have only one reviewed option. Catalog
+options describe published files, not a claim of trained-model/WebGPU validation.
+Opening the page, expanding a card, changing an option or choosing from saved
+files performs **no remote metadata request or download**. Source links are
+ordinary explicit, referrer-free navigation. No thumbnails are loaded remotely.
+
+**Download and select** snapshots the chosen options. Only then does
+`logic/catalog-download.ts` fetch bounded metadata for those files at their full
+immutable source commits. It requires their LFS SHA-256 identity and byte count,
+then streams selected weights sequentially through the existing privacy-fetch
+boundary into:
+
+```
+models/huggingface.co/<owner>/<repository>/resolve/main/<original-relative-path>
+```
+
+`main` is the existing local storage convention, not an assertion that the file
+was downloaded from today's mutable main branch. The network request is pinned
+to the reviewed commit. Only the chosen files are fetched, not every quantization
+or all repository content. The initial recipes use standalone component weights;
+pre-sharded or index-based custom distributions remain available via folder import.
+
+The downloader checks exact byte counts, streams SHA-256 in bounded chunks and
+checks the weight header. It never materializes a complete model in an ArrayBuffer.
+Existing files are streamed through the same checksum check before reuse; size
+alone is insufficient. A conflicting existing file is preserved and reported,
+not silently overwritten. The verification stage can take time for multi-GB files.
+
+Writes share the existing mutation/repository locks and incomplete-import marker.
+Interrupted current-file writes are aborted and only still-owned files are removed;
+completed earlier files survive. Retrying re-verifies those files and restarts an
+unfinished file from byte zero. This is **not byte-range resume**. Crash leftovers
+with a pending marker are deliberately not reclaimed automatically: inspect them
+with the existing file manager before retrying, rather than deleting an unknown
+operation. A later acquisition failure does not disappear during list refresh.
+
+After successful acquisition, the library scans the stored bytes and selects the
+requested primary and matching requested components. A smaller installed variant
+must not silently replace the chosen quantization. Manual component overrides
+still win. **Select from saved files** applies the same recipe without network;
+it can find the matching files under either HF paths or local `models/user` roots.
+Missing components remain missing rather than being guessed from filenames.
+
+Folder input is equally supported across separate actions: drop the diffusion
+repository now, the VAE repository later, and the encoder repository afterwards.
+Preserve each repository's inner paths. The storage namespace remains
+`models/user/<folder-name>`; directories are not renamed into pretend network
+identities. The library composes a model across those roots. Repositories can
+contain README/config/index/tokenizer files; these are retained, not executed.
+Git LFS pointer text is not a downloaded weight and is reported.
+
+Z-Image defaults to its distributed VAE plus Qwen3-4B; Qwen Image 2.1 defaults to
+its dedicated VAE plus Qwen3-VL-8B. The initial feature is text-to-image only, so
+image-editing projectors are not required or silently loaded. Recipe alternatives
+are reviewed compatible families/quantizations, not arbitrary language models.
+
+Standalone shows the same catalog/import/library UI disabled. No downloader,
+network broker, metadata scanner, native controller, diagnostic observer or Wasm
+is included through this feature; the actual Vite module-boundary test enforces it.
 
 ## Ownership and input contract
 
@@ -90,19 +160,57 @@ there is no image-command JSON dispatcher. All pointer/64-bit fields use bigint.
 The form/Worker preserve the full signed 64-bit seed as decimal text, including
 upstream's `-1` random-seed request (the resolved random seed is not returned).
 
-Only **complete, unsplit GGUF** files are accepted by this UI. Header magic and
-v2/v3 are checked before mounting. Common shard filenames are rejected. A split
-checkpoint is not automatically assembled. Model architectures and tensor
-quantizations must still be supported by the pinned image core/GGML backend.
-A combined checkpoint or separate diffusion/encoder/VAE GGUF files can be chosen.
-Separate components are not shards of a single GGUF.
+The local-input workflow imports a **local repository working tree** into
+`models/user/<original folder name>`, preserving paths, filenames and file bytes.
+Git's `.git` object database is excluded; README, configuration, index and tokenizer
+files are retained. This local-input action performs no network download, conversion, re-splitting or shard merging. Existing cached Hugging Face trees are read locally for companions.
+Colliding roots are rejected rather than merged or replaced. A transient pending
+marker hides incomplete imports from model readers. Imports use the existing
+model mutation lock, stream copies, progress and cooperative cancellation.
+Rollback removes only still-owned/matching files and empty directories; it does
+not recursively remove a repository that may have been externally modified.
 
-`createGgufFileSource` uses FileReaderSync on **bounded File.slice ranges** in the
-Worker; the file itself is structured-cloned, not read into a giant array first.
-It implements the same `{size, read(destination, offset)}` boundary as llama's
-caller-owned adapter. Offsets stay safe JavaScript integers, including above
-4/8/18 GiB. Changing to an OPFS or other synchronous source is an application
-change, not a core rewrite; this initial UI does not implement OPFS persistence.
+The image-specific picker normally shows recognized primary image weights.
+Advanced reveals unverified weights without making them automatic defaults.
+Separate component pickers can resolve companions **across repositories**.
+Z-Image requires a Flux-format latent-16 VAE and Qwen3-4B-shaped encoder;
+Qwen Image 2.1 requires its latent-64/RGBA VAE and Qwen3-VL-8B-shaped encoder.
+These are structural classes, not proof that a fine-tune has identical training
+weights or equivalent output quality. Gemma, other Qwen sizes and earlier Qwen
+VAEs are not automatically substituted. Required components cannot be disabled.
+This workspace still implements text-to-image, not image editing; projectors
+needed only for editing are not loaded. Full SD checkpoints need no extra files.
+
+Detection uses GGUF magic/metadata/tensor descriptors or validated safetensors
+JSON/tensor shapes. Filenames alone never establish a family or compatibility.
+The Turbo label within an already structurally recognized Z-Image family is a
+filename/metadata hint because the Base and Turbo structures can coincide.
+Header inspection is bounded (16 MiB JSON headers; GGUF range-read budget 32 MiB,
+100,000 tensors, bounded item counts); unknown/over-budget files remain stored
+and are reported. Git LFS pointers are not mistaken for downloaded weights.
+Custom code in repositories is neither imported nor executed.
+
+GGUF shard groups use standard names and `split.*` metadata. Safetensors groups
+use a validated `weight_map` index and sibling-relative references. Missing,
+inconsistent or duplicate tensors, unsafe paths and unsupported quantization
+metadata are reported. Only selected component files and referenced shards are
+mounted; unrelated repository files remain in storage. Each component receives
+an isolated mount root with the **original relative paths**, even when files in
+several repositories share the same basename. Native model parsing remains the
+final authority for actual compatibility.
+
+A manual single-file path remains available for experiments and existing SD1.5
+workflows. Its GGUF/safetensors content is validated before native loading; use
+folder import for index files and pre-sharded models. The Worker uses bounded
+FileReaderSync reads over File snapshots from OPFS or manual selection. It never
+materializes a complete large weight file in one ArrayBuffer.
+
+The pinned ABI 2 artifact reports `_sdc_model_io_capabilities() == 3`: 64-bit
+safetensors file positions (bit 0) and standard GGUF groups (bit 1). The Worker
+checks these compiled capabilities before using the associated inputs. An older
+development override is rejected for inputs it cannot support, never with a
+request to split or merge original files. The normal npm dependency is already
+pinned to the published artifact containing both capabilities.
 
 Every component is mounted with the core's generic read-only helper, an 8 MiB
 maximum read chunk and mmap disabled. Source lifetime extends through native
@@ -119,7 +227,10 @@ native code cannot process another message. This is Naidan's initial policy,
 not a restriction imposed by the core. The caller can later design reuse or
 other scheduling with the same exposed API.
 
-Application defaults are conservative: 256x256, 20 steps, upstream model-specific
+For recognized Z-Image-Turbo, selecting the main model suggests 8 steps and CFG 1;
+Qwen Image 2.1 suggests CFG 6 and disables its large prefix cache when model
+arguments are empty. These are visible Naidan choices, not core restrictions.
+Other application defaults are conservative: 256x256, 20 steps, upstream model-specific
 sampler/scheduler, one image, tiled image decoding, no mmap, prefetch threads or
 conditioning cache. The advanced panel exposes sampling, scheduler, guidance,
 cache, tiling, attention and model arguments. Nothing silently forces Qwen
@@ -130,9 +241,90 @@ The UI permits 128..2048 dimensions in multiples of 64, but this is **not** a
 certified range on every model/device. Begin with a compatible small Stable
 Diffusion 1.5 GGUF and 256 or 512 output; Qwen Image readiness is not established.
 Backend fallbacks/transfers and large dispatch limits still need real testing.
-Native diagnostics are retained for failures. No resolution reduction or backend
+Native diagnostics are available during the operation, including before a failure, in opt-in debug mode. No resolution reduction or backend
 switch is silently retried. Up to four PNGs remain in memory; URLs are revoked
 on deletion/unmount. Results are not written into chat/history/storage.
+
+## Live diagnostics and non-completing generations
+
+The image debug checkbox uses the same per-request `debug: "off" | "on"` approach
+as the llama browser/audio requests. It does not reuse another chat's debug state.
+The image request snapshots it before creating its dedicated Worker. Turning it
+on does not select test Wasm, change precision, enable an alternative backend or
+change generation parameters. Current published ABI 2 is sufficient; no bicore
+rebuild or generated-code string replacement is involved.
+
+Basic checkpoints are available even without verbose native text. Debug mode adds:
+
+- Runtime fetch/instantiate, model-header/load, generation, sampling, PNG encoding
+  and cleanup boundaries. A start is posted **before** each potentially long call.
+- Public source/profile/schema and selected settings; tensor dtype counts and
+  largest tensor element count from file headers; bounded file-read counters,
+  total bytes, maximum 64-bit offset and time spent inside file reads.
+- The existing stable-diffusion log callback, including its debug/verbose levels
+  and segment/model-manager logs when upstream emits them.
+- Observations of the **actual runtime-requested** WebGPU device: features/limits,
+  shader and pipeline creation, buffer request totals, uploads/submissions/queue
+  completions, device loss, uncaptured errors and observed error-scope results.
+  Buffer request totals are cumulative, **not current VRAM consumption**.
+
+GPU observation is confined to the disposable Worker. It returns the real native
+objects, forwards the same arguments, never requests an extra device, and restores
+instance methods on teardown. Diagnostic failure cannot change native outcomes.
+It does not enable compile-time upstream GPU tracing or report every scheduler
+node's actual CPU/GPU placement. BF16 in a file header is **not proof** of CPU
+fallback; a quiet GPU or a slow phase alone is not proof of a deadlock either.
+
+One-way notifications pass through schema-checked worker-transport helpers instead
+of queued RPC callback acknowledgements. The window adds a five-second heartbeat
+with the last known stage and time since a Worker notification. It continues when
+synchronous Wasm occupies the Worker; timer throttling in a hidden tab can delay
+it. Silence never auto-cancels, changes the seed/model, or starts a retry.
+
+The UI exposes **Copy logs** and **Save logs** while generation is pending, after
+errors and after cancellation. Verbose records also use the console prefix
+`[stable-diffusion-cpp-browser]`. Native lines are rate-limited with dropped-line
+counts; exports retain initial context plus a bounded tail (about 384 KiB). The
+buffer is temporary and replaced by the next generation, not written to storage
+or sent to a server automatically. Inspect logs before sharing: file paths and
+technical model messages can identify local files. Common prompt/token dumps,
+exact input strings and URLs are redacted as a best-effort privacy filter, not a
+claim that every conceivable upstream message is content-free.
+
+For a reported Z-Image-Turbo hang: enable debug, start generation, copy/save logs
+**before cancelling or leaving the page**. Repeated reads suggest transfer/reload
+work; a native segment-start without progress narrows the location; a GPU queue
+or device error is distinct from a model-load failure. The logs support further
+investigation; this change does not claim the reported hang or a BF16/F32 issue
+has already been reproduced or repaired.
+
+## Managed GPU working-memory target
+
+The control is in the collapsed advanced panel, not the main model selection.
+It defaults to 2048 MiB (2 GiB), preserving the previously working SD1.5 path.
+Naidan converts MiB to a GiB string for upstream `sd_ctx_params_t.max_vram`, with
+`params_backend="disk"`, `enable_mmap=false`, and lazy weight loading. Upstream
+uses this budget for managed weights/runtime workspaces and graph segmentation;
+it can stage only the weights required by the current segment. It is **not** a
+limit on the file size, the sum of component file sizes, or a preallocation of
+that entire amount. A larger model can execute if individual tensors and live
+segments/workspaces fit, subject to backend and physical-memory constraints.
+
+A low target can increase weight transfers or make a segment impossible to
+allocate. A high one can cause memory pressure. It is not a hard cap on every
+allocation made by the browser/GPU driver, nor a measurement of free GPU memory.
+The approved image WebGPU memory-query overlay reports unknown capacity (0/0),
+so removing the positive target or exposing 0 as reliable "automatic free VRAM"
+would be misleading. Retain the explicit target until a measured replacement is
+implemented. Wasm32 must remain below 4096 MiB because the pinned upstream budget
+accounting narrows to `size_t`; Wasm64 avoids that accounting-width restriction,
+not the actual GPU or system-memory limits.
+
+Source: stable-diffusion.cpp `88411ef`, `include/stable-diffusion.h` (max_vram),
+`src/core/ggml_graph_cut.cpp` (budget parsing/segmentation), and
+`src/model_manager.cpp` (managed capacity/residency/eviction). These are runtime
+policies exposed by stable-diffusion.cpp and selected by Naidan, not a general
+WebGPU requirement. The core remains policy-free and no new core build is needed.
 
 ## Tests and limits
 

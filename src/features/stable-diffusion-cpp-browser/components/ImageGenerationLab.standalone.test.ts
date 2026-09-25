@@ -35,11 +35,17 @@ it('keeps the entire image form visible and disabled in standalone', async () =>
   expect(wrapper.get('[data-testid="image-unavailable"]').text()).toContain('hosted');
   expect(wrapper.find('[data-testid="image-file-model"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="image-prompt"]').exists()).toBe(true);
-  expect(wrapper.findAll('fieldset')).toHaveLength(2);
+  expect(wrapper.findAll('fieldset')).toHaveLength(3);
+  expect(wrapper.find('[data-testid="image-model-library"]').exists()).toBe(true);
   for (const field of wrapper.findAll('input, select, textarea, button')) {
     expect(field.element.matches(':disabled'), field.html()).toBe(true);
   }
   expect(wrapper.text()).not.toContain('Ollama');
+  const catalog = wrapper.get('[data-testid="image-model-catalog"]');
+  expect(catalog.text()).toContain('Z-Image-Turbo');
+  for (const link of catalog.findAll('a')) {
+    expect(link.attributes('href')).toBeUndefined(); expect(link.attributes('aria-disabled')).toBe('true');
+  }
   expect(worker).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(reader).not.toHaveBeenCalled();
 });
 

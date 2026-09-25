@@ -27,6 +27,7 @@ export interface CoreModule {
   addFunction(callback: (...args: (number | bigint)[]) => void, signature: string): number | bigint;
   removeFunction(pointer: number | bigint): void;
   _sdc_abi_version(): number;
+  _sdc_model_io_capabilities?(): number;
 }
 export interface Core {
   module: CoreModule;

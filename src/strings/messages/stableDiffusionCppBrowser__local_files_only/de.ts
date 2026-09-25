@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__local_files_only = (): string => "Nur GGUF-Dateien: eine ungeteilte Datei pro Komponente, gelesen ohne vollständige Speicherkopie. Beim Öffnen werden weder Modelle geladen noch die Inferenz gestartet.";
+export const stableDiffusionCppBrowser__local_files_only = (): string => "Modelldownloads erfordern eine ausdrückliche Aktion. Die Generierung liest lokale Dateien und lädt fehlende Komponenten nicht nach.";

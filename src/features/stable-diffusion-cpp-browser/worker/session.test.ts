@@ -122,7 +122,7 @@ it.each([4, 8] as const)('uses public records and caller policy with %i-byte poi
   const ctx = h.recordPointers.get('sd_ctx_params_t')!, image = h.recordPointers.get('sd_img_gen_params_t')!;
   expect(h.fields.get(`sd_img_gen_params_t:${image}:seed`)).toBe(9223372036854775807n);
   const modelPath = h.fields.get(`sd_ctx_params_t:${ctx}:model_path`);
-  expect(h.strings.get(BigInt(modelPath!))).toBe('/models/model.gguf');
+  expect(h.strings.get(BigInt(modelPath!))).toBe('/models/model/model.gguf');
   expect(h.fields.get(`sd_ctx_params_t:${ctx}:enable_mmap`)).toBe(0);
   expect(h.strings.get(BigInt(h.fields.get(`sd_ctx_params_t:${ctx}:max_vram`)!))).toBe('2');
   expect(h.api.str_to_sample_method).toHaveBeenCalledTimes(1); expect(h.api.sd_get_default_sample_method).not.toHaveBeenCalled();
@@ -151,6 +151,6 @@ it.each(['load-failure', 'generation-failure', 'trap'] as const)('releases the c
 it('does not mount or initialize a native model when the selected file header is invalid', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
   h.reader.readAsArrayBuffer.mockReturnValue(new ArrayBuffer(24));
-  await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow('GGUF version');
+  await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow('Unrecognized weight format');
   expect(h.helpers.mountReadOnlyFile).not.toHaveBeenCalled(); expect(h.api.new_sd_ctx).not.toHaveBeenCalled();
 });

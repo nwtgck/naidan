@@ -31,5 +31,25 @@ export function createGgufFileSource({ file, reader }: {
   if (view.getUint32(0, true) !== 0x46554747 || ![2, 3].includes(view.getUint32(4, true))) throw new Error('Expected a little-endian GGUF version 2 or 3 file');
   return source;
 }
+
+/** Used only after descriptor validation. One platform read is always bounded,
+ * even when the native filesystem asks for a larger destination view. */
+export function createModelFileSource({ file, reader }: { file: File, reader: SyncBlobReader }): RandomAccessSource {
+  if (!Number.isSafeInteger(file.size) || file.size < 0) throw new Error('Invalid model file size');
+  return {
+    size: file.size,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- External core range-reader callback signature.
+    read(destination, offset) {
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.size) throw new Error('Invalid model file offset');
+      const length = Math.min(destination.byteLength, file.size - offset, 8 * 1024 * 1024);
+      if (length === 0) return 0;
+      const bytes = new Uint8Array(reader.readAsArrayBuffer(file.slice(offset, offset + length)));
+      if (bytes.byteLength !== length) throw new Error('Model file changed or could not be read completely');
+      destination.set(bytes);
+      return bytes.byteLength;
+    },
+  };
+}
+
 export const TEST_ONLY = {
 };

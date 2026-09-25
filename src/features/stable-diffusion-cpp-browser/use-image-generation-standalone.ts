@@ -1,3 +1,4 @@
+import { createDisabledImageLibrary } from './library-standalone';
 import { computed } from 'vue';
 import { lazyStrings } from '@/strings';
 import { createImageForm } from './form';
@@ -9,6 +10,7 @@ export function useImageGeneration(): ImageGenerationView {
   return {
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
     ...form,
+    library: createDisabledImageLibrary(),
     busy: computed(() => false),
     supported: computed(() => false),
     formDisabled: computed(() => true),
@@ -17,7 +19,7 @@ export function useImageGeneration(): ImageGenerationView {
     resetFiles() {},
     removeResult() {},
     async generate() {},
-    cancel() {},
+    cancel() {}, async copyDiagnostics() {}, saveDiagnostics() {},
   };
 }
 
