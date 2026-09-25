@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { runImageGeneration } from './session';
 import type { Core, CoreModule, HostHelpers, NativeApi } from './core-types';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
+import { fixtureReader, ggufFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
 
 /** This is a mocked native boundary, not a model or WebGPU inference test. */
 function harness({ pointerBytes, outcome, channels }: {
@@ -105,7 +106,7 @@ function harness({ pointerBytes, outcome, channels }: {
       }) };
     }),
   };
-  const reader = { readAsArrayBuffer: vi.fn(() => {
+  const reader = { readAsArrayBuffer: vi.fn((_blob: Blob) => {
     const header = new ArrayBuffer(24), view = new DataView(header); view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return header;
   }) };
   return { core, api, helpers, reader, fields, recordPointers, strings, events };
@@ -124,7 +125,12 @@ it.each([4, 8] as const)('uses public records and caller policy with %i-byte poi
   const modelPath = h.fields.get(`sd_ctx_params_t:${ctx}:model_path`);
   expect(h.strings.get(BigInt(modelPath!))).toBe('/models/model/model.gguf');
   expect(h.fields.get(`sd_ctx_params_t:${ctx}:enable_mmap`)).toBe(0);
-  expect(h.strings.get(BigInt(h.fields.get(`sd_ctx_params_t:${ctx}:max_vram`)!))).toBe('2');
+  expect(h.fields.get(`sd_ctx_params_t:${ctx}:disable_prefetch`)).toBe(0);
+  expect(h.strings.get(BigInt(h.fields.get(`sd_ctx_params_t:${ctx}:backend`)!))).toBe('WebGPU');
+  expect(h.strings.get(BigInt(h.fields.get(`sd_ctx_params_t:${ctx}:params_backend`)!))).toBe('WebGPU');
+  expect(h.fields.get(`sd_ctx_params_t:${ctx}:eager_load`)).toBe(1);
+  expect(h.fields.get(`sd_ctx_params_t:${ctx}:auto_fit`)).toBe(0);
+  expect(h.fields.get(`sd_ctx_params_t:${ctx}:max_vram`)).toBe(0n);
   expect(h.api.str_to_sample_method).toHaveBeenCalledTimes(1); expect(h.api.sd_get_default_sample_method).not.toHaveBeenCalled();
   expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 1, steps: 4 } });
   expect(h.events.indexOf('free-images')).toBeLessThan(h.events.indexOf('free-context'));
@@ -153,4 +159,54 @@ it('does not mount or initialize a native model when the selected file header is
   h.reader.readAsArrayBuffer.mockReturnValue(new ArrayBuffer(24));
   await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow('Unrecognized weight format');
   expect(h.helpers.mountReadOnlyFile).not.toHaveBeenCalled(); expect(h.api.new_sd_ctx).not.toHaveBeenCalled();
+});
+
+it('keeps auto residency on WebGPU for a large original file without a model-size threshold', async () => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
+  const request = requestFixture();
+  request.models[0]!.file = ggufFixture({ name: 'model.gguf', tensors: [], metadata: {}, extraBytes: 13 * 1024 ** 3 }).file;
+  h.reader.readAsArrayBuffer.mockImplementation(fixtureReader.readAsArrayBuffer);
+  vi.mocked(h.helpers.mountReadOnlyFile).mockImplementation((_core, path, source) => {
+    expect(source.size).toBeGreaterThan(13 * 1024 ** 3);
+    return { path, remove: vi.fn() };
+  });
+  await runImageGeneration({ ...h, request, onProgress: vi.fn(), onLog: vi.fn() });
+  const ctx = h.recordPointers.get('sd_ctx_params_t')!;
+  expect(h.strings.get(BigInt(h.fields.get(`sd_ctx_params_t:${ctx}:params_backend`)!))).toBe('WebGPU');
+  expect(h.fields.get(`sd_ctx_params_t:${ctx}:eager_load`)).toBe(1);
+  expect(h.fields.get(`sd_ctx_params_t:${ctx}:max_vram`)).toBe(0n);
+});
+
+it.each([
+  { weightResidency: 'cpu', paramsBackend: 'cpu' },
+  { weightResidency: 'hybrid', paramsBackend: 'diffusion=disk,te=cpu,vae=cpu' },
+  { weightResidency: 'disk', paramsBackend: 'disk' },
+] as const)('preserves explicit $weightResidency placement and an optional managed budget', async ({ weightResidency, paramsBackend }) => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  const request = requestFixture(); request.weightResidency = weightResidency; request.gpuBudgetMiB = 3072;
+  await runImageGeneration({ ...h, request, onProgress: vi.fn(), onLog: vi.fn() });
+  const ctx = h.recordPointers.get('sd_ctx_params_t')!;
+  expect(h.strings.get(BigInt(h.fields.get(`sd_ctx_params_t:${ctx}:params_backend`)!))).toBe(paramsBackend);
+  expect(h.fields.get(`sd_ctx_params_t:${ctx}:eager_load`)).toBe(0);
+  expect(h.strings.get(BigInt(h.fields.get(`sd_ctx_params_t:${ctx}:max_vram`)!))).toBe('3');
+});
+
+it.each(['success', 'trap'] as const)('reports final logical and Blob read totals after %s', async outcome => {
+  const h = harness({ pointerBytes: 8, outcome, channels: 3 });
+  const mount = vi.mocked(h.helpers.mountReadOnlyFile);
+  const originalMount = mount.getMockImplementation()!;
+  mount.mockImplementation((...args) => {
+    const source = args[2];
+    for (let offset = 0; offset < 18; offset += 2) source.read(new Uint8Array(2), offset);
+    return originalMount(...args);
+  });
+  const request = requestFixture(); request.debug = 'on';
+  const onDiagnostic = vi.fn();
+  const operation = runImageGeneration({ ...h, request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic });
+  if (outcome === 'trap') await expect(operation).rejects.toThrow('mocked Wasm trap');
+  else await operation;
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'file-read', fields: expect.objectContaining({
+    report: 'final', reads: 9, bytes: 18, blobReads: 1, blobBytes: 24, cacheHits: 8, cacheHitBytes: 16,
+    cacheCapacityBytes: 64 * 1024 * 1024, cacheRetainedBytes: 24,
+  }) }));
 });

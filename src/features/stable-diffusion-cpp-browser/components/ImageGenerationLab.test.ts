@@ -43,17 +43,34 @@ it('uses independent requests, saves a temporary result, and revokes it on unmou
   await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
   expect(mocks.generate).toHaveBeenCalledTimes(1); expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
   expect(wrapper.get('a[download]').attributes('download')).toBe('naidan-image-42.png');
+  expect(mocks.generate.mock.calls[0]?.[0]?.request.weightResidency).toBe('auto');
+  expect(mocks.generate.mock.calls[0]?.[0]?.request.gpuBudgetMiB).toBeUndefined();
   wrapper.unmount(); wrapper = undefined; expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-image');
 });
 
-it('keeps the working-memory budget in collapsed advanced settings and the catalog outside the model fieldset', async () => {
+it('keeps an optional empty budget in advanced settings and the catalog outside the model fieldset', async () => {
   wrapper = mount(ImageGenerationLab); await flushPromises();
   const memory = wrapper.get('[data-testid="image-memory-budget"]');
   expect(memory.element.closest('details')?.hasAttribute('open')).toBe(false);
-  expect(memory.element.closest('details')?.textContent).toContain('not to limit model file size');
-  expect(wrapper.vm.TEST_ONLY.gpuBudgetMiB.value).toBe(2048);
+  expect(memory.element.closest('details')?.textContent).toContain('Leave empty');
+  expect(memory.attributes('required')).toBeUndefined();
+  expect(wrapper.vm.TEST_ONLY.gpuBudgetMiB.value).toBe('');
+  expect(wrapper.vm.TEST_ONLY.weightResidency.value).toBe('auto');
   expect(wrapper.get('[data-testid="image-model-catalog"]').element.closest('fieldset')).toBeNull();
   expect(mocks.create).not.toHaveBeenCalled();
+});
+it('forwards an explicit budget and unsets it when the number input is cleared', async () => {
+  mocks.generate.mockResolvedValue({ png: new Blob(['mock PNG'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
+  wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
+  const memory = wrapper.get('[data-testid="image-memory-budget"]');
+  await memory.setValue('3072');
+  await wrapper.vm.TEST_ONLY.generate();
+  expect(mocks.generate.mock.calls[0]?.[0]?.request.gpuBudgetMiB).toBe(3072);
+  await memory.setValue('');
+  await wrapper.vm.TEST_ONLY.generate();
+  expect(mocks.generate.mock.calls[1]?.[0]?.request.gpuBudgetMiB).toBeUndefined();
 });
 it('keeps copy/save diagnostics usable while a native request is indefinitely pending', async () => {
   const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
@@ -62,7 +79,7 @@ it('keeps copy/save diagnostics usable while a native request is indefinitely pe
   let finish: ((value: { png: Blob, width: number, height: number, modelVersion: string }) => void) | undefined;
   mocks.generate.mockImplementation(({ request, onDiagnostic }) => {
     expect(request.debug).toBe('on');
-    onDiagnostic({ diagnostic: { event: 'start', stage: 'model-load', elapsedMs: 120, fields: { gpuBudgetMiB: 2048 } } });
+    onDiagnostic({ diagnostic: { event: 'start', stage: 'model-load', elapsedMs: 120, fields: { gpuBudgetMiB: 'unset' } } });
     return new Promise(resolve => {
       finish = resolve;
     });

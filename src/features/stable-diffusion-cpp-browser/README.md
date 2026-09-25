@@ -214,9 +214,13 @@ pinned to the published artifact containing both capabilities.
 
 Every component is mounted with the core's generic read-only helper, an 8 MiB
 maximum read chunk and mmap disabled. Source lifetime extends through native
-context destruction. Large files do **not** guarantee the model fits memory:
+context destruction. A session-wide 64 MiB LRU cache reads aligned 8 MiB pages,
+sharing its bound across all component files. It coalesces tiny native reads
+without splitting, converting or reading a whole large model into CPU memory.
+The bound covers cached bytes, not caller destinations, browser internals or
+garbage-collection timing. Large files do **not** guarantee the model fits memory:
 individual tensors, live activations, GPU buffers and staging allocations remain
-limited. The Wasm32 managed budget is below 4 GiB; Wasm64 allows a larger budget
+limited. An explicit Wasm32 managed budget is below 4 GiB; Wasm64 allows a larger budget
 but not unlimited physical/GPU memory.
 
 ## Runtime behavior and policy
@@ -268,6 +272,16 @@ Basic checkpoints are available even without verbose native text. Debug mode add
   completions, device loss, uncaptured errors and observed error-scope results.
   Buffer request totals are cumulative, **not current VRAM consumption**.
 
+`file-read` reports cumulative per-file logical `reads`, `bytes` and `readMs`,
+separately from actual `blobReads`, `blobBytes` and `blobReadMs` (including slicing
+and synchronous Blob access). `readMs` includes `blobReadMs`; do not add them.
+`cacheHits` counts nonempty logical reads served entirely from cached pages;
+`cacheHitBytes` also includes cached portions of partially satisfied reads.
+Read-ahead may make `blobBytes` greater than logical `bytes`. A final report is
+emitted during cleanup, including after failure, so the last partial interval is
+not lost. Cache capacity and retained bytes describe the shared session cache,
+not separate per-file allowances.
+
 GPU observation is confined to the disposable Worker. It returns the real native
 objects, forwards the same arguments, never requests an extra device, and restores
 instance methods on teardown. Diagnostic failure cannot change native outcomes.
@@ -298,27 +312,30 @@ or device error is distinct from a model-load failure. The logs support further
 investigation; this change does not claim the reported hang or a BF16/F32 issue
 has already been reproduced or repaired.
 
-## Managed GPU working-memory target
+## Weight residency and optional GPU budget
 
-The control is in the collapsed advanced panel, not the main model selection.
-It defaults to 2048 MiB (2 GiB), preserving the previously working SD1.5 path.
-Naidan converts MiB to a GiB string for upstream `sd_ctx_params_t.max_vram`, with
-`params_backend="disk"`, `enable_mmap=false`, and lazy weight loading. Upstream
-uses this budget for managed weights/runtime workspaces and graph segmentation;
-it can stage only the weights required by the current segment. It is **not** a
-limit on the file size, the sum of component file sizes, or a preallocation of
-that entire amount. A larger model can execute if individual tensors and live
-segments/workspaces fit, subject to backend and physical-memory constraints.
+Auto requests `backend="WebGPU"`, `params_backend="WebGPU"`, `eager_load=true`
+and `auto_fit=false`. Supported weights are loaded onto the GPU before generation
+and retained for the operation, without arbitrary CPU/disk model-size thresholds.
+Native unsupported tensor/operation fallbacks can still use the CPU; requested
+placement is not evidence that every tensor or graph node executes on the GPU.
+The existing CPU, hybrid and disk choices remain explicit advanced alternatives.
 
-A low target can increase weight transfers or make a segment impossible to
-allocate. A high one can cause memory pressure. It is not a hard cap on every
-allocation made by the browser/GPU driver, nor a measurement of free GPU memory.
-The approved image WebGPU memory-query overlay reports unknown capacity (0/0),
-so removing the positive target or exposing 0 as reliable "automatic free VRAM"
-would be misleading. Retain the explicit target until a measured replacement is
-implemented. Wasm32 must remain below 4096 MiB because the pinned upstream budget
-accounting narrows to `size_t`; Wasm64 avoids that accounting-width restriction,
-not the actual GPU or system-memory limits.
+The managed-memory target in advanced settings starts empty. An empty input
+becomes `undefined` in the request and a null `sd_ctx_params_t.max_vram` pointer.
+In the pinned runtime this leaves the managed budget unset, rather than imposing
+an artificial 2 GiB cap. The WebGPU memory-query overlay reports unknown free and
+total capacity (0/0); the native manager treats that as unknown, not zero usable
+memory. Actual buffer/binding, Wasm and device allocation limits still apply.
+Allocation failures are reported; Naidan does not silently retry with CPU weights,
+lower precision or a smaller image.
+
+An explicitly entered target is converted from MiB to a GiB string. It covers
+resident weights plus working buffers and can guide graph segmentation; it is
+not a model-file-size limit or a measurement of available memory. A budget smaller
+than GPU-resident weights plus workspace can prevent generation. Explicit Wasm32
+budgets remain below 4096 MiB because native accounting uses `size_t`; this does
+not impose a 4 GiB file-size ceiling or detect physical GPU memory.
 
 Source: stable-diffusion.cpp `88411ef`, `include/stable-diffusion.h` (max_vram),
 `src/core/ggml_graph_cut.cpp` (budget parsing/segmentation), and

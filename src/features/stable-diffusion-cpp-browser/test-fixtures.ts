@@ -14,7 +14,7 @@ export function parametersFixture(): Parameters {
   return { prompt: 'a small tree', negativePrompt: '', width: 256, height: 256, steps: 20, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, conditioningCacheSize: 0, modelArguments: '' };
 }
 export function requestFixture(): Request {
-  return { artifact: artifactFixture(), baseUrl: 'https://naidan.example/app/', models: [{ slot: 'model', file: ggufFile() }], parameters: parametersFixture(), gpuBudgetMiB: 2048 };
+  return { artifact: artifactFixture(), baseUrl: 'https://naidan.example/app/', models: [{ slot: 'model', file: ggufFile() }], parameters: parametersFixture(), weightResidency: 'auto', gpuBudgetMiB: undefined };
 }
 export const TEST_ONLY = {
 };

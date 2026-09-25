@@ -52,6 +52,7 @@ export const parametersSchema = z.object({
   modelArguments: z.string().max(4096).refine(value => !value.includes('\0')),
 
 });
+export const weightResidencySchema = z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']);
 export const modelSlotSchema = z.enum(['model', 'diffusion', 'vae', 'clipL', 'clipG', 't5', 'lm']);
 const localFileSchema = z.custom<File>(value => typeof File !== 'undefined' && value instanceof File && Number.isSafeInteger(value.size) && value.size >= 8, 'Choose a local model weight or index file');
 const relativePathSchema = z.string().refine(path => validModelPath({ path }));
@@ -86,8 +87,11 @@ export const requestSchema = z.object({
     }
   }),
   parameters: parametersSchema,
-  gpuBudgetMiB: z.number().int().min(512).max(16384),
-}).refine(value => getProfileConfiguration({ profile: value.artifact.profile }).memory64 || value.gpuBudgetMiB <= 4095, { path: ['gpuBudgetMiB'], message: 'The Wasm32 memory accounting budget must be below 4 GiB' });
+  weightResidency: weightResidencySchema.default('auto'),
+  // A GPU budget is not a Wasm heap limit. Bound only exact byte accounting;
+  // the separate Wasm32 refinement reflects native size_t, not model file size.
+  gpuBudgetMiB: z.number().int().min(512).max(Math.floor(Number.MAX_SAFE_INTEGER / 1024 ** 2)).optional(),
+}).refine(value => value.gpuBudgetMiB === undefined || getProfileConfiguration({ profile: value.artifact.profile }).memory64 || value.gpuBudgetMiB <= 4095, { path: ['gpuBudgetMiB'], message: 'The Wasm32 memory accounting budget must be below 4 GiB' });
 export const progressSchema = z.object({
   phase: z.enum(['runtime', 'model', 'sampling', 'encoding']),
   step: z.number().int().nonnegative(),
@@ -102,6 +106,7 @@ export const responseSchema = z.object({
 export type Artifact = z.infer<typeof artifactSchema>;
 export type Configuration = z.infer<typeof configurationSchema>;
 export type Parameters = z.infer<typeof parametersSchema>;
+export type WeightResidency = z.infer<typeof weightResidencySchema>;
 export type ModelSlot = z.infer<typeof modelSlotSchema>;
 export type Request = z.infer<typeof requestSchema>;
 export type Progress = z.infer<typeof progressSchema>;

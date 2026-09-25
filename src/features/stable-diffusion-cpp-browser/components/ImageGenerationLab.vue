@@ -9,7 +9,7 @@ import { profileOptions, samplerOptions, schedulerOptions } from '@/features/sta
 import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation';
 
 const id = useId();
-const { debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, gpuBudgetMiB, progress, failure, invalid, cancelled, results,
+const { debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results,
   library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, copyDiagnostics, saveDiagnostics } = useImageGeneration();
 const slots = computed(() => {
   switch (layout.value) {
@@ -25,6 +25,13 @@ const slots = computed(() => {
   default: { const exhaustive: never = layout.value; throw new Error(String(exhaustive)); }
   }
 });
+const weightResidencyOptions = [
+  { value: 'auto' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_auto() },
+  { value: 'cpu' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_cpu() },
+  { value: 'hybrid' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_hybrid() },
+  { value: 'disk' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_disk() },
+];
+
 const phaseLabel = computed(() => {
   if (!progress.value) return undefined;
   switch (progress.value.phase) {
@@ -35,7 +42,7 @@ const phaseLabel = computed(() => {
   default: { const exhaustive: never = progress.value.phase; throw new Error(String(exhaustive)); }
   }
 });
-defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, gpuBudgetMiB, results, generate } }) || {}) });
+defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, weightResidency, gpuBudgetMiB, results, generate } }) || {}) });
 </script>
 
 <template>
@@ -89,9 +96,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
               <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__profile() }}</span>
                 <select v-model="profile" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2"><option v-for="value in profileOptions" :key="value" :value="value">{{ value }}</option></select>
               </label>
+              <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__weight_residency() }}</span>
+                <select v-model="weightResidency" data-testid="image-weight-residency" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2"><option v-for="option in weightResidencyOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
+              </label>
             </div>
+            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__weight_residency_help() }}</p>
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__memory_and_cancellation() }}</p>
-            <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget() }}</span><input v-model.number="gpuBudgetMiB" data-testid="image-memory-budget" type="number" min="512" :max="profile === 'webgpu-wasm64-jspi' ? 16384 : 4095" step="1" required tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2" /></label>
+            <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget() }}</span><input v-model.number="gpuBudgetMiB" data-testid="image-memory-budget" type="number" min="512" :max="profile === 'webgpu-wasm64-jspi' ? undefined : 4095" step="1" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2" /></label>
             <p data-testid="image-memory-budget-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget_help() }}</p>
             <div tw-class="grid sm:grid-cols-2 gap-4">
               <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__sampler() }}</span><select v-model="parameters.sampler" tw-class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent p-2"><option v-for="value in samplerOptions" :key="value" :value="value">{{ value }}</option></select></label>

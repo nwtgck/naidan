@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__weight_residency_help = (): string => "Automático carga los pesos compatibles en la GPU antes de generar y los mantiene allí durante la operación. CPU, híbrido y disco siguen disponibles como alternativas manuales. Las operaciones nativas no compatibles pueden seguir usando la CPU.";

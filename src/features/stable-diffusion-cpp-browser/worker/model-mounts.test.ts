@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import { validateModelMounts } from './model-mounts';
-import { createModelFileSource } from './gguf-file';
+import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES, MODEL_FILE_PAGE_BYTES } from './gguf-file';
 import { fixtureReader, ggufFixture, safetensorsFixture, sparseFile, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
 
 function jsonFile({ text, name }: { text: string, name: string }): File {
@@ -13,7 +13,7 @@ it('keeps a single 20-GiB GGUF with Unicode/spaces intact on the old core', asyn
   const input = { slot: 'model' as const, file: fixture.file, path: 'weights/重み 20GB.gguf' };
   const plan = await validateModelMounts({ input, reader: fixtureReader, capabilities: 0 });
   expect(plan.path).toBe(input.path); expect(plan.files).toEqual([{ path: input.path, file: fixture.file }]);
-  const source = createModelFileSource({ file: fixture.file, reader: fixtureReader });
+  const source = createModelFileSource({ file: fixture.file, reader: fixtureReader, cache: createModelFileReadCache({ pageBytes: MODEL_FILE_PAGE_BYTES, capacityBytes: MODEL_FILE_CACHE_BYTES }) });
   expect(source.size).toBe(fixture.file.size);
   const output = new Uint8Array(9 * 1024 * 1024);
   const count = source.read(output, 19 * 1024 ** 3);

@@ -1986,6 +1986,12 @@ import { stableDiffusionCppBrowser__t5_file } from '@/strings/messages/stableDif
 import { stableDiffusionCppBrowser__lm_file } from '@/strings/messages/stableDiffusionCppBrowser__lm_file/es';
 import { stableDiffusionCppBrowser__companion_files_help } from '@/strings/messages/stableDiffusionCppBrowser__companion_files_help/es';
 import { stableDiffusionCppBrowser__profile } from '@/strings/messages/stableDiffusionCppBrowser__profile/es';
+import { stableDiffusionCppBrowser__weight_residency } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency/es';
+import { stableDiffusionCppBrowser__weight_residency_help } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_help/es';
+import { stableDiffusionCppBrowser__weight_residency_auto } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_auto/es';
+import { stableDiffusionCppBrowser__weight_residency_cpu } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_cpu/es';
+import { stableDiffusionCppBrowser__weight_residency_hybrid } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_hybrid/es';
+import { stableDiffusionCppBrowser__weight_residency_disk } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_disk/es';
 import { stableDiffusionCppBrowser__gpu_budget } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget/es';
 import { stableDiffusionCppBrowser__gpu_budget_help } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget_help/es';
 import { stableDiffusionCppBrowser__catalog_file_notice } from '@/strings/messages/stableDiffusionCppBrowser__catalog_file_notice/es';
@@ -2103,6 +2109,12 @@ export const catalog = {
   stableDiffusionCppBrowser__lm_file,
   stableDiffusionCppBrowser__companion_files_help,
   stableDiffusionCppBrowser__profile,
+  stableDiffusionCppBrowser__weight_residency,
+  stableDiffusionCppBrowser__weight_residency_help,
+  stableDiffusionCppBrowser__weight_residency_auto,
+  stableDiffusionCppBrowser__weight_residency_cpu,
+  stableDiffusionCppBrowser__weight_residency_hybrid,
+  stableDiffusionCppBrowser__weight_residency_disk,
   stableDiffusionCppBrowser__gpu_budget,
   stableDiffusionCppBrowser__gpu_budget_help,
   stableDiffusionCppBrowser__catalog_file_notice,

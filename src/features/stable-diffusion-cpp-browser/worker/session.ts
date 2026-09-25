@@ -1,13 +1,28 @@
 import type { ImageDiagnosticInput, createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import type { Request, Progress, ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Core, HostHelpers } from './core-types';
-import { createModelFileSource, type SyncBlobReader } from './gguf-file';
+import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES, MODEL_FILE_PAGE_BYTES, type SyncBlobReader } from './gguf-file';
 import { validateModelMounts } from './model-mounts';
 
 const pathFields = {
   model: 'model_path', diffusion: 'diffusion_model_path', vae: 'vae_path',
   clipL: 'clip_l_path', clipG: 'clip_g_path', t5: 't5xxl_path', lm: 'llm_path',
 } satisfies Record<ModelSlot, string>;
+
+function totalModelBytes({ request }: { request: Request }): number {
+  return request.models.reduce((total, model) => total + model.file.size + (model.companions ?? []).reduce((sum, companion) => sum + companion.file.size, 0), 0);
+}
+
+function resolveWeightResidency({ request }: { request: Request }) {
+  switch (request.weightResidency) {
+  case 'auto': return { resolved: 'gpu', paramsBackend: 'WebGPU', eagerLoad: true };
+  case 'cpu': return { resolved: 'cpu', paramsBackend: 'cpu', eagerLoad: false };
+  case 'hybrid': return { resolved: 'hybrid', paramsBackend: 'diffusion=disk,te=cpu,vae=cpu', eagerLoad: false };
+  case 'disk': return { resolved: 'disk', paramsBackend: 'disk', eagerLoad: false };
+  case 'runtime': return { resolved: 'runtime', paramsBackend: '', eagerLoad: false };
+  default: { const exhaustive: never = request.weightResidency; throw new Error(String(exhaustive)); }
+  }
+}
 
 /** One context per operation is a Naidan policy, not a limitation of the core. */
 export async function runImageGeneration({ core, helpers, request, reader, onProgress, onLog, onDiagnostic }: {
@@ -20,6 +35,8 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
   if (core.pointerBytes !== 4 && core.pointerBytes !== 8) throw new Error('Unsupported native pointer width');
   const allocations: bigint[] = [];
   const mounts: { remove(): void }[] = [];
+  const fileReadCache = createModelFileReadCache({ pageBytes: MODEL_FILE_PAGE_BYTES, capacityBytes: MODEL_FILE_CACHE_BYTES });
+  const reportFinalReads: (() => void)[] = [];
   const callbacks: (number | bigint)[] = [];
   let context = 0n;
   let images = 0n;
@@ -79,20 +96,32 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
             core.module.FS.mkdir(parent); directories.add(parent);
           }
         }
-        const source = createModelFileSource({ file: entry.file, reader });
-        let reads = 0, bytes = 0, maxOffset = 0, readMs = 0, reportedAt = 0;
+        const source = createModelFileSource({ file: entry.file, reader, cache: fileReadCache });
+        let reads = 0, reportedAt = 0;
+        const reportReads = ({ report }: { report: 'progress' | 'final' }) => {
+          switch (request.debug) {
+          case undefined: case 'off': return;
+          case 'on': break;
+          default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
+          }
+          emit({ event: 'file-read', stage: 'generation', message: 'Cumulative per-file reads; readMs includes blobReadMs. cacheHits counts fully cached nonempty reads.', fields: {
+            slot, path: entry.path.slice(0, 512), report, ...source.metrics(), fileBytes: source.size,
+            cachePageBytes: MODEL_FILE_PAGE_BYTES, cacheCapacityBytes: MODEL_FILE_CACHE_BYTES, cacheRetainedBytes: fileReadCache.retainedBytes(),
+          } });
+        };
+        reportFinalReads.push(() => reportReads({ report: 'final' }));
         mounts.push(helpers.mountReadOnlyFile(core, path, { size: source.size,
           // eslint-disable-next-line local-rules-named-args/require-named-args -- External filesystem range-reader signature.
           read(destination, offset) {
-            const began = performance.now(); const count = source.read(destination, offset);
-            reads++; bytes += count; maxOffset = Math.max(maxOffset, offset); readMs += performance.now() - began;
+            const count = source.read(destination, offset);
+            reads++;
             if (request.debug === 'on' && (reads === 1 || performance.now() - reportedAt > 1000)) {
               reportedAt = performance.now();
-              emit({ event: 'file-read', stage: 'generation', message: undefined, fields: { slot, path: entry.path.slice(0, 512), reads, bytes, maxOffset, readMs, fileBytes: source.size } });
+              reportReads({ report: 'progress' });
             }
             return count;
           },
-        }, { maxChunkBytes: 8 * 1024 * 1024 }));
+        }, { maxChunkBytes: MODEL_FILE_PAGE_BYTES }));
       }
       paths.set(slot, root + plan.path);
       log({ message: `Mounted ${slot}: ${file.size} bytes; original paths, bounded random access` });
@@ -100,20 +129,28 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     const ctxParams = keep({ pointer: core.allocRecord('sd_ctx_params_t') });
     await core.api.sd_ctx_params_init(ctxParams);
     for (const [slot, path] of paths) core.setField('sd_ctx_params_t', ctxParams, pathFields[slot], text({ value: path }));
-    // These choices are visible application policy; none is embedded in the core.
+    const residency = resolveWeightResidency({ request });
+    const modelBytes = totalModelBytes({ request });
+    // Auto keeps supported weights on the compute device for the operation,
+    // rather than selecting CPU/disk residency from model-size thresholds.
+    // This requests placement; native unsupported tensor/operation fallbacks
+    // remain possible and must not be reported as verified GPU execution.
     core.setField('sd_ctx_params_t', ctxParams, 'n_threads', 1);
     core.setField('sd_ctx_params_t', ctxParams, 'enable_mmap', 0);
-    core.setField('sd_ctx_params_t', ctxParams, 'disable_prefetch', 1);
-    core.setField('sd_ctx_params_t', ctxParams, 'eager_load', 0);
+    core.setField('sd_ctx_params_t', ctxParams, 'disable_prefetch', 0);
+    core.setField('sd_ctx_params_t', ctxParams, 'eager_load', Number(residency.eagerLoad));
     core.setField('sd_ctx_params_t', ctxParams, 'auto_fit', 0);
     core.setField('sd_ctx_params_t', ctxParams, 'backend', text({ value: 'WebGPU' }));
-    core.setField('sd_ctx_params_t', ctxParams, 'params_backend', text({ value: 'disk' }));
-    // Upstream max_vram is GiB of managed weights + runtime buffers. With disk
-    // parameter storage this guides graph segmentation/eviction, NOT a model
-    // file-size check or a hard cap on all browser/driver allocations. Keep an
-    // explicit positive budget: WebGPU cannot report actual free device memory.
-    core.setField('sd_ctx_params_t', ctxParams, 'max_vram', text({ value: String(request.gpuBudgetMiB / 1024) }));
-    log({ message: `Managed GPU working-memory target: ${request.gpuBudgetMiB} MiB; disk-backed weights, not a model file-size limit` });
+    core.setField('sd_ctx_params_t', ctxParams, 'params_backend', residency.paramsBackend ? text({ value: residency.paramsBackend }) : 0n);
+    // A null max_vram means no synthetic managed-memory budget in the pinned
+    // runtime. WebGPU reports unknown free/total capacity, so real allocations
+    // enforce device limits; maxBufferSize is not a total GPU memory budget.
+    core.setField('sd_ctx_params_t', ctxParams, 'max_vram', request.gpuBudgetMiB === undefined ? 0n : text({ value: String(request.gpuBudgetMiB / 1024) }));
+    log({ message: `Requested WebGPU compute and ${residency.paramsBackend || '(runtime backend)'} weight residency, eager_load=${residency.eagerLoad}, gpuBudgetMiB=${request.gpuBudgetMiB ?? 'unset'}, modelBytes=${modelBytes}` });
+    emit({ event: 'native', stage: 'model-load', message: 'Requested weight placement, not proof of every tensor or operation running on GPU', fields: {
+      requested: request.weightResidency, resolved: residency.resolved, requestedComputeBackend: 'WebGPU', requestedParamsBackend: residency.paramsBackend || '(runtime backend)',
+      eagerLoad: residency.eagerLoad, autoFit: false, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset', modelBytes,
+    } });
     const { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler,
       distilledGuidance, vaeTiling, vaeTileSize, flashAttention, conditioningCacheSize, modelArguments, ...rest } = request.parameters;
     rest satisfies Record<PropertyKey, never>;
@@ -122,7 +159,7 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     core.setField('sd_ctx_params_t', ctxParams, 'conditioning_cache_size', conditioningCacheSize);
     core.setField('sd_ctx_params_t', ctxParams, 'model_args', modelArguments ? text({ value: modelArguments }) : 0n);
     notify({ event: { phase: 'model', step: 0, steps: 0 } });
-    emit({ event: 'start', stage: 'model-load', message: undefined, fields: { wasmBytes: core.module.HEAPU8?.byteLength ?? 0, gpuBudgetMiB: request.gpuBudgetMiB } });
+    emit({ event: 'start', stage: 'model-load', message: undefined, fields: { wasmBytes: core.module.HEAPU8?.byteLength ?? 0, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset' } });
     context = await core.api.new_sd_ctx(ctxParams);
     emit({ event: 'complete', stage: 'model-load', message: undefined, fields: { wasmBytes: core.module.HEAPU8?.byteLength ?? 0, created: !!context } });
     if (!context) throw new Error('Model initialization failed; see native diagnostics');
@@ -199,11 +236,14 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
       await core.api.sd_set_progress_callback(0n, 0n);
       for (const pointer of callbacks) core.module.removeFunction(pointer);
       for (const pointer of allocations.reverse()) core.free(pointer);
-      // A disk-backed parameter source must outlive the complete native context.
+      // Mounted parameter sources must outlive the complete native context.
       for (const mounted of mounts.reverse()) mounted.remove();
       emit({ event: 'complete', stage: 'cleanup', message: undefined, fields: {} });
     } catch (error) {
       log({ message: `Native teardown failed; Worker will be terminated: ${String(error)}` });
+    } finally {
+      for (const report of reportFinalReads) report();
+      fileReadCache.clear();
     }
   }
 }

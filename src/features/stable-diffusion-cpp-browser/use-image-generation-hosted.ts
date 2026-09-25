@@ -13,7 +13,7 @@ import type { ImageGenerationView } from './use-image-generation-types';
 export function useImageGeneration(): ImageGenerationView {
   const configuration = configurationSchema.parse(rawConfiguration);
   const form = createImageForm({ profile: initialProfile() });
-  const { debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, gpuBudgetMiB, progress, failure, invalid, cancelled, results } = form;
+  const { debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results } = form;
   const controller = shallowRef<AbortController>();
   const diagnosticBuffer = createImageDiagnosticBuffer();
   function recordDiagnostic({ diagnostic }: { diagnostic: ImageDiagnostic }): void {
@@ -120,7 +120,7 @@ export function useImageGeneration(): ImageGenerationView {
     if (!models) {
       invalid.value = true; return;
     }
-    const parsed = requestSchema.safeParse({ debug: debug.value, artifact: artifact.value, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href, models, parameters: parameters.value, gpuBudgetMiB: gpuBudgetMiB.value });
+    const parsed = requestSchema.safeParse({ debug: debug.value, artifact: artifact.value, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href, models, parameters: parameters.value, weightResidency: weightResidency.value, gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value });
     if (!parsed.success) {
       invalid.value = true; return;
     }

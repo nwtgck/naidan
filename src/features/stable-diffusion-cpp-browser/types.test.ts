@@ -22,7 +22,18 @@ describe('image experiment boundary', () => {
   it('does not impose a 4 GiB file-size ceiling on Wasm32', () => {
     const base = requestFixture(); Object.defineProperty(base.models[0]!.file, 'size', { value: 18 * 1024 ** 3 });
     expect(requestSchema.parse(base).models[0]!.file.size).toBe(18 * 1024 ** 3);
+    expect(requestSchema.parse(base).gpuBudgetMiB).toBeUndefined();
+    expect(requestSchema.parse({ ...base, gpuBudgetMiB: 3072 }).gpuBudgetMiB).toBe(3072);
     expect(requestSchema.safeParse({ ...base, gpuBudgetMiB: 4096 }).success).toBe(false);
+  });
+  it('allows a 32 GiB explicit GPU budget on Wasm64 without confusing it with the Wasm heap', () => {
+    const base = requestFixture();
+    const artifact = { ...base.artifact, profile: 'webgpu-wasm64-jspi',
+      modulePath: base.artifact.modulePath.replace('webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'),
+      wasmPath: base.artifact.wasmPath.replace('webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'),
+    };
+    expect(requestSchema.parse({ ...base, artifact, gpuBudgetMiB: 32 * 1024 }).gpuBudgetMiB).toBe(32 * 1024);
+    expect(requestSchema.safeParse({ ...base, artifact, gpuBudgetMiB: Number.MAX_SAFE_INTEGER }).success).toBe(false);
   });
   it('rejects remote code, mixed sources, and output disguised as an image', () => {
     const base = requestFixture();

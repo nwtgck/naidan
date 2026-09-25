@@ -31,7 +31,7 @@ export function createImageWorker({ reportDiagnostic }: { reportDiagnostic: Imag
       trace.emit({ event: 'request', stage: 'worker', message: undefined, fields: {
         profile: request.artifact.profile, source: request.artifact.modulePath.split('/')[1]!, schema: request.artifact.schemaSha256,
         debug: request.debug ?? 'off', models: request.models.length, modelBytes: request.models.reduce((n, model) => n + model.file.size + (model.companions ?? []).reduce((m, file) => m + file.file.size, 0), 0),
-        width: request.parameters.width, height: request.parameters.height, steps: request.parameters.steps, gpuBudgetMiB: request.gpuBudgetMiB,
+        width: request.parameters.width, height: request.parameters.height, steps: request.parameters.steps, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset', weightResidency: request.weightResidency,
         guidance: request.parameters.guidance, sampler: request.parameters.sampler, scheduler: request.parameters.scheduler, seed: request.parameters.seed,
         flashAttention: request.parameters.flashAttention, vaeTiling: request.parameters.vaeTiling, vaeTileSize: request.parameters.vaeTileSize,
       } });
