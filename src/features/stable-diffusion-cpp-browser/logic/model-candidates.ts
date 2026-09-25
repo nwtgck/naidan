@@ -70,8 +70,10 @@ function fingerprint({ tensors, metadata, config, hint }: { tensors: TensorInfo[
     // Dimensions and architecture must agree. Qwen2.5-VL / Gemma / differently
     // sized Qwen models never become defaults merely from a filename hint.
     if ((q3 || (!q3vl && !architecture && !config?.model_type && !config?.text_config?.model_type && qNorm?.shape[0] === 128)) && width === 2560 && layers === 36) classes.push('lm-qwen3-4b');
-    else if (q3vl && width === 4096 && layers === 32) classes.push('lm-qwen3vl-8b');
-    else if (architecture || config?.model_type || config?.text_config?.model_type || !((width === 2560 && layers === 36) || (width === 4096 && layers === 32))) classes.push('other-lm');
+    // Qwen3-VL-8B has 36 text layers, not 32 attention heads.
+    // https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct/blob/main/config.json
+    else if (q3vl && width === 4096 && layers === 36) classes.push('lm-qwen3vl-8b');
+    else if (architecture || config?.model_type || config?.text_config?.model_type || !((width === 2560 && layers === 36) || (width === 4096 && layers === 36))) classes.push('other-lm');
     // A stripped text-only export can lack evidence identifying its model
     // family. Matching dimensions alone are not sufficient for an automatic
     // choice, but absence of evidence is not a known incompatibility either.
@@ -95,6 +97,7 @@ function fingerprint({ tensors, metadata, config, hint }: { tensors: TensorInfo[
 export async function scanImageRepositories({ repositories, signal }: { repositories: LocalImageRepository[], signal: AbortSignal | undefined }): Promise<ModelInventory> {
   const candidates: ModelCandidate[] = [], issues: ModelInventory['issues'] = [];
   for (const repository of repositories) {
+    for (const issue of repository.issues ?? []) issues.push({ repositoryId: repository.id, ...issue });
     const inspected = new Map<string, WeightMetadata>();
     const fileMap = new Map(repository.files.map(file => [file.path, file]));
     const configs = new Map<string, z.infer<typeof configSchema>>();

@@ -129,6 +129,13 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
 }
 
 export function servePrivacyStream({ port, request }: { port: MessagePort, request: PrivacyFetchRequest }): void {
+  servePrivacyStreamWithFetcher({ port, fetchResponse: ({ signal }) => fetchPrivacyStream({ request: { ...request, signal } }) });
+}
+/** Reuse the same backpressure/transfer negotiation for an already authorized
+ * fetch source. Hosted callers must inject privacyFetchStream, not raw fetch. */
+export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {
+  port: MessagePort, fetchResponse: ({ signal }: { signal: AbortSignal }) => Promise<PrivacyFetchStreamResponse>,
+}): { dispose(): Promise<void> } {
   const abort = new AbortController();
   let reader: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>> | undefined;
   let remainder: Uint8Array | undefined;
@@ -151,7 +158,7 @@ export function servePrivacyStream({ port, request }: { port: MessagePort, reque
     type: 'error', code: isPrivacyFetchError(error) && error.code === 'rejected' ? 'rejected' : 'fetch_failed',
     message: 'Privacy fetch stream failed',
   });
-  const ready: Promise<StreamReply> = fetchPrivacyStream({ request: { ...request, signal: abort.signal } }).then(async (response): Promise<StreamReply> => {
+  const ready: Promise<StreamReply> = Promise.resolve().then(() => fetchResponse({ signal: abort.signal })).then(async (response): Promise<StreamReply> => {
     if (finished) {
       await response.body.cancel().catch(() => undefined);
       return { type: 'error', code: 'aborted', message: 'Privacy fetch was aborted' };
@@ -226,6 +233,7 @@ export function servePrivacyStream({ port, request }: { port: MessagePort, reque
       },
     },
   });
+  return { dispose: cancel };
 }
 
 export const TEST_ONLY = {

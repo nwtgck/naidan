@@ -32,7 +32,7 @@ it('recognizes both catalog layouts without flattening paths or merging reposito
       const name = entry.path.split('/').at(-1)!;
       const file = entry.role === 'vae'
         ? safetensorsFixture({ name, tensors: qwen ? qwenVaeTensors : fluxVaeTensors }).file
-        : ggufFixture({ name, tensors: entry.role === 'diffusion' ? (qwen ? qwenImageTensors : zImageTensors) : qwenTextTensors({ width: qwen ? 4096 : 2560, layers: qwen ? 32 : 36 }), metadata: entry.role === 'lm' ? { 'general.architecture': qwen ? 'qwen3vl' : 'qwen3' } : {}, extraBytes: 0 }).file;
+        : ggufFixture({ name, tensors: entry.role === 'diffusion' ? (qwen ? qwenImageTensors : zImageTensors) : qwenTextTensors({ width: qwen ? 4096 : 2560, layers: 36 }), metadata: entry.role === 'lm' ? { 'general.architecture': qwen ? 'qwen3vl' : 'qwen3' } : {}, extraBytes: 0 }).file;
       return { id: `user/${entry.directory}`, name: entry.directory, files: [{ path: entry.path, file }] };
     });
     const inventory = await scanImageRepositories({ repositories, signal: undefined });

@@ -10,6 +10,7 @@ export type ImageModelChoice = {
 export type ImageComponentChoice = {
   slot: ModelSlot; selected: string; required: boolean; choices: ImageModelChoice[];
 };
+export type ImageRecipeAvailability = { available: number, total: number, selected: boolean, bytes: number };
 export type ImageLibraryView = {
   models: ComputedRef<ImageModelChoice[]>;
   main: Ref<string>;
@@ -20,11 +21,15 @@ export type ImageLibraryView = {
   importing: ComputedRef<boolean>;
   downloading: ComputedRef<boolean>;
   downloadProgress: ShallowRef<CatalogDownloadProgress | undefined>;
-  downloadState: Ref<'idle' | 'downloading' | 'complete' | 'cancelled' | 'failed'>;
+  downloadState: Ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>;
   downloadRecipeId: Ref<string>;
   downloadRecipe({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): Promise<void>;
   chooseRecipe({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): void;
   cancelDownload(): void;
+  resumeDownload(): Promise<void>;
+  resetDownloadIntent(): void;
+  downloadSelections: ShallowRef<ImageRecipeSelection>;
+  recipeAvailability({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): ImageRecipeAvailability;
   failure: Ref<string>;
   issues: ComputedRef<string[]>;
   ready: ComputedRef<boolean>;

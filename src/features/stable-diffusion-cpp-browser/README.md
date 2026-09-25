@@ -96,42 +96,82 @@ Opening the page, expanding a card, changing an option or choosing from saved
 files performs **no remote metadata request or download**. Source links are
 ordinary explicit, referrer-free navigation. No thumbnails are loaded remotely.
 
-**Download and select** snapshots the chosen options. Only then does
-`logic/catalog-download.ts` fetch bounded metadata for those files at their full
-immutable source commits. It requires their LFS SHA-256 identity and byte count,
-then streams selected weights sequentially through the existing privacy-fetch
-boundary into:
+**Download** snapshots the chosen options. Only then is a dedicated download
+Worker created. `logic/catalog-source.ts` fetches bounded metadata at immutable
+source commits, requiring each selected file's LFS SHA-256 and exact byte count.
+The hosted window retains ownership of the sandboxed privacy-fetch broker;
+it supplies streams to the download Worker through `servePrivacyStreamWithFetcher`
+and `receivePrivacyStream`. They reuse the existing transferable-stream path and
+bounded 256 KiB pull fallback. The Worker never imports the DOM broker client.
+SHA-256 and synchronous file writes run in that Worker, with source-lifetime
+cleanup on completion, pause or crash. `logic/catalog-file-download.ts` writes into:
 
 ```
 models/huggingface.co/<owner>/<repository>/resolve/main/<original-relative-path>
 ```
 
-`main` is the existing local storage convention, not an assertion that the file
-was downloaded from today's mutable main branch. The network request is pinned
-to the reviewed commit. Only the chosen files are fetched, not every quantization
-or all repository content. The initial recipes use standalone component weights;
-pre-sharded or index-based custom distributions remain available via folder import.
+`main` is a local storage convention, not a mutable network revision. No file is
+split, converted, merged, or materialized as one whole-model ArrayBuffer.
 
-The downloader checks exact byte counts, streams SHA-256 in bounded chunks and
-checks the weight header. It never materializes a complete model in an ArrayBuffer.
-Existing files are streamed through the same checksum check before reuse; size
-alone is insufficient. A conflicting existing file is preserved and reported,
-not silently overwritten. The verification stage can take time for multi-GB files.
+### Publication and interruption protocol
 
-Writes share the existing mutation/repository locks and incomplete-import marker.
-Interrupted current-file writes are aborted and only still-owned files are removed;
-completed earlier files survive. Retrying re-verifies those files and restarts an
-unfinished file from byte zero. This is **not byte-range resume**. Crash leftovers
-with a pending marker are deliberately not reclaimed automatically: inspect them
-with the existing file manager before retrying, rather than deleting an unknown
-operation. A later acquisition failure does not disappear during list refresh.
+For each weight file `name`, Naidan owns two sibling records:
 
-After successful acquisition, the library scans the stored bytes and selects the
-requested primary and matching requested components. A smaller installed variant
-must not silently replace the chosen quantization. Manual component overrides
-still win. **Select from saved files** applies the same recipe without network;
-it can find the matching files under either HF paths or local `models/user` roots.
-Missing components remain missing rather than being guessed from filenames.
+- `.name.pending`: a bounded, validated journal binding repository, revision,
+  original relative path, SHA-256, expected size and the last flushed offset.
+- `.name.complete`: a bounded, validated receipt binding that verified source to
+  the saved file's exact size and last-modified snapshot.
+
+Pending always wins over complete. A matching receipt is required for image
+inventory entries under `models/huggingface.co`. It is not a signature or proof
+of training provenance. Inventory reads only local receipts and bounded headers;
+opening/focusing the page never hashes whole models or contacts Hugging Face.
+
+Writes take the existing model-mutation lock followed by the repository lock.
+The writer creates pending before the first payload write. It flushes and records
+checkpoints, verifies the complete streamed hash, checks the weight header, closes
+the synchronous file handle, writes complete, and removes pending **last**. The
+llama.cpp model reader also excludes per-file pending files. The existing llama
+repository-wide `.llama-cpp-import-pending` journal remains supported separately;
+image acquisition never takes over or deletes an unknown repository operation.
+
+Pause/failure retains owned partial bytes. Explicit resume rehashes the stored
+prefix and validates the HTTP Range response using the same parser as llama.cpp.
+A valid full `200` response restarts only that owned download; invalid `206`
+ranges never publish. A full-size pending file is hashed, not promoted by size.
+Hash failures retain an invalid journal and restart on a subsequent explicit retry.
+Completion-receipt failure leaves pending in place. Earlier completed components
+survive failures in a later repository. Cooperative cancellation checkpoints first;
+a stalled/crashed download Worker is terminated after a bounded grace period.
+
+Old image downloads have no complete receipt. They remain stored but unselected.
+An explicit **Download** verifies their bytes against the pinned source, then
+creates the receipt **without fetching the payload again**. Conflicting existing
+files are preserved and reported, never truncated or silently overwritten. This
+same path can adopt an already installed llama.cpp encoder. Multi-GB verification
+runs in the download Worker, not on the UI thread.
+
+After acquisition, the library rescans and resolves the selected recipe. Only a
+complete, structurally matching set becomes ready. Download completion with a
+missing/incompatible component has its own non-ready UI state. When all selected
+files are available, the catalog replaces Download with **Use this model**; this
+action is local. Manual component choices remain explicit and are not silently
+replaced on refresh. Unverified same-named files are never automatic fallbacks.
+
+### Compact UI and progress
+
+The catalog starts open; each recipe's details start closed. The heading contains
+the model, primary quantization and one state-appropriate action. Details contain
+component variants, `Hugging Face · owner/repo`, original file links and the same
+save-to-device affordance as llama.cpp. Internal local-storage paths and long
+setup essays are not rendered. Layout wraps by available card width, not by a
+viewport breakpoint that might leave the name in a narrow column.
+
+Downloads and local imports reuse `LlamaCppBrowserDownloadProgress.vue` directly.
+Recipe progress has one aggregate byte total across all components; `processed`
+counts network payload bytes, not local verification or reused files. Terminal
+states remove the bar rather than repeating the completed message and showing a
+native green progress element.
 
 Folder input is equally supported across separate actions: drop the diffusion
 repository now, the VAE repository later, and the encoder repository afterwards.
@@ -146,7 +186,7 @@ its dedicated VAE plus Qwen3-VL-8B. The initial feature is text-to-image only, s
 image-editing projectors are not required or silently loaded. Recipe alternatives
 are reviewed compatible families/quantizations, not arbitrary language models.
 
-Standalone shows the same catalog/import/library UI disabled. No downloader,
+Standalone shows the same catalog/import/library UI with unavailable actions disabled; local presentation disclosures still work. No downloader,
 network broker, metadata scanner, native controller, diagnostic observer or Wasm
 is included through this feature; the actual Vite module-boundary test enforces it.
 
@@ -175,6 +215,13 @@ Advanced reveals unverified weights without making them automatic defaults.
 Separate component pickers can resolve companions **across repositories**.
 Z-Image requires a Flux-format latent-16 VAE and Qwen3-4B-shaped encoder;
 Qwen Image 2.1 requires its latent-64/RGBA VAE and Qwen3-VL-8B-shaped encoder.
+The encoder fingerprint requires Qwen3-VL architecture, width 4096 and **36 text
+layers**. The former 32-layer condition confused the attention-head count with
+layer count; it rejected the catalog's own encoder. The official model config is
+https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct/raw/main/config.json.
+Regression fixtures cover 36 layers, reject the old 32-layer shape, and exercise
+acquisition -> publication -> inventory -> recipe selection rather than only
+isolated synthetic classifier calls.
 These are structural classes, not proof that a fine-tune has identical training
 weights or equivalent output quality. Gemma, other Qwen sizes and earlier Qwen
 VAEs are not automatically substituted. Required components cannot be disabled.

@@ -10,7 +10,7 @@ export type ImageRecipeFile = {
   revision: string;
   path: string;
   directory: string;
-  approximateSize: string;
+  approximateBytes: number;
 };
 export type ImageModelRecipe = {
   id: 'z-image-turbo' | 'qwen-image-2.1';
@@ -25,19 +25,19 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     id: 'z-image-turbo', title: 'Z-Image-Turbo',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/z_image.md',
     files: [
-      { role: 'diffusion', repository: 'leejet/Z-Image-Turbo-GGUF', revision: 'a90f482a21813cdaf21422c4031628658680b5fd', path: 'z_image_turbo-Q4_K.gguf', directory: 'Z-Image-Turbo-GGUF', approximateSize: '3.86 GB' },
+      { role: 'diffusion', repository: 'leejet/Z-Image-Turbo-GGUF', revision: 'a90f482a21813cdaf21422c4031628658680b5fd', path: 'z_image_turbo-Q4_K.gguf', directory: 'Z-Image-Turbo-GGUF', approximateBytes: 3860000000 },
       // Use the Z-Image distribution's VAE, avoiding an unrelated gated download.
-      { role: 'vae', repository: 'Comfy-Org/z_image_turbo', revision: '93fae7d7f6189cc408fdd7cec36c91447b8506a2', path: 'split_files/vae/ae.safetensors', directory: 'z_image_turbo', approximateSize: '335 MB' },
-      { role: 'lm', repository: 'unsloth/Qwen3-4B-Instruct-2507-GGUF', revision: '18727206c51467496bfba014368bd0a30e97f411', path: 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf', directory: 'Qwen3-4B-Instruct-2507-GGUF', approximateSize: '2.50 GB' },
+      { role: 'vae', repository: 'Comfy-Org/z_image_turbo', revision: '93fae7d7f6189cc408fdd7cec36c91447b8506a2', path: 'split_files/vae/ae.safetensors', directory: 'z_image_turbo', approximateBytes: 335000000 },
+      { role: 'lm', repository: 'unsloth/Qwen3-4B-Instruct-2507-GGUF', revision: '18727206c51467496bfba014368bd0a30e97f411', path: 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf', directory: 'Qwen3-4B-Instruct-2507-GGUF', approximateBytes: 2500000000 },
     ],
   },
   {
     id: 'qwen-image-2.1', title: 'Qwen Image 2.1',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/qwen_image_2.1.md',
     files: [
-      { role: 'diffusion', repository: 'leejet/Qwen-Image-2.1-GGUF', revision: '9db551d8368b5d1aa0b93cfe46cd54bb4750eae1', path: 'qwen_image_2.1-Q4_K.gguf', directory: 'Qwen-Image-2.1-GGUF', approximateSize: '4.20 GB' },
-      { role: 'vae', repository: 'Comfy-Org/Qwen-Image-2.1', revision: '8150226f50722886a275fa08e7b1fdf961732502', path: 'vae/qwen_image_2.1_vae_bf16.safetensors', directory: 'Qwen-Image-2.1', approximateSize: '676 MB' },
-      { role: 'lm', repository: 'Qwen/Qwen3-VL-8B-Instruct-GGUF', revision: '00e7d63528e65d7b64e80e1293a8360b4af6a594', path: 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', directory: 'Qwen3-VL-8B-Instruct-GGUF', approximateSize: '5.03 GB' },
+      { role: 'diffusion', repository: 'leejet/Qwen-Image-2.1-GGUF', revision: '9db551d8368b5d1aa0b93cfe46cd54bb4750eae1', path: 'qwen_image_2.1-Q4_K.gguf', directory: 'Qwen-Image-2.1-GGUF', approximateBytes: 4200000000 },
+      { role: 'vae', repository: 'Comfy-Org/Qwen-Image-2.1', revision: '8150226f50722886a275fa08e7b1fdf961732502', path: 'vae/qwen_image_2.1_vae_bf16.safetensors', directory: 'Qwen-Image-2.1', approximateBytes: 676000000 },
+      { role: 'lm', repository: 'Qwen/Qwen3-VL-8B-Instruct-GGUF', revision: '00e7d63528e65d7b64e80e1293a8360b4af6a594', path: 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', directory: 'Qwen3-VL-8B-Instruct-GGUF', approximateBytes: 5030000000 },
     ],
   },
 ];
@@ -56,15 +56,15 @@ export const imageModelRecipes: readonly ImageModelRecipe[] = reviewedRecipes.ma
   components: recipe.files.map(file => {
     const options = [{ ...file, id: 'default' }];
     if (recipe.id === 'z-image-turbo' && file.role === 'diffusion') {
-      options.push({ ...file, id: 'q4-0', path: 'z_image_turbo-Q4_0.gguf', approximateSize: '3.68 GB' });
-      options.push({ ...file, id: 'q8-0', path: 'z_image_turbo-Q8_0.gguf', approximateSize: '6.58 GB' });
+      options.push({ ...file, id: 'q4-0', path: 'z_image_turbo-Q4_0.gguf', approximateBytes: 3680000000 });
+      options.push({ ...file, id: 'q8-0', path: 'z_image_turbo-Q8_0.gguf', approximateBytes: 6580000000 });
     }
     if (recipe.id === 'z-image-turbo' && file.role === 'lm') {
       options.push({ ...file, id: 'safetensors', repository: 'Comfy-Org/z_image_turbo', revision: '93fae7d7f6189cc408fdd7cec36c91447b8506a2',
-        path: 'split_files/text_encoders/qwen_3_4b.safetensors', directory: 'z_image_turbo', approximateSize: '8.04 GB' });
+        path: 'split_files/text_encoders/qwen_3_4b.safetensors', directory: 'z_image_turbo', approximateBytes: 8040000000 });
     }
     if (recipe.id === 'qwen-image-2.1' && file.role === 'lm') {
-      options.push({ ...file, id: 'q8-0', path: 'Qwen3VL-8B-Instruct-Q8_0.gguf', approximateSize: '8.71 GB' });
+      options.push({ ...file, id: 'q8-0', path: 'Qwen3VL-8B-Instruct-Q8_0.gguf', approximateBytes: 8710000000 });
     }
     return { role: file.role, defaultOptionId: 'default', options };
   }),

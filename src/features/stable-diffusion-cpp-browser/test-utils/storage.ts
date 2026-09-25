@@ -13,12 +13,43 @@ export class MemoryFile {
   async isSameEntry(other: unknown): Promise<boolean> {
     return other === this;
   }
+  private opened = false;
+  async createSyncAccessHandle() {
+    if (this.opened) throw new DOMException('Locked', 'NoModificationAllowedError');
+    this.opened = true;
+    let closed = false;
+    const check = () => {
+      if (closed) throw new Error('Closed sync handle');
+    };
+    return {
+      getSize: () => {
+        check(); return this.data.length;
+      },
+      read: (bytes: Uint8Array, { at }: { at: number }) => {
+        check(); const data = this.data.subarray(at, at + bytes.length); bytes.set(data); return data.length;
+      },
+      write: (bytes: Uint8Array, { at }: { at: number }) => {
+        check(); if (this.failWrite) throw new DOMException('Quota exceeded', 'QuotaExceededError');
+        const next = new Uint8Array(Math.max(this.data.length, at + bytes.length)); next.set(this.data); next.set(bytes, at);
+        this.data = next; this.modified = ++stamp; return bytes.length;
+      },
+      truncate: (size: number) => {
+        check(); const next = new Uint8Array(size); next.set(this.data.subarray(0, size)); this.data = next; this.modified = ++stamp;
+      },
+      flush: () => {
+        check();
+      },
+      close: () => {
+        closed = true; this.opened = false;
+      },
+    };
+  }
   async createWritable() {
     const chunks: Uint8Array[] = []; let closed = false;
     return {
-      write: async (data: Uint8Array) => {
+      write: async (data: Uint8Array | string) => {
         if (closed || this.failWrite) throw new DOMException('Quota exceeded', 'QuotaExceededError');
-        chunks.push(new Uint8Array(data));
+        chunks.push(typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data));
       },
       close: async () => {
         this.data = new Uint8Array(chunks.reduce((n, chunk) => n + chunk.length, 0));

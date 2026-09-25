@@ -1,2 +1,1 @@
-// English fallback for this experimental workspace.
-export const stableDiffusionCppBrowser__experimental_local_workspace = (): string => "Experimental, local image generation.";
+export const stableDiffusionCppBrowser__experimental_local_workspace = (): string => "브라우저에서 로컬로 이미지를 생성합니다.";

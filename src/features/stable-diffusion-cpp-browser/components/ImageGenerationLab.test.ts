@@ -42,7 +42,7 @@ it('uses independent requests, saves a temporary result, and revokes it on unmou
   wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
   await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
   expect(mocks.generate).toHaveBeenCalledTimes(1); expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
-  expect(wrapper.get('a[download]').attributes('download')).toBe('naidan-image-42.png');
+  expect(wrapper.get('[data-testid="image-generated-result"] a[download]').attributes('download')).toBe('naidan-image-42.png');
   expect(mocks.generate.mock.calls[0]?.[0]?.request.weightResidency).toBe('auto');
   expect(mocks.generate.mock.calls[0]?.[0]?.request.gpuBudgetMiB).toBeUndefined();
   wrapper.unmount(); wrapper = undefined; expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-image');

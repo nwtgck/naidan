@@ -38,7 +38,10 @@ it('keeps the entire image form visible and disabled in standalone', async () =>
   expect(wrapper.findAll('fieldset')).toHaveLength(3);
   expect(wrapper.find('[data-testid="image-model-library"]').exists()).toBe(true);
   for (const field of wrapper.findAll('input, select, textarea, button')) {
-    expect(field.element.matches(':disabled'), field.html()).toBe(true);
+    if (field.attributes('data-testid') === 'image-catalog-toggle' || field.attributes('data-testid')?.startsWith('recipe-details-toggle-')) {
+      // Presentation stays interactive; it never authorizes hosted capabilities.
+      await field.trigger('click');
+    } else expect(field.element.matches(':disabled'), field.html()).toBe(true);
   }
   expect(wrapper.text()).not.toContain('Ollama');
   const catalog = wrapper.get('[data-testid="image-model-catalog"]');

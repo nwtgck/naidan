@@ -107,7 +107,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
 
 const standaloneUiFiles = new Set([
   'components/ImageGenerationLab.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
-  'components/ImageModelCatalog.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts',
+  'components/ImageModelCatalog.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts',
   'form.ts',
   'form-options.ts',
   'use-image-generation-standalone.ts',

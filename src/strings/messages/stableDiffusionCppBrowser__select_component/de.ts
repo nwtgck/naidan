@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__select_component = (): string => "Datei oder Shard-Gruppe auswählen";
+export const stableDiffusionCppBrowser__select_component = (): string => "Modelldatei auswählen";

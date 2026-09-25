@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__import_repository_help = (): string => "로컬 저장소 폴더도 추가할 수 있습니다. 내부 경로를 유지하여 models/user에 저장합니다. 모델, 디코더, 텍스트 인코더 폴더를 여러 번에 나누어 추가해도 됩니다. 매번 user와 Hugging Face 저장소를 검사합니다. Git 기록은 제외합니다.";
+export const stableDiffusionCppBrowser__import_repository_help = (): string => "모델 폴더를 여기에 놓거나 선택하여 추가하세요.";

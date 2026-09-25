@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__import_repository_help = (): string => "Or add a local repository folder. Keep its internal paths; it is saved under models/user. Add diffusion, decoder and text-encoder repositories in separate drops as needed. Each import rescans both user and Hugging Face storage for matching components. Git history is excluded.";
+export const stableDiffusionCppBrowser__import_repository_help = (): string => "Drop a model folder here, or choose one to add it.";

@@ -1,3 +1,5 @@
+import { modelFileIsPending, modelFileMarker, publishModelFile, readModelFileReceipt, type ModelFileReceipt } from '@/logic/model-file-publication';
+import { readJournal } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { z } from 'zod';
 import { validModelPath } from './model-path';
 
@@ -11,8 +13,8 @@ const inputSchema = z.object({
   files: z.array(z.object({ path: z.string().refine(path => validModelPath({ path })), file: fileSchema })).min(1).max(20_000),
 });
 export type RepositoryInput = z.infer<typeof inputSchema>;
-export type RepositoryFile = { path: string, file: File };
-export type LocalImageRepository = { id: string, name: string, files: RepositoryFile[] };
+export type RepositoryFile = { path: string, file: File, receipt?: ModelFileReceipt };
+export type LocalImageRepository = { id: string, name: string, files: RepositoryFile[], issues?: { path: string, message: string }[] };
 export type ImportProgress = { completed: number, total: number, path: string };
 function missing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError';
@@ -34,27 +36,45 @@ async function pending({ folder }: { folder: FileSystemDirectoryHandle }): Promi
     throw error;
   }
 }
-async function readTree({ folder, signal }: { folder: FileSystemDirectoryHandle, signal: AbortSignal | undefined }): Promise<RepositoryFile[]> {
-  const files: RepositoryFile[] = [];
+async function readTree({ folder, id, hidden, signal }: { folder: FileSystemDirectoryHandle, id: string, hidden: Set<string>, signal: AbortSignal | undefined }): Promise<Pick<LocalImageRepository, 'files' | 'issues'>> {
+  const files: RepositoryFile[] = [], issues: { path: string, message: string }[] = [];
+  let count = 0;
   async function walk({ directory, prefix, depth }: { directory: FileSystemDirectoryHandle, prefix: string, depth: number }): Promise<void> {
     signal?.throwIfAborted();
     if (depth > 64) throw new Error('Local model directory is too deeply nested');
     for await (const [name, entry] of directory.entries()) {
       signal?.throwIfAborted();
-      if (name === '.git' || name === pendingName) continue;
+      if (name === '.git' || name === pendingName || /^\..*\.(complete|pending)$/.test(name)) continue;
+      if (++count > 20_000) throw new Error('Local model repository contains too many entries');
       const path = prefix + name;
       if (!validModelPath({ path })) throw new Error('Unsafe path in local model repository');
       switch (entry.kind) {
       case 'directory': await walk({ directory: entry, prefix: path + '/', depth: depth + 1 }); break;
-      case 'file':
-        if (files.length >= 20_000) throw new Error('Local model repository contains too many files');
-        files.push({ path, file: await entry.getFile() }); break;
+      case 'file': {
+        if (hidden.has(path) || await modelFileIsPending({ directory, name })) {
+          issues.push({ path, message: 'Download is incomplete. Resume the catalog download.' }); break;
+        }
+        const file = await entry.getFile();
+        const receipt = await readModelFileReceipt({ directory, name, file });
+        // Legacy user imports were committed with a repository-wide marker.
+        // Remote files require a per-file receipt: the old image downloader
+        // wrote no receipt, so explicit Download verifies and adopts those bytes.
+        if (id.startsWith('huggingface.co/')) {
+          const source = receipt?.source;
+          if (!receipt || source?.kind !== 'hugging-face' || source.path !== path ||
+              ![ `huggingface.co/${source.repository}/resolve/main`, `huggingface.co/${source.repository}/resolve/${source.revision}` ].includes(id)) {
+            if (/\.(gguf|safetensors|sft)$/i.test(path)) issues.push({ path, message: 'No valid completion receipt. Use Download in the catalog to verify this saved file.' });
+            break;
+          }
+        }
+        files.push({ path, file, ...(receipt ? { receipt } : {}) }); break;
+      }
       default: { const exhaustive: never = entry; throw new Error(String(exhaustive)); }
       }
     }
   }
   await walk({ directory: folder, prefix: '', depth: 0 });
-  return files.sort((a, b) => a.path.localeCompare(b.path));
+  return { files: files.sort((a, b) => a.path.localeCompare(b.path)), issues };
 }
 /** Read the existing model tree only. No Hugging Face/network requests. */
 export async function listImageRepositories({ signal }: { signal: AbortSignal | undefined }): Promise<LocalImageRepository[]> {
@@ -64,9 +84,22 @@ export async function listImageRepositories({ signal }: { signal: AbortSignal | 
   if (!root) return [];
   const result: LocalImageRepository[] = [];
   async function append({ folder, id }: { folder: FileSystemDirectoryHandle, id: string }): Promise<void> {
-    if (await pending({ folder })) return;
-    const files = await readTree({ folder, signal });
-    if (files.length) result.push({ id, name: id, files });
+    const hidden = new Set<string>();
+    if (await pending({ folder })) {
+      if (id.startsWith('user/')) return;
+      // Respect llama.cpp's existing download journal without hiding unrelated
+      // completed files in that same repository. Empty/unknown import markers
+      // remain a repository-wide publication barrier.
+      try {
+        const journal = await readJournal({ folder });
+        for (const [index, file] of journal.selection.files.entries()) if (!journal.reused?.[index]) hidden.add(file.path);
+      } catch (error) {
+        if (error instanceof SyntaxError || error instanceof z.ZodError) return;
+        throw error;
+      }
+    }
+    const content = await readTree({ folder, id, hidden, signal });
+    if (content.files.length || content.issues?.length) result.push({ id, name: id, ...content });
   }
   const user = await optionalDirectory({ parent: root, name: 'user' });
   if (user) for await (const [name, entry] of user.entries()) {
@@ -110,7 +143,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
   // Validate BEFORE the first persistent write. A README/config/tokenizer file is
   // retained; unsupported weights are reported by inspection, not discarded.
   for (const entry of directory.files) {
-    if (entry.path.split('/')[0] === pendingName || entry.path.split('/').includes('.git') || paths.has(entry.path)) throw new Error('Reserved or duplicate repository path');
+    if (entry.path.split('/')[0] === pendingName || entry.path.split('/').includes('.git') || entry.path.split('/').some(part => /^\..*\.(complete|pending)$/.test(part)) || paths.has(entry.path)) throw new Error('Reserved or duplicate repository path');
     paths.add(entry.path);
   }
   for (const path of paths) {
@@ -180,6 +213,9 @@ export async function importImageRepository({ input, signal, onProgress }: {
           signal?.throwIfAborted(); await writer.close();
           const published = await record.handle.getFile(); record.size = published.size; record.modified = published.lastModified;
           if (published.size !== file.size) throw new Error('Local copy size mismatch');
+          const receipt = await makeFile({ parent, name: modelFileMarker({ name, state: 'complete' }) });
+          await publishModelFile({ directory: parent, name, handle: record.handle, file: published, source: { kind: 'local' } });
+          const receiptFile = await receipt.handle.getFile(); receipt.size = receiptFile.size; receipt.modified = receiptFile.lastModified;
         } catch (error) {
           await reader.cancel().catch(() => undefined); await writer.abort().catch(() => undefined); throw error;
         } finally {

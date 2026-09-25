@@ -31,7 +31,7 @@ it('requires the Qwen Image 2.1 VAE and VL encoder structures, not the old Qwen 
     ggufFixture({ name: 'main.gguf', tensors: qwenImageTensors, metadata: {}, extraBytes: 0 }).file,
     safetensorsFixture({ name: 'decoder.bin', tensors: qwenVaeTensors }).file,
     safetensorsFixture({ name: 'qwen_image_2.1_vae.safetensors', tensors: fluxVaeTensors }).file,
-    ggufFixture({ name: 'lm.gguf', tensors: qwenTextTensors({ width: 4096, layers: 32 }), metadata: { 'general.architecture': 'qwen3vl' }, extraBytes: 0 }).file,
+    ggufFixture({ name: 'lm.gguf', tensors: qwenTextTensors({ width: 4096, layers: 36 }), metadata: { 'general.architecture': 'qwen3vl' }, extraBytes: 0 }).file,
   ];
   const result = await scanImageRepositories({ repositories: files.map((file, i) => repository({ id: `user/${i}`, file })), signal: undefined });
   const main = result.candidates[0]!; expect(main.family).toBe('qwen-image-2.1');
@@ -65,9 +65,20 @@ it('does not infer a model family or compatibility from filenames alone', async 
 });
 
 it('leaves a dimension-matching encoder without family evidence unverified rather than claiming incompatibility', async () => {
-  const file = ggufFixture({ name: 'unknown.gguf', tensors: qwenTextTensors({ width: 4096, layers: 32 }), metadata: {}, extraBytes: 0 }).file;
+  const file = ggufFixture({ name: 'unknown.gguf', tensors: qwenTextTensors({ width: 4096, layers: 36 }), metadata: {}, extraBytes: 0 }).file;
   const result = await scanImageRepositories({ repositories: [repository({ id: 'user/unknown', file })], signal: undefined });
   const candidate = result.candidates[0]!;
   expect(componentMatch({ candidate, requirement: { slot: 'lm', accepts: ['lm-qwen3vl-8b'] } })).toBe('unverified');
   expect(defaultCompanion({ main: { ...candidate, id: 'other' }, candidates: [candidate], requirement: { slot: 'lm', accepts: ['lm-qwen3vl-8b'] } })).toBeUndefined();
+});
+
+it('recognizes the official Qwen3-VL-8B 36-layer text architecture and rejects the former 32-layer assumption', async () => {
+  // Official config: hidden_size=4096, num_hidden_layers=36,
+  // num_attention_heads=32. Attention head count is not layer count.
+  const files = [36, 32].map(layers => ggufFixture({ name: `qwen-${layers}.gguf`, tensors: qwenTextTensors({ width: 4096, layers }),
+    metadata: { 'general.architecture': 'qwen3vl', 'qwen3vl.embedding_length': 4096, 'qwen3vl.block_count': layers }, extraBytes: 0 }).file);
+  const result = await scanImageRepositories({ repositories: files.map((file, i) => repository({ id: `user/qwen-${i}`, file })), signal: undefined });
+  const requirement = { slot: 'lm' as const, accepts: ['lm-qwen3vl-8b' as const] };
+  expect(componentMatch({ candidate: result.candidates[0]!, requirement })).toBe('matching');
+  expect(componentMatch({ candidate: result.candidates[1]!, requirement })).toBe('incompatible');
 });

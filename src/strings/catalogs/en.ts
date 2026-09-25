@@ -1,3 +1,8 @@
+import { stableDiffusionCppBrowser__file_count } from '@/strings/messages/stableDiffusionCppBrowser__file_count/en';
+import { stableDiffusionCppBrowser__files_available } from '@/strings/messages/stableDiffusionCppBrowser__files_available/en';
+import { stableDiffusionCppBrowser__selected } from '@/strings/messages/stableDiffusionCppBrowser__selected/en';
+import { stableDiffusionCppBrowser__downloaded_but_incomplete } from '@/strings/messages/stableDiffusionCppBrowser__downloaded_but_incomplete/en';
+import { stableDiffusionCppBrowser__import_models } from '@/strings/messages/stableDiffusionCppBrowser__import_models/en';
 import { stableDiffusionCppBrowser__debug_help } from '@/strings/messages/stableDiffusionCppBrowser__debug_help/en';
 import { stableDiffusionCppBrowser__logs_copy_failed } from '@/strings/messages/stableDiffusionCppBrowser__logs_copy_failed/en';
 import { stableDiffusionCppBrowser__logs_copied } from '@/strings/messages/stableDiffusionCppBrowser__logs_copied/en';
@@ -2144,6 +2149,11 @@ export const catalog = {
   stableDiffusionCppBrowser__show_logs,
   stableDiffusionCppBrowser__logs_copied,
   stableDiffusionCppBrowser__logs_copy_failed,
+  stableDiffusionCppBrowser__file_count,
+  stableDiffusionCppBrowser__files_available,
+  stableDiffusionCppBrowser__selected,
+  stableDiffusionCppBrowser__downloaded_but_incomplete,
+  stableDiffusionCppBrowser__import_models,
   stableDiffusionCppBrowser__debug_help,
   stableDiffusionCppBrowser__catalog_title,
   stableDiffusionCppBrowser__memory_and_cancellation,

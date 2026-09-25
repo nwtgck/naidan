@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__incomplete_components = (): string => "Erforderliche Komponenten auswählen. Unbekannte Modelle können unten manuell zugeordnet werden.";
+export const stableDiffusionCppBrowser__incomplete_components = (): string => "Wählen Sie die erforderlichen Modellkomponenten.";

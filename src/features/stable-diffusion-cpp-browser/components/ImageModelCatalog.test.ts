@@ -2,6 +2,7 @@ import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-brow
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ref } from 'vue';
 import ImageModelCatalog from './ImageModelCatalog.vue';
 let wrapper: VueWrapper | undefined;
 beforeEach(async () => {
@@ -14,10 +15,10 @@ it('shows both static recipes without networking or remote resources when opened
   const fetch = vi.fn(), xhr = vi.fn(), worker = vi.fn();
   vi.stubGlobal('fetch', fetch); vi.stubGlobal('XMLHttpRequest', xhr); vi.stubGlobal('Worker', worker);
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: createDisabledImageLibrary() } });
-  expect(wrapper.get('details').attributes('open')).toBeUndefined();
-  for (const detail of wrapper.findAll('details')) {
-    detail.element.setAttribute('open', ''); await detail.trigger('toggle');
-  }
+  expect(wrapper.get('[data-testid="image-catalog-toggle"]').attributes('aria-expanded')).toBe('true');
+  for (const detail of wrapper.findAll('[data-testid="image-recipe-details"]')) expect(detail.attributes('inert')).toBeDefined();
+  for (const toggle of wrapper.findAll('[data-testid^="recipe-details-toggle-"]')) await toggle.trigger('click');
+  for (const detail of wrapper.findAll('[data-testid="image-recipe-details"]')) expect(detail.attributes('inert')).toBeUndefined();
   await flushPromises();
   expect(wrapper.findAll('article')).toHaveLength(2);
   expect(wrapper.text()).toContain('Z-Image-Turbo'); expect(wrapper.text()).toContain('Qwen Image 2.1');
@@ -32,7 +33,9 @@ it('uses only explicit, referrer-free browser links to immutable file revisions'
   const downloads = wrapper.findAll('[data-testid^="recipe-download-selected-"]');
   expect(downloads).toHaveLength(2);
   for (const link of wrapper.findAll('a')) {
-    expect(link.attributes('href')).toMatch(/^https:\/\/huggingface\.co\/[\w.-]+\/[\w.-]+\/(resolve|blob)\/[0-9a-f]{40}\//);
+    const url = new URL(link.attributes('href')!);
+    expect(url.origin).toBe('https://huggingface.co');
+    expect(url.pathname).toMatch(/^\/[\w.-]+\/[\w.-]+(?:$|\/(resolve|blob)\/[0-9a-f]{40}\/)/);
     expect(link.attributes('rel')).toBe('noopener noreferrer');
     expect(link.attributes('referrerpolicy')).toBe('no-referrer');
   }
@@ -51,12 +54,17 @@ it('keeps catalog content visible but navigation inert when the feature is disab
 });
 it('keeps option changes offline and sends a frozen choice only on the explicit download action', async () => {
   const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
-  const view = { ...createDisabledImageLibrary(), downloadRecipe: vi.fn(async () => undefined), chooseRecipe: vi.fn() };
+  const available = ref(0);
+  const view = { ...createDisabledImageLibrary(), downloadRecipe: vi.fn(async () => {
+    available.value = 3;
+  }), chooseRecipe: vi.fn(),
+  recipeAvailability: () => ({ available: available.value, total: 3, selected: false, bytes: 32 }) };
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
   await wrapper.get('[data-testid="recipe-option-z-image-turbo-diffusion"]').setValue('q8-0');
   expect(view.downloadRecipe).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
   await wrapper.get('[data-testid="recipe-download-selected-z-image-turbo"]').trigger('click');
   expect(view.downloadRecipe).toHaveBeenCalledWith({ recipeId: 'z-image-turbo', selections: { diffusion: 'q8-0' } });
+  await flushPromises();
   await wrapper.get('[data-testid="recipe-use-local-z-image-turbo"]').trigger('click');
   expect(view.chooseRecipe).toHaveBeenCalledWith({ recipeId: 'z-image-turbo', selections: { diffusion: 'q8-0' } });
   expect(fetch).not.toHaveBeenCalled();

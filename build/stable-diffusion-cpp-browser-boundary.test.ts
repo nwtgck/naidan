@@ -64,7 +64,7 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     const local = [...new Set(modules.filter(id => id.includes('/' + feature)).map(id => id.slice(id.indexOf(feature) + feature.length).split('?')[0]))].sort();
-    expect(local).toEqual(['components/ImageGenerationLab.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'form-options.ts', 'form.ts', 'library-standalone.ts', 'model-recipes.ts', 'use-image-generation-standalone.ts']);
+    expect(local).toEqual(['components/ImageCatalogDownloadStatus.vue', 'components/ImageGenerationLab.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'form-options.ts', 'form.ts', 'library-standalone.ts', 'model-recipes.ts', 'use-image-generation-standalone.ts']);
     expect(workerModules).toEqual([]);
     expect(Object.keys(files).some(name => name.startsWith('stable-diffusion-cpp-runtime/') || /\.wasm(\.|$)/.test(name))).toBe(false);
     const code = Object.values(files).map(file => file.type === 'chunk' ? file.code : '').join('\n');
@@ -82,7 +82,12 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'hosted', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     expect(modules.some(id => id.endsWith('/use-image-generation-hosted.ts'))).toBe(true);
-    expect(modules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(true);
+    expect(modules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(false);
+    expect(modules.some(id => id.endsWith('/download-worker/client.ts'))).toBe(true);
+    expect(workerModules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(true);
+    expect(workerModules.some(id => id.endsWith('/logic/catalog-file-download.ts'))).toBe(true);
+    expect(workerModules.some(id => id.endsWith('/privacy-fetch/broker-client.ts'))).toBe(false);
+    expect(modules.some(id => id.endsWith('/download-worker/fetch-bridge.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/diagnostics.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/use-image-generation-standalone.ts'))).toBe(false);
     for (const name of ['entry.ts', 'session.ts', 'core-loader.ts', 'gguf-file.ts', 'gpu-diagnostics.ts']) {
@@ -96,7 +101,7 @@ describe('hosted-only bicore image boundary', () => {
   it('rejects accidentally emitted image binaries even with the correct facade', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: true })).rejects.toThrow('Image runtime asset');
   }, 60_000);
-  it.each(['worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'diagnostics.ts', 'logic/catalog-download.ts'])('guards %s including module queries', relative => {
+  it.each(['worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).toThrow('Hosted image implementation');
   });
 });

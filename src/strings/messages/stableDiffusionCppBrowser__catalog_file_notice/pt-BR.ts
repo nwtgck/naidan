@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__catalog_file_notice = (): string => "Somente os pesos selecionados são baixados. SHA-256 da revisão fixa é verificado durante a transferência, sem dividir ou converter arquivos. Arquivos existentes são verificados e reutilizados, nunca sobrescritos silenciosamente. Confira os termos de cada publicador.";
+export const stableDiffusionCppBrowser__catalog_file_notice = (): string => "Apenas os arquivos selecionados são baixados. Confira os termos de cada distribuidor. Os tamanhos estimam armazenamento, não memória de execução.";

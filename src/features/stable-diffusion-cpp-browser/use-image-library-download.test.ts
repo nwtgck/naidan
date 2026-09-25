@@ -4,7 +4,7 @@ import { effectScope } from 'vue';
 import { useImageLibrary } from './use-image-library';
 import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile } from './model-recipes';
 import { scanImageRepositories } from './logic/model-candidates';
-import type { downloadImageRecipe } from './logic/catalog-download';
+import type { ImageRecipeDownloader } from './logic/catalog-download';
 import type { LocalImageRepository } from './logic/repository-store';
 import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights';
 
@@ -22,7 +22,7 @@ function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): L
   const id = user ? `user/${file.repository.split('/')[1]}` : `huggingface.co/${file.repository}/resolve/main`;
   return { id, name: id, files: [{ path: file.path, file: blob }] };
 }
-function harness({ download, initial }: { download: typeof downloadImageRecipe | undefined, initial: LocalImageRepository[] }) {
+function harness({ download, initial }: { download: ImageRecipeDownloader | undefined, initial: LocalImageRepository[] }) {
   let entries = initial; let blocked = false;
   const downloader = vi.fn(download ?? (async () => undefined));
   const list = vi.fn(async () => entries), onSelection = vi.fn();
@@ -92,7 +92,7 @@ it('blocks generation selections during download and cancels without publishing 
   expect(h.library.downloading.value).toBe(true); expect(h.library.ready.value).toBe(false);
   await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} }); expect(h.downloader).toHaveBeenCalledTimes(1);
   h.library.cancelDownload(); await running;
-  expect(h.library.downloadState.value).toBe('cancelled'); expect(h.library.downloading.value).toBe(false);
+  expect(h.library.downloadState.value).toBe('paused'); expect(h.library.downloading.value).toBe(false);
 });
 it('aborts a pending download on scope disposal and ignores late completion', async () => {
   let signal: AbortSignal | undefined;
@@ -102,4 +102,25 @@ it('aborts a pending download on scope disposal and ignores late completion', as
   const running = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   h.scope.stop(); await running;
   expect(signal?.aborted).toBe(true); expect(h.list).not.toHaveBeenCalled();
+});
+
+it('keeps controls locked and never publishes completion before the post-download inventory resolves', async () => {
+  const wanted = selectedRecipeFiles({ recipe, selections: {} }).map(file => repository({ file, user: false }));
+  const pending = Promise.withResolvers<LocalImageRepository[]>();
+  const list = vi.fn(() => pending.promise);
+  const scope = effectScope(); scopes.push(scope);
+  const view = scope.run(() => useImageLibrary({ blocked: () => false, onSelection() {}, dependencies: {
+    list, scan: scanImageRepositories, import: vi.fn(), download: vi.fn(async () => undefined),
+  } }))!;
+  const operation = view.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
+  expect(view.downloading.value).toBe(true);
+  expect(view.downloadState.value).toBe('downloading');
+  expect(view.ready.value).toBe(false);
+  view.chooseRecipe({ recipeId: recipe.id, selections: {} });
+  expect(view.main.value).toBe('');
+  pending.resolve(wanted); await operation;
+  expect(view.downloading.value).toBe(false);
+  expect(view.downloadState.value).toBe('complete');
+  expect(view.ready.value).toBe(true);
 });

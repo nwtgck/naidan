@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__import_repository_help = (): string => "O añada una carpeta local conservando sus rutas en models/user. Puede añadir por separado los repositorios del modelo, decodificador y texto. Cada importación vuelve a buscar componentes en user y Hugging Face. Se excluye el historial Git.";
+export const stableDiffusionCppBrowser__import_repository_help = (): string => "Arrastra una carpeta de modelo aquí o selecciona una para añadirla.";

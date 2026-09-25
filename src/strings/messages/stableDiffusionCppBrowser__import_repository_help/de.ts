@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__import_repository_help = (): string => "Oder einen lokalen Repository-Ordner hinzufügen. Innere Pfade bleiben unter models/user erhalten. Getrennte Modell-, Decoder- und Textencoder-Ordner können nacheinander hinzugefügt werden. Beide Speicherorte werden erneut geprüft. Git-Verlauf wird ausgelassen.";
+export const stableDiffusionCppBrowser__import_repository_help = (): string => "Modellordner hier ablegen oder zum Hinzufügen auswählen.";

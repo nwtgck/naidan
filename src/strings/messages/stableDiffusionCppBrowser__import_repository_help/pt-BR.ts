@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__import_repository_help = (): string => "Ou adicione uma pasta local mantendo os caminhos em models/user. Repositórios de modelo, decodificador e texto podem ser adicionados separadamente. Cada importação busca componentes nos dois locais. O histórico Git é excluído.";
+export const stableDiffusionCppBrowser__import_repository_help = (): string => "Solte uma pasta de modelo aqui ou selecione uma para adicioná-la.";
