@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_help = (): string => "Ein/Aus, Intervall und maximale Kantenlänge sind während der Generierung änderbar. Kleine Projektionsvorschauen werden nur für die Anzeige vergrößert, ohne zusätzliche Details oder gespeicherte Pixel. Detaillierte Vorschauen benötigen zusätzliche Decoderarbeit; eine kleinere Anzeige reduziert diese nicht.";

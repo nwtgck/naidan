@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_qwen_image = (): string => "テキストからの生成には、画像生成本体、Qwen Image 2.1専用VAE、Qwen3-VL-8Bテキストエンコーダーの3ファイルが必要です。旧Qwen ImageのVAEは使えません。テキストからの生成にmmprojは不要です。この画面は画像編集には対応していません。";

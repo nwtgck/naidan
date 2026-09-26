@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__weight_residency_help = (): string => "Auto loads supported weights onto the GPU before generation and keeps them there for the operation. CPU, hybrid and disk remain manual alternatives. Unsupported native operations may still use the CPU.";

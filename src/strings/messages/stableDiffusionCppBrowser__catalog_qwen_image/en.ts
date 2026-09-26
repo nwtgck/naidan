@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_qwen_image = (): string => "Three required files for text-to-image: diffusion model, the dedicated Qwen Image 2.1 VAE, and Qwen3-VL-8B text encoder. Do not substitute the earlier Qwen Image VAE. No mmproj is needed for text-to-image; image editing is not provided here.";

@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_help = (): string => "ON/OFF, interval and maximum edge can change while generating. Small projection previews are enlarged for display, not given more detail or saved pixels. Detailed previews add decoder work; a smaller display does not reduce it.";

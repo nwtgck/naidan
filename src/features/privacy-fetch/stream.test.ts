@@ -50,6 +50,8 @@ describe('Hugging Face privacy policy', () => {
     'https://huggingface.co/api/models/owner/model?token=secret',
     'https://huggingface.co/api/models/owner/model/tree/main?recursive=true&recursive=false',
     'https://huggingface.co/owner/model/resolve/main/run.py',
+    'https://huggingface.co/owner/model/resolve/main/checkpoint.pt',
+    'https://huggingface.co/owner/model/resolve/main/foo%2fbar.safetensors',
     'https://huggingface.co/owner/model/resolve/main/foo%2fbar.gguf',
     'https://cas-bridge.xethub.hf.co/model.gguf',
     'https://huggingface.co/owner/model/resolve/main/foo%5cbar.gguf',
@@ -64,6 +66,8 @@ describe('Hugging Face privacy policy', () => {
     'https://huggingface.co/api/models/owner/model/revision/main',
     'https://huggingface.co/api/models/owner/model/tree/123abc/subdir?recursive=true&limit=1000&cursor=abc%3D',
     url,
+    'https://huggingface.co/owner/model/resolve/main/vae/ae.safetensors',
+    'https://huggingface.co/owner/model/resolve/main/vae/ae.sft',
     'https://huggingface.co/owner/model/resolve/main/dir%20name/model%2BQ4%20%E6%97%A5%E6%9C%AC.gguf',
   ])('accepts model metadata and GGUF requests: %s', valid => {
     expect(validatePrivacyFetchUrl({ urlText: valid })).toMatchObject({ ok: true, policyName: 'huggingface_models' });

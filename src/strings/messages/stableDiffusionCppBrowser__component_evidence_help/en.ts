@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__component_evidence_help = (): string => "Automatic choices use tensor structure, not just filenames. Compatible-shaped fine-tunes may still change results. Projectors for image editing are not used in this text-to-image workspace.";

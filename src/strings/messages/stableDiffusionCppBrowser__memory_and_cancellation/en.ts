@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Models can remain loaded after a normal stop. Force stop, failure or leaving this page releases the runtime, not the saved model files.";

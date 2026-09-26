@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_mode_locked = (): string => "Diese Laufzeit legt den Vorschaudecoder beim Samplingstart fest. Modus vor der nächsten Generierung ändern; andere Einstellungen bleiben live.";

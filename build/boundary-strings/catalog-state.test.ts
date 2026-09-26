@@ -65,6 +65,42 @@ describe('Boundary Strings catalog state', () => {
     expect(readCatalog).toHaveBeenCalledTimes(1);
   });
 
+  it('revalidates an invalid snapshot after a locale content event without hiding real omissions', () => {
+    const repaired = catalog({ key: 'stableDiffusionCppBrowser__decoding_image' });
+    const missing = createBoundaryStringDiagnosticError({
+      code: 'message-locale-file-missing',
+      message: 'Missing en.ts for catalog message "stableDiffusionCppBrowser__decoding_image".',
+    });
+    const readCatalog = vi.fn()
+      .mockImplementationOnce(() => {
+        throw missing;
+      })
+      .mockImplementationOnce(() => {
+        throw missing;
+      })
+      .mockReturnValue(repaired);
+    const state = createBoundaryStringCatalogState({ readCatalog });
+
+    expect(state.resolve()).toMatchObject({ status: 'invalid' });
+    expect(state.markDirtyIfInvalid()).toBe(true);
+    expect(state.resolve()).toMatchObject({ status: 'invalid', diagnostic: missing.diagnostic });
+    expect(state.markDirtyIfInvalid()).toBe(true);
+    expect(state.resolve()).toEqual({ status: 'valid', catalog: repaired });
+    expect(readCatalog).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not read or invalidate valid or unresolved catalogs for an ordinary message edit', () => {
+    const current = catalog({ key: 'Example__first' });
+    const readCatalog = vi.fn(() => current);
+    const state = createBoundaryStringCatalogState({ readCatalog });
+    expect(state.markDirtyIfInvalid()).toBe(false);
+    expect(readCatalog).not.toHaveBeenCalled();
+    expect(state.resolve()).toEqual({ catalog: current, status: 'valid' });
+    expect(state.markDirtyIfInvalid()).toBe(false);
+    expect(state.resolve()).toEqual({ catalog: current, status: 'valid' });
+    expect(readCatalog).toHaveBeenCalledOnce();
+  });
+
   it('does not cache unexpected failures', () => {
     const readCatalog = vi.fn(() => {
       throw new Error('transient I/O failure');

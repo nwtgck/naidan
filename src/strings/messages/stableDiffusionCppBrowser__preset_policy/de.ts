@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preset_policy = (): string => "Nutzt Tensorstruktur und Variantenmetadaten oder geprüfte Downloadbelege, keine Dateinamen. Vorschau, Auflösung und Speicher sind Naidan-Vorgaben. Prompts, Seed, Vorschau-Aktivierung, Profil und Budget bleiben erhalten.";

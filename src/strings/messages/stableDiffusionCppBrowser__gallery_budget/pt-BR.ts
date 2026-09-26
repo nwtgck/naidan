@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__gallery_budget = (): string => "As imagens mais antigas são removidas ao atingir o limite ou orçamento: resultados 256 MiB, prévias 64 MiB. Salve as imagens desejadas.";

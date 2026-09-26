@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__debug_help = (): string => "llama.cpp browser처럼 생성별로 상세 로그를 선택하며 다른 채팅의 스위치와 연동되지 않습니다. 생성 전에 켜면 내부 로그, 텐서 형식, 파일 읽기 및 GPU 활동을 기록합니다. 실행 중에도 복사할 수 있습니다. Worker 알림이 없다고 멈춘 것은 아닙니다. 프롬프트 출력은 억제하지만 파일명이 남을 수 있으니 공유 전에 확인하세요. 외부로 전송하지 않습니다.";

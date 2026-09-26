@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_mode_locked = (): string => "This runtime fixes the preview decoder at sampling start. Change the mode before the next generation; other preview controls remain live.";

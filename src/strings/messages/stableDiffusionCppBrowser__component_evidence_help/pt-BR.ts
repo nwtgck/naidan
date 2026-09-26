@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__component_evidence_help = (): string => "A seleção automática usa estruturas de tensores. Variantes da mesma estrutura podem alterar os resultados. Projetores de edição não são usados aqui.";

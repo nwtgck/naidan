@@ -127,6 +127,40 @@ export function getReadableStreamTransferSupport(): Promise<'supported' | 'unsup
   return readableStreamTransferSupport;
 }
 
+/** One-way, schema-checked notifications for synchronous native work. Unlike a
+ * proxied RPC callback this creates no response promise/acknowledgement queue.
+ * An omitted endpoint means the current dedicated Worker, as for Comlink expose.
+ * Consumers own rate/size limits and must never use this as an unchecked RPC. */
+export function postWorkerNotification<T>({ endpoint, schema, value }: {
+  endpoint: Pick<Comlink.Endpoint, 'postMessage'> | undefined,
+  schema: import('zod').ZodType<T>, value: T,
+}): void {
+  try {
+    const parsed = schema.safeParse(value);
+    if (parsed.success) (endpoint ?? globalThis as unknown as Comlink.Endpoint).postMessage(parsed.data);
+  } catch { /* Notification failure must not unwind native execution. */ }
+}
+
+export function subscribeWorkerNotifications<T>({ endpoint, schema, listener }: {
+  endpoint: Comlink.Endpoint | undefined, schema: import('zod').ZodType<T>, listener: ({ value }: { value: T }) => void,
+}): () => void {
+  // Undefined is the current dedicated Worker, matching postWorkerNotification.
+  const target = endpoint ?? globalThis as unknown as Comlink.Endpoint;
+  let active = true;
+  const receive: EventListener = event => {
+    if (!active) return;
+    try {
+      const parsed = schema.safeParse((event as MessageEvent<unknown>).data);
+      if (parsed.success) listener({ value: parsed.data });
+    } catch { /* Neither malformed telemetry nor a renderer controls the Worker. */ }
+  };
+  target.addEventListener('message', receive);
+  target.start?.();
+  return () => {
+    active = false; target.removeEventListener('message', receive);
+  };
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {

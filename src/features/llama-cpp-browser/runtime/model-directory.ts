@@ -1,3 +1,4 @@
+import { modelFileIsPending } from '@/logic/model-file-publication';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
 import { rankedProjectors } from '@/features/llama-cpp-browser/hugging-face/presentation';
@@ -46,7 +47,7 @@ export async function readModelFiles({ folder, prefix }: { folder: FileSystemDir
     switch (entry.kind) {
     case 'directory': result.push(...await readModelFiles({ folder: entry, prefix: `${path}/` })); break;
     case 'file':
-      if (/\.gguf$/i.test(name)) result.push({ path, handle: entry, file: await entry.getFile() });
+      if (/\.gguf$/i.test(name) && !await modelFileIsPending({ directory: folder, name })) result.push({ path, handle: entry, file: await entry.getFile() });
       break;
     default: { const exhaustive: never = entry; throw new Error(`Unexpected entry: ${exhaustive}`); }
     }

@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_help = (): string => "Elija el modelo de difusión, decodificador y codificador de texto. Descargar y seleccionar obtiene solo esos archivos en el almacenamiento local. Abrir el catálogo o cambiar opciones no usa la red. Los archivos guardados se seleccionan sin conexión.";

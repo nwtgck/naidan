@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__gallery_budget = (): string => "Oldest images are removed at the chosen count or memory budget: results 256 MiB, previews 64 MiB. Save images you wish to keep.";

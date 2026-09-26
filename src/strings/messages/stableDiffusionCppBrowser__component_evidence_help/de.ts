@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__component_evidence_help = (): string => "Automatische Auswahl nutzt Tensorstrukturen. Gleich strukturierte Varianten können andere Ergebnisse liefern. Projektoren zur Bildbearbeitung werden hier nicht verwendet.";

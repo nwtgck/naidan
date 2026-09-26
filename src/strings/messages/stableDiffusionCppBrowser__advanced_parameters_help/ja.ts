@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__advanced_parameters_help = (): string => "autoは読み込んだモデルの既定値を使います。シード-1はランダムです。Qwen Image 2.1のprefixキャッシュは大きなメモリを使うため、モデル引数のqwen_image_2_1_prefix_cache=falseで無効にできます。";

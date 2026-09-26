@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_help = (): string => "Escolha o modelo de difusão, decodificador e codificador de texto. Baixar e selecionar obtém apenas os arquivos escolhidos no armazenamento local. Abrir o catálogo e mudar opções não usa a rede. Arquivos salvos são selecionados offline.";

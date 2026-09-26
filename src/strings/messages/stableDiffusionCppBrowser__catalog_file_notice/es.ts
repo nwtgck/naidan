@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_file_notice = (): string => "Solo se descargan los archivos seleccionados. Consulta las condiciones de cada editor. Los tamaños estiman almacenamiento, no memoria de ejecución.";

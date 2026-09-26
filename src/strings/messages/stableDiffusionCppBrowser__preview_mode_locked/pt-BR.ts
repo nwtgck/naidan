@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_mode_locked = (): string => "Este runtime fixa o decodificador no início da amostragem. Mude o modo antes da próxima geração; outros controles continuam ativos.";

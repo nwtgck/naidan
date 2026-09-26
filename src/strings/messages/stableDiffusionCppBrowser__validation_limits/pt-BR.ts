@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__validation_limits = (): string => "Comece com Stable Diffusion 1.5 e uma imagem de 256–512 pixels. A integração é experimental e não garante inferência na GPU para todos os modelos ou tamanhos selecionáveis.";

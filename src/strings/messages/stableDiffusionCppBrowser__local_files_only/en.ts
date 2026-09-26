@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__local_files_only = (): string => "Model acquisition requires an explicit action. Generation reads saved files locally and does not download missing components.";

@@ -401,7 +401,8 @@ export function readBoundaryStringMessageCatalog({ paths, root }: {
       if (!fs.existsSync(filePath)) {
         throw createBoundaryStringDiagnosticError({
           code: 'message-locale-file-missing',
-          message: `[naidan-boundary-strings] Missing ${locale}.ts for catalog message "${key}".`,
+          message: `[naidan-boundary-strings] Missing ${locale}.ts for catalog message "${key}". `
+          + `Expected file: ${normalizeModulePath({ modulePath: path.relative(root, filePath) })}.`,
         });
       }
       const relativePath = normalizeModulePath({ modulePath: path.relative(root, filePath) });
