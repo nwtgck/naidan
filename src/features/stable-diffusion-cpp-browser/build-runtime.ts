@@ -110,6 +110,7 @@ const standaloneUiFiles = new Set([
   'components/ImageModelCatalog.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts',
   'form.ts',
   'form-options.ts',
+  'preview-presentation.ts',
   'use-image-generation-standalone.ts',
   'worker/client-standalone.ts',
 ]);

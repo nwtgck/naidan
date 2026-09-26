@@ -15,7 +15,7 @@ let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
-  vi.clearAllMocks(); vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
+  vi.resetAllMocks(); vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
   Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
   let url = 0;
   vi.stubGlobal('URL', class extends URL {
@@ -170,7 +170,7 @@ it('keeps snapshot URLs valid when the live image changes, bounds history, and r
   wrapper = mount(ImageGenerationLab); await flushPromises();
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test';
   await wrapper.get('[data-testid="image-preview-enabled"]').setValue(true);
-  await wrapper.get('[data-testid="image-keep-previews"]').setValue(true);
+  expect(wrapper.get<HTMLInputElement>('[data-testid="image-keep-previews"]').element.checked).toBe(true);
   wrapper.vm.TEST_ONLY.maxPreviews.value = 2; await flushPromises();
   const task = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
   const onPreview = mocks.generate.mock.calls[0]![0].onPreview;
@@ -198,4 +198,31 @@ it('leaves explicit generation parameters untouched and releases after success w
   expect(mocks.generate.mock.calls[0]![0].request.parameters).toMatchObject({ guidance: 3.25, seed: '99', qwenVaePolicy: 'native', vaeTileSize: 64 });
   expect(mocks.release).toHaveBeenCalled(); expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(false);
   expect(wrapper.vm.TEST_ONLY.results.value).toHaveLength(1);
+});
+
+it('uses a fresh nanoid suffix for every diagnostic save during and after generation and releases temporary URLs', async () => {
+  const finish = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
+  const downloadNames: string[] = [], urls: string[] = [];
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    downloadNames.push(this.download); urls.push(this.href);
+  });
+  mocks.generate.mockImplementationOnce(({ onDiagnostic }) => {
+    onDiagnostic({ diagnostic: { event: 'start', stage: 'sampling', elapsedMs: 0, fields: {} } });
+    return finish.promise;
+  });
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
+  wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a private description';
+  const running = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const save = wrapper.get('[data-testid="image-save-diagnostics"]');
+  expect(save.element.matches(':disabled')).toBe(false);
+  await save.trigger('click'); await save.trigger('click');
+  finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
+  await running; await save.trigger('click');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(downloadNames).toHaveLength(3);
+  for (const name of downloadNames) expect(name).toMatch(/^naidan-image-diagnostics-[A-Za-z0-9_-]{21}\.jsonl$/);
+  expect(new Set(downloadNames).size).toBe(3);
+  for (const url of urls) expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
+  expect(wrapper.vm.TEST_ONLY.parameters.value.prompt).toBe('a private description');
 });

@@ -66,7 +66,7 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     const local = [...new Set(modules.filter(id => id.includes('/' + feature)).map(id => id.slice(id.indexOf(feature) + feature.length).split('?')[0]))].sort();
-    expect(local).toEqual(['components/ImageCatalogDownloadStatus.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'form-options.ts', 'form.ts', 'library-standalone.ts', 'model-recipes.ts', 'use-image-generation-standalone.ts']);
+    expect(local).toEqual(['components/ImageCatalogDownloadStatus.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'form-options.ts', 'form.ts', 'library-standalone.ts', 'model-recipes.ts', 'preview-presentation.ts', 'use-image-generation-standalone.ts']);
     expect(workerModules).toEqual([]);
     expect(Object.keys(files).some(name => name.startsWith('stable-diffusion-cpp-runtime/') || /\.wasm(\.|$)/.test(name))).toBe(false);
     const code = Object.values(files).map(file => file.type === 'chunk' ? file.code : '').join('\n');

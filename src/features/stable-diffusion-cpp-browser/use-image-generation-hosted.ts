@@ -1,3 +1,4 @@
+import { nanoid } from 'nanoid';
 import { createImageDiagnosticBuffer, type ImageDiagnostic } from './diagnostics';
 import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
 import { lazyStrings, ensureStrings } from '@/strings';
@@ -36,9 +37,13 @@ export function useImageGeneration(): ImageGenerationView {
     }
   }
   function saveDiagnostics(): void {
+    const filename = `naidan-image-diagnostics-${nanoid()}.jsonl`;
     const url = URL.createObjectURL(new Blob([diagnosticText.value], { type: 'text/plain;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'naidan-image-diagnostics.jsonl'; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    try {
+      const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
   }
   const finalGallery = createImageGallery<{ parameters: Parameters, modelVersion: string, uniformOutput: boolean }>({ initialLimit: 20, maxBytes: 256 * 1024 ** 2 });
   const liveGallery = createImageGallery<Omit<PreviewFrame, 'png'>>({ initialLimit: 1, maxBytes: 64 * 1024 ** 2 });

@@ -313,9 +313,11 @@ large dispatch limits still require real model/device validation.
 Native diagnostics are available during the operation, including before a failure, in opt-in debug mode. No resolution reduction or backend
 switch is silently retried. Final PNGs have a configurable count (20 by default,
 1..100) and a 256 MiB ownership budget including estimated decoded pixels. The
-live preview has one URL; optional preview history has its own configurable
-count and 64 MiB budget. Live/history owners use distinct URLs, so replacing a
-live frame never revokes a retained snapshot. Eviction, deletion and page disposal
+live preview has one URL; preview history is enabled by default once capture
+is enabled, with its own configurable count and 64 MiB budget. An explicit
+history opt-out survives preview ON/OFF toggles within the page. Live/history
+owners use distinct URLs, so replacing a live frame never revokes a retained
+snapshot. Eviction, deletion and page disposal
 revoke each URL exactly once. Results are not written to chat/history/storage.
 
 ### Intermediate previews and live control
@@ -324,8 +326,13 @@ Preview is OFF by default. Native latent projection is the low-cost mode, with
 optional full VAE decoding for detail. The supplied upstream includes projection
 coefficients for Z-Image and Qwen Image 2.1; no extra model is downloaded. Projection
 is approximate and native latent resolution may be smaller than the chosen
-maximum preview edge. Resize never upscales it. In VAE mode reducing delivered PNG
-dimensions reduces output/retention costs, NOT full native decoder work.
+maximum preview edge. PNG encoding never upscales it; the live image and history
+thumbnail instead use the selected display size, preserve aspect ratio and shrink
+to fit their container. Enlarging a projection does not add detail, re-encode the
+Blob or change its saved pixel dimensions. The original-size option uses the
+native frame size; detailed VAE frames are not enlarged beyond their native size.
+In VAE mode reducing delivered PNG dimensions reduces output/retention costs,
+NOT full native decoder work.
 
 ON/OFF, interval (1 means every eligible step) and maximum edge are live controls
 outside the disabled generation fieldset. The decoder mode is fixed for a run
@@ -371,6 +378,10 @@ The image request snapshots it before selecting its retained or newly created Wo
 on does not select test Wasm, change precision, enable an alternative backend or
 change generation parameters. Current published ABI 2 is sufficient; no bicore
 rebuild or generated-code string replacement is involved.
+
+Each diagnostic export uses `naidan-image-diagnostics-<nanoid>.jsonl`, with a
+fresh ID per save, including repeated exports from the same run. This changes
+only the filename; the bounded, sanitized log and URL-release policy are unchanged.
 
 Basic checkpoints are available even without verbose native text. Debug mode adds:
 

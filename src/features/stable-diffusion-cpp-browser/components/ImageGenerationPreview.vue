@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
+import { previewDisplaySize } from '@/features/stable-diffusion-cpp-browser/preview-presentation';
 import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
 const props = defineProps<{ view: ImageGenerationView }>();
 const { preview, keepPreviews, maxPreviews, previewError, livePreview, previewSnapshots, busy, supported } = props.view;
@@ -43,12 +44,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p v-if="previewError" role="alert" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
     <p v-if="preview.enabled && busy && !livePreview" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preview_empty() }}</p>
     <figure v-if="livePreview" tw-class="space-y-2" data-testid="image-live-preview">
-      <img :src="livePreview.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" :width="livePreview.width" :height="livePreview.height" tw-class="max-w-full h-auto rounded-xl border border-gray-200 dark:border-gray-800" />
+      <img :src="livePreview.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" v-bind="previewDisplaySize({ frame: livePreview, maxEdge: preview.maxEdge })" tw-class="max-w-full h-auto rounded-xl border border-gray-200 dark:border-gray-800" />
       <figcaption tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ livePreview.step }} / {{ livePreview.steps }} · {{ livePreview.width }} × {{ livePreview.height }}</figcaption>
     </figure>
     <div v-if="previewSnapshots.length" tw-class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <article v-for="frame in previewSnapshots" :key="frame.id" tw-class="min-w-0 space-y-1" data-testid="image-preview-snapshot">
-        <img :src="frame.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" :width="frame.width" :height="frame.height" loading="lazy" tw-class="max-w-full h-auto rounded-lg border border-gray-200 dark:border-gray-800" />
+        <img :src="frame.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" v-bind="previewDisplaySize({ frame, maxEdge: preview.maxEdge })" loading="lazy" tw-class="max-w-full h-auto rounded-lg border border-gray-200 dark:border-gray-800" />
         <p tw-class="text-[11px] text-gray-500 dark:text-gray-400">#{{ frame.runId }} · {{ frame.step }} / {{ frame.steps }}</p>
         <div tw-class="flex flex-wrap gap-3 text-xs">
           <a :href="frame.url" :download="`naidan-preview-${frame.runId}-${frame.step}.png`" tw-class="text-purple-600 dark:text-purple-400 underline">{{ lazyStrings.stableDiffusionCppBrowser__download_png() }}</a>

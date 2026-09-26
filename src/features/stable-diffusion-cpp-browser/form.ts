@@ -15,7 +15,8 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const retainModel = ref(true);
   const modelResident = ref(false);
   const preview = ref<PreviewSettings>({ ...defaultPreviewSettings });
-  const keepPreviews = ref(false);
+  // Capture remains opt-in; keep incoming frames by default once enabled.
+  const keepPreviews = ref(true);
   const maxPreviews = ref(16);
   const maxResults = ref(20);
   const previewError = ref('');
