@@ -1,4 +1,5 @@
 // @vitest-environment node
+/// <reference types="vite/client" />
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
