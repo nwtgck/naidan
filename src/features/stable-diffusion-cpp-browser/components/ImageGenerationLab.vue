@@ -11,8 +11,8 @@ import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-
 
 const id = useId();
 const view = useImageGeneration();
-const { retainModel, modelResident, maxResults, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results, recommendation,
-  library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, releaseModel, clearResults, copyDiagnostics, saveDiagnostics, applyRecommendedSettings } = view;
+const { retainModel, modelResident, maxResults, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results, recommendation, manualInspectionState,
+  library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, forceCancel, releaseModel, clearResults, copyDiagnostics, saveDiagnostics, applyRecommendedSettings } = view;
 const slots = computed(() => {
   switch (layout.value) {
   case 'checkpoint': return [{ slot: 'model' as const, label: lazyStrings.stableDiffusionCppBrowser__model_file() }];
@@ -50,7 +50,7 @@ const phaseLabel = computed(() => {
   default: { const exhaustive: never = progress.value.phase; throw new Error(String(exhaustive)); }
   }
 });
-defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, generate } }) || {}) });
+defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } }) || {}) });
 </script>
 
 <template>
@@ -96,12 +96,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
           <div tw-class="flex flex-wrap items-center justify-between gap-3">
             <div tw-class="space-y-1">
               <h3 tw-class="text-sm font-semibold">{{ lazyStrings.stableDiffusionCppBrowser__recommended_settings() }}</h3>
-              <p tw-class="text-xs text-gray-600 dark:text-gray-300">{{ recommendation.title }} · {{ recommendation.summary }}</p>
+              <p tw-class="text-xs text-gray-600 dark:text-gray-300">{{ recommendation.title }}</p>
             </div>
             <button type="button" @click="applyRecommendedSettings" :disabled="formDisabled" data-testid="image-apply-recommendation" tw-class="rounded-xl border border-purple-300 dark:border-purple-700 px-3 py-2 text-sm disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__apply_recommended_settings() }}</button>
           </div>
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__recommended_preview_summary() }} {{ recommendation.preview.mode }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_interval() }} {{ recommendation.preview.interval }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_after_step() }} {{ recommendation.preview.startStep }}</p>
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ recommendation.parameters.width }} × {{ recommendation.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ recommendation.parameters.steps }} · {{ lazyStrings.stableDiffusionCppBrowser__guidance() }} {{ recommendation.parameters.guidance }} · {{ recommendation.parameters.sampler }}</p>
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__recommended_preview_summary() }} {{ recommendation.preview.mode === 'vae' ? lazyStrings.stableDiffusionCppBrowser__preview_vae() : lazyStrings.stableDiffusionCppBrowser__preview_projection() }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_interval() }} {{ recommendation.preview.interval }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_after_step() }} {{ recommendation.preview.startStep }}</p>
+          <details tw-class="text-xs space-y-2">
+            <summary tw-class="cursor-pointer text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preset_sources() }}</summary>
+            <p tw-class="text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.stableDiffusionCppBrowser__preset_policy() }}</p>
+            <p v-if="recommendation.id === 'qwen-image-2.1'" tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__qwen_preset_policy() }}</p>
+            <p>{{ recommendation.checkedAt }}</p>
+            <a v-for="source in recommendation.sources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" tw-class="block text-purple-600 dark:text-purple-400 underline">{{ source.label }}</a>
+          </details>
         </section>
+        <p v-else-if="manualInspectionState === 'scanning'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }}</p>
+        <p v-else-if="library.main.value || files.model || files.diffusion" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preset_unknown() }}</p>
         <fieldset :disabled="formDisabled" tw-class="space-y-4">
           <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</span><textarea v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3" /></label>
           <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</span><textarea v-model="parameters.negativePrompt" rows="2" maxlength="4096" tw-class="block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3" /></label>
@@ -144,9 +154,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
         <p v-if="invalid" role="alert" tw-class="text-red-600 dark:text-red-400 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
         <div tw-class="flex flex-wrap items-center gap-3">
           <button type="submit" :disabled="busy || !supported || library.importing.value || library.downloading.value || (!!library.main.value && !library.ready.value)" data-testid="image-generate" tw-class="rounded-lg px-5 py-2.5 bg-purple-600 text-white hover:bg-purple-700 font-medium disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
-          <button type="button" :disabled="!busy" @click="cancel" data-testid="image-cancel" tw-class="rounded-xl px-5 py-2.5 border border-gray-200 dark:border-gray-700 disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
-          <span v-if="busy" role="status" aria-live="polite" tw-class="text-sm">{{ phaseLabel }} <template v-if="progress && progress.steps > 0">{{ progress.step }} / {{ progress.steps }}</template></span>
+          <button type="button" :disabled="!busy || stopping" @click="cancel" data-testid="image-cancel" tw-class="rounded-xl px-5 py-2.5 border border-gray-200 dark:border-gray-700 disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
+          <button v-if="stopping" type="button" @click="forceCancel" data-testid="image-force-cancel" tw-class="rounded-xl border border-red-300 dark:border-red-800 px-4 py-2 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__force_stop() }}</button>
+          <span v-if="busy" role="status" aria-live="polite" tw-class="text-sm">{{ stopping ? lazyStrings.stableDiffusionCppBrowser__stopping_retained() : phaseLabel }} <template v-if="progress && progress.steps > 0">{{ progress.step }} / {{ progress.steps }}</template></span>
         </div>
+        <p v-if="stopping" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__cancel_wait_help() }}</p>
         <p v-if="cancelled" role="status" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__cancelled() }}</p>
       </form>
       <ImageGenerationPreview :view="view" />

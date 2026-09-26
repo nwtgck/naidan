@@ -29,8 +29,9 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const failure = ref('');
   const invalid = ref(false);
   const cancelled = ref(false);
+  const stopping = ref(false);
   const results = shallowRef<{ url: string, parameters: Parameters, modelVersion: string, uniformOutput: boolean, elapsedMs: number, id: number }[]>([]);
-  return { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results };
+  return { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

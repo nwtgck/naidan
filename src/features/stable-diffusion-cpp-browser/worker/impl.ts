@@ -2,7 +2,7 @@ import { createImageTrace, sanitizeImageLog, imageErrorContext, type ImageDiagno
 import { observeImageGpu } from './gpu-diagnostics';
 import { installImageWebGpu } from './webgpu';
 import { releaseWorkerRemote, type WorkerRemote, type WorkerServerApi } from '@/utils/worker-transport';
-import { getProfileConfiguration, requestSchema, responseSchema, progressSchema, previewControlSchema, previewFrameSchema,
+import { getProfileConfiguration, requestSchema, responseSchema, progressSchema, previewControlSchema, previewFrameSchema, cancelControlSchema, cancelledResultSchema,
   type Progress, type PreviewFrame, type PreviewControl, type Request } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageWorker, Report } from './types';
 import { createImageGenerationSession } from './session';
@@ -21,11 +21,12 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
   let busy = false, failed = false, identity: string | undefined;
   let session: ReturnType<typeof createImageGenerationSession> | undefined;
   let observed: ReturnType<typeof observeImageGpu> | undefined, boundary: ReturnType<typeof installImageWebGpu> | undefined;
-  let current: { request: Request, trace: ReturnType<typeof createImageTrace>, phase: Progress['phase'], latest: PreviewControl,
+  let current: { request: Request, trace: ReturnType<typeof createImageTrace>, phase: Progress['phase'], latest: PreviewControl, cancelRequested: boolean,
     log: ({ message, level }: { message: string, level?: number }) => void } | undefined;
   const emitCurrent = ({ ...entry }: ImageDiagnosticInput) => {
+    if (entry.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(entry.message ?? '')) failed = true;
     if (current) current.trace.emit(entry);
-    else if (entry.event === 'failed' || entry.event === 'gpu' && entry.message?.startsWith('device lost:')) {
+    else if (entry.event === 'failed' || entry.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(entry.message ?? '')) {
       failed = true;
       try {
         reportDiagnostic?.({ diagnostic: { ...entry, message: (() => {
@@ -52,13 +53,13 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         trace.native({ message, level }); diagnostics.push(sanitizeImageLog({ message, secrets }).slice(0, 1024));
         if (diagnostics.length > 24) diagnostics.shift();
       };
-      current = { request, trace, phase: 'runtime', latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: request.preview }, log };
+      current = { request, trace, cancelRequested: false, phase: 'runtime', latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: request.preview }, log };
       const operation = current;
       const previews = createPreviewOutput({
         publish({ frame }) {
           reportPreview?.({ frame: previewFrameSchema.parse(frame) });
         },
-        valid: ({ revision }) => current === operation && operation.latest.settings.enabled && operation.latest.revision === revision,
+        valid: ({ revision }) => current === operation && !operation.cancelRequested && operation.latest.settings.enabled && operation.latest.revision === revision,
         onError({ error }) {
           trace.emit({ event: 'native', stage: 'encoding', message: 'Preview encoding failed; final generation continues', fields: imageErrorContext({ error }) });
         },
@@ -66,7 +67,8 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
       const notify = ({ event }: { event: Progress }) => {
         operation.phase = event.phase;
         // Handles controls received while runtime/model initialization was pending.
-        if (operation.latest.revision) session?.updatePreview({ control: operation.latest });
+        if (operation.cancelRequested) session?.cancel({ control: { type: 'naidan-image-cancel-v1', runId: request.runId } });
+        else if (operation.latest.revision) session?.updatePreview({ control: operation.latest });
         if (event.phase === 'sampling' || event.phase === 'decoding') trace.emit({ event: 'progress', stage: event.phase, message: undefined, fields: { step: event.step, steps: event.steps } });
         try {
           Promise.resolve(report({ event: progressSchema.parse(event) })).catch(() => undefined);
@@ -128,14 +130,21 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
           if (core.pointerBytes !== profile.pointerBytes) throw new Error('Image profile pointer width mismatch');
           session = createImageGenerationSession({ core, helpers, reader: new FileReaderSync() });
         }
-        const { modelVersion, uniformOutput, ...image } = await session.generate({ request, onProgress: notify, onLog: log, onDiagnostic: trace.emit,
+        const pendingGeneration = session.generate({ request, onProgress: notify, onLog: log, onDiagnostic: trace.emit,
           onPreview({ capture }) {
             previews.push({ capture: { image: capture.image, maxEdge: capture.maxEdge,
               frame: { type: 'naidan-image-preview-v1', runId: request.runId, revision: capture.revision, step: capture.step, steps: capture.steps, mode: capture.mode },
             } });
           },
         });
+        if (operation.cancelRequested) session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: request.runId } });
+        const generated = await pendingGeneration;
         if (failed) throw new Error('Image runtime aborted during generation');
+        if ('cancelled' in generated || operation.cancelRequested) {
+          trace.emit({ event: 'cancelled', stage: 'worker', message: 'Generation stopped; native context retained after cleanup', fields: { modelResident: true } });
+          return cancelledResultSchema.parse({ cancelled: true, modelResident: true });
+        }
+        const { modelVersion, uniformOutput, ...image } = generated;
         await previews.finish();
         if (failed) throw new Error('Image runtime aborted during preview encoding');
         if (previews.dropped()) trace.emit({ event: 'native', stage: 'encoding', message: 'Preview encoder dropped superseded frames to bound memory', fields: { previewFramesDropped: previews.dropped() } });
@@ -143,6 +152,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         const output = await encodeImagePixels({ image, maxEdge: 0 });
         if (failed) throw new Error('Image runtime aborted during output encoding');
         trace.emit({ event: 'complete', stage: 'encoding', message: undefined, fields: { pngBytes: output.png.size, retainedContext: true, uniformOutput } });
+        if (operation.cancelRequested) return cancelledResultSchema.parse({ cancelled: true, modelResident: true });
         return responseSchema.parse({ ...output, modelVersion, uniformOutput });
       } catch (error) {
         failed = true;
@@ -162,9 +172,20 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         } catch { /* callback mock or renderer gone */ }
       }
     },
+    cancel({ control }) {
+      const parsed = cancelControlSchema.safeParse(control);
+      if (!parsed.success || !current || failed || control.runId !== current.request.runId) return;
+      current.cancelRequested = true;
+      try {
+        session?.cancel({ control: parsed.data });
+      } catch (error) {
+        failed = true;
+        emitCurrent({ event: 'failed', stage: 'worker', message: 'Cooperative cancellation failed; release the runtime', fields: { kind: 'cancel-control', workerTerminationRequired: true, ...imageErrorContext({ error }) } });
+      }
+    },
     updatePreview({ control }) {
       const parsed = previewControlSchema.safeParse(control);
-      if (!parsed.success || !current || failed || control.runId !== current.request.runId || control.revision <= current.latest.revision || control.settings.mode !== current.request.preview.mode) return;
+      if (!parsed.success || !current || current.cancelRequested || failed || control.runId !== current.request.runId || control.revision <= current.latest.revision || control.settings.mode !== current.request.preview.mode) return;
       // The only setter legal during native work is reviewed in preview-control.ts.
       try {
         session?.updatePreview({ control }); current.latest = control;

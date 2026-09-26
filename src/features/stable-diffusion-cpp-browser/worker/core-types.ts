@@ -8,6 +8,7 @@ export interface NativeApi {
   sd_img_gen_params_init(pointer: bigint): Promise<void>;
   new_sd_ctx(parameters: bigint): Promise<bigint>;
   free_sd_ctx(context: bigint): Promise<void>;
+  sd_cancel_generation(context: bigint, mode: number): Promise<void>;
   sd_ctx_supports_image_generation(context: bigint): Promise<number>;
   sd_get_model_version_name(context: bigint): Promise<bigint>;
   sd_get_default_sample_method(context: bigint): Promise<number>;
@@ -29,6 +30,8 @@ export interface CoreModule {
   _sdc_abi_version(): number;
   /** Reviewed synchronous, allocation-free callback/flag setter. Not a generic busy-time API. */
   _sdc_sd_set_preview_callback?(callback: bigint, mode: number, interval: number, denoised: number, noisy: number, data: bigint): void;
+  /** Reviewed atomic cancellation flag store; no graph access or suspension. */
+  _sdc_sd_cancel_generation?(context: bigint, mode: number): void;
   _sdc_model_io_capabilities?(): number;
 }
 export interface Core {

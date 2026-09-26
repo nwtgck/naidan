@@ -1,4 +1,6 @@
+import { imageModelRecipes } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 import { z } from 'zod';
+import type { InspectionReport } from '@/features/stable-diffusion-cpp-browser/inventory-worker/types';
 import type { ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import { inspectWeightFile, readModelJson, type TensorInfo, type WeightMetadata } from './model-metadata';
 import { relativeCompanionPath } from './model-path';
@@ -10,7 +12,7 @@ export type ModelCandidate = {
   id: string; repositoryId: string; path: string; files: RepositoryFile[];
   format: 'gguf' | 'safetensors' | 'safetensors-index';
   size: number; family: ImageFamily; classes: ComponentClass[]; roles: ModelSlot[];
-  evidence: string[]; issue: string | undefined; turboHint: boolean;
+  evidence: string[]; issue: string | undefined; turboHint: boolean; variant: 'turbo' | 'base' | 'unknown';
 };
 export type ModelInventory = { candidates: ModelCandidate[], issues: { repositoryId: string, path: string, message: string }[] };
 const configSchema = z.object({
@@ -19,7 +21,7 @@ const configSchema = z.object({
 });
 const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string().min(1)).refine(value => Object.keys(value).length > 0) });
 
-function fingerprint({ tensors, metadata, config, hint }: { tensors: TensorInfo[], metadata: ReadonlyMap<string, string | number | boolean>, config: z.infer<typeof configSchema> | undefined, hint: string }): Pick<ModelCandidate, 'family' | 'roles' | 'classes' | 'evidence' | 'turboHint'> {
+function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], metadata: ReadonlyMap<string, string | number | boolean>, config: z.infer<typeof configSchema> | undefined }): Pick<ModelCandidate, 'family' | 'roles' | 'classes' | 'evidence' | 'turboHint' | 'variant'> {
   const find = ({ suffix }: { suffix: string }): TensorInfo | undefined => tensors.find(t => t.name === suffix || t.name.endsWith('.' + suffix));
   const has = ({ pattern }: { pattern: RegExp }): boolean => tensors.some(t => pattern.test(t.name));
   const classes: ComponentClass[] = [], roles: ModelSlot[] = [], evidence: string[] = [];
@@ -90,12 +92,24 @@ function fingerprint({ tensors, metadata, config, hint }: { tensors: TensorInfo[
   if (has({ pattern: /encoder\.block\.0\.layer\.0\.SelfAttention\.q\.weight$/ }) && tensors.some(t => t.name.endsWith('shared.weight') && t.shape.at(-1) === 4096)) {
     roles.push('t5'); classes.push('t5-xxl');
   }
-  return { family, roles: [...new Set(roles)], classes, evidence, turboHint: family === 'z-image' && /turbo/i.test(`${hint} ${String(metadata.get('general.name') ?? '')}`) };
+  const training = ['general.name', 'general.basename', 'general.finetune'].map(key => String(metadata.get(key) ?? '')).join(' ');
+  // Base/Turbo share tensor shapes. A renamed filename must never select the
+  // eight-step distillation preset; unknown metadata stays unknown.
+  const variant = (() => {
+    switch (family) {
+    case 'z-image': return /\bturbo\b/i.test(training) ? 'turbo' : /\bbase\b/i.test(training) ? 'base' : 'unknown';
+    case 'sd-checkpoint': case 'qwen-image-2.1': case 'flux1': case 'unknown': return 'unknown';
+    default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
+    }
+  })();
+  return { family, roles: [...new Set(roles)], classes, evidence, turboHint: variant === 'turbo', variant };
 }
 
 /** Header-based evidence is advisory, not proof of training-weight provenance. */
-export async function scanImageRepositories({ repositories, signal }: { repositories: LocalImageRepository[], signal: AbortSignal | undefined }): Promise<ModelInventory> {
+export async function scanImageRepositories({ repositories, signal, onProgress }: { repositories: LocalImageRepository[], signal: AbortSignal | undefined, onProgress?: InspectionReport }): Promise<ModelInventory> {
   const candidates: ModelCandidate[] = [], issues: ModelInventory['issues'] = [];
+  const total = repositories.reduce((n, repo) => n + repo.files.length, 0);
+  let completed = 0;
   for (const repository of repositories) {
     for (const issue of repository.issues ?? []) issues.push({ repositoryId: repository.id, ...issue });
     const inspected = new Map<string, WeightMetadata>();
@@ -105,10 +119,21 @@ export async function scanImageRepositories({ repositories, signal }: { reposito
     const failures = new Map<string, string>();
     for (const entry of repository.files) {
       signal?.throwIfAborted();
+      const progress = () => onProgress?.({ progress: { phase: 'headers', completed, total, path: `${repository.id}/${entry.path}`.slice(0, 2048) } });
+      progress(); completed++;
+      // Report real I/O progress without reading any additional bytes.
+      const file = { size: entry.file.size,
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Blob slice-compatible adapter.
+        slice(start?: number, end?: number) {
+          return { async arrayBuffer() {
+            const bytes = await entry.file.slice(start, end).arrayBuffer(); progress(); return bytes;
+          } };
+        },
+      };
       if (/\.json$/i.test(entry.path)) {
         if (!/(?:^|\/)(?:config|model_index)\.json$|\.index\.json$/i.test(entry.path)) continue;
         try {
-          const data = await readModelJson({ file: entry.file, signal });
+          const data = await readModelJson({ file, signal });
           if (/\.index\.json$/i.test(entry.path)) indices.push({ path: entry.path, map: indexSchema.parse(data).weight_map });
           else configs.set(entry.path, configSchema.parse(data));
         } catch (error) {
@@ -117,7 +142,7 @@ export async function scanImageRepositories({ repositories, signal }: { reposito
         continue;
       }
       if (/\.(md|txt|png|jpg|jpeg|webp|gitattributes|gitignore)$/i.test(entry.path) || entry.path.startsWith('.')) continue;
-      const inspection = await inspectWeightFile({ file: entry.file, signal });
+      const inspection = await inspectWeightFile({ file, signal });
       switch (inspection.status) {
       case 'weights': inspected.set(entry.path, inspection.value); break;
       case 'invalid': case 'lfs-pointer': failures.set(entry.path, inspection.reason); break;
@@ -147,8 +172,16 @@ export async function scanImageRepositories({ repositories, signal }: { reposito
         issue ??= item.unsupported;
       }
       const configPath = relativeCompanionPath({ indexPath: path, reference: 'config.json' });
-      const facts = fingerprint({ tensors, metadata, config: configs.get(configPath) ?? configs.get('config.json'), hint: `${repository.id}/${path}` });
+      const facts = fingerprint({ tensors, metadata, config: configs.get(configPath) ?? configs.get('config.json') });
       const files = [path, ...members.filter(member => member !== path)].map(name => fileMap.get(name)).filter((entry): entry is RepositoryFile => entry !== undefined);
+      // Published immutable catalog provenance can identify a distilled variant
+      // whose exported header has no training label. Require structure AND receipt.
+      const turboRecipe = imageModelRecipes.find(recipe => recipe.id === 'z-image-turbo');
+      const source = fileMap.get(path)?.receipt?.source;
+      if (facts.family === 'z-image' && source?.kind === 'hugging-face' && turboRecipe?.components.some(component => component.role === 'diffusion' && component.options.some(option =>
+        option.repository === source.repository && option.revision === source.revision && option.path === source.path))) {
+        facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: verified catalog download receipt');
+      }
       candidates.push({ id: JSON.stringify([repository.id, path]), repositoryId: repository.id, path, files, format, size: files.reduce((n, f) => n + f.file.size, 0), ...facts, issue });
     }
     for (const index of indices) {
@@ -193,7 +226,7 @@ export async function scanImageRepositories({ repositories, signal }: { reposito
     for (const [path, message] of failures) issues.push({ repositoryId: repository.id, path, message });
   }
   for (const candidate of candidates) if (candidate.issue) issues.push({ repositoryId: candidate.repositoryId, path: candidate.path, message: candidate.issue });
-  signal?.throwIfAborted(); return { candidates, issues };
+  signal?.throwIfAborted(); onProgress?.({ progress: { phase: 'headers', completed: total, total, path: '' } }); return { candidates, issues };
 }
 export function componentRequirements({ family }: { family: ImageFamily }): { slot: ModelSlot, accepts: ComponentClass[] }[] {
   switch (family) {

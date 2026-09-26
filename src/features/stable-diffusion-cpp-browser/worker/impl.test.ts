@@ -3,7 +3,7 @@ import { createImageWorker } from './impl';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import type { CoreFactory } from './core-types';
 import type { PreviewControl } from '@/features/stable-diffusion-cpp-browser/types';
-const mocks = vi.hoisted(() => ({ load: vi.fn(), generate: vi.fn(), createSession: vi.fn(), updatePreview: vi.fn(), close: vi.fn(), encode: vi.fn() }));
+const mocks = vi.hoisted(() => ({ load: vi.fn(), generate: vi.fn(), createSession: vi.fn(), updatePreview: vi.fn(), close: vi.fn(), cancel: vi.fn(), encode: vi.fn() }));
 vi.mock('./core-loader', () => ({ loadCoreFactory: mocks.load }));
 vi.mock('./session', () => ({ createImageGenerationSession: mocks.createSession }));
 vi.mock('./image-output', () => ({ encodeImagePixels: mocks.encode }));
@@ -11,7 +11,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal('FileReaderSync', class {});
   vi.stubGlobal('navigator', { gpu: { requestAdapter: vi.fn() } });
-  mocks.createSession.mockReturnValue({ generate: mocks.generate, updatePreview: mocks.updatePreview, close: mocks.close });
+  mocks.createSession.mockReturnValue({ generate: mocks.generate, updatePreview: mocks.updatePreview, close: mocks.close, cancel: mocks.cancel });
   mocks.encode.mockImplementation(async ({ image }) => ({ width: image.width, height: image.height, png: new Blob(['png'], { type: 'image/png' }) }));
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -145,4 +145,56 @@ it('treats an idle native abort as terminal without publishing a previous prompt
   source.callbacks().onAbort('private prior prompt');
   expect(reportDiagnostic).toHaveBeenLastCalledWith({ diagnostic: expect.objectContaining({ event: 'failed', message: 'Image runtime failed while idle' }) });
   await expect(worker.generate(requestFixture(), vi.fn())).rejects.toThrow('failed'); expect(mocks.load).toHaveBeenCalledOnce();
+});
+
+it('delivers an early cancellation after initialization and retains the same session for the next request', async () => {
+  const source = loaded(), loadGate = Promise.withResolvers<Awaited<ReturnType<typeof mocks.load>>>();
+  const value = await mocks.load(); mocks.load.mockClear(); mocks.load.mockReturnValueOnce(loadGate.promise);
+  const request = requestFixture(); request.runId = 11;
+  const settled = Promise.withResolvers<{ cancelled: true, modelResident: boolean }>();
+  mocks.generate.mockReturnValueOnce(settled.promise);
+  mocks.cancel.mockImplementation(() => {
+    settled.resolve({ cancelled: true, modelResident: true }); return true;
+  });
+  const worker = createImageWorker({ reportDiagnostic: undefined });
+  const task = worker.generate(request, vi.fn());
+  worker.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 99 } });
+  worker.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 11 } });
+  expect(mocks.cancel).not.toHaveBeenCalled();
+  loadGate.resolve(value);
+  await expect(task).resolves.toEqual({ cancelled: true, modelResident: true });
+  expect(mocks.cancel).toHaveBeenCalledExactlyOnceWith({ control: { type: 'naidan-image-cancel-v1', runId: 11 } });
+  expect(mocks.encode).not.toHaveBeenCalled(); expect(mocks.close).not.toHaveBeenCalled();
+  worker.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 11 } });
+  mocks.generate.mockResolvedValueOnce(pixels());
+  await worker.generate({ ...request, runId: 12 }, vi.fn());
+  expect(source.create).toHaveBeenCalledOnce(); expect(mocks.createSession).toHaveBeenCalledOnce();
+  expect(mocks.cancel).toHaveBeenCalledOnce();
+});
+it('discards a late-cancelled encoded image without discarding the context', async () => {
+  const source = loaded(), encoded = Promise.withResolvers<{ png: Blob, width: number, height: number }>(), entered = Promise.withResolvers<void>();
+  mocks.generate.mockResolvedValue(pixels());
+  mocks.encode.mockImplementationOnce(() => {
+    entered.resolve(); return encoded.promise;
+  });
+  const worker = createImageWorker({ reportDiagnostic: undefined }), request = requestFixture(); request.runId = 4;
+  const task = worker.generate(request, vi.fn()); await entered.promise;
+  worker.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 4 } });
+  encoded.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256 });
+  await expect(task).resolves.toEqual({ cancelled: true, modelResident: true });
+  await worker.generate({ ...request, runId: 5 }, vi.fn());
+  expect(source.create).toHaveBeenCalledOnce(); expect(mocks.close).not.toHaveBeenCalled();
+});
+it('does not treat a native abort after a cancel request as successful cancellation', async () => {
+  const source = loaded(), gate = Promise.withResolvers<{ cancelled: true, modelResident: boolean }>(), entered = Promise.withResolvers<void>();
+  mocks.generate.mockImplementationOnce(() => {
+    entered.resolve(); return gate.promise;
+  });
+  const worker = createImageWorker({ reportDiagnostic: undefined }), request = requestFixture(); request.runId = 7;
+  const task = worker.generate(request, vi.fn()); await entered.promise;
+  worker.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 7 } });
+  source.callbacks().onAbort('broken instance');
+  gate.resolve({ cancelled: true, modelResident: true });
+  await expect(task).rejects.toThrow('aborted');
+  await expect(worker.generate({ ...request, runId: 8 }, vi.fn())).rejects.toThrow('failed');
 });

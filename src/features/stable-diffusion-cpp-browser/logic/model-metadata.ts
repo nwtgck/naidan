@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { awaitInspection } from './inspection-abort';
 import { parseModelJson } from './model-json';
 
 // Limits bound inspection work, not the size of a model file or tensor payload.
@@ -29,7 +30,7 @@ function checkedSize({ value }: { value: bigint }): number {
 export async function readModelRange({ file, offset, length, signal }: { file: ModelMetadataFile, offset: number, length: number, signal: AbortSignal | undefined }): Promise<Uint8Array<ArrayBuffer>> {
   signal?.throwIfAborted();
   if (!Number.isSafeInteger(file.size) || !Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0 || offset > file.size || length > file.size - offset || length > MODEL_HEADER_LIMIT) throw new Error('Invalid bounded model read');
-  const result = new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+  const result = new Uint8Array(await awaitInspection({ task: file.slice(offset, offset + length).arrayBuffer(), signal }));
   signal?.throwIfAborted();
   if (result.length !== length) throw new Error('Model file changed or its header is truncated');
   return result;

@@ -232,7 +232,7 @@ needed only for editing are not loaded. Full SD checkpoints need no extra files.
 Detection uses GGUF magic/metadata/tensor descriptors or validated safetensors
 JSON/tensor shapes. Filenames alone never establish a family or compatibility.
 The Turbo label within an already structurally recognized Z-Image family is a
-filename/metadata hint because the Base and Turbo structures can coincide.
+training-metadata or reviewed-publication hint because the Base and Turbo structures can coincide; a filename alone is not evidence.
 Header inspection is bounded (16 MiB JSON headers; GGUF range-read budget 32 MiB,
 100,000 tensors, bounded item counts); unknown/over-budget files remain stored
 and are reported. Git LFS pointers are not mistaken for downloaded weights.
@@ -283,9 +283,15 @@ have WeakMap identities, not filename/size/time guesses. Published Hugging Face
 receipts identify the complete composition across local inventory refreshes;
 unverified/local File snapshots fall back to conservative object identity.
 
-Explicit release, cancellation, any failure (including device loss/allocation
-failure), navigation and disposal terminate the physical Worker. Hard cancellation
-never depends on the blocked native loop processing another message. There is no
+Explicit release, forced cancellation, any failure (including device loss/allocation
+failure), navigation and disposal terminate the physical Worker. Ordinary Stop
+uses the pinned core's cooperative cancellation flag and waits for a normal native
+return plus per-image cleanup, retaining a valid context for the next generation.
+While stopping, controls stay busy and a separate Force stop action remains
+available. Loading/conditioning or a running GPU graph/decoder may take time to
+reach a cancellation boundary; Stop is not an immediate GPU preemption promise.
+Hard cancellation never depends on the blocked native loop processing another
+message. There is no
 automatic model/profile retry and no multi-model cache. A visible retention switch
 can restore release-after-each-generation behavior. Model files on disk and image
 results are independent of this runtime ownership.
@@ -295,16 +301,29 @@ between runs. Mounted files, context construction strings and callbacks outlive
 the retained context. Permanent callbacks route to the current request rather
 than capturing the first request's prompts, progress or diagnostics. Each run's
 Comlink callback port is explicitly released; late messages cannot mutate a newer
-run. Cancelled/trapped instances are never used for another generation.
+run. Trapped/failed or forcibly cancelled instances are never reused. A cooperative
+stop is distinguished from failure, never implemented by throwing out of a C++
+callback. The generated `_sdc_sd_cancel_generation(context, SD_CANCEL_ALL)` is a
+reviewed busy-time exception: pinned `src/stable-diffusion.cpp` checks arguments
+and `DiffusionEngine::set_cancel_flag` performs one lock-free atomic store. The
+sampler's `RunnerEndOnExit` runs during normal early return. Only after native
+execution returns are outputs/parameters freed and the flag reset via the normal
+idle API. A cancellation arriving during load is queued; initialization completes
+and sampling is skipped. GPU/device errors override cancellation and retire the
+Worker. Run IDs reject old cancellation messages.
 
-For recognized Z-Image-Turbo, selecting the main model suggests 8 steps and CFG 1;
-Qwen Image 2.1 suggests CFG 6 and disables its large prefix cache when model
-arguments are empty. These are visible Naidan choices, not core restrictions.
-Other application defaults are conservative: 256x256, 20 steps, upstream model-specific
-sampler/scheduler, one image, tiled image decoding, no mmap, prefetch threads or
-conditioning cache. The advanced panel exposes sampling, scheduler, guidance,
-cache, tiling, attention and model arguments. Nothing silently forces Qwen
-prefix-cache settings in the core. For Qwen experiments the caller may set
+Existing library-selection helpers are preserved: verified Turbo receives eight
+steps/CFG 1, Qwen receives CFG 6 and an empty model-arguments field gets its
+previous prefix-cache workaround. Unlabelled Z-Image is not guessed as Turbo.
+The explicit preset button is the only full-parameter reset and applies a static,
+sourced starting point, not a core restriction. It
+preserves prompts, seed, selected model, runtime/device and memory budget, and
+whether preview capture is enabled. `recommendations.ts` distinguishes upstream
+examples from Naidan's browser/preview policy. In particular, Qwen's 20 steps and
+preview-start thresholds are app choices, not claimed provider optima.
+The advanced panel still exposes sampling, scheduler, guidance, cache, tiling,
+attention and model arguments. Nothing forces Qwen prefix-cache settings in the
+core. For experiments the caller may set
 `qwen_image_2_1_prefix_cache=false` explicitly when needed.
 
 The UI permits 128..2048 dimensions in multiples of 64, but this is **not** a
@@ -348,8 +367,8 @@ callback; the denoised flag disables actual native preview calculation. Messages
 apply when the Worker can process them, not by interrupting arbitrary synchronous
 CPU code. A decode already in progress is not cancelled by turning preview OFF.
 
-The generated `_sdc_sd_set_preview_callback` is the sole reviewed busy-time native
-export: the pinned util.cpp implementation only assigns six global scalars and
+Besides the atomic cancellation setter above, `_sdc_sd_set_preview_callback` is
+the other narrowly reviewed busy-time native export: the pinned util.cpp implementation only assigns six global scalars and
 never accesses a context/graph, allocates or suspends. Normal native API calls
 keep the host helper's busy guard. No generic re-entry, unchecked record offset,
 new ABI, SharedArrayBuffer or cross-origin-isolation requirement is introduced.
@@ -363,15 +382,13 @@ not resumable latent/sampler checkpoints.
 
 ### Presets, elapsed time and locale completeness
 
-The recommendation action applies the selected library model's static Naidan
-preset without changing prompts, seed or whether preview capture is enabled.
-`recommendations.ts` contains application choices inherited from the preset
-feature, not a provider-validated setting for every parameter. Preview start
-steps are application policy. Structural family detection identifies Qwen Image
-2.1; the Z-Image Turbo distinction still uses the existing metadata/filename
-hint because Base and Turbo may have identical structures. Manual-only input
-has no pre-load preset detector in this version. Preset application is explicit;
-none is a claim of compatibility for arbitrary renamed fine-tunes.
+The recommendation action uses tensor-structure family plus variant metadata or
+published immutable catalog provenance. Base and Turbo share shapes: a filename
+alone cannot justify an eight-step preset. Missing training labels remain unknown
+unless the structurally matching diffusion file has a verified receipt for the
+reviewed Turbo catalog entry. A manual primary file can be inspected read-only in
+a disposable worker for the same content-derived recommendation; this does not
+scan OPFS or fetch anything. Sources/assumptions are disclosed in preset details.
 
 Live previews, saved preview frames and final images retain elapsed milliseconds
 in page memory. Measurement starts just before the explicit client generation
@@ -586,3 +603,29 @@ dispatch partitioning, pass-state restoration, failure propagation, unchanged
 limits and the hosted/standalone module boundary. Mock GPU tests do not prove
 GPU arithmetic or trained-model generation. Published smoke validation also
 does not claim real-model inference; do not infer that from an artifact pin.
+
+
+## Local model header inspection lifecycle
+
+The inventory is not the inference context. A separate single-use
+`image-model-inspection` Worker enumerates published local repositories and parses
+bounded headers. No inference runtime is instantiated by this scan. Per-file
+`.pending`/`.complete`, source metadata, header size/item/read limits and shard
+validation are unchanged.
+
+Concurrent refresh/focus requests share one scan instead of aborting/restarting
+it. Mutation, cancellation and disposal detach the old operation immediately;
+late success or failure cannot overwrite a newer inventory/error. Platform reads
+are abort-raced for direct callers, and the window always physically terminates
+the disposable parser worker on cancel, failure, completion or timeout. Progress
+shows enumeration versus header inspection, the last path, and file counts. The
+window inactivity watchdog expires after 60 seconds **without progress**, not
+60 seconds of total scan duration. It reports the last phase/path and permits a
+manual retry; it never deletes files or times out the retained inference Worker.
+Large libraries with continuing read progress may run longer. UI timer throttling
+in background tabs can delay watchdog delivery.
+
+Tests use stalled promises, late completions, focus bursts, physical worker
+termination mocks, renamed synthetic headers and reviewed receipt evidence.
+These regressions establish the supported failure/recovery paths, not the exact
+cause of a user's unlogged hang or a benchmark of real multi-GB OPFS files.

@@ -1,11 +1,11 @@
 import { imageDiagnosticEnvelopeSchema, sanitizeImageLog, imageErrorContext, type ImageDiagnostic } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, subscribeWorkerNotifications, postWorkerNotification, type WorkerRemote } from '@/utils/worker-transport';
-import { progressSchema, requestSchema, responseSchema, previewSettingsSchema, previewControlSchema, previewFrameSchema, type PreviewSettings } from '@/features/stable-diffusion-cpp-browser/types';
+import { progressSchema, requestSchema, workerResultSchema, cancelControlSchema, previewSettingsSchema, previewControlSchema, previewFrameSchema, type PreviewSettings } from '@/features/stable-diffusion-cpp-browser/types';
 import { createImageSessionKeys } from '@/features/stable-diffusion-cpp-browser/session-key';
 import type { ImageClient, ImageWorker } from './types';
 
 type WorkerState = { worker: Worker, remote: WorkerRemote<ImageWorker>, key: string, id: string, closed: boolean, unsubscribe: (() => void)[] };
-type Active = { state: WorkerState, runId: number, revision: number, mode: PreviewSettings['mode'], enabled: boolean,
+type Active = { state: WorkerState, runId: number, revision: number, mode: PreviewSettings['mode'], enabled: boolean, cancelRequested: boolean,
   reject({ error }: { error: unknown }): void, diagnostic({ diagnostic }: { diagnostic: ImageDiagnostic }): void,
   preview: NonNullable<Parameters<ImageClient['generate']>[0]['onPreview']>, crash: EventListener };
 
@@ -42,10 +42,10 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
       if (active?.state === target) {
         const id = value.diagnostic.fields.runId;
         if (id === undefined || id === active.runId) active.diagnostic({ diagnostic: value.diagnostic });
-      } else if (value.diagnostic.event === 'failed' || (value.diagnostic.event === 'gpu' && value.diagnostic.message?.startsWith('device lost:'))) retire({ target });
+      } else if (value.diagnostic.event === 'failed' || (value.diagnostic.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(value.diagnostic.message ?? ''))) retire({ target });
     } }));
     target.unsubscribe.push(subscribeWorkerNotifications({ endpoint: worker, schema: previewFrameSchema, listener({ value }) {
-      if (target.closed || active?.state !== target || value.runId !== active.runId || value.revision !== active.revision || !active.enabled || value.mode !== active.mode) return;
+      if (target.closed || active?.state !== target || value.runId !== active.runId || value.revision !== active.revision || active.cancelRequested || !active.enabled || value.mode !== active.mode) return;
       try {
         active.preview({ frame: value });
       } catch { /* UI is observational */ }
@@ -95,7 +95,8 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
         if (failureContext.length > 8) failureContext.shift();
       }
       const stopped = Promise.withResolvers<never>();
-      const operation: Active = { state: target, runId: request.runId, revision: 0, mode: request.preview.mode, enabled: request.preview.enabled, reject: ({ error }) => stopped.reject(error),
+      const gpuFailure = Symbol('image GPU failure');
+      const operation: Active = { state: target, runId: request.runId, revision: 0, cancelRequested: false, mode: request.preview.mode, enabled: request.preview.enabled, reject: ({ error }) => stopped.reject(error),
         diagnostic({ diagnostic }) {
           if (closed) return;
           lastMessage = performance.now();
@@ -111,13 +112,14 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
               default: { const exhaustive: never = diagnostic.stage; throw new Error(String(exhaustive)); }
               }
             })();
-            if (diagnostic.fields.kind === 'preview-control') stopped.reject(new Error(diagnostic.message ?? 'Preview control failed'));
+            if (diagnostic.fields.kind === 'preview-control' || diagnostic.fields.kind === 'cancel-control') stopped.reject(new Error(diagnostic.message ?? 'Preview control failed'));
             break;
           case 'gpu':
             if (diagnostic.message && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(diagnostic.message)) {
               firstFailureStage ??= diagnostic.stage; remember({ message: diagnostic.message });
-              // A retained idle device may be lost just as a new request starts.
-              if (diagnostic.message.startsWith('device lost:')) stopped.reject(new Error(diagnostic.message));
+              // A GPU failure must never be converted to a successful retained
+              // cancellation, even if the native operation subsequently returns.
+              stopped.reject(gpuFailure);
             }
             break;
           case 'request': case 'native': case 'file-summary': case 'file-read': case 'waiting': case 'cancelled': case 'dropped': break;
@@ -126,7 +128,7 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
           publish({ diagnostic });
         },
         preview({ frame }) {
-          if (!closed && !disposed && !signal.aborted) onPreview?.({ frame });
+          if (!closed && !operation.cancelRequested && !disposed && !signal.aborted) onPreview?.({ frame });
         },
 
         crash(event) {
@@ -155,10 +157,16 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
         // Worker endpoint ordering then preserves even an immediate ON/OFF.
         publish({ diagnostic: { event: 'start', stage: 'worker', elapsedMs: 0, fields: { profile: request.artifact.profile } } });
         const result = await Promise.race([generated, stopped.promise]);
-        const response = responseSchema.parse(result);
+        const response = workerResultSchema.parse(result);
+        if ('cancelled' in response) return response;
+        if (operation.cancelRequested) return { cancelled: true, modelResident: true };
         if (response.width !== request.parameters.width || response.height !== request.parameters.height) throw new Error('Image response dimensions differ from request');
         return response;
-      } catch (error) {
+      } catch (caught) {
+        const error = caught === gpuFailure ? new Error([
+          `Image Worker failed: stage=${firstFailureStage ?? lastStage}, profile=${request.artifact.profile}, source=${request.artifact.modulePath.split('/')[1]}`,
+          ...failureContext, 'Its runtime has been released.',
+        ].join('\n')) : caught;
         retire({ target });
         const cancelled = signal.aborted || disposed || error instanceof DOMException && error.name === 'AbortError';
         try {
@@ -171,9 +179,19 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
         if (active === operation) active = undefined;
       }
     },
+    cancel() {
+      if (!active || disposed || active.state.closed || active.cancelRequested) return;
+      active.cancelRequested = true;
+      try {
+        postWorkerNotification({ endpoint: active.state.worker, schema: cancelControlSchema,
+          value: { type: 'naidan-image-cancel-v1', runId: active.runId } });
+      } catch (error) {
+        active.reject({ error }); retire({ target: active.state });
+      }
+    },
     updatePreview({ settings }) {
       const parsed = previewSettingsSchema.safeParse(settings);
-      if (!parsed.success || !active || disposed || active.state.closed || parsed.data.mode !== active.mode) return;
+      if (!parsed.success || !active || active.cancelRequested || disposed || active.state.closed || parsed.data.mode !== active.mode) return;
       const control = { type: 'naidan-image-preview-control-v1' as const, runId: active.runId, revision: ++active.revision, settings: parsed.data };
       active.enabled = parsed.data.enabled;
       postWorkerNotification({ endpoint: active.state.worker, schema: previewControlSchema, value: control });

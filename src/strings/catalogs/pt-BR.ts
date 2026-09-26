@@ -1,3 +1,12 @@
+import { stableDiffusionCppBrowser__preview_mode_locked } from '@/strings/messages/stableDiffusionCppBrowser__preview_mode_locked/pt-BR';
+import { stableDiffusionCppBrowser__preset_unknown } from '@/strings/messages/stableDiffusionCppBrowser__preset_unknown/pt-BR';
+import { stableDiffusionCppBrowser__qwen_preset_policy } from '@/strings/messages/stableDiffusionCppBrowser__qwen_preset_policy/pt-BR';
+import { stableDiffusionCppBrowser__preset_policy } from '@/strings/messages/stableDiffusionCppBrowser__preset_policy/pt-BR';
+import { stableDiffusionCppBrowser__preset_sources } from '@/strings/messages/stableDiffusionCppBrowser__preset_sources/pt-BR';
+import { stableDiffusionCppBrowser__cancel_wait_help } from '@/strings/messages/stableDiffusionCppBrowser__cancel_wait_help/pt-BR';
+import { stableDiffusionCppBrowser__stopping_retained } from '@/strings/messages/stableDiffusionCppBrowser__stopping_retained/pt-BR';
+import { stableDiffusionCppBrowser__force_stop } from '@/strings/messages/stableDiffusionCppBrowser__force_stop/pt-BR';
+import { stableDiffusionCppBrowser__listing_repositories } from '@/strings/messages/stableDiffusionCppBrowser__listing_repositories/pt-BR';
 import { stableDiffusionCppBrowser__apply_recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__apply_recommended_settings/pt-BR';
 import { stableDiffusionCppBrowser__generation_time } from '@/strings/messages/stableDiffusionCppBrowser__generation_time/pt-BR';
 import { stableDiffusionCppBrowser__preview_after_step } from '@/strings/messages/stableDiffusionCppBrowser__preview_after_step/pt-BR';
@@ -2091,6 +2100,15 @@ import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/sta
 import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/pt-BR';
 import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/pt-BR';
 export const catalog = {
+  stableDiffusionCppBrowser__preview_mode_locked,
+  stableDiffusionCppBrowser__preset_unknown,
+  stableDiffusionCppBrowser__qwen_preset_policy,
+  stableDiffusionCppBrowser__preset_policy,
+  stableDiffusionCppBrowser__preset_sources,
+  stableDiffusionCppBrowser__cancel_wait_help,
+  stableDiffusionCppBrowser__stopping_retained,
+  stableDiffusionCppBrowser__force_stop,
+  stableDiffusionCppBrowser__listing_repositories,
   stableDiffusionCppBrowser__apply_recommended_settings,
   stableDiffusionCppBrowser__generation_time,
   stableDiffusionCppBrowser__preview_after_step,

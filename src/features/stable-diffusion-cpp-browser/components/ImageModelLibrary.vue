@@ -5,7 +5,7 @@ import type { ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import ImageModelPicker from './ImageModelPicker.vue';
 
 const props = defineProps<{ view: ImageLibraryView, disabled: boolean }>();
-const { models, main, components, scanState, showAll, importing, downloading, failure, issues, ready } = props.view;
+const { models, main, components, scanState, scanProgress, showAll, importing, downloading, failure, issues, ready } = props.view;
 function label({ slot }: { slot: ModelSlot }): string | undefined {
   switch (slot) {
   case 'model': return lazyStrings.stableDiffusionCppBrowser__model_file();
@@ -32,7 +32,13 @@ defineExpose({
 <template>
   <section tw-class="space-y-4" data-testid="image-model-library">
     <p v-if="failure" role="alert" tw-class="text-sm text-red-600 dark:text-red-400 break-words">{{ failure }}</p>
-    <p v-if="scanState === 'scanning'" role="status" tw-class="text-xs text-gray-500">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }}</p>
+    <div v-if="scanState === 'scanning'" tw-class="space-y-2 rounded-xl border border-gray-200 dark:border-gray-700 p-3" data-testid="image-inventory-progress">
+      <div tw-class="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <p role="status">{{ scanProgress?.phase === 'listing' ? lazyStrings.stableDiffusionCppBrowser__listing_repositories() : lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }} <span v-if="scanProgress?.total">{{ scanProgress.completed }} / {{ scanProgress.total }}</span></p>
+        <button type="button" @click="view.cancelScan()" tw-class="underline" data-testid="image-cancel-scan">{{ lazyStrings.SHARED__cancel() }}</button>
+      </div>
+      <p v-if="scanProgress?.path" tw-class="break-all text-[11px] text-gray-500 dark:text-gray-400">{{ scanProgress.path }}</p>
+    </div>
     <ImageModelPicker :model-value="main" :choices="models" :disabled="disabled || importing || downloading" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="view.chooseMain({ id: $event })" data-testid="image-main-model" />
     <div v-if="components.length" tw-class="space-y-3">
       <h3 tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__components_detected() }}</h3>

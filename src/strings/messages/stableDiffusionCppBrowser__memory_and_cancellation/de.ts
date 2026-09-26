@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Geladene Modelle können wiederverwendet werden. Abbrechen oder Verlassen der Seite gibt die Laufzeit frei, nicht die gespeicherten Dateien.";
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Nach normalem Anhalten kann das Modell geladen bleiben. Sofortiges Beenden, Fehler oder Verlassen der Seite gibt die Laufzeit frei, nicht die gespeicherten Dateien.";

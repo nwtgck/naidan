@@ -1,5 +1,5 @@
 import { imageDiagnosticEnvelopeSchema } from '@/features/stable-diffusion-cpp-browser/diagnostics';
-import { previewControlSchema, previewFrameSchema } from '@/features/stable-diffusion-cpp-browser/types';
+import { previewControlSchema, cancelControlSchema, previewFrameSchema } from '@/features/stable-diffusion-cpp-browser/types';
 import { exposeWorkerRemote, postWorkerNotification, subscribeWorkerNotifications } from '@/utils/worker-transport';
 import { createImageWorker } from './impl';
 import type { ImageWorker } from './types';
@@ -12,6 +12,9 @@ const api = createImageWorker({
   },
 });
 subscribeWorkerNotifications({ endpoint: undefined, schema: previewControlSchema, listener: ({ value }) => api.updatePreview({ control: value }) });
+subscribeWorkerNotifications({ endpoint: undefined, schema: cancelControlSchema, listener({ value }) {
+  api.cancel({ control: value });
+} });
 exposeWorkerRemote<ImageWorker>({ api, endpoint: undefined });
 export const TEST_ONLY = {
 };

@@ -41,7 +41,7 @@ it('retains worker after success and retires malformed responses', async () => {
   const client = createImageClient();
   mocks.generate.mockResolvedValue({ png: new Blob(['fixture'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked result' });
   const result = await client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() });
-  expect(result.modelVersion).toBe('mocked result'); expect(mocks.terminate).not.toHaveBeenCalled();
+  expect('modelVersion' in result && result.modelVersion).toBe('mocked result'); expect(mocks.terminate).not.toHaveBeenCalled();
   mocks.generate.mockResolvedValue({ png: 'not a Blob' });
   await expect(client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() })).rejects.toThrow();
   client.dispose();
@@ -225,4 +225,38 @@ it('queues generation before a start listener can send live preview control', as
   } });
   expect(mocks.messages).toHaveLength(1);
   const cancelled = expect(task).rejects.toMatchObject({ name: 'AbortError' }); stop.abort(); await cancelled; client.dispose();
+});
+
+it('keeps a physical Worker after cooperative cancellation but rejects late frames', async () => {
+  const client = createImageClient(), gate = Promise.withResolvers<unknown>(), onPreview = vi.fn(), input = request();
+  mocks.generate.mockReturnValueOnce(gate.promise);
+  const task = client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn(), onPreview });
+  client.cancel(); client.cancel();
+  expect(mocks.messages).toEqual([{ type: 'naidan-image-cancel-v1', runId: 1 }]);
+  expect(mocks.terminate).not.toHaveBeenCalled();
+  gate.resolve({ cancelled: true, modelResident: true });
+  expect(await task).toEqual({ cancelled: true, modelResident: true });
+  mocks.generate.mockResolvedValue({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'same' });
+  await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  expect(mocks.constructed).toHaveBeenCalledTimes(1); client.dispose();
+});
+it('still allows immediate forced abort while waiting for cooperative cancellation', async () => {
+  const client = createImageClient(), stop = new AbortController();
+  mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
+  const task = client.generate({ request: request(), signal: stop.signal, onProgress: vi.fn() });
+  client.cancel(); stop.abort(); await expect(task).rejects.toMatchObject({ name: 'AbortError' });
+  expect(mocks.terminate).toHaveBeenCalledTimes(1); client.dispose();
+});
+
+it('retires a GPU-failed context even when cancellation was requested first', async () => {
+  const client = createImageClient(), gate = Promise.withResolvers<{ cancelled: true, modelResident: boolean }>();
+  mocks.generate.mockReturnValueOnce(gate.promise);
+  const task = client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() });
+  client.cancel();
+  const failed = expect(task).rejects.toThrow('uncaptured GPU error');
+  mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic: {
+    event: 'gpu', stage: 'decoding', elapsedMs: 1, message: 'uncaptured GPU error: validation', fields: { runId: 1 },
+  } } }));
+  gate.resolve({ cancelled: true, modelResident: true });
+  await failed; expect(mocks.terminate).toHaveBeenCalledOnce(); client.dispose();
 });

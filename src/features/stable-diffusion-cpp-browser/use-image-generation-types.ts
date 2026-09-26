@@ -1,5 +1,5 @@
 import type { ImageLibraryView } from './library-view';
-import type { ComputedRef } from 'vue';
+import type { Ref, ComputedRef } from 'vue';
 import type { createImageForm } from './form';
 import type { ModelSlot } from './types';
 import type { ImageGenerationRecommendation } from './recommendations';
@@ -11,12 +11,15 @@ export type ImageGenerationView = ReturnType<typeof createImageForm> & {
   formDisabled: ComputedRef<boolean>;
   unavailable: ComputedRef<string | undefined>;
   recommendation: ComputedRef<ImageGenerationRecommendation | undefined>;
+  manualInspectionState: Ref<'idle' | 'scanning' | 'failed'>;
+  inspectManualFiles(): Promise<void>;
   applyRecommendedSettings(): void;
   chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void;
   resetFiles(): void;
   removeResult({ resultId }: { resultId: number }): void;
   generate(): Promise<void>;
   cancel(): void;
+  forceCancel(): void;
   releaseModel(): void;
   clearResults(): void;
   removePreview({ previewId }: { previewId: number }): void;

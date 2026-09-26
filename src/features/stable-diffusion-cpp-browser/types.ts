@@ -62,6 +62,14 @@ export const previewFrameSchema = z.object({
 export type PreviewFrame = z.infer<typeof previewFrameSchema>;
 export type PreviewControl = z.infer<typeof previewControlSchema>;
 
+/** Cancellation is a run-scoped request, not Worker destruction. */
+export const cancelControlSchema = z.object({
+  type: z.literal('naidan-image-cancel-v1'), runId: z.number().int().positive(),
+}).strict();
+export type CancelControl = z.infer<typeof cancelControlSchema>;
+export const cancelledResultSchema = z.object({ cancelled: z.literal(true), modelResident: z.boolean() }).strict();
+export type CancelledResult = z.infer<typeof cancelledResultSchema>;
+
 export const parametersSchema = z.object({
   prompt: z.string().trim().min(1).max(4096).refine(value => !value.includes('\0')),
   negativePrompt: z.string().max(4096).refine(value => !value.includes('\0')),
@@ -140,6 +148,8 @@ export const responseSchema = z.object({
   modelVersion: z.string().max(256),
   uniformOutput: z.boolean().default(false),
 });
+export const workerResultSchema = z.union([cancelledResultSchema, responseSchema]);
+export type WorkerResult = z.infer<typeof workerResultSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type Configuration = z.infer<typeof configurationSchema>;
 export type Parameters = z.infer<typeof parametersSchema>;

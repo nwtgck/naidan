@@ -4,8 +4,8 @@ import type { ImageLibraryView } from './library-view';
 /** Display-only state. No file access, model inspection, Worker or native imports. */
 export function createDisabledImageLibrary(): ImageLibraryView {
   return {
-    models: computed(() => []), main: ref(''), components: computed(() => []),
-    scanState: ref('idle'), showAll: ref(false), importProgress: shallowRef(),
+    selectedFacts: computed(() => undefined), models: computed(() => []), main: ref(''), components: computed(() => []),
+    scanState: ref('idle'), scanProgress: shallowRef(), cancelScan() {}, showAll: ref(false), importProgress: shallowRef(),
     importing: computed(() => false), downloading: computed(() => false), downloadProgress: shallowRef(), downloadState: ref('idle'), downloadRecipeId: ref(''),
     async downloadRecipe() {}, chooseRecipe() {}, cancelDownload() {}, async resumeDownload() {}, resetDownloadIntent() {}, downloadSelections: shallowRef({}),
     recipeAvailability() {

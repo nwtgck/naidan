@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
-import { inspectWeightFile, readModelJson } from './model-metadata';
+import { readModelRange, inspectWeightFile, readModelJson } from './model-metadata';
 import { parseModelJson } from './model-json';
 import { relativeCompanionPath, validModelPath } from './model-path';
 import { ggufFixture, safetensorsFixture, sparseFile, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
@@ -54,4 +54,11 @@ it('honors cancellation before reading metadata or JSON', async () => {
   const controller = new AbortController(); controller.abort(); const file = new File(['{}'], 'config.json');
   await expect(inspectWeightFile({ file, signal: controller.signal })).rejects.toThrow();
   await expect(readModelJson({ file, signal: controller.signal })).rejects.toThrow();
+});
+
+it('does not keep a cancelled inspection waiting for a stalled Blob read', async () => {
+  const stop = new AbortController();
+  const file = { size: 24, slice: () => ({ arrayBuffer: () => new Promise<ArrayBuffer>(() => undefined) }) };
+  const task = readModelRange({ file, offset: 0, length: 24, signal: stop.signal });
+  stop.abort(); await expect(task).rejects.toMatchObject({ name: 'AbortError' });
 });

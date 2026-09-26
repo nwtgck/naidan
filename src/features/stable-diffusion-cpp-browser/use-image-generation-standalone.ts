@@ -1,5 +1,5 @@
 import { createDisabledImageLibrary } from './library-standalone';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { lazyStrings } from '@/strings';
 import { createImageForm } from './form';
 import type { ImageGenerationView } from './use-image-generation-types';
@@ -16,12 +16,13 @@ export function useImageGeneration(): ImageGenerationView {
     formDisabled: computed(() => true),
     unavailable: computed(() => lazyStrings.stableDiffusionCppBrowser__hosted_build_required()),
     recommendation: computed(() => undefined),
+    manualInspectionState: ref('idle'), async inspectManualFiles() {},
     applyRecommendedSettings() {},
     chooseFile() {},
     resetFiles() {},
     removeResult() {},
     async generate() {},
-    cancel() {}, releaseModel() {}, clearResults() {}, removePreview() {}, clearPreviews() {}, async copyDiagnostics() {}, saveDiagnostics() {},
+    cancel() {}, forceCancel() {}, releaseModel() {}, clearResults() {}, removePreview() {}, clearPreviews() {}, async copyDiagnostics() {}, saveDiagnostics() {},
   };
 }
 

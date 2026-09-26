@@ -45,6 +45,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <label tw-class="inline-flex gap-2 items-center"><input v-model="keepPreviews" type="checkbox" :disabled="!supported" data-testid="image-keep-previews" />{{ lazyStrings.stableDiffusionCppBrowser__keep_previews() }}</label>
         <label tw-class="inline-flex gap-2 items-center text-xs"><span>{{ lazyStrings.stableDiffusionCppBrowser__preview_limit() }}</span><input v-model.number="maxPreviews" type="number" min="1" max="100" step="1" :disabled="!supported" tw-class="w-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
       </div>
+      <p v-if="busy" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preview_mode_locked() }}</p>
       <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preview_help() }}</p>
     </details>
     <p v-if="previewError" role="alert" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>

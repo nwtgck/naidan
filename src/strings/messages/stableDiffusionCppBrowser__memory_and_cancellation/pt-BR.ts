@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Os modelos carregados podem ser reutilizados. Cancelar ou sair da página libera o ambiente, sem excluir os arquivos salvos.";
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "O modelo pode permanecer carregado após parada normal. Parada forçada, falha ou saída libera o runtime, não os arquivos salvos.";

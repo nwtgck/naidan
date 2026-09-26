@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__qwen_preset_policy = (): string => "Qwen: guidance 6 and Euler come from the upstream example. Twenty steps and the preview threshold are Naidan starting points, not published optimal values.";

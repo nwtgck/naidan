@@ -1,3 +1,4 @@
+import type { InspectionReport } from '@/features/stable-diffusion-cpp-browser/inventory-worker/types';
 import { modelFileIsPending, modelFileMarker, publishModelFile, readModelFileReceipt, type ModelFileReceipt } from '@/logic/model-file-publication';
 import { readJournal } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { z } from 'zod';
@@ -36,7 +37,7 @@ async function pending({ folder }: { folder: FileSystemDirectoryHandle }): Promi
     throw error;
   }
 }
-async function readTree({ folder, id, hidden, signal }: { folder: FileSystemDirectoryHandle, id: string, hidden: Set<string>, signal: AbortSignal | undefined }): Promise<Pick<LocalImageRepository, 'files' | 'issues'>> {
+async function readTree({ folder, id, hidden, signal, onProgress }: { folder: FileSystemDirectoryHandle, id: string, hidden: Set<string>, signal: AbortSignal | undefined, onProgress?: InspectionReport }): Promise<Pick<LocalImageRepository, 'files' | 'issues'>> {
   const files: RepositoryFile[] = [], issues: { path: string, message: string }[] = [];
   let count = 0;
   async function walk({ directory, prefix, depth }: { directory: FileSystemDirectoryHandle, prefix: string, depth: number }): Promise<void> {
@@ -47,6 +48,7 @@ async function readTree({ folder, id, hidden, signal }: { folder: FileSystemDire
       if (name === '.git' || name === pendingName || /^\..*\.(complete|pending)$/.test(name)) continue;
       if (++count > 20_000) throw new Error('Local model repository contains too many entries');
       const path = prefix + name;
+      onProgress?.({ progress: { phase: 'listing', completed: count, total: 0, path: `${id}/${path}`.slice(0, 2048) } });
       if (!validModelPath({ path })) throw new Error('Unsafe path in local model repository');
       switch (entry.kind) {
       case 'directory': await walk({ directory: entry, prefix: path + '/', depth: depth + 1 }); break;
@@ -77,13 +79,15 @@ async function readTree({ folder, id, hidden, signal }: { folder: FileSystemDire
   return { files: files.sort((a, b) => a.path.localeCompare(b.path)), issues };
 }
 /** Read the existing model tree only. No Hugging Face/network requests. */
-export async function listImageRepositories({ signal }: { signal: AbortSignal | undefined }): Promise<LocalImageRepository[]> {
+export async function listImageRepositories({ signal, onProgress }: { signal: AbortSignal | undefined, onProgress?: InspectionReport }): Promise<LocalImageRepository[]> {
   signal?.throwIfAborted();
   if (!navigator.storage?.getDirectory) throw new Error('Local model storage is unavailable');
   const root = await optionalDirectory({ parent: await navigator.storage.getDirectory(), name: 'models' });
   if (!root) return [];
   const result: LocalImageRepository[] = [];
   async function append({ folder, id }: { folder: FileSystemDirectoryHandle, id: string }): Promise<void> {
+    signal?.throwIfAborted();
+    onProgress?.({ progress: { phase: 'listing', completed: result.length, total: 0, path: id.slice(0, 2048) } });
     const hidden = new Set<string>();
     if (await pending({ folder })) {
       if (id.startsWith('user/')) return;
@@ -98,7 +102,7 @@ export async function listImageRepositories({ signal }: { signal: AbortSignal | 
         throw error;
       }
     }
-    const content = await readTree({ folder, id, hidden, signal });
+    const content = await readTree({ folder, id, hidden, signal, onProgress });
     if (content.files.length || content.issues?.length) result.push({ id, name: id, ...content });
   }
   const user = await optionalDirectory({ parent: root, name: 'user' });

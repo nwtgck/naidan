@@ -86,6 +86,8 @@ describe('hosted-only bicore image boundary', () => {
     expect(modules.some(id => id.endsWith('/use-image-generation-hosted.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(false);
     expect(modules.some(id => id.endsWith('/download-worker/client.ts'))).toBe(true);
+    expect(modules.some(id => id.endsWith('/inventory-worker/client.ts'))).toBe(true);
+    for (const name of ['entry.ts', 'impl.ts']) expect(workerModules.some(id => id.endsWith('/inventory-worker/' + name))).toBe(true);
     expect(workerModules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(true);
     expect(workerModules.some(id => id.endsWith('/logic/catalog-file-download.ts'))).toBe(true);
     expect(workerModules.some(id => id.endsWith('/privacy-fetch/broker-client.ts'))).toBe(false);
@@ -119,6 +121,15 @@ describe('hosted-only bicore image boundary', () => {
       'stableDiffusionCppBrowser__preview_start_step',
       'stableDiffusionCppBrowser__recommended_preview_summary',
       'stableDiffusionCppBrowser__recommended_settings',
+      'stableDiffusionCppBrowser__listing_repositories',
+      'stableDiffusionCppBrowser__force_stop',
+      'stableDiffusionCppBrowser__stopping_retained',
+      'stableDiffusionCppBrowser__cancel_wait_help',
+      'stableDiffusionCppBrowser__preset_sources',
+      'stableDiffusionCppBrowser__preset_policy',
+      'stableDiffusionCppBrowser__qwen_preset_policy',
+      'stableDiffusionCppBrowser__preset_unknown',
+      'stableDiffusionCppBrowser__preview_mode_locked',
     ]) {
       const definition = catalog.messagesByKey.get(key);
       expect(definition, key).toBeDefined();
@@ -139,7 +150,7 @@ describe('hosted-only bicore image boundary', () => {
   it('rejects accidentally emitted image binaries even with the correct facade', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: true })).rejects.toThrow('Image runtime asset');
   }, 60_000);
-  it.each(['session-key.ts', 'image-gallery.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
+  it.each(['inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'recommendations.ts', 'session-key.ts', 'image-gallery.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).toThrow('Hosted image implementation');
   });
 });

@@ -1,15 +1,18 @@
+import { awaitInspection } from './logic/inspection-abort';
+import { inspectImageInventory } from './inventory-worker/client';
+import type { InspectionProgress } from './inventory-worker/types';
 import type { ImageRecipeDownloader, CatalogDownloadProgress } from './logic/catalog-download';
 import { downloadImageRecipeInWorker } from './download-worker/client';
 import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from './model-recipes';
 import { computed, onScopeDispose, ref, shallowRef } from 'vue';
-import { listImageRepositories, importImageRepository } from './logic/repository-store';
-import { scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
+import { type listImageRepositories, importImageRepository } from './logic/repository-store';
+import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
 import { imageDirectoryFromFiles, imageDirectoriesFromDrop } from './logic/repository-input';
 import type { ModelSlot, Request } from './types';
 import type { ImageLibraryView, ImageModelChoice, ImageRecipeAvailability } from './library-view';
 
 type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader };
-const defaultDependencies: Dependencies = { list: listImageRepositories, scan: scanImageRepositories, import: importImageRepository, download: downloadImageRecipeInWorker };
+const defaultDependencies: Pick<Dependencies, 'import' | 'download'> = { import: importImageRepository, download: downloadImageRecipeInWorker };
 
 function primarySlot({ family }: { family: ModelCandidate['family'] }): ModelSlot | undefined {
   switch (family) {
@@ -41,6 +44,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   const selections = shallowRef<Partial<Record<ModelSlot, string>>>({});
   const overrides = new Set<ModelSlot>();
   const scanState = ref<'idle' | 'scanning'>('idle');
+  const scanProgress = shallowRef<InspectionProgress>();
   const importProgress = shallowRef<{ completed: number, total: number }>();
   const failure = ref('');
   const activeImport = shallowRef<AbortController>();
@@ -51,11 +55,12 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   const downloadSelections = shallowRef<ImageRecipeSelection>({});
   let recipeIntent: { family: 'z-image' | 'qwen-image-2.1', files: ImageRecipeFile[] } | undefined;
   const downloading = computed(() => activeDownload.value !== undefined);
-  let activeScan: AbortController | undefined;
+  let activeScan: { controller: AbortController, promise: Promise<boolean> } | undefined;
   let origin: 'automatic' | 'manual' | 'files' = 'automatic';
   let disposed = false;
   const importing = computed(() => activeImport.value !== undefined);
   const selected = computed(() => inventory.value.candidates.find(item => item.id === main.value));
+  const selectedFacts = computed(() => selected.value && !selected.value.issue ? { family: selected.value.family, variant: selected.value.variant, evidence: selected.value.evidence } : undefined);
   const requirements = computed(() => componentRequirements({ family: selected.value?.family ?? 'unknown' }));
   function describe({ candidate, status }: { candidate: ModelCandidate, status: ImageModelChoice['status'] }): ImageModelChoice {
     return {
@@ -192,7 +197,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const recipe = imageModelRecipes.find(recipe => recipe.id === recipeId); if (!recipe) return;
     const choices = { ...requested }; const files = selectedRecipeFiles({ recipe, selections: choices });
     const controller = new AbortController(); activeDownload.value = controller;
-    activeScan?.abort(); failure.value = ''; downloadState.value = 'downloading'; downloadRecipeId.value = recipeId;
+    cancelScan(); failure.value = ''; downloadState.value = 'downloading'; downloadRecipeId.value = recipeId;
     downloadProgress.value = undefined; downloadSelections.value = choices;
     let transferred = false;
     try {
@@ -236,40 +241,58 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     if (downloading.value) return;
     await refreshInventory();
   }
-  async function refreshInventory(): Promise<boolean> {
-    if (disposed || importing.value || blocked()) return false;
-    activeScan?.abort(); const scan = new AbortController(); activeScan = scan;
-    scanState.value = 'scanning'; failure.value = '';
-    try {
-      const repositories = await deps.list({ signal: scan.signal });
-      const next = await deps.scan({ repositories, signal: scan.signal });
-      if (disposed || blocked() || scan.signal.aborted || activeScan !== scan) return false;
-      inventory.value = next;
-      if (!next.candidates.some(candidate => candidate.id === main.value)) {
-        main.value = ''; selections.value = {}; overrides.clear();
-        if (automaticOrigin({ origin })) {
-          const candidates = next.candidates.filter(candidate => candidate.family !== 'unknown' && !candidate.issue);
-          candidates.sort((a, b) => a.size - b.size || a.id.localeCompare(b.id));
-          const first = candidates[0];
-          if (first) {
-            main.value = first.id; onSelection({ family: first.family, turbo: first.turboHint });
+  function cancelScan(): void {
+    const previous = activeScan; activeScan = undefined;
+    previous?.controller.abort(); scanState.value = 'idle'; scanProgress.value = undefined;
+  }
+  function refreshInventory(): Promise<boolean> {
+    if (disposed || importing.value || blocked()) return Promise.resolve(false);
+    // Repeated window focus/refresh must not cancel and restart a large scan.
+    if (activeScan) return activeScan.promise;
+    const scan = new AbortController();
+    const operation = { controller: scan, promise: Promise.resolve(false) };
+    activeScan = operation; scanState.value = 'scanning'; failure.value = '';
+    scanProgress.value = { phase: 'listing', completed: 0, total: 0, path: '' };
+    operation.promise = (async () => {
+      try {
+        const onProgress = ({ progress }: { progress: InspectionProgress }) => {
+          if (activeScan === operation && !scan.signal.aborted) scanProgress.value = progress;
+        };
+        // Dependency injection remains read-only and abort-raced for regression tests.
+        const next = await awaitInspection({ signal: scan.signal, task: dependencies ? (async () => {
+          const repositories = await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress }), signal: scan.signal });
+          scan.signal.throwIfAborted();
+          return dependencies.scan({ repositories, signal: scan.signal, onProgress });
+        })() : inspectImageInventory({ signal: scan.signal, onProgress }) });
+        if (disposed || blocked() || scan.signal.aborted || activeScan !== operation) return false;
+        inventory.value = next;
+        if (!next.candidates.some(candidate => candidate.id === main.value)) {
+          main.value = ''; selections.value = {}; overrides.clear();
+          if (automaticOrigin({ origin })) {
+            const candidates = next.candidates.filter(candidate => candidate.family !== 'unknown' && !candidate.issue);
+            candidates.sort((a, b) => a.size - b.size || a.id.localeCompare(b.id));
+            const first = candidates[0];
+            if (first) {
+              main.value = first.id; onSelection({ family: first.family, turbo: first.turboHint });
+            }
           }
         }
+        resolveRecipe(); resolve(); return true;
+      } catch (error) {
+        if (!disposed && activeScan === operation && !scan.signal.aborted) failure.value = error instanceof Error ? error.message : String(error);
+        return false;
+      } finally {
+        if (activeScan === operation) {
+          activeScan = undefined; scanState.value = 'idle'; scanProgress.value = undefined;
+        }
       }
-      resolveRecipe(); resolve(); return true;
-    } catch (error) {
-      if (!disposed && !scan.signal.aborted) failure.value = error instanceof Error ? error.message : String(error);
-      return false;
-    } finally {
-      if (activeScan === scan) {
-        activeScan = undefined; scanState.value = 'idle';
-      }
-    }
+    })();
+    return operation.promise;
   }
   async function importInputs({ collect }: { collect: ({ signal }: { signal: AbortSignal }) => Promise<Parameters<typeof importImageRepository>[0]['input'][]> }): Promise<void> {
     if (blocked() || importing.value || downloading.value || disposed) return;
     const controller = new AbortController(); activeImport.value = controller;
-    activeScan?.abort(); failure.value = ''; importProgress.value = { completed: 0, total: 0 };
+    cancelScan(); failure.value = ''; importProgress.value = { completed: 0, total: 0 };
     let changed = false;
     try {
       // collect is invoked during drop dispatch, before awaiting entry traversal.
@@ -327,9 +350,9 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     recipeIntent = undefined; origin = 'files'; main.value = ''; selections.value = {}; overrides.clear();
   }
   onScopeDispose(() => {
-    disposed = true; activeScan?.abort(); activeImport.value?.abort(); activeDownload.value?.abort();
+    disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort();
   });
-  return { models, main, components, scanState, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
+  return { selectedFacts, models, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
     chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }

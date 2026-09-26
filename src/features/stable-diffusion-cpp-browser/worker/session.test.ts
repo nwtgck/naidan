@@ -20,6 +20,7 @@ function harness({ pointerBytes, outcome, channels }: {
     const pointer = BigInt(cursor); cursor += Math.ceil(Number(bytes) / 16) * 16; return pointer;
   };
   const module: CoreModule = {
+    _sdc_sd_cancel_generation: vi.fn(),
     _sdc_sd_set_preview_callback: vi.fn((...args) => {
       previewWrites.push(args);
     }),
@@ -32,6 +33,7 @@ function harness({ pointerBytes, outcome, channels }: {
     }),
   };
   const api: NativeApi = {
+    sd_cancel_generation: vi.fn(async () => undefined),
     sd_ctx_params_init: vi.fn(async () => {
       events.push('ctx-defaults');
     }),
@@ -82,7 +84,7 @@ function harness({ pointerBytes, outcome, channels }: {
   };
   const core: Core = {
     module, api, pointerBytes, busy: false,
-    constant: vi.fn(name => name === 'PREVIEW_PROJ' ? 1 : name === 'PREVIEW_VAE' ? 3 : name === 'PREVIEW_NONE' ? 0 : 100),
+    constant: vi.fn(name => name === 'SD_CANCEL_ALL' ? 0 : name === 'SD_CANCEL_RESET' ? 2 : name === 'PREVIEW_PROJ' ? 1 : name === 'PREVIEW_VAE' ? 3 : name === 'PREVIEW_NONE' ? 0 : 100),
     alloc: vi.fn(bytes => allocate({ bytes })),
     free: vi.fn(() => {
       events.push('free-allocation');
@@ -435,4 +437,54 @@ it('enables the threshold step before its preview and never copies a pre-thresho
   await runImageGeneration({ ...h, request, onProgress, onLog: vi.fn(), onPreview });
   expect(onPreview.mock.calls.map(([{ capture }]) => capture.step)).toEqual([4]);
   expect(onPreview.mock.calls[0]![0].capture.image.pixels[0]).toBe(71);
+});
+
+it.each([4, 8] as const)('cooperatively cancels native sampling, cleans run memory and reuses weights (%i-byte pointers)', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
+  const session = createImageGenerationSession(h), request = requestFixture(); request.runId = 8; request.sessionId = 'one';
+  const entered = Promise.withResolvers<void>(), native = Promise.withResolvers<number>();
+  vi.mocked(h.api.generate_image).mockImplementationOnce(() => {
+    entered.resolve(); return native.promise;
+  });
+  const task = session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+  await entered.promise;
+  expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 9 } })).toBe(false);
+  expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 8 } })).toBe(true);
+  session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 8 } });
+  expect(h.core.module._sdc_sd_cancel_generation).toHaveBeenCalledExactlyOnceWith(200000n, 0);
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.api.sd_cancel_generation).not.toHaveBeenCalled();
+  native.resolve(0); expect(await task).toEqual({ cancelled: true, modelResident: true });
+  expect(h.api.sd_cancel_generation).toHaveBeenCalledWith(200000n, 2);
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
+  const next = await session.generate({ request: { ...request, runId: 9 }, onProgress: vi.fn(), onLog: vi.fn() });
+  expect('pixels' in next).toBe(true); expect(h.api.new_sd_ctx).toHaveBeenCalledTimes(1);
+  await session.close(); expect(h.api.free_sd_ctx).toHaveBeenCalledTimes(1);
+});
+it('waits for initialization to return and keeps the context when cancelled while loading', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  const entered = Promise.withResolvers<void>(), load = Promise.withResolvers<bigint>();
+  vi.mocked(h.api.new_sd_ctx).mockImplementationOnce(() => {
+    entered.resolve(); return load.promise;
+  });
+  const session = createImageGenerationSession(h), request = requestFixture(); request.runId = 1;
+  const task = session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() }); await entered.promise;
+  session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } });
+  expect(h.core.module._sdc_sd_cancel_generation).not.toHaveBeenCalled();
+  load.resolve(200000n); expect(await task).toEqual({ cancelled: true, modelResident: true });
+  expect(h.api.generate_image).not.toHaveBeenCalled();
+  await session.generate({ request: { ...request, runId: 2 }, onProgress: vi.fn(), onLog: vi.fn() });
+  expect(h.api.new_sd_ctx).toHaveBeenCalledOnce(); await session.close();
+});
+it('does not confuse a trap after a cancel request with successful cancellation', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }), session = createImageGenerationSession(h), request = requestFixture(); request.runId = 1;
+  const entered = Promise.withResolvers<void>(), native = Promise.withResolvers<number>();
+  vi.mocked(h.api.generate_image).mockImplementationOnce(() => {
+    entered.resolve(); return native.promise;
+  });
+  const task = session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() }); await entered.promise;
+  session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } });
+  native.reject(new WebAssembly.RuntimeError('out of bounds'));
+  await expect(task).rejects.toThrow('out of bounds');
+  expect(h.api.sd_cancel_generation).not.toHaveBeenCalled(); expect(h.api.free_sd_images).not.toHaveBeenCalled();
+  await session.close(); expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
 });

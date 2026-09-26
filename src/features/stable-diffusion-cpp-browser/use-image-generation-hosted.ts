@@ -9,6 +9,8 @@ import { initialProfile, supportsJspi, supportsMemory64 } from './capabilities';
 import { useImageLibrary } from './use-image-library';
 import { createImageGallery } from './image-gallery';
 import { createImageForm } from './form';
+import { inspectImageInventory } from './inventory-worker/client';
+import type { ImageModelFacts } from './recommendations';
 import { recommendationForSelection } from './recommendations';
 import type { ImageGenerationView } from './use-image-generation-types';
 
@@ -16,10 +18,12 @@ import type { ImageGenerationView } from './use-image-generation-types';
 export function useImageGeneration(): ImageGenerationView {
   const configuration = configurationSchema.parse(rawConfiguration);
   const form = createImageForm({ profile: initialProfile() });
-  const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results } = form;
+  const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results } = form;
   const controller = shallowRef<AbortController>();
   const diagnosticBuffer = createImageDiagnosticBuffer();
-  const selectedRecommendation = ref<ReturnType<typeof recommendationForSelection>>();
+  const manualFacts = shallowRef<ImageModelFacts>();
+  const manualInspectionState = ref<'idle' | 'scanning' | 'failed'>('idle');
+  let manualInspection: AbortController | undefined;
   function recordDiagnostic({ diagnostic }: { diagnostic: ImageDiagnostic }): void {
     if (disposed) return;
     diagnosticBuffer.append({ diagnostic }); diagnosticText.value = diagnosticBuffer.text();
@@ -58,12 +62,14 @@ export function useImageGeneration(): ImageGenerationView {
   const formDisabled = computed(() => busy.value || configuration.kind === 'unavailable');
   const library = useImageLibrary({ blocked: () => formDisabled.value, dependencies: undefined,
     onSelection({ family, turbo }) {
-      // Application recommendations, not core defaults or model compatibility claims.
-      selectedRecommendation.value = recommendationForSelection({ family, turbo });
+      // Preserve established selection-time helpers for recognized models. The
+      // Turbo bit now requires header metadata or reviewed receipt evidence.
+      // The explicit preset action remains the only full-parameter reset.
       switch (family) {
       case 'z-image':
-        parameters.value.guidance = turbo ? 1 : 5;
-        if (turbo) parameters.value.steps = 8;
+        if (turbo) {
+          parameters.value.guidance = 1; parameters.value.steps = 8;
+        }
         break;
       case 'qwen-image-2.1':
         parameters.value.guidance = 6;
@@ -74,11 +80,36 @@ export function useImageGeneration(): ImageGenerationView {
       }
     },
   });
-  const recommendation = computed(() => selectedRecommendation.value);
-
+  const recommendation = computed(() => recommendationForSelection({ model: library.main.value ? library.selectedFacts.value : manualFacts.value }));
+  async function inspectManualFiles(): Promise<void> {
+    if (formDisabled.value || disposed) return;
+    manualInspection?.abort(); manualFacts.value = undefined; manualInspectionState.value = 'idle';
+    const slot = (() => {
+      switch (layout.value) {
+      case 'checkpoint': return 'model' as const;
+      case 'components': return 'diffusion' as const;
+      default: { const exhaustive: never = layout.value; throw new Error(String(exhaustive)); }
+      }
+    })();
+    const file = files.value[slot]; if (!file) return;
+    const controller = new AbortController(); manualInspection = controller; manualInspectionState.value = 'scanning';
+    try {
+      const next = await inspectImageInventory({ signal: controller.signal, onProgress() {},
+        repositories: [{ id: 'manual', name: 'manual', files: [{ path: file.name, file }] }] });
+      if (!disposed && manualInspection === controller && !controller.signal.aborted) {
+        const candidate = next.candidates.find(item => item.roles.includes(slot) && !item.issue);
+        manualFacts.value = candidate ? { family: candidate.family, variant: candidate.variant, evidence: candidate.evidence } : undefined;
+        manualInspectionState.value = 'idle';
+      }
+    } catch {
+      if (!disposed && manualInspection === controller && !controller.signal.aborted) manualInspectionState.value = 'failed';
+    } finally {
+      if (manualInspection === controller) manualInspection = undefined;
+    }
+  }
   function applyRecommendedSettings(): void {
     const preset = recommendation.value;
-    if (!preset) return;
+    if (!preset || formDisabled.value || library.importing.value || library.downloading.value) return;
     parameters.value = { ...parameters.value, ...preset.parameters };
     preview.value = { ...preview.value, ...preset.preview };
   }
@@ -111,14 +142,16 @@ export function useImageGeneration(): ImageGenerationView {
   function chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void {
     if (formDisabled.value || library.importing.value || library.downloading.value || !(event.target instanceof HTMLInputElement)) return;
     library.useManualFiles();
-    selectedRecommendation.value = undefined;
+    manualFacts.value = undefined;
     const file = event.target.files?.[0];
     files.value = { ...files.value, [slot]: file };
+    void inspectManualFiles();
   }
   function resetFiles(): void {
     if (formDisabled.value || library.importing.value || library.downloading.value || disposed) return;
     library.useManualFiles();
-    selectedRecommendation.value = undefined;
+    manualFacts.value = undefined;
+    manualInspection?.abort(); manualInspection = undefined; manualInspectionState.value = 'idle';
     files.value = {};
   }
   function releaseModel(): void {
@@ -169,7 +202,7 @@ export function useImageGeneration(): ImageGenerationView {
   });
   async function generate(): Promise<void> {
     if (!supported.value || !artifact.value || busy.value || library.importing.value || library.downloading.value || disposed) return;
-    invalid.value = false; failure.value = ''; cancelled.value = false;
+    invalid.value = false; failure.value = ''; cancelled.value = false; stopping.value = false;
     const selectedSlots: ModelSlot[] = (() => {
       switch (layout.value) {
       case 'checkpoint': return ['model'];
@@ -190,6 +223,7 @@ export function useImageGeneration(): ImageGenerationView {
     }
     diagnosticBuffer.clear(); diagnosticText.value = ''; diagnosticStatus.value = ''; diagnosticFeedback.value = '';
     liveGallery.clear(); livePreview.value = undefined;
+    manualInspection?.abort(); manualInspection = undefined; manualInspectionState.value = 'idle';
     generateStartedAt = now();
     const operation = new AbortController(); controller.value = operation;
     progress.value = { phase: 'runtime', step: 0, steps: 0 };
@@ -207,7 +241,7 @@ export function useImageGeneration(): ImageGenerationView {
           }
         }
       }, onPreview({ frame }) {
-        if (disposed || operation.signal.aborted || !preview.value.enabled) return;
+        if (disposed || operation.signal.aborted || stopping.value || !preview.value.enabled) return;
         const { png, ...metadata } = frame;
         const entry = { ...metadata, elapsedMs: Math.max(0, now() - generateStartedAt) };
         liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: entry });
@@ -218,6 +252,11 @@ export function useImageGeneration(): ImageGenerationView {
         }
       } });
       if (disposed || operation.signal.aborted) return;
+      if ('cancelled' in result) {
+        cancelled.value = true; modelResident.value = result.modelResident;
+        if (!retainModel.value) releaseModel();
+        return;
+      }
       finalGallery.add({ blob: result.png, width: result.width, height: result.height,
         metadata: { parameters: parametersSchema.parse(parsed.data.parameters), modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs: Math.max(0, now() - generateStartedAt) } });
       results.value = finalGallery.entries();
@@ -231,11 +270,15 @@ export function useImageGeneration(): ImageGenerationView {
       }
     } finally {
       if (!disposed) {
-        controller.value = undefined; progress.value = undefined;
+        controller.value = undefined; progress.value = undefined; stopping.value = false;
       }
     }
   }
   function cancel(): void {
+    if (!busy.value || stopping.value) return;
+    stopping.value = true; client?.cancel();
+  }
+  function forceCancel(): void {
     controller.value?.abort();
   }
   const refreshLocalModels = (): void => {
@@ -246,10 +289,10 @@ export function useImageGeneration(): ImageGenerationView {
   });
   onUnmounted(() => {
     window.removeEventListener('focus', refreshLocalModels);
-    disposed = true; controller.value?.abort(); client?.dispose();
+    disposed = true; manualInspection?.abort(); controller.value?.abort(); client?.dispose();
     modelResident.value = false; finalGallery.clear(); clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, library, busy, supported, formDisabled, unavailable, recommendation, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, library, busy, supported, formDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

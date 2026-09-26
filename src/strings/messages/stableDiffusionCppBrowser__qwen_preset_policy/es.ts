@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__qwen_preset_policy = (): string => "Qwen: guidance 6 y Euler vienen del ejemplo original. Veinte pasos y el umbral de vista previa son valores iniciales de Naidan.";

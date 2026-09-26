@@ -1,11 +1,12 @@
 import { imageErrorContext, type ImageDiagnosticInput, type createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
-import { previewControlSchema, type PreviewControl, type Request, type Progress, type ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
+import { cancelControlSchema, previewControlSchema, type CancelControl, type CancelledResult, type PreviewControl, type Request, type Progress, type ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Core, HostHelpers } from './core-types';
 import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES, MODEL_FILE_PAGE_BYTES, type SyncBlobReader } from './gguf-file';
 import { validateModelMounts } from './model-mounts';
 import { copyNativeImage, imagePixelStatistics, type ImagePixels } from './image-output';
 import { createNativePreviewControl } from './preview-control';
 
+const cancelledRun = Symbol('cancelled image run after safe native return');
 type Emit = ReturnType<typeof createImageTrace>['emit'];
 export type PreviewPixels = { image: ImagePixels, step: number, steps: number, revision: number, maxEdge: number, mode: 'projection' | 'vae' };
 type Run = { request: Request, onProgress: ({ event }: { event: Progress }) => void,
@@ -34,7 +35,7 @@ export function effectiveVaeTile({ modelVersion, requested, policy, enabled }: {
 
 /** One immutable model composition per worker. Only per-image allocations are
  * freed between successful runs; the client retires the worker on composition
- * changes, cancellation or failure. A native trap is never followed by a free. */
+ * changes, forced cancellation or failure. Graceful cancellation waits for native cleanup. A native trap is never followed by a free. */
 export function createImageGenerationSession({ core, helpers, reader }: {
   core: Core, helpers: Pick<HostHelpers, 'mountReadOnlyFile'>, reader: SyncBlobReader,
 }) {
@@ -47,7 +48,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
   let nativeCall: 'new_sd_ctx' | 'generate_image' | undefined;
   let nativePhase: 'model' | 'sampling' | 'decoding' = 'model';
   let previewDecoding = false;
-  let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number }) | undefined;
+  let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number, cancelRequested: boolean }) | undefined;
   const keep = ({ pointer }: { pointer: bigint }) => {
     allocations.push(pointer); return pointer;
   };
@@ -103,7 +104,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     callbacks.push(core.module.addFunction((...args) => {
       previewDecoding = false;
       const operation = active, snapshot = operation?.preview?.snapshot();
-      if (!operation || !snapshot?.settings.enabled || !operation.onPreview) return;
+      if (!operation || operation.cancelRequested || !snapshot?.settings.enabled || !operation.onPreview) return;
       const rawStep = Number(args[0]), step = Math.abs(rawStep), count = Number(args[1]), pointer = BigInt(args[2] ?? 0);
       // Negative intermediate evaluations are not completed user-visible steps.
       if (!Number.isInteger(step) || step < snapshot.settings.startStep || step > operation.request.parameters.steps || (rawStep < 0 && step !== operation.request.parameters.steps) || step <= operation.capturedStep || count !== 1 || !pointer || Number(args[3]) !== 0) return;
@@ -209,20 +210,20 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     if (await core.api.sd_ctx_supports_image_generation(context) !== 1) throw new Error('This context does not support image generation');
     modelVersion = core.readUtf8(await core.api.sd_get_model_version_name(context), 256) ?? 'Unknown';
   }
-  async function generate({ ...run }: Run): Promise<ImagePixels & { modelVersion: string, uniformOutput: boolean }> {
+  async function generate({ ...run }: Run): Promise<(ImagePixels & { modelVersion: string, uniformOutput: boolean }) | CancelledResult> {
     if (closed || failed || poisoned || active) throw new Error('Image session is busy, failed or released');
     if (sessionId !== undefined && sessionId !== run.request.sessionId) throw new Error('Model composition changed; replace the image worker');
     sessionId ??= run.request.sessionId;
     const { request } = run;
     previewDecoding = false;
-    active = { ...run, latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } }, capturedStep: 0 };
+    active = { ...run, latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } }, capturedStep: 0, cancelRequested: false };
     const runAllocations: bigint[] = [];
     const keep = ({ pointer }: { pointer: bigint }) => {
       runAllocations.push(pointer); return pointer;
     };
     const text = ({ value }: { value: string }) => keep({ pointer: core.utf8(value) });
     let images = 0n, imageCount = 0;
-    let result: (ImagePixels & { modelVersion: string, uniformOutput: boolean }) | undefined;
+    let result: (ImagePixels & { modelVersion: string, uniformOutput: boolean }) | CancelledResult | undefined;
     let failure: { error: unknown } | undefined;
     try {
       await installCallbacks();
@@ -230,6 +231,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       if (active.latest.revision) active.preview.update({ control: active.latest });
       if (!context) await initialize({ request });
       else emit({ event: 'native', stage: 'model-load', message: 'Reusing loaded model context and weights', fields: { reused: true } });
+      if (active.cancelRequested) throw cancelledRun;
       const { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler,
         distilledGuidance, vaeTiling, vaeTileSize, qwenVaePolicy, flashAttention } = request.parameters;
       const params = keep({ pointer: core.allocRecord('sd_img_gen_params_t') });
@@ -276,6 +278,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       notify({ event: { phase: 'sampling', step: 0, steps } });
       emit({ event: 'start', stage: 'generation', message: 'generate_image includes text encoding, denoising and VAE decoding', fields: { width, height, steps, guidance, sampler: sampleMethod, scheduler: sampleScheduler, vaeTiling, flashAttention } });
       await active!.preview!.start();
+      if (active.cancelRequested) throw cancelledRun;
       nativeCall = 'generate_image';
       const generated = await core.api.generate_image(context, params, imagesOut, countOut);
       nativeCall = undefined;
@@ -286,6 +289,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       images = core.pointerBytes === 8 ? pointerView.getBigUint64(0, true) : BigInt(pointerView.getUint32(0, true));
       const counts = core.bytes(countOut, 4);
       imageCount = new DataView(counts.buffer, counts.byteOffset, 4).getInt32(0, true);
+      if (active.cancelRequested) throw cancelledRun;
       if (generated !== 1 || !images || imageCount !== 1) throw new Error('Image generation did not return one complete image');
       const output = copyNativeImage({ core, pointer: images });
       if (output.width !== width || output.height !== height) throw new Error('Invalid generated image dimensions/channels');
@@ -293,16 +297,21 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       emit({ event: 'native', stage: 'encoding', message: 'Native pixels before canvas/PNG encoding (uniform colour is not proof of failure)', fields: stats });
       result = { ...output, modelVersion, uniformOutput: stats.uniformOutput };
     } catch (error) {
-      failure = { error }; failed = true;
-      const details = imageErrorContext({ error });
-      poisoned ||= nativeCall !== undefined || details.errorType === 'wasm-trap';
-      if (poisoned) emit({ event: 'failed', stage: failureStage(), message: error instanceof Error ? error.message : String(error), fields: { ...details, nativeCall: nativeCall ?? 'native-boundary', wasmBytes: core.module.HEAPU8?.byteLength ?? 0, workerTerminationRequired: true } });
+      if (error === cancelledRun && nativeCall === undefined && context) {
+        result = { cancelled: true, modelResident: true };
+      } else {
+        failure = { error }; failed = true;
+        const details = imageErrorContext({ error });
+        poisoned ||= nativeCall !== undefined || details.errorType === 'wasm-trap';
+        if (poisoned) emit({ event: 'failed', stage: failureStage(), message: error instanceof Error ? error.message : String(error), fields: { ...details, nativeCall: nativeCall ?? 'native-boundary', wasmBytes: core.module.HEAPU8?.byteLength ?? 0, workerTerminationRequired: true } });
+      }
     }
     active.preview?.close();
     try {
       if (!poisoned) {
         if (images && imageCount > 0 && imageCount <= 64) await core.api.free_sd_images(images, imageCount);
         await core.api.sd_set_preview_callback(0n, core.constant('PREVIEW_NONE'), 1, 0, 0, 0n);
+        if (active.cancelRequested && context) await core.api.sd_cancel_generation(context, core.constant('SD_CANCEL_RESET'));
         for (const pointer of runAllocations.reverse()) core.free(pointer);
       }
     } catch (error) {
@@ -322,9 +331,23 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     return result;
   }
 
+  function cancel({ control }: { control: CancelControl }): boolean {
+    const parsed = cancelControlSchema.safeParse(control);
+    if (!parsed.success || !active || poisoned || failed || closed || control.runId !== active.request.runId) return false;
+    if (active.cancelRequested) return true;
+    active.cancelRequested = true;
+    if (nativeCall === 'generate_image' && context) {
+      // Pinned sd_cancel_generation performs only an atomic flag store. Never
+      // throw from a native callback or call the generic busy-guarded API here.
+      const set = core.module._sdc_sd_cancel_generation;
+      if (!set) throw new Error('This runtime lacks cooperative image cancellation');
+      set(context, core.constant('SD_CANCEL_ALL'));
+    }
+    return true;
+  }
   function updatePreview({ control }: { control: PreviewControl }): boolean {
     const parsed = previewControlSchema.safeParse(control);
-    if (!parsed.success || !active || poisoned || closed || control.runId !== active.request.runId || control.revision <= active.latest.revision || control.settings.mode !== active.request.preview.mode) return false;
+    if (!parsed.success || !active || active.cancelRequested || poisoned || closed || control.runId !== active.request.runId || control.revision <= active.latest.revision || control.settings.mode !== active.request.preview.mode) return false;
     if (active.preview && !active.preview.update({ control })) return false;
     active.latest = control;
     return true;
@@ -361,7 +384,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       fileReadCache.clear();
     }
   }
-  return { generate, updatePreview, close };
+  return { generate, cancel, updatePreview, close };
 }
 
 /** One-shot convenience uses the same ownership implementation as retained runs. */
@@ -383,6 +406,7 @@ export async function runImageGeneration({ core, helpers, reader, ...run }: Run 
   }
   if (failure) throw failure.error;
   if (!output) throw new Error('Image operation produced no result');
+  if ('cancelled' in output) throw new DOMException('Image generation cancelled', 'AbortError');
   return output;
 }
 export const TEST_ONLY = {

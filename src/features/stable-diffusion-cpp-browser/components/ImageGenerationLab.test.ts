@@ -3,10 +3,11 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageGenerationLab from './ImageGenerationLab.vue';
 import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
+vi.mock('../inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
 vi.mock('../capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
-const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), updatePreview: vi.fn() }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), cancel: vi.fn(), inspect: vi.fn(), updatePreview: vi.fn() }));
 vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({ createImageClient: () => {
-  mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, updatePreview: mocks.updatePreview };
+  mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, cancel: mocks.cancel, updatePreview: mocks.updatePreview };
 } }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: {
   kind: 'available', sourceCommit: 'a'.repeat(40), artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
@@ -15,7 +16,7 @@ let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
-  vi.resetAllMocks(); vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
+  vi.resetAllMocks(); mocks.inspect.mockResolvedValue({ candidates: [], issues: [] }); vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
   Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
   let url = 0;
   vi.stubGlobal('URL', class extends URL {
@@ -226,4 +227,38 @@ it('uses a fresh nanoid suffix for every diagnostic save during and after genera
   expect(new Set(downloadNames).size).toBe(3);
   for (const url of urls) expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
   expect(wrapper.vm.TEST_ONLY.parameters.value.prompt).toBe('a private description');
+});
+
+it('waits for cooperative stop before enabling generation and leaves the model resident', async () => {
+  const gate = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValueOnce(gate.promise);
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test'; await flushPromises();
+  const task = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const released = mocks.release.mock.calls.length;
+  await wrapper.get('[data-testid="image-cancel"]').trigger('click');
+  expect(mocks.cancel).toHaveBeenCalledOnce(); expect(wrapper.vm.TEST_ONLY.stopping.value).toBe(true);
+  expect(wrapper.find('[data-testid="image-force-cancel"]').exists()).toBe(true);
+  expect(mocks.release).toHaveBeenCalledTimes(released);
+  gate.resolve({ cancelled: true, modelResident: true }); await task; await flushPromises();
+  expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(true);
+  expect(wrapper.vm.TEST_ONLY.results.value).toHaveLength(0);
+  expect(wrapper.vm.TEST_ONLY.stopping.value).toBe(false);
+  expect(wrapper.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(false);
+});
+
+it('inspects manual model contents and applies technical settings only on the explicit button', async () => {
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  mocks.inspect.mockResolvedValueOnce({ candidates: [{ family: 'qwen-image-2.1', variant: 'unknown', evidence: ['tensor dimensions'], roles: ['model'] }], issues: [] });
+  const file = ggufFile(), input = wrapper.get<HTMLInputElement>('[data-testid="image-file-model"]');
+  Object.defineProperty(input.element, 'files', { configurable: true, value: [file] });
+  wrapper.vm.TEST_ONLY.parameters.value.prompt = 'keep prompt'; wrapper.vm.TEST_ONLY.parameters.value.seed = '123';
+  wrapper.vm.TEST_ONLY.parameters.value.guidance = 2.5;
+  await input.trigger('change'); await flushPromises();
+  expect(wrapper.vm.TEST_ONLY.recommendation.value?.title).toBe('Qwen Image 2.1');
+  expect(wrapper.vm.TEST_ONLY.parameters.value.guidance).toBe(2.5);
+  expect(mocks.inspect.mock.lastCall?.[0].repositories[0].files[0].file).toBe(file);
+  await wrapper.get('[data-testid="image-apply-recommendation"]').trigger('click');
+  expect(wrapper.vm.TEST_ONLY.parameters.value).toMatchObject({ prompt: 'keep prompt', seed: '123', guidance: 6, sampler: 'euler', width: 512 });
+  expect(wrapper.vm.TEST_ONLY.preview.value).toMatchObject({ enabled: false, startStep: 8 });
+  expect(mocks.generate).not.toHaveBeenCalled();
 });

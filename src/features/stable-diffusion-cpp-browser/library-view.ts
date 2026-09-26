@@ -1,3 +1,5 @@
+import type { ModelCandidate } from './logic/model-candidates';
+import type { InspectionProgress } from './inventory-worker/types';
 import type { CatalogDownloadProgress } from './logic/catalog-download';
 import type { ImageRecipeSelection } from './model-recipes';
 import type { ComputedRef, Ref, ShallowRef } from 'vue';
@@ -12,10 +14,13 @@ export type ImageComponentChoice = {
 };
 export type ImageRecipeAvailability = { available: number, total: number, selected: boolean, bytes: number };
 export type ImageLibraryView = {
+  selectedFacts: ComputedRef<Pick<ModelCandidate, 'family' | 'variant' | 'evidence'> | undefined>;
   models: ComputedRef<ImageModelChoice[]>;
   main: Ref<string>;
   components: ComputedRef<ImageComponentChoice[]>;
   scanState: Ref<'idle' | 'scanning'>;
+  scanProgress: ShallowRef<InspectionProgress | undefined>;
+  cancelScan(): void;
   showAll: Ref<boolean>;
   importProgress: ShallowRef<{ completed: number, total: number } | undefined>;
   importing: ComputedRef<boolean>;
