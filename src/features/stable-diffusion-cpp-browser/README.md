@@ -11,12 +11,13 @@ The normal dependency installation now supplies the image runtime separately:
 
 ```text
 stable-diffusion-cpp-browser-core
-  -> github:nwtgck/llama-cpp-browser-core#3924d1154e4a03290c96a861031030155998a0f2
+  -> github:nwtgck/llama-cpp-browser-core#cd726c3f08fa54563d4bad132d1bc488f1700046
 ```
 
 This is a dependency name for the existing **Browser Inference Core (bicore)**
 artifact repository, not a separately published registry package. Keep Naidan's
-existing `llama-cpp-browser-core` dependency and its adapters unchanged. The image
+existing `llama-cpp-browser-core` dependency pinned; reuse its scoped dispatch
+adapter without altering its tensor computation or generated-code checks. The image
 package's `resolved` and `integrity` lock fields come from the supplied CI-generated
 consumer metadata. The underlying package remains `llama-cpp-browser-core`.
 Installation has no compiler, postinstall hook, model download or generated-code rewrite. Model acquisition is a separate explicit action in the hosted UI.
@@ -33,11 +34,11 @@ then start generation explicitly. No environment variable or manual
 copy into node_modules is needed with the committed dependency installed.
 
 The pinned artifact is source commit
-`e9b0620fd46b362af3693723425c90aa32587d22`, image ABI 2 / image manifest format 2.
-Its manifest records all three profiles in both variants as compiled and
-browser-smoke validated, including real-Wasm Worker/public-record/callback tests
-and virtual unsplit GGUF reads above 8 GiB, safetensors above 20 GiB, and standard
-GGUF shard groups (native probes in test variants). **It does not certify trained-model
+`473ed681c49fb6790f74087cea42ddf92aad5b1e`, image ABI 2 / image manifest format 2.
+The supplied build report records all three profiles in both variants as compiled
+and browser-smoke validated, including real-Wasm Worker/public-record/callback
+tests, sparse GGUF/safetensors/shard I/O, and synthetic Qwen BF16 timestep
+arithmetic on CPU in the test variants. **It does not certify trained-model
 loading, actual WebGPU image generation, model compatibility, speed or memory.**
 Naidan ships only the `browser` variants, not the diagnostic `test` variants.
 
@@ -307,7 +308,7 @@ rebuild or generated-code string replacement is involved.
 
 Basic checkpoints are available even without verbose native text. Debug mode adds:
 
-- Runtime fetch/instantiate, model-header/load, generation, sampling, PNG encoding
+- Runtime fetch/instantiate, model-header/load, generation, sampling, VAE decoding, PNG encoding
   and cleanup boundaries. A start is posted **before** each potentially long call.
 - Public source/profile/schema and selected settings; tensor dtype counts and
   largest tensor element count from file headers; bounded file-read counters,
@@ -408,3 +409,73 @@ typecheck in the constrained assistant environment.
 Published bicore browser-smoke success does not cover Naidan's complete browser
 execution path or GPU/model initialization. End-to-end image generation still
 needs validation on a supported device. Wasm size optimization is deferred.
+
+### Native failure boundary
+
+Model-loading progress remains in the model phase; the same native callback is
+also used for denoising. The generation boundary is reported before calling
+`generate_image`, including failures before its first progress callback.
+
+A Wasm trap, or rejection while `new_sd_ctx` / `generate_image` is pending, makes
+that single-use instance unsafe to re-enter. Record the original error and
+bounded numeric Wasm function/offset frames **before** cleanup. Skip native
+context/image frees, callback unregistration, allocator frees and mount removal;
+only JavaScript file-read metrics/cache cleanup runs. The client unconditionally
+terminates the Worker and preserves the primary failure stage instead of
+relabelling it as cleanup. Normally returned failure codes still use ordinary
+native cleanup. There is no automatic runtime/profile retry.
+
+Raw JavaScript stacks, signed URLs and prompt/token dumps are not exported.
+`split prompt ... to ... tokens [...]` is omitted as a whole, since redacting
+only the exact input does not remove its token spellings.
+
+This diagnostic/lifecycle change is separate from the native Qwen timestep
+allocation fix in bicore's image runtime. Updating Naidan alone does not change
+an already installed Wasm; the corrected core must be rebuilt, published and
+pinned through the existing dependency path. No unversioned native binary or
+unchecked post-load Wasm rewriting is used.
+
+
+## Image WebGPU dispatch boundary
+
+The image runtime is pinned independently to artifact
+`cd726c3f08fa54563d4bad132d1bc488f1700046` (reported source
+`473ed681c49fb6790f74087cea42ddf92aad5b1e`). Do not update the text
+`llama-cpp-browser-core` dependency just to update this sibling runtime.
+
+A completed denoising run can still fail in VAE decoding: the supplied Qwen
+log requested `dispatchWorkgroups(65536, 1, 1)` on a device whose per-axis
+limit is `65535`. This is not the earlier Qwen timestep in-place alias trap.
+
+`worker/webgpu.ts` reuses Naidan's existing `createCoreWebGpuNavigator` from
+`llama-cpp-browser/runtime/webgpu-dispatch.ts`. Before the published image
+factory loads, it installs only an own `requestAdapter` method on this
+single-use Worker's GPU object. The shared facade captures its original
+acquisition method before installation; looking it up dynamically would recurse.
+The original property is restored in reverse installation order on exit.
+Window/global prototypes, device limits, runtime files, model files, dtypes,
+resolution and sampling parameters are unchanged. No profile retry or CPU
+fallback is introduced.
+
+The boundary is required with debugging both on and off. Legal direct
+dispatches use the original pipeline. Oversized ones use the existing exact
+chunk planner, logical builtin-coordinate aliases and pipeline-compatible
+bind groups, then restore the original pass state. `65536` workgroups become
+`65535 + 1`, not a truncated or padded workload. Unknown shader interfaces
+fail explicitly rather than encoding an invalid dispatch. See the shared
+`webgpu-dispatch.md` for its bounded specialization and shader grammar.
+
+GPU device errors and native `onAbort` notifications are captured even when
+detailed timing is disabled. The window retains a bounded, sanitized failure
+context for an uncaught Worker error, which may occur outside `generate_image`'s
+promise. It does not replace this context with a generic "Worker failed"
+message or replay the operation. The phase changes from sampling to decoding
+on the pinned native `image.cpp:... - decoding N latents` log boundary; VAE
+tile progress is not reported as new diffusion steps. This log observation
+is presentation only, never an input to scheduling or tensor computation.
+
+The local regression suite exercises factory-style acquisition, debug-on/off,
+dispatch partitioning, pass-state restoration, failure propagation, unchanged
+limits and the hosted/standalone module boundary. Mock GPU tests do not prove
+GPU arithmetic or trained-model generation. Published smoke validation also
+does not claim real-model inference; do not infer that from an artifact pin.

@@ -1,4 +1,4 @@
-import type { ImageDiagnosticInput, createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
+import { imageErrorContext, type ImageDiagnosticInput, type createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import type { Request, Progress, ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Core, HostHelpers } from './core-types';
 import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES, MODEL_FILE_PAGE_BYTES, type SyncBlobReader } from './gguf-file';
@@ -41,6 +41,19 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
   let context = 0n;
   let images = 0n;
   let imageCount = 0;
+  let nativeCall: 'new_sd_ctx' | 'generate_image' | undefined;
+  let poisoned = false;
+  // The native callback is also used for loading tensors. Do not report those
+  // counts as denoising steps or diagnose a load failure as a sampling failure.
+  let nativePhase: 'model' | 'sampling' | 'decoding' = 'model';
+  function failureStage(): 'model-load' | 'generation' | 'decoding' {
+    switch (nativePhase) {
+    case 'model': return 'model-load' as const;
+    case 'sampling': return 'generation' as const;
+    case 'decoding': return 'decoding' as const;
+    default: { const exhaustive: never = nativePhase; throw new Error(String(exhaustive)); }
+    }
+  }
   const keep = ({ pointer }: { pointer: bigint }) => {
     allocations.push(pointer); return pointer;
   };
@@ -51,6 +64,14 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     } catch { /* diagnostic only */ }
   };
   const log = ({ message, level }: { message: string, level?: number }) => {
+    // The public progress callback is reused for VAE tiles. The pinned upstream
+    // emits this exact boundary before decoding; only observe it during the
+    // active generation call, never from a user prompt or model-load diagnostic.
+    if (nativeCall === 'generate_image' && nativePhase === 'sampling' && /^image\.cpp:\d+\s+- decoding [1-9]\d* latents\s*$/.test(message)) {
+      nativePhase = 'decoding';
+      notify({ event: { phase: 'decoding', step: 0, steps: 0 } });
+      emit({ event: 'start', stage: 'decoding', message: 'Decoding image latents', fields: {} });
+    }
     try {
       onLog({ message, level });
     } catch { /* A renderer/listener failure must never unwind native code. */ }
@@ -72,7 +93,7 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     const progressCallback = core.module.addFunction((...args) => {
       const [rawStep, rawSteps] = args;
       const step = Number(rawStep), steps = Number(rawSteps);
-      if (Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps >= 0) notify({ event: { phase: 'sampling', step, steps } });
+      if (Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps >= 0) notify({ event: { phase: nativePhase, step, steps } });
     }, 'viifp');
     callbacks.push(progressCallback);
     await core.api.sd_set_log_callback(BigInt(logCallback), 0n);
@@ -160,7 +181,9 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     core.setField('sd_ctx_params_t', ctxParams, 'model_args', modelArguments ? text({ value: modelArguments }) : 0n);
     notify({ event: { phase: 'model', step: 0, steps: 0 } });
     emit({ event: 'start', stage: 'model-load', message: undefined, fields: { wasmBytes: core.module.HEAPU8?.byteLength ?? 0, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset' } });
+    nativeCall = 'new_sd_ctx';
     context = await core.api.new_sd_ctx(ctxParams);
+    nativeCall = undefined;
     emit({ event: 'complete', stage: 'model-load', message: undefined, fields: { wasmBytes: core.module.HEAPU8?.byteLength ?? 0, created: !!context } });
     if (!context) throw new Error('Model initialization failed; see native diagnostics');
     if (await core.api.sd_ctx_supports_image_generation(context) !== 1) throw new Error('This context does not support image generation');
@@ -203,8 +226,12 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
     const imagesOut = keep({ pointer: core.alloc(core.pointerBytes) });
     const countOut = keep({ pointer: core.alloc(4) });
     core.bytes(imagesOut, core.pointerBytes).fill(0); core.bytes(countOut, 4).fill(0);
+    nativePhase = 'sampling';
+    notify({ event: { phase: 'sampling', step: 0, steps } });
     emit({ event: 'start', stage: 'generation', message: 'generate_image includes text encoding, denoising and VAE decoding', fields: { width, height, steps, guidance, sampler: sampleMethod, scheduler: sampleScheduler, vaeTiling, flashAttention } });
+    nativeCall = 'generate_image';
     const generated = await core.api.generate_image(context, params, imagesOut, countOut);
+    nativeCall = undefined;
     emit({ event: 'complete', stage: 'generation', message: undefined, fields: { generated, wasmBytes: core.module.HEAPU8?.byteLength ?? 0 } });
     // Recreate views after every native call: Wasm memory may have grown.
     const pointers = core.bytes(imagesOut, core.pointerBytes);
@@ -225,23 +252,41 @@ export async function runImageGeneration({ core, helpers, request, reader, onPro
       pixels[to + 3] = channels === 4 ? source[from + 3]! : 255;
     }
     return { pixels, width, height, modelVersion };
+  } catch (error) {
+    // A trap does not unwind the C++ graph guard. A rejection while a native
+    // operation is pending is equally uncertain. Do not re-enter this instance
+    // to free its context, allocations, callbacks or filesystem after either.
+    // The single-use client always terminates the Worker, even on failure.
+    const details = imageErrorContext({ error });
+    poisoned = nativeCall !== undefined || details.errorType === 'wasm-trap';
+    if (poisoned) emit({ event: 'failed', stage: failureStage(),
+      message: error instanceof Error ? error.message : String(error),
+      fields: { ...details, nativeCall: nativeCall ?? 'native-boundary', wasmBytes: core.module.HEAPU8?.byteLength ?? 0, workerTerminationRequired: true },
+    });
+    throw error;
   } finally {
-    // If Wasm traps, cleanup may also fail; the client unconditionally destroys
-    // this Worker. Do not replace the useful native error with a cleanup error.
+    // Record the primary failure above BEFORE teardown; cleanup never replaces
+    // its original stack with a graph_active_ assertion or an unreachable trap.
     try {
-      emit({ event: 'start', stage: 'cleanup', message: undefined, fields: {} });
-      if (images && imageCount > 0 && imageCount <= 64) await core.api.free_sd_images(images, imageCount);
-      if (context) await core.api.free_sd_ctx(context);
-      await core.api.sd_set_log_callback(0n, 0n);
-      await core.api.sd_set_progress_callback(0n, 0n);
-      for (const pointer of callbacks) core.module.removeFunction(pointer);
-      for (const pointer of allocations.reverse()) core.free(pointer);
-      // Mounted parameter sources must outlive the complete native context.
-      for (const mounted of mounts.reverse()) mounted.remove();
-      emit({ event: 'complete', stage: 'cleanup', message: undefined, fields: {} });
+      emit({ event: 'start', stage: 'cleanup', message: undefined, fields: { nativeCleanup: poisoned ? 'skipped' : 'run' } });
+      if (poisoned) {
+        log({ message: 'Native cleanup skipped after an interrupted native call; Worker termination will release this instance.' });
+      } else {
+        if (images && imageCount > 0 && imageCount <= 64) await core.api.free_sd_images(images, imageCount);
+        if (context) await core.api.free_sd_ctx(context);
+        await core.api.sd_set_log_callback(0n, 0n);
+        await core.api.sd_set_progress_callback(0n, 0n);
+        for (const pointer of callbacks) core.module.removeFunction(pointer);
+        for (const pointer of allocations.reverse()) core.free(pointer);
+        // Mounted parameter sources must outlive the complete native context.
+        for (const mounted of mounts.reverse()) mounted.remove();
+        emit({ event: 'complete', stage: 'cleanup', message: undefined, fields: {} });
+      }
     } catch (error) {
+      emit({ event: 'failed', stage: 'cleanup', message: 'Native cleanup failed; Worker termination will release this instance.', fields: imageErrorContext({ error }) });
       log({ message: `Native teardown failed; Worker will be terminated: ${String(error)}` });
     } finally {
+      // These are JS-only counters/cache disposal, not callbacks into Wasm.
       for (const report of reportFinalReads) report();
       fileReadCache.clear();
     }

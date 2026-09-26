@@ -2026,6 +2026,7 @@ import { stableDiffusionCppBrowser__cancelled } from '@/strings/messages/stableD
 import { stableDiffusionCppBrowser__loading_runtime } from '@/strings/messages/stableDiffusionCppBrowser__loading_runtime/en';
 import { stableDiffusionCppBrowser__loading_model } from '@/strings/messages/stableDiffusionCppBrowser__loading_model/en';
 import { stableDiffusionCppBrowser__sampling } from '@/strings/messages/stableDiffusionCppBrowser__sampling/en';
+import { stableDiffusionCppBrowser__decoding_image } from '@/strings/messages/stableDiffusionCppBrowser__decoding_image/en';
 import { stableDiffusionCppBrowser__encoding } from '@/strings/messages/stableDiffusionCppBrowser__encoding/en';
 import { stableDiffusionCppBrowser__check_inputs } from '@/strings/messages/stableDiffusionCppBrowser__check_inputs/en';
 import { stableDiffusionCppBrowser__generated_images } from '@/strings/messages/stableDiffusionCppBrowser__generated_images/en';
@@ -2170,6 +2171,7 @@ export const catalog = {
   stableDiffusionCppBrowser__loading_runtime,
   stableDiffusionCppBrowser__loading_model,
   stableDiffusionCppBrowser__sampling,
+  stableDiffusionCppBrowser__decoding_image,
   stableDiffusionCppBrowser__encoding,
   stableDiffusionCppBrowser__check_inputs,
   stableDiffusionCppBrowser__generated_images,

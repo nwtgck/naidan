@@ -102,3 +102,25 @@ it('keeps copy/save diagnostics usable while a native request is indefinitely pe
     if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard); else Reflect.deleteProperty(navigator, 'clipboard');
   }
 });
+
+it('shows image decoding separately from sampling without changing requested steps', async () => {
+  let notify: ((args: { event: { phase: 'decoding', step: number, steps: number } }) => void) | undefined;
+  let finish: ((result: { png: Blob, width: number, height: number, modelVersion: string }) => void) | undefined;
+  mocks.generate.mockImplementation(({ onProgress }) => {
+    notify = onProgress;
+    return new Promise(resolve => {
+      finish = resolve;
+    });
+  });
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
+  wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
+  wrapper.vm.TEST_ONLY.parameters.value.steps = 8;
+  const running = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  notify!({ event: { phase: 'decoding', step: 0, steps: 1 } }); await flushPromises();
+  expect(wrapper.text()).toContain('Decoding image…');
+  expect(wrapper.vm.TEST_ONLY.parameters.value.steps).toBe(8);
+  expect(wrapper.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(true);
+  finish!({ png: new Blob(['mock PNG'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
+  await running;
+});

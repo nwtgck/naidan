@@ -1,4 +1,4 @@
-import { imageDiagnosticEnvelopeSchema, type ImageDiagnostic } from '@/features/stable-diffusion-cpp-browser/diagnostics';
+import { imageDiagnosticEnvelopeSchema, sanitizeImageLog, imageErrorContext, type ImageDiagnostic } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, subscribeWorkerNotifications } from '@/utils/worker-transport';
 import { progressSchema, requestSchema, responseSchema } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageClient, ImageWorker } from './types';
@@ -21,6 +21,14 @@ export function createImageClient(): ImageClient {
       })();
       const began = performance.now(); let lastMessage = began; let lastStage: ImageDiagnostic['stage'] = 'worker';
       let closed = false;
+      let firstFailureStage: ImageDiagnostic['stage'] | undefined;
+      const secrets = [request.parameters.prompt, request.parameters.negativePrompt, request.parameters.modelArguments];
+      const failureContext: string[] = [];
+      const rememberFailure = ({ message }: { message: string }) => {
+        const safe = sanitizeImageLog({ message, secrets });
+        if (safe && failureContext.at(-1) !== safe) failureContext.push(safe);
+        if (failureContext.length > 8) failureContext.shift();
+      };
       function publish({ diagnostic }: { diagnostic: ImageDiagnostic }): void {
         if (closed || signal.aborted || disposed) return;
         try {
@@ -36,7 +44,29 @@ export function createImageClient(): ImageClient {
       }
       const unsubscribe = subscribeWorkerNotifications({ endpoint: worker, schema: imageDiagnosticEnvelopeSchema, listener: ({ value }) => {
         lastMessage = performance.now();
-        if (['start', 'complete', 'progress'].includes(value.diagnostic.event)) lastStage = value.diagnostic.stage;
+        switch (value.diagnostic.event) {
+        case 'start': case 'complete': case 'progress': lastStage = value.diagnostic.stage; break;
+        case 'failed':
+          if (value.diagnostic.message) rememberFailure({ message: value.diagnostic.message });
+          // Cleanup observations must not relabel the primary native failure.
+          firstFailureStage ??= (() => {
+            switch (value.diagnostic.stage) {
+            case 'worker': return lastStage;
+            case 'runtime-fetch': case 'runtime-init': case 'model-header': case 'model-load':
+            case 'generation': case 'sampling': case 'decoding': case 'encoding': case 'cleanup': return value.diagnostic.stage;
+            default: { const exhaustive: never = value.diagnostic.stage; throw new Error(String(exhaustive)); }
+            }
+          })();
+          break;
+        case 'gpu':
+          if (value.diagnostic.message && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(value.diagnostic.message)) {
+            firstFailureStage ??= value.diagnostic.stage;
+            rememberFailure({ message: value.diagnostic.message });
+          }
+          break;
+        case 'request': case 'native': case 'file-summary': case 'file-read': case 'waiting': case 'cancelled': case 'dropped': break;
+        default: { const exhaustive: never = value.diagnostic.event; throw new Error(String(exhaustive)); }
+        }
         publish({ diagnostic: value.diagnostic });
       } });
       publish({ diagnostic: { event: 'start', stage: 'worker', elapsedMs: 0, fields: { profile: request.artifact.profile } } });
@@ -49,7 +79,22 @@ export function createImageClient(): ImageClient {
         rejectStopped = reject;
       });
       const abort = () => rejectStopped(new DOMException('Image generation cancelled', 'AbortError'));
-      const crash = () => rejectStopped(new Error('Image Worker failed. Its runtime has been released.'));
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Worker EventListener signature.
+      const crash = (event: Event) => {
+        // Worker errors may occur outside the inference promise (notably the
+        // native WebGPU error callback). Preserve already-delivered GPU/abort
+        // diagnostics rather than replacing them with an opaque message.
+        // Never include event.filename or a raw error stack in the export.
+        const frames = event instanceof ErrorEvent ? imageErrorContext({ error: event.error }).wasmFrames : '';
+        const message = event instanceof ErrorEvent ? event.message : '';
+        rejectStopped(new Error([
+          `Image Worker failed: stage=${firstFailureStage ?? lastStage}, profile=${request.artifact.profile}, source=${request.artifact.modulePath.split('/')[1]}`,
+          ...failureContext,
+          ...(message ? [sanitizeImageLog({ message, secrets })] : []),
+          ...(frames ? [`Wasm frames: ${frames}`] : []),
+          event.type === 'messageerror' ? 'Worker message could not be decoded. Its runtime has been released.' : 'Its runtime has been released.',
+        ].join('\n')));
+      };
       // Cancellation is independent of a possibly suspended Wasm/Comlink call.
       const terminate = () => {
         abort(); worker.terminate();
@@ -70,7 +115,9 @@ export function createImageClient(): ImageClient {
         if (parsed.width !== request.parameters.width || parsed.height !== request.parameters.height) throw new Error('Image response dimensions differ from request');
         return parsed;
       } catch (error) {
-        const diagnostic: ImageDiagnostic = { event: signal.aborted || disposed ? 'cancelled' : 'failed', stage: lastStage, elapsedMs: performance.now() - began, fields: {} };
+        const cancelled = signal.aborted || disposed;
+        const diagnostic: ImageDiagnostic = { event: cancelled ? 'cancelled' : 'failed', stage: cancelled ? lastStage : firstFailureStage ?? lastStage, elapsedMs: performance.now() - began,
+          message: cancelled ? undefined : sanitizeImageLog({ message: error instanceof Error ? error.message : String(error), secrets }), fields: {} };
         try {
           onDiagnostic?.({ diagnostic });
         } catch { /* diagnostic only */ }

@@ -93,7 +93,7 @@ export const requestSchema = z.object({
   gpuBudgetMiB: z.number().int().min(512).max(Math.floor(Number.MAX_SAFE_INTEGER / 1024 ** 2)).optional(),
 }).refine(value => value.gpuBudgetMiB === undefined || getProfileConfiguration({ profile: value.artifact.profile }).memory64 || value.gpuBudgetMiB <= 4095, { path: ['gpuBudgetMiB'], message: 'The Wasm32 memory accounting budget must be below 4 GiB' });
 export const progressSchema = z.object({
-  phase: z.enum(['runtime', 'model', 'sampling', 'encoding']),
+  phase: z.enum(['runtime', 'model', 'sampling', 'decoding', 'encoding']),
   step: z.number().int().nonnegative(),
   steps: z.number().int().nonnegative(),
 });

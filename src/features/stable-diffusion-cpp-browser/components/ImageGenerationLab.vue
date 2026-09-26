@@ -38,6 +38,7 @@ const phaseLabel = computed(() => {
   case 'runtime': return lazyStrings.stableDiffusionCppBrowser__loading_runtime();
   case 'model': return lazyStrings.stableDiffusionCppBrowser__loading_model();
   case 'sampling': return lazyStrings.stableDiffusionCppBrowser__sampling();
+  case 'decoding': return lazyStrings.stableDiffusionCppBrowser__decoding_image();
   case 'encoding': return lazyStrings.stableDiffusionCppBrowser__encoding();
   default: { const exhaustive: never = progress.value.phase; throw new Error(String(exhaustive)); }
   }

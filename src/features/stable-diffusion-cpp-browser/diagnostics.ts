@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const imageDiagnosticSchema = z.object({
   event: z.enum(['request', 'start', 'complete', 'progress', 'native', 'file-summary', 'file-read', 'gpu', 'waiting', 'failed', 'cancelled', 'dropped']),
-  stage: z.enum(['worker', 'runtime-fetch', 'runtime-init', 'model-header', 'model-load', 'generation', 'sampling', 'encoding', 'cleanup']),
+  stage: z.enum(['worker', 'runtime-fetch', 'runtime-init', 'model-header', 'model-load', 'generation', 'sampling', 'decoding', 'encoding', 'cleanup']),
   elapsedMs: z.number().finite().nonnegative(),
   message: z.string().max(2048).optional(),
   fields: z.record(z.string().max(64), z.union([z.number().finite(), z.boolean(), z.string().max(512), z.array(z.number().finite()).max(8)]))
@@ -17,7 +17,7 @@ export const imageDiagnosticEnvelopeSchema = z.object({ type: z.literal('naidan-
  * markup or an exception to the privacy boundary. Bounded exports intentionally
  * omit prompt/token dumps, redact exact input strings and signed URLs. */
 export function sanitizeImageLog({ message, secrets }: { message: string, secrets: readonly string[] }): string {
-  if (/\bparse\s+['"]|prompt\s*[:=]|negative_prompt|token(?:s|izer)?\s*[:=]|<\|im_start\|>/i.test(message)) return '[prompt/token diagnostic omitted]';
+  if (/\bsplit\s+prompt\b|\bparse\s+['"]|prompt\s*[:=]|negative_prompt|token(?:s|izer)?\s*[:=]|<\|im_start\|>/i.test(message)) return '[prompt/token diagnostic omitted]';
   let result = message.slice(0, 16384);
   for (const secret of secrets) if (secret) {
     result = result.split(secret).join('[redacted]');
@@ -25,6 +25,19 @@ export function sanitizeImageLog({ message, secrets }: { message: string, secret
   }
   // eslint-disable-next-line no-control-regex -- Strip terminal/control characters from untrusted native messages.
   return result.replace(/https?:\/\/[^\s'"<>]+/g, '[URL omitted]').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').slice(0, 2048);
+}
+
+/** Only numeric Wasm locations leave the Worker. Raw stacks may contain user
+ * text, local paths, model names or signed URLs; never export them wholesale. */
+export function imageErrorContext({ error }: { error: unknown }): { errorType: 'wasm-trap' | 'error' | 'non-error', wasmFrames: string } {
+  const errorType = typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError ? 'wasm-trap' : error instanceof Error ? 'error' : 'non-error';
+  let stack = '';
+  try {
+    const value = error instanceof Error ? error.stack : undefined;
+    if (typeof value === 'string') stack = value.slice(0, 32768);
+  } catch { /* Observing a custom Error must not obscure the original failure. */ }
+  const frames = stack.match(/wasm-function\[\d{1,10}\]:(?:0x[0-9a-f]{1,16}|\d{1,16})(?=$|[\s)])/gi) ?? [];
+  return { errorType, wasmFrames: frames.slice(0, 8).join(' <- ').slice(0, 512) };
 }
 
 /** Synchronous delivery matters: the next Wasm call may occupy the Worker

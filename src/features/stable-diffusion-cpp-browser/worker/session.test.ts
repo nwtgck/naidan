@@ -34,7 +34,10 @@ function harness({ pointerBytes, outcome, channels }: {
     sd_img_gen_params_init: vi.fn(async () => {
       events.push('image-defaults');
     }),
-    new_sd_ctx: vi.fn(async () => outcome === 'load-failure' ? 0n : 200000n),
+    new_sd_ctx: vi.fn(async () => {
+      callbacks.get(registrations.progress)?.(901, 901, 0.125, 0);
+      return outcome === 'load-failure' ? 0n : 200000n;
+    }),
     free_sd_ctx: vi.fn(async () => {
       events.push('free-context');
     }),
@@ -109,7 +112,7 @@ function harness({ pointerBytes, outcome, channels }: {
   const reader = { readAsArrayBuffer: vi.fn((_blob: Blob) => {
     const header = new ArrayBuffer(24), view = new DataView(header); view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return header;
   }) };
-  return { core, api, helpers, reader, fields, recordPointers, strings, events };
+  return { core, api, helpers, reader, fields, recordPointers, strings, events, callbacks, registrations };
 }
 
 it.each([4, 8] as const)('uses public records and caller policy with %i-byte pointers; releases all native resources before files', async pointerBytes => {
@@ -147,7 +150,7 @@ it('uses upstream defaults and safely handles notification exceptions', async ()
   } });
   expect(result.pixels[3]).toBe(71); expect(h.api.sd_get_default_sample_method).toHaveBeenCalledOnce(); expect(h.api.sd_get_default_scheduler).toHaveBeenCalledWith(200000n, 2);
 });
-it.each(['load-failure', 'generation-failure', 'trap'] as const)('releases the context and mounts after %s', async outcome => {
+it.each(['load-failure', 'generation-failure'] as const)('releases the context and mounts after %s', async outcome => {
   const h = harness({ pointerBytes: 4, outcome, channels: 3 });
   await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow();
   expect(h.events).toContain('unmount'); expect(h.events).toContain('clear-log');
@@ -209,4 +212,83 @@ it.each(['success', 'trap'] as const)('reports final logical and Blob read total
     report: 'final', reads: 9, bytes: 18, blobReads: 1, blobBytes: 24, cacheHits: 8, cacheHitBytes: 16,
     cacheCapacityBytes: 64 * 1024 * 1024, cacheRetainedBytes: 24,
   }) }));
+});
+
+it.each([4, 8] as const)('does not re-enter a trapped native graph with %i-byte pointers', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
+  const error = new WebAssembly.RuntimeError('memory access out of bounds');
+  error.stack = `\
+RuntimeError: memory access out of bounds
+    at wasm://wasm/abc:wasm-function[6740]:0xae1009`;
+  vi.mocked(h.api.generate_image).mockRejectedValueOnce(error);
+  const onDiagnostic = vi.fn(), onProgress = vi.fn();
+  await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress, onLog: vi.fn(), onDiagnostic })).rejects.toBe(error);
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', stage: 'generation', fields: expect.objectContaining({
+    errorType: 'wasm-trap', nativeCall: 'generate_image', wasmFrames: 'wasm-function[6740]:0xae1009', workerTerminationRequired: true,
+  }) }));
+  const failure = onDiagnostic.mock.calls.findIndex(([entry]) => entry.event === 'failed');
+  const cleanup = onDiagnostic.mock.calls.findIndex(([entry]) => entry.stage === 'cleanup');
+  expect(failure).toBeLessThan(cleanup);
+  expect(onDiagnostic.mock.calls[cleanup]?.[0].fields.nativeCleanup).toBe('skipped');
+  expect(h.api.generate_image).toHaveBeenCalledOnce();
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.api.free_sd_images).not.toHaveBeenCalled();
+  expect(h.core.free).not.toHaveBeenCalled(); expect(h.core.module.removeFunction).not.toHaveBeenCalled();
+  expect(h.api.sd_set_log_callback).toHaveBeenCalledTimes(1);
+  expect(h.api.sd_set_progress_callback).toHaveBeenCalledTimes(1);
+  expect(h.events).not.toContain('unmount');
+  expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'model', step: 901, steps: 901 } });
+  expect(onProgress).not.toHaveBeenCalledWith({ event: { phase: 'sampling', step: 901, steps: 901 } });
+  expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 0, steps: 20 } });
+});
+it.each(['load', 'generation'] as const)('treats a rejection from %s as uncertain native state, without guessing a different profile', async stage => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  const error = new Error('Rejected suspending native call');
+  if (stage === 'load') vi.mocked(h.api.new_sd_ctx).mockRejectedValueOnce(error);
+  else vi.mocked(h.api.generate_image).mockRejectedValueOnce(error);
+  const onDiagnostic = vi.fn();
+  await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic })).rejects.toBe(error);
+  expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
+  expect(h.api.generate_image).toHaveBeenCalledTimes(stage === 'load' ? 0 : 1);
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.core.free).not.toHaveBeenCalled();
+  expect(h.events).not.toContain('unmount');
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', stage: stage === 'load' ? 'model-load' : 'generation', fields: expect.objectContaining({
+    errorType: 'error', workerTerminationRequired: true, nativeCall: stage === 'load' ? 'new_sd_ctx' : 'generate_image',
+  }) }));
+});
+it('also skips native cleanup if a short native boundary traps', async () => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
+  const error = new WebAssembly.RuntimeError('unreachable');
+  vi.mocked(h.api.sd_img_gen_params_init).mockRejectedValueOnce(error);
+  await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() })).rejects.toBe(error);
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.core.free).not.toHaveBeenCalled();
+  expect(h.api.generate_image).not.toHaveBeenCalled();
+});
+it('does not replace an ordinary generation failure when normal native teardown also fails', async () => {
+  const h = harness({ pointerBytes: 4, outcome: 'generation-failure', channels: 3 });
+  vi.mocked(h.api.free_sd_ctx).mockRejectedValueOnce(new WebAssembly.RuntimeError('cleanup trap'));
+  const onDiagnostic = vi.fn();
+  await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic })).rejects.toThrow('Image generation did not return one complete image');
+  expect(h.api.free_sd_images).toHaveBeenCalledOnce(); expect(h.api.free_sd_ctx).toHaveBeenCalledOnce();
+  expect(h.core.free).not.toHaveBeenCalled(); expect(h.events).not.toContain('unmount');
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', stage: 'cleanup', fields: expect.objectContaining({ errorType: 'wasm-trap' }) }));
+});
+
+it.each([4, 8] as const)('reports VAE tile progress and failures as decoding with %i-byte pointers', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 4 });
+  const onProgress = vi.fn(), onDiagnostic = vi.fn();
+  vi.mocked(h.api.generate_image).mockImplementationOnce(async () => {
+    h.callbacks.get(h.registrations.progress)?.(8, 8, 0.1, 0);
+    h.strings.set(2n, 'bpe_tokenizer.cpp:245 - split prompt "image.cpp:547 - decoding 1 latents"');
+    h.callbacks.get(h.registrations.log)?.(1, 2, 0);
+    expect(onProgress).not.toHaveBeenCalledWith({ event: { phase: 'decoding', step: 0, steps: 0 } });
+    h.strings.set(2n, 'image.cpp:547  - decoding 1 latents\n');
+    h.callbacks.get(h.registrations.log)?.(2, 2, 0);
+    h.callbacks.get(h.registrations.progress)?.(0, 1, 0.1, 0);
+    throw new WebAssembly.RuntimeError('VAE failure');
+  });
+  await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress, onLog: vi.fn(), onDiagnostic })).rejects.toThrow('VAE failure');
+  expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 8, steps: 8 } });
+  expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'decoding', step: 0, steps: 1 } });
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', stage: 'decoding' }));
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.core.free).not.toHaveBeenCalled();
 });

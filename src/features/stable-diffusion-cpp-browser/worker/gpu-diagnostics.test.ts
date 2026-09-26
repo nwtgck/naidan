@@ -19,7 +19,7 @@ function harness() {
   const gpu = { requestAdapter: vi.fn(async () => adapter) };
   vi.stubGlobal('navigator', { gpu });
   const original = { request: gpu.requestAdapter, device: adapter.requestDevice, buffer: device.createBuffer, pipeline: device.createComputePipeline, submit: device.queue.submit, done: device.queue.onSubmittedWorkDone };
-  const emit = vi.fn(); const observation = observeImageGpu({ emit });
+  const emit = vi.fn(); const observation = observeImageGpu({ emit, debug: 'on' });
   return { gpu, adapter, device, original, emit, observation, buffer, pipeline, done, pop };
 }
 it('observes only runtime-requested native objects and does not change GPU arguments or object identities', async () => {
@@ -67,5 +67,21 @@ it('does not install late callbacks or observers after disposal', async () => {
 });
 it('does nothing when the platform has no usable GPU entry point', () => {
   vi.stubGlobal('navigator', { gpu: {} }); const emit = vi.fn();
-  expect(() => observeImageGpu({ emit }).dispose()).not.toThrow(); expect(emit).not.toHaveBeenCalled();
+  expect(() => observeImageGpu({ emit, debug: 'on' }).dispose()).not.toThrow(); expect(emit).not.toHaveBeenCalled();
+});
+
+it('keeps critical GPU errors with debug off without instrumenting buffers or pipelines', async () => {
+  const h = harness(); h.observation.dispose();
+  const observation = observeImageGpu({ emit: h.emit, debug: 'off' });
+  try {
+    await (await h.gpu.requestAdapter())!.requestDevice();
+    expect(h.device.createBuffer).toBe(h.original.buffer);
+    expect(h.device.createComputePipeline).toBe(h.original.pipeline);
+    const event = new Event('uncapturederror');
+    Object.defineProperty(event, 'error', { value: { message: 'Dispatch 65536 exceeds 65535' } });
+    h.device.dispatchEvent(event);
+    expect(h.emit).toHaveBeenCalledWith(expect.objectContaining({ event: 'gpu', message: expect.stringContaining('65536') }));
+  } finally {
+    observation.dispose();
+  }
 });

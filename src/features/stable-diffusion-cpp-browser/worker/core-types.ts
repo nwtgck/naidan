@@ -51,6 +51,7 @@ export type CoreFactory = (options: {
   locateFile(path: string): string;
   print(message: string): void;
   printErr(message: string): void;
+  onAbort(reason: unknown): void;
 }) => Promise<CoreModule>;
 export interface HostHelpers {
   schema: { abiVersion: number, schemaSha256: string };

@@ -4,7 +4,7 @@ import type { ImageDiagnosticInput, createImageTrace } from '@/features/stable-d
  * extra adapter/device, change features/limits, shaders, precision or dispatch.
  * All modifications are confined to the disposable image Worker, restored on
  * exit. The native GPU objects themselves (not proxies) are returned. */
-export function observeImageGpu({ emit }: { emit: ReturnType<typeof createImageTrace>['emit'] }): { dispose(): void } {
+export function observeImageGpu({ emit, debug }: { emit: ReturnType<typeof createImageTrace>['emit'], debug: 'off' | 'on' }): { dispose(): void } {
   const undo: (() => void)[] = []; let disposed = false;
   const adapters = new WeakSet<GPUAdapter>(), devices = new WeakSet<GPUDevice>();
   const report = ({ message, fields }: { message: string, fields: ImageDiagnosticInput['fields'] }) => {
@@ -40,6 +40,12 @@ export function observeImageGpu({ emit }: { emit: ReturnType<typeof createImageT
     };
     device.addEventListener('uncapturederror', error);
     undo.push(() => device.removeEventListener('uncapturederror', error));
+    // Device failures are essential even when detailed timing/counters are off.
+    switch (debug) {
+    case 'off': return;
+    case 'on': break;
+    default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
+    }
     let buffers = 0, requestedBytes = 0, shaders = 0, pipelines = 0, uploads = 0, submissions = 0, workDone = 0, sampled = 0;
     function sample(): void {
       const now = performance.now(); if (now - sampled < 2000) return; sampled = now;

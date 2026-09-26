@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
-import { createImageTrace, createImageDiagnosticBuffer, sanitizeImageLog } from './diagnostics';
+import { createImageTrace, createImageDiagnosticBuffer, sanitizeImageLog, imageErrorContext } from './diagnostics';
 it('redacts prompt/token dumps and signed URLs before they enter exports', () => {
   expect(sanitizeImageLog({ message: "conditioner.hpp:123 - parse 'private cat' to token text", secrets: [] })).toBe('[prompt/token diagnostic omitted]');
   const text = sanitizeImageLog({ message: 'failed: private cat https://hf.co/file?token=abc', secrets: ['private cat'] });
@@ -46,4 +46,40 @@ it('keeps GPU and file observations in their actual enclosing native stage', () 
   trace.emit({ event: 'file-read', stage: 'generation', message: undefined, fields: {} });
   trace.native({ message: 'native model load', level: 1 });
   expect(listener.mock.calls.every(([{ diagnostic }]) => diagnostic.stage === 'model-load')).toBe(true);
+});
+
+it.each([
+  'bpe_tokenizer.cpp:245 - split prompt "private words" to 2 tokens ["pri", "vate", ]',
+  'bpe_tokenizer.cpp:245 - split prompt " " to 1 tokens ["Ġ", ]',
+  `\
+split prompt "first
+second" to tokens ["first", "second"]`,
+])('omits the whole split-prompt token dump, not just the exact prompt string: %s', message => {
+  expect(sanitizeImageLog({ message, secrets: ['private words'] })).toBe('[prompt/token diagnostic omitted]');
+});
+it('extracts only bounded numeric Wasm locations from the original stack', () => {
+  const error = new WebAssembly.RuntimeError('private prompt https://private.invalid/?token=secret');
+  error.stack = `${error.message}\n at wasm://wasm/abc:wasm-function[6740]:0xae1009\n at wasm://wasm/abc:wasm-function[6078]:0x9d5bf1\n at /home/person/secret/core.mjs:1:1234`;
+  expect(imageErrorContext({ error })).toEqual({ errorType: 'wasm-trap', wasmFrames: 'wasm-function[6740]:0xae1009 <- wasm-function[6078]:0x9d5bf1' });
+  const plain = new Error('opaque'); plain.stack = 'custom-private-file-name:42';
+  expect(imageErrorContext({ error: plain })).toEqual({ errorType: 'error', wasmFrames: '' });
+  expect(imageErrorContext({ error: { stack: error.stack } })).toEqual({ errorType: 'non-error', wasmFrames: '' });
+});
+it('bounds both stack scanning and the number of exported Wasm frames', () => {
+  const error = new Error('bounded');
+  error.stack = Array.from({ length: 100 }, (_, index) => `at wasm://private-path:wasm-function[${index}]:0xabc`).join('\n');
+  const details = imageErrorContext({ error });
+  expect(details.wasmFrames.split(' <- ')).toHaveLength(8);
+  expect(details.wasmFrames.length).toBeLessThanOrEqual(512);
+  expect(details.wasmFrames).not.toContain('private-path');
+  error.stack = 'x'.repeat(32768) + '\nwasm-function[6740]:0xae1009';
+  expect(imageErrorContext({ error }).wasmFrames).toBe('');
+});
+
+it('does not let a throwing stack accessor replace the original error', () => {
+  const error = new Error('original');
+  Object.defineProperty(error, 'stack', { get() {
+    throw new Error('unreadable stack');
+  } });
+  expect(imageErrorContext({ error })).toEqual({ errorType: 'error', wasmFrames: '' });
 });

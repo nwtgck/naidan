@@ -1,5 +1,6 @@
-import { createImageTrace, sanitizeImageLog, type ImageDiagnosticListener } from '@/features/stable-diffusion-cpp-browser/diagnostics';
+import { createImageTrace, sanitizeImageLog, imageErrorContext, type ImageDiagnosticListener } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import { observeImageGpu } from './gpu-diagnostics';
+import { installImageWebGpu } from './webgpu';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { getProfileConfiguration, requestSchema, responseSchema, progressSchema, type Progress } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageWorker } from './types';
@@ -21,13 +22,8 @@ export function createImageWorker({ reportDiagnostic }: { reportDiagnostic: Imag
       const diagnostics: string[] = [];
       const secrets = [request.parameters.prompt, request.parameters.negativePrompt, request.parameters.modelArguments];
       const trace = createImageTrace({ debug: request.debug ?? 'off', secrets, listener: reportDiagnostic, now: () => performance.now() });
-      const observed = (() => {
-        switch (request.debug) {
-        case 'on': return observeImageGpu({ emit: trace.emit });
-        case 'off': case undefined: return undefined;
-        default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
-        }
-      })();
+      let observed: ReturnType<typeof observeImageGpu> | undefined;
+      let gpuBoundary: ReturnType<typeof installImageWebGpu> | undefined;
       trace.emit({ event: 'request', stage: 'worker', message: undefined, fields: {
         profile: request.artifact.profile, source: request.artifact.modulePath.split('/')[1]!, schema: request.artifact.schemaSha256,
         debug: request.debug ?? 'off', models: request.models.length, modelBytes: request.models.reduce((n, model) => n + model.file.size + (model.companions ?? []).reduce((m, file) => m + file.file.size, 0), 0),
@@ -44,7 +40,7 @@ export function createImageWorker({ reportDiagnostic }: { reportDiagnostic: Imag
       const notify = ({ event }: { event: Progress }) => {
         phase = event.phase;
         switch (phase) {
-        case 'sampling': trace.emit({ event: 'progress', stage: 'sampling', message: undefined, fields: { step: event.step, steps: event.steps } }); break;
+        case 'sampling': case 'decoding': trace.emit({ event: 'progress', stage: phase, message: undefined, fields: { step: event.step, steps: event.steps } }); break;
         case 'runtime': case 'model': case 'encoding': break;
         default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
         }
@@ -55,7 +51,9 @@ export function createImageWorker({ reportDiagnostic }: { reportDiagnostic: Imag
       };
       try {
         if (typeof FileReaderSync !== 'function') throw new Error('Synchronous file reading is unavailable in this Worker');
-        if (!('gpu' in navigator)) throw new Error('WebGPU is unavailable in this Worker');
+        if (!navigator.gpu?.requestAdapter) throw new Error('WebGPU is unavailable in this Worker');
+        observed = observeImageGpu({ emit: trace.emit, debug: request.debug ?? 'off' });
+        gpuBoundary = installImageWebGpu({ gpu: navigator.gpu, emit: trace.emit });
         notify({ event: { phase: 'runtime', step: 0, steps: 0 } });
         trace.emit({ event: 'start', stage: 'runtime-fetch', message: undefined, fields: {} });
         const { create, wasmBinary, moduleUrl, helpers } = await loadCoreFactory({ artifact: request.artifact, baseUrl: request.baseUrl });
@@ -67,6 +65,21 @@ export function createImageWorker({ reportDiagnostic }: { reportDiagnostic: Imag
           locateFile(name) {
             if (name !== 'core.wasm') throw new Error('Unexpected image runtime side file');
             return new URL(name, moduleUrl).href;
+          },
+          // GPU errors can abort from an asynchronous native callback, outside
+          // the pending generate_image promise. Publish before Worker.onerror.
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- External Emscripten callback signature.
+          onAbort(reason) {
+            const stage = (() => {
+              switch (phase) {
+              case 'runtime': return 'runtime-init' as const;
+              case 'model': return 'model-load' as const;
+              case 'sampling': case 'decoding': case 'encoding': return phase;
+              default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+              }
+            })();
+            trace.emit({ event: 'failed', stage,
+              message: typeof reason === 'string' ? reason : 'Image native runtime aborted', fields: { kind: 'native-abort', phase } });
           },
           // eslint-disable-next-line local-rules-named-args/require-named-args -- External Emscripten callback signature.
           print(message) {
@@ -97,14 +110,19 @@ export function createImageWorker({ reportDiagnostic }: { reportDiagnostic: Imag
         return responseSchema.parse({ png, width, height, modelVersion });
       } catch (error) {
         const message = sanitizeImageLog({ message: error instanceof Error ? error.message : String(error), secrets });
-        trace.emit({ event: 'failed', stage: 'worker', message, fields: { phase } });
+        const details = imageErrorContext({ error });
+        trace.emit({ event: 'failed', stage: 'worker', message, fields: { phase, ...details } });
         const source = request.artifact.modulePath.split('/')[1];
         throw new Error([
           `Image generation failed: phase=${phase}, profile=${request.artifact.profile}, source=${source}`,
-          message, ...diagnostics,
+          message, ...(details.wasmFrames ? [`Wasm frames: ${details.wasmFrames}`] : []), ...diagnostics,
         ].join('\n'));
       } finally {
-        observed?.dispose();
+        try {
+          gpuBoundary?.dispose();
+        } finally {
+          observed?.dispose();
+        }
       }
     },
   };
