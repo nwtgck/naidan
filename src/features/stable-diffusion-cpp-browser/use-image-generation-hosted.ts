@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import { createImageDiagnosticBuffer, type ImageDiagnostic } from './diagnostics';
-import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { lazyStrings, ensureStrings } from '@/strings';
 import rawConfiguration from 'virtual:stable-diffusion-cpp-browser/config';
 import { configurationSchema, parametersSchema, requestSchema, previewSettingsSchema, type Parameters, type PreviewFrame, type ModelSlot } from './types';
@@ -9,6 +9,7 @@ import { initialProfile, supportsJspi, supportsMemory64 } from './capabilities';
 import { useImageLibrary } from './use-image-library';
 import { createImageGallery } from './image-gallery';
 import { createImageForm } from './form';
+import { recommendationForSelection } from './recommendations';
 import type { ImageGenerationView } from './use-image-generation-types';
 
 /** Hosted policy and lifecycle. The standalone facade never imports this module. */
@@ -18,6 +19,7 @@ export function useImageGeneration(): ImageGenerationView {
   const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results } = form;
   const controller = shallowRef<AbortController>();
   const diagnosticBuffer = createImageDiagnosticBuffer();
+  const selectedRecommendation = ref<ReturnType<typeof recommendationForSelection>>();
   function recordDiagnostic({ diagnostic }: { diagnostic: ImageDiagnostic }): void {
     if (disposed) return;
     diagnosticBuffer.append({ diagnostic }); diagnosticText.value = diagnosticBuffer.text();
@@ -45,16 +47,19 @@ export function useImageGeneration(): ImageGenerationView {
       setTimeout(() => URL.revokeObjectURL(url), 0);
     }
   }
-  const finalGallery = createImageGallery<{ parameters: Parameters, modelVersion: string, uniformOutput: boolean }>({ initialLimit: 20, maxBytes: 256 * 1024 ** 2 });
-  const liveGallery = createImageGallery<Omit<PreviewFrame, 'png'>>({ initialLimit: 1, maxBytes: 64 * 1024 ** 2 });
-  const snapshotGallery = createImageGallery<Omit<PreviewFrame, 'png'>>({ initialLimit: 16, maxBytes: 64 * 1024 ** 2 });
+  const finalGallery = createImageGallery<{ parameters: Parameters, modelVersion: string, uniformOutput: boolean, elapsedMs: number }>({ initialLimit: 20, maxBytes: 256 * 1024 ** 2 });
+  const liveGallery = createImageGallery<Omit<PreviewFrame, 'png'> & { elapsedMs: number }>({ initialLimit: 1, maxBytes: 64 * 1024 ** 2 });
+  const snapshotGallery = createImageGallery<Omit<PreviewFrame, 'png'> & { elapsedMs: number }>({ initialLimit: 16, maxBytes: 64 * 1024 ** 2 });
   let disposed = false;
   let client: ReturnType<typeof createImageClient> | undefined;
+  let generateStartedAt = 0;
+  const now = (): number => globalThis.performance?.now() ?? Date.now();
   const busy = computed(() => controller.value !== undefined);
   const formDisabled = computed(() => busy.value || configuration.kind === 'unavailable');
   const library = useImageLibrary({ blocked: () => formDisabled.value, dependencies: undefined,
     onSelection({ family, turbo }) {
       // Application recommendations, not core defaults or model compatibility claims.
+      selectedRecommendation.value = recommendationForSelection({ family, turbo });
       switch (family) {
       case 'z-image':
         parameters.value.guidance = turbo ? 1 : 5;
@@ -69,6 +74,14 @@ export function useImageGeneration(): ImageGenerationView {
       }
     },
   });
+  const recommendation = computed(() => selectedRecommendation.value);
+
+  function applyRecommendedSettings(): void {
+    const preset = recommendation.value;
+    if (!preset) return;
+    parameters.value = { ...parameters.value, ...preset.parameters };
+    preview.value = { ...preview.value, ...preset.preview };
+  }
   const artifact = computed(() => {
     switch (configuration.kind) {
     case 'available': return configuration.artifacts.find(item => item.profile === profile.value);
@@ -98,12 +111,14 @@ export function useImageGeneration(): ImageGenerationView {
   function chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void {
     if (formDisabled.value || library.importing.value || library.downloading.value || !(event.target instanceof HTMLInputElement)) return;
     library.useManualFiles();
+    selectedRecommendation.value = undefined;
     const file = event.target.files?.[0];
     files.value = { ...files.value, [slot]: file };
   }
   function resetFiles(): void {
     if (formDisabled.value || library.importing.value || library.downloading.value || disposed) return;
     library.useManualFiles();
+    selectedRecommendation.value = undefined;
     files.value = {};
   }
   function releaseModel(): void {
@@ -175,6 +190,7 @@ export function useImageGeneration(): ImageGenerationView {
     }
     diagnosticBuffer.clear(); diagnosticText.value = ''; diagnosticStatus.value = ''; diagnosticFeedback.value = '';
     liveGallery.clear(); livePreview.value = undefined;
+    generateStartedAt = now();
     const operation = new AbortController(); controller.value = operation;
     progress.value = { phase: 'runtime', step: 0, steps: 0 };
     try {
@@ -193,16 +209,17 @@ export function useImageGeneration(): ImageGenerationView {
       }, onPreview({ frame }) {
         if (disposed || operation.signal.aborted || !preview.value.enabled) return;
         const { png, ...metadata } = frame;
-        liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata });
+        const entry = { ...metadata, elapsedMs: Math.max(0, now() - generateStartedAt) };
+        liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: entry });
         livePreview.value = liveGallery.entries()[0];
         if (keepPreviews.value) {
-          snapshotGallery.add({ blob: png, width: frame.width, height: frame.height, metadata });
+          snapshotGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: entry });
           previewSnapshots.value = snapshotGallery.entries();
         }
       } });
       if (disposed || operation.signal.aborted) return;
       finalGallery.add({ blob: result.png, width: result.width, height: result.height,
-        metadata: { parameters: parametersSchema.parse(parsed.data.parameters), modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false } });
+        metadata: { parameters: parametersSchema.parse(parsed.data.parameters), modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs: Math.max(0, now() - generateStartedAt) } });
       results.value = finalGallery.entries();
       modelResident.value = true;
       if (!retainModel.value) releaseModel();
@@ -232,7 +249,7 @@ export function useImageGeneration(): ImageGenerationView {
     disposed = true; controller.value?.abort(); client?.dispose();
     modelResident.value = false; finalGallery.clear(); clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, library, busy, supported, formDisabled, unavailable, recommendation, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

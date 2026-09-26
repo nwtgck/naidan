@@ -184,10 +184,10 @@ it('sends live control messages with monotonically scoped revisions and rejects 
   const stopped = expect(task).rejects.toMatchObject({ name: 'AbortError' });
   client.updatePreview({ settings: { ...input.preview, enabled: true, interval: 1, maxEdge: 128 } });
   client.updatePreview({ settings: { ...input.preview, enabled: false } });
-  client.updatePreview({ settings: { ...input.preview, enabled: true, mode: 'vae' } }); // mode is startup-only
+  client.updatePreview({ settings: { ...input.preview, enabled: true, mode: 'projection' } }); // mode is startup-only
   expect(mocks.messages).toHaveLength(2);
   expect(mocks.messages).toMatchObject([{ runId: 1, revision: 1, settings: { enabled: true, interval: 1 } }, { runId: 1, revision: 2, settings: { enabled: false } }]);
-  const frame = { type: 'naidan-image-preview-v1', runId: 1, revision: 2, step: 2, steps: 20, mode: 'projection', width: 32, height: 32, png: new Blob(['png'], { type: 'image/png' }) };
+  const frame = { type: 'naidan-image-preview-v1', runId: 1, revision: 2, step: 2, steps: 20, mode: 'vae', width: 32, height: 32, png: new Blob(['png'], { type: 'image/png' }) };
   for (const data of [{ ...frame, revision: 1 }, { ...frame, runId: 999 }, { ...frame, png: 'bad' }]) mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data }));
   expect(onPreview).not.toHaveBeenCalled();
   mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data: frame })); expect(onPreview).not.toHaveBeenCalled();

@@ -157,11 +157,12 @@ it('keeps live preview ON/OFF and interval/size controls usable while sampling, 
   expect(wrapper.get('[data-testid="image-preview-mode"]').element.matches(':disabled')).toBe(true);
   await enabled.setValue(true);
   await wrapper.get('[data-testid="image-preview-interval"]').setValue(1);
+  await wrapper.get('[data-testid="image-preview-start-step"]').setValue(3);
   await wrapper.get('[data-testid="image-preview-size"]').setValue(128);
-  expect(mocks.updatePreview).toHaveBeenLastCalledWith({ settings: { enabled: true, interval: 1, maxEdge: 128, mode: 'projection' } });
+  expect(mocks.updatePreview).toHaveBeenLastCalledWith({ settings: { enabled: true, interval: 1, startStep: 3, maxEdge: 128, mode: 'vae' } });
   await wrapper.get('[data-testid="image-preview-interval"]').setValue('');
   await enabled.setValue(false);
-  expect(mocks.updatePreview).toHaveBeenLastCalledWith({ settings: { enabled: false, interval: 1, maxEdge: 128, mode: 'projection' } });
+  expect(mocks.updatePreview).toHaveBeenLastCalledWith({ settings: { enabled: false, interval: 1, startStep: 3, maxEdge: 128, mode: 'vae' } });
   finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' }); await task;
 });
 it('keeps snapshot URLs valid when the live image changes, bounds history, and revokes every owner on unmount', async () => {

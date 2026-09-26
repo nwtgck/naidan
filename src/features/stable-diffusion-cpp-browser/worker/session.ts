@@ -95,7 +95,10 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     callbacks.push(core.module.addFunction((...args) => {
       if (previewDecoding) return;
       const step = Number(args[0]), steps = Number(args[1]);
-      if (Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps >= 0) notify({ event: { phase: nativePhase, step, steps } });
+      if (Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps >= 0) {
+        if (nativePhase === 'sampling' && steps === active?.request.parameters.steps) active.preview?.observeStep({ step });
+        notify({ event: { phase: nativePhase, step, steps } });
+      }
     }, 'viifp'));
     callbacks.push(core.module.addFunction((...args) => {
       previewDecoding = false;
@@ -103,7 +106,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       if (!operation || !snapshot?.settings.enabled || !operation.onPreview) return;
       const rawStep = Number(args[0]), step = Math.abs(rawStep), count = Number(args[1]), pointer = BigInt(args[2] ?? 0);
       // Negative intermediate evaluations are not completed user-visible steps.
-      if (!Number.isInteger(step) || step < 1 || step > operation.request.parameters.steps || (rawStep < 0 && step !== operation.request.parameters.steps) || step <= operation.capturedStep || count !== 1 || !pointer || Number(args[3]) !== 0) return;
+      if (!Number.isInteger(step) || step < snapshot.settings.startStep || step > operation.request.parameters.steps || (rawStep < 0 && step !== operation.request.parameters.steps) || step <= operation.capturedStep || count !== 1 || !pointer || Number(args[3]) !== 0) return;
       try {
         const image = copyNativeImage({ core, pointer });
         operation.capturedStep = step;

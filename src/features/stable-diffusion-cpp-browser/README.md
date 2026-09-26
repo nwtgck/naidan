@@ -322,8 +322,8 @@ revoke each URL exactly once. Results are not written to chat/history/storage.
 
 ### Intermediate previews and live control
 
-Preview is OFF by default. Native latent projection is the low-cost mode, with
-optional full VAE decoding for detail. The supplied upstream includes projection
+Preview capture is OFF by default; the selected method defaults to detailed VAE
+decoding. Native latent projection remains the lower-cost alternative. The supplied upstream includes projection
 coefficients for Z-Image and Qwen Image 2.1; no extra model is downloaded. Projection
 is approximate and native latent resolution may be smaller than the chosen
 maximum preview edge. PNG encoding never upscales it; the live image and history
@@ -334,8 +334,14 @@ native frame size; detailed VAE frames are not enlarged beyond their native size
 In VAE mode reducing delivered PNG dimensions reduces output/retention costs,
 NOT full native decoder work.
 
-ON/OFF, interval (1 means every eligible step) and maximum edge are live controls
-outside the disabled generation fieldset. The decoder mode is fixed for a run
+ON/OFF, first preview step (`startStep`, inclusive), interval (1 means every
+eligible step) and maximum edge are live controls outside the disabled generation
+fieldset. The start threshold suppresses native denoised preview calculation,
+not only UI delivery. Native progress is reported AFTER the preview of a completed
+step, so the gate is prepared for the following step; an enabled start of 1 is
+armed before the first completion callback. The native interval/final-step rules
+are otherwise unchanged; the interval is not re-anchored to the threshold.
+Incoming frames below the current threshold are also rejected before copying. The decoder mode is fixed for a run
 because upstream snapshots it at sampler entry. Run IDs and monotonic revisions
 reject delayed controls/frames. The sampler always receives a non-null preview
 callback; the denoised flag disables actual native preview calculation. Messages
@@ -354,6 +360,30 @@ encoding. Under backpressure superseded frames can be dropped, even at interval 
 this is reported in diagnostics and does not skip denoising steps. Full VAE preview
 tile progress is not shown as new sampling steps. This feature stores images only,
 not resumable latent/sampler checkpoints.
+
+### Presets, elapsed time and locale completeness
+
+The recommendation action applies the selected library model's static Naidan
+preset without changing prompts, seed or whether preview capture is enabled.
+`recommendations.ts` contains application choices inherited from the preset
+feature, not a provider-validated setting for every parameter. Preview start
+steps are application policy. Structural family detection identifies Qwen Image
+2.1; the Z-Image Turbo distinction still uses the existing metadata/filename
+hint because Base and Turbo may have identical structures. Manual-only input
+has no pre-load preset detector in this version. Preset application is explicit;
+none is a claim of compatibility for arbitrary renamed fine-tunes.
+
+Live previews, saved preview frames and final images retain elapsed milliseconds
+in page memory. Measurement starts just before the explicit client generation
+request and ends when the frame/result reaches the page. It includes model load
+when required, sampling, decoding/encoding and delivery; it is not GPU-only time
+or the duration of a single denoising step. These records are not persisted.
+
+Every new text must be imported and registered in EACH locale catalog AND export
+a named callable message from `messages/<key>/<locale>.ts`. A default string
+export is not compatible. The applied-tree catalog test checks registrations,
+all seven files and callable exports for the new image settings; the real view
+bundle test includes them in both hosted and standalone locale bundles.
 
 ### Qwen 512 blank-output investigation
 

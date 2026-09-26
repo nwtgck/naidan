@@ -37,6 +37,7 @@ export const schedulerSchema = z.enum(schedulerOptions);
 export const previewSettingsSchema = z.object({
   enabled: z.boolean(),
   interval: z.number().int().min(1).max(100),
+  startStep: z.number().int().min(1).max(100),
   mode: z.enum(['projection', 'vae']),
   maxEdge: z.union([z.literal(0), z.number().int().min(64).max(2048)]),
 }).strict();

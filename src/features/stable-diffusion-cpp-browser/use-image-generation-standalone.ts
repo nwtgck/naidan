@@ -15,6 +15,8 @@ export function useImageGeneration(): ImageGenerationView {
     supported: computed(() => false),
     formDisabled: computed(() => true),
     unavailable: computed(() => lazyStrings.stableDiffusionCppBrowser__hosted_build_required()),
+    recommendation: computed(() => undefined),
+    applyRecommendedSettings() {},
     chooseFile() {},
     resetFiles() {},
     removeResult() {},

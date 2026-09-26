@@ -20,8 +20,8 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const maxPreviews = ref(16);
   const maxResults = ref(20);
   const previewError = ref('');
-  const livePreview = shallowRef<(Omit<PreviewFrame, 'png'> & { url: string, id: number })>();
-  const previewSnapshots = shallowRef<(Omit<PreviewFrame, 'png'> & { url: string, id: number })[]>([]);
+  const livePreview = shallowRef<(Omit<PreviewFrame, 'png'> & { url: string, id: number, elapsedMs: number })>();
+  const previewSnapshots = shallowRef<(Omit<PreviewFrame, 'png'> & { url: string, id: number, elapsedMs: number })[]>([]);
   const weightResidency = ref<WeightResidency>('auto');
   // An empty number input leaves the optional native memory budget unset.
   const gpuBudgetMiB = ref<number | ''>('');
@@ -29,7 +29,7 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const failure = ref('');
   const invalid = ref(false);
   const cancelled = ref(false);
-  const results = shallowRef<{ url: string, parameters: Parameters, modelVersion: string, uniformOutput: boolean, id: number }[]>([]);
+  const results = shallowRef<{ url: string, parameters: Parameters, modelVersion: string, uniformOutput: boolean, elapsedMs: number, id: number }[]>([]);
   return { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results };
 }
 

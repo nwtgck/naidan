@@ -8,11 +8,19 @@ import {
 } from './boundary-strings/message-catalog';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const key = 'stableDiffusionCppBrowser__decoding_image';
-// Use the files in the applied checkout, not generated translation fixtures.
-// A catalog import alone does not prove a locale implementation was shipped.
-const decodingModules = import.meta.glob<Record<string, unknown>>(
-  '../src/strings/messages/stableDiffusionCppBrowser__decoding_image/*.ts',
+const keys = [
+  'stableDiffusionCppBrowser__decoding_image',
+  'stableDiffusionCppBrowser__apply_recommended_settings',
+  'stableDiffusionCppBrowser__generation_time',
+  'stableDiffusionCppBrowser__preview_after_step',
+  'stableDiffusionCppBrowser__preview_start_step',
+  'stableDiffusionCppBrowser__recommended_preview_summary',
+  'stableDiffusionCppBrowser__recommended_settings',
+] as const;
+// Inspect the applied checkout, not generated translation fixtures. Catalog
+// registration, files, named exports and callable messages must all agree.
+const modules = import.meta.glob<Record<string, unknown>>(
+  '../src/strings/messages/stableDiffusionCppBrowser__{decoding_image,apply_recommended_settings,generation_time,preview_after_step,preview_start_step,recommended_preview_summary,recommended_settings}/*.ts',
   { eager: true },
 );
 
@@ -22,20 +30,20 @@ describe('checked-in image-generation locale files', () => {
       root,
       paths: createBoundaryStringProjectPaths({ root }),
     });
-    expect(catalog.messagesByKey.has(key)).toBe(true);
-    expect(Object.keys(decodingModules).sort()).toEqual(BOUNDARY_STRING_LOCALES.map(locale =>
+    for (const key of keys) expect(catalog.messagesByKey.has(key), key).toBe(true);
+    expect(Object.keys(modules).sort()).toEqual(keys.flatMap(key => BOUNDARY_STRING_LOCALES.map(locale =>
       `../src/strings/messages/${key}/${locale}.ts`,
-    ).sort());
+    )).sort());
   });
 
-  it.each(BOUNDARY_STRING_LOCALES)('ships an executable %s decoding message', locale => {
+  it.each(keys.flatMap(key => BOUNDARY_STRING_LOCALES.map(locale => ({ key, locale }))))('ships an executable $locale $key message', ({ key, locale }) => {
     const sourceId = `../src/strings/messages/${key}/${locale}.ts`;
-    const message = decodingModules[sourceId]?.[key];
+    const message = modules[sourceId]?.[key];
     expect(message, sourceId).toBeTypeOf('function');
-    if (typeof message !== 'function') throw new Error(`Missing decoding message: ${sourceId}`);
+    if (typeof message !== 'function') throw new Error(`Missing named message function: ${sourceId}`);
     const text: unknown = message();
     expect(text).toBeTypeOf('string');
-    if (typeof text !== 'string') throw new Error(`Non-string decoding message: ${sourceId}`);
+    if (typeof text !== 'string') throw new Error(`Non-string message: ${sourceId}`);
     expect(text.trim().length).toBeGreaterThan(0);
     expect(text).not.toContain(key);
   });

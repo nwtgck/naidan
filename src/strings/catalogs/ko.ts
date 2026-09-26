@@ -1,3 +1,9 @@
+import { stableDiffusionCppBrowser__apply_recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__apply_recommended_settings/ko';
+import { stableDiffusionCppBrowser__generation_time } from '@/strings/messages/stableDiffusionCppBrowser__generation_time/ko';
+import { stableDiffusionCppBrowser__preview_after_step } from '@/strings/messages/stableDiffusionCppBrowser__preview_after_step/ko';
+import { stableDiffusionCppBrowser__preview_start_step } from '@/strings/messages/stableDiffusionCppBrowser__preview_start_step/ko';
+import { stableDiffusionCppBrowser__recommended_preview_summary } from '@/strings/messages/stableDiffusionCppBrowser__recommended_preview_summary/ko';
+import { stableDiffusionCppBrowser__recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__recommended_settings/ko';
 import { stableDiffusionCppBrowser__gallery_budget } from '@/strings/messages/stableDiffusionCppBrowser__gallery_budget/ko';
 import { stableDiffusionCppBrowser__uniform_image_warning } from '@/strings/messages/stableDiffusionCppBrowser__uniform_image_warning/ko';
 import { stableDiffusionCppBrowser__qwen_vae_help } from '@/strings/messages/stableDiffusionCppBrowser__qwen_vae_help/ko';
@@ -2085,6 +2091,12 @@ import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/sta
 import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/ko';
 import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/ko';
 export const catalog = {
+  stableDiffusionCppBrowser__apply_recommended_settings,
+  stableDiffusionCppBrowser__generation_time,
+  stableDiffusionCppBrowser__preview_after_step,
+  stableDiffusionCppBrowser__preview_start_step,
+  stableDiffusionCppBrowser__recommended_preview_summary,
+  stableDiffusionCppBrowser__recommended_settings,
   stableDiffusionCppBrowser__keep_model_loaded,
   stableDiffusionCppBrowser__model_resident,
   stableDiffusionCppBrowser__release_model,

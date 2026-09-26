@@ -113,6 +113,12 @@ describe('hosted-only bicore image boundary', () => {
       'stableDiffusionCppBrowser__preview_title',
       'stableDiffusionCppBrowser__keep_model_loaded',
       'stableDiffusionCppBrowser__uniform_image_warning',
+      'stableDiffusionCppBrowser__apply_recommended_settings',
+      'stableDiffusionCppBrowser__generation_time',
+      'stableDiffusionCppBrowser__preview_after_step',
+      'stableDiffusionCppBrowser__preview_start_step',
+      'stableDiffusionCppBrowser__recommended_preview_summary',
+      'stableDiffusionCppBrowser__recommended_settings',
     ]) {
       const definition = catalog.messagesByKey.get(key);
       expect(definition, key).toBeDefined();

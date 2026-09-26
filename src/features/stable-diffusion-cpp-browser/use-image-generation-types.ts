@@ -2,6 +2,7 @@ import type { ImageLibraryView } from './library-view';
 import type { ComputedRef } from 'vue';
 import type { createImageForm } from './form';
 import type { ModelSlot } from './types';
+import type { ImageGenerationRecommendation } from './recommendations';
 
 export type ImageGenerationView = ReturnType<typeof createImageForm> & {
   library: ImageLibraryView;
@@ -9,6 +10,8 @@ export type ImageGenerationView = ReturnType<typeof createImageForm> & {
   supported: ComputedRef<boolean>;
   formDisabled: ComputedRef<boolean>;
   unavailable: ComputedRef<string | undefined>;
+  recommendation: ComputedRef<ImageGenerationRecommendation | undefined>;
+  applyRecommendedSettings(): void;
   chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void;
   resetFiles(): void;
   removeResult({ resultId }: { resultId: number }): void;

@@ -22,7 +22,7 @@ function openPreview({ width = 32, height = 32, mode = 'projection', maxEdge = 2
   view.parameters.value.width = 512; view.parameters.value.height = 512;
   view.preview.value = { ...view.preview.value, enabled: true, maxEdge };
   view.livePreview.value = { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 2, steps: 8,
-    mode, width, height, url: 'blob:original-small-preview', id: 1 };
+    mode, width, height, url: 'blob:original-small-preview', id: 1, elapsedMs: 2500 };
   wrapper = mount(ImageGenerationPreview, { props: { view } });
   return { view, wrapper };
 }
@@ -65,6 +65,15 @@ it.each([
   expect(image.attributes('height')).toBe(String(expectedHeight));
 });
 
+
+it('shows elapsed time and the configurable first preview step', async () => {
+  const { wrapper, view } = openPreview({ width: 64, height: 64, mode: 'vae' });
+  expect(wrapper.get('figcaption').text()).toContain('Time 2.5 s');
+  const start = wrapper.get('[data-testid="image-preview-start-step"]');
+  await start.setValue(6);
+  expect(view.preview.value.startStep).toBe(6);
+});
+
 it('sizes saved projection thumbnails too, while leaving the download link and metadata unchanged', async () => {
   const { view, wrapper } = openPreview({ width: 16, height: 32 });
   view.previewSnapshots.value = [{ ...view.livePreview.value!, id: 2, url: 'blob:saved-small-preview' }];
@@ -80,6 +89,7 @@ it('defaults history ON without starting preview, and preserves an explicit opt-
   const view = { ...useImageGeneration(), supported: computed(() => true) };
   wrapper = mount(ImageGenerationPreview, { props: { view } });
   expect(view.preview.value.enabled).toBe(false);
+  expect(view.preview.value.mode).toBe('vae');
   expect(view.keepPreviews.value).toBe(true);
   await wrapper.get('[data-testid="image-preview-enabled"]').setValue(true);
   expect(view.keepPreviews.value).toBe(true);

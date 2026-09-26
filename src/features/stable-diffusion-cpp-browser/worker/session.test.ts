@@ -406,3 +406,33 @@ it('does not relabel detailed preview VAE tiles as denoising steps', async () =>
   expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 1, steps: 8 } });
   expect(onPreview).toHaveBeenCalledTimes(1);
 });
+
+it('enables the threshold step before its preview and never copies a pre-threshold frame', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  const request = requestFixture(); request.runId = 1; request.parameters.steps = 8;
+  request.preview = { ...request.preview, enabled: true, startStep: 4, interval: 2 };
+  const onPreview = vi.fn(), onProgress = vi.fn();
+  const original = vi.mocked(h.api.generate_image).getMockImplementation()!;
+  vi.mocked(h.api.generate_image).mockImplementationOnce(async (...args) => {
+    const result = await original(...args);
+    const progress = h.callbacks.get(h.registrations.progress)!;
+    const preview = h.callbacks.get(h.registrations.preview)!;
+    const enabled = () => h.previewWrites.at(-1)?.[3];
+    expect(enabled()).toBe(0);
+    // Preview occurs before the progress callback for its own denoising step.
+    preview(2, 1, 300000n, 0, 0n);
+    progress(2, 8, 0.1, 0n);
+    expect(enabled()).toBe(0);
+    // Ignore model/tile progress counters that aren't this sampling schedule.
+    progress(900, 901, 0.1, 0n);
+    expect(enabled()).toBe(0);
+    progress(3, 8, 0.1, 0n);
+    expect(enabled()).toBe(1);
+    preview(4, 1, 300000n, 0, 0n);
+    progress(4, 8, 0.1, 0n);
+    return result;
+  });
+  await runImageGeneration({ ...h, request, onProgress, onLog: vi.fn(), onPreview });
+  expect(onPreview.mock.calls.map(([{ capture }]) => capture.step)).toEqual([4]);
+  expect(onPreview.mock.calls[0]![0].capture.image.pixels[0]).toBe(71);
+});

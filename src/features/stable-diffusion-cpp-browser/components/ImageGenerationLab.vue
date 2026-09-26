@@ -11,8 +11,8 @@ import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-
 
 const id = useId();
 const view = useImageGeneration();
-const { retainModel, modelResident, maxResults, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results,
-  library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, releaseModel, clearResults, copyDiagnostics, saveDiagnostics } = view;
+const { retainModel, modelResident, maxResults, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results, recommendation,
+  library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, releaseModel, clearResults, copyDiagnostics, saveDiagnostics, applyRecommendedSettings } = view;
 const slots = computed(() => {
   switch (layout.value) {
   case 'checkpoint': return [{ slot: 'model' as const, label: lazyStrings.stableDiffusionCppBrowser__model_file() }];
@@ -34,6 +34,11 @@ const weightResidencyOptions = computed(() => [
   { value: 'disk' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_disk() },
 ]);
 
+
+function formatElapsed({ elapsedMs }: { elapsedMs: number }): string {
+  return `${(elapsedMs / 1000).toFixed(elapsedMs >= 10000 ? 0 : 1)} s`;
+}
+
 const phaseLabel = computed(() => {
   if (!progress.value) return undefined;
   switch (progress.value.phase) {
@@ -45,7 +50,7 @@ const phaseLabel = computed(() => {
   default: { const exhaustive: never = progress.value.phase; throw new Error(String(exhaustive)); }
   }
 });
-defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, generate } }) || {}) });
+defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, generate } }) || {}) });
 </script>
 
 <template>
@@ -87,6 +92,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__companion_files_help() }}</p>
           </details>
         </fieldset>
+        <section v-if="recommendation" tw-class="rounded-2xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/60 dark:bg-purple-950/20 p-4 space-y-2" data-testid="image-recommendation">
+          <div tw-class="flex flex-wrap items-center justify-between gap-3">
+            <div tw-class="space-y-1">
+              <h3 tw-class="text-sm font-semibold">{{ lazyStrings.stableDiffusionCppBrowser__recommended_settings() }}</h3>
+              <p tw-class="text-xs text-gray-600 dark:text-gray-300">{{ recommendation.title }} · {{ recommendation.summary }}</p>
+            </div>
+            <button type="button" @click="applyRecommendedSettings" :disabled="formDisabled" data-testid="image-apply-recommendation" tw-class="rounded-xl border border-purple-300 dark:border-purple-700 px-3 py-2 text-sm disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__apply_recommended_settings() }}</button>
+          </div>
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__recommended_preview_summary() }} {{ recommendation.preview.mode }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_interval() }} {{ recommendation.preview.interval }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_after_step() }} {{ recommendation.preview.startStep }}</p>
+        </section>
         <fieldset :disabled="formDisabled" tw-class="space-y-4">
           <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</span><textarea v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3" /></label>
           <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</span><textarea v-model="parameters.negativePrompt" rows="2" maxlength="4096" tw-class="block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3" /></label>
@@ -152,7 +167,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
             <div tw-class="p-4 space-y-2">
               <p v-if="result.uniformOutput" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__uniform_image_warning() }}</p>
               <p tw-class="text-sm whitespace-pre-wrap break-words">{{ result.parameters.prompt }}</p>
-              <p tw-class="text-xs text-gray-500">{{ result.modelVersion }} · {{ result.parameters.width }} × {{ result.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__seed() }}: {{ result.parameters.seed }}</p>
+              <p tw-class="text-xs text-gray-500">{{ result.modelVersion }} · {{ result.parameters.width }} × {{ result.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__seed() }}: {{ result.parameters.seed }} · {{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ formatElapsed({ elapsedMs: result.elapsedMs }) }}</p>
               <div tw-class="flex gap-4 text-sm"><a :href="result.url" :download="'naidan-image-' + result.parameters.seed + '.png'" tw-class="text-purple-600 dark:text-purple-400 underline">{{ lazyStrings.stableDiffusionCppBrowser__download_png() }}</a><button type="button" @click="removeResult({ resultId: result.id })" tw-class="text-gray-500 underline">{{ lazyStrings.stableDiffusionCppBrowser__remove() }}</button></div>
             </div>
           </article>
