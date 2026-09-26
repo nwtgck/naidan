@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Os arquivos são lidos por intervalos sem divisão. Cada geração usa um Worker dedicado; cancelar o encerra. A memória pode ser ajustada nas configurações avançadas.";
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Os modelos carregados podem ser reutilizados. Cancelar ou sair da página libera o ambiente, sem excluir os arquivos salvos.";

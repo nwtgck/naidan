@@ -14,6 +14,10 @@ export type ImageGenerationView = ReturnType<typeof createImageForm> & {
   removeResult({ resultId }: { resultId: number }): void;
   generate(): Promise<void>;
   cancel(): void;
+  releaseModel(): void;
+  clearResults(): void;
+  removePreview({ previewId }: { previewId: number }): void;
+  clearPreviews(): void;
   copyDiagnostics(): Promise<void>;
   saveDiagnostics(): void;
 };

@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_help = (): string => "Ein/Aus, Intervall und Größe sind während der Generierung änderbar. Detaillierte Vorschauen benötigen zusätzliche Decoderarbeit; eine kleinere Anzeige reduziert diese nicht.";

@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_help = (): string => "ON/OFF, interval and size can change while generating. Detailed previews add decoder work; reducing their displayed size does not reduce that work.";

@@ -19,7 +19,7 @@ export function useImageGeneration(): ImageGenerationView {
     resetFiles() {},
     removeResult() {},
     async generate() {},
-    cancel() {}, async copyDiagnostics() {}, saveDiagnostics() {},
+    cancel() {}, releaseModel() {}, clearResults() {}, removePreview() {}, clearPreviews() {}, async copyDiagnostics() {}, saveDiagnostics() {},
   };
 }
 

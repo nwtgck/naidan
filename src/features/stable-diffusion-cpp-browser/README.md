@@ -273,11 +273,29 @@ but not unlimited physical/GPU memory.
 
 ## Runtime behavior and policy
 
-Each explicit generation owns a new Worker/context. Success, cancellation,
-error, navigation and disposal terminate it. Hard cancellation works even if
-native code cannot process another message. This is Naidan's initial policy,
-not a restriction imposed by the core. The caller can later design reuse or
-other scheduling with the same exposed API.
+A page owns at most one lazy image Worker/module/context. Success retains its
+weights and mounted file snapshots by default. Consecutive generations with the
+same model composition and construction settings reuse it; prompt, negative
+prompt, seed, output dimensions, sampling and preview settings do not reload it.
+Changing model identity, native construction options, artifact/profile or debug
+instrumentation retires the old Worker before allocating another. Manual files
+have WeakMap identities, not filename/size/time guesses. Published Hugging Face
+receipts identify the complete composition across local inventory refreshes;
+unverified/local File snapshots fall back to conservative object identity.
+
+Explicit release, cancellation, any failure (including device loss/allocation
+failure), navigation and disposal terminate the physical Worker. Hard cancellation
+never depends on the blocked native loop processing another message. There is no
+automatic model/profile retry and no multi-model cache. A visible retention switch
+can restore release-after-each-generation behavior. Model files on disk and image
+results are independent of this runtime ownership.
+
+Only per-image native parameter strings, records and output pixels are freed
+between runs. Mounted files, context construction strings and callbacks outlive
+the retained context. Permanent callbacks route to the current request rather
+than capturing the first request's prompts, progress or diagnostics. Each run's
+Comlink callback port is explicitly released; late messages cannot mutate a newer
+run. Cancelled/trapped instances are never used for another generation.
 
 For recognized Z-Image-Turbo, selecting the main model suggests 8 steps and CFG 1;
 Qwen Image 2.1 suggests CFG 6 and disables its large prefix cache when model
@@ -290,18 +308,66 @@ prefix-cache settings in the core. For Qwen experiments the caller may set
 `qwen_image_2_1_prefix_cache=false` explicitly when needed.
 
 The UI permits 128..2048 dimensions in multiples of 64, but this is **not** a
-certified range on every model/device. Begin with a compatible small Stable
-Diffusion 1.5 GGUF and 256 or 512 output; Qwen Image readiness is not established.
-Backend fallbacks/transfers and large dispatch limits still need real testing.
+certified range on every model/device. Larger workloads, backend transfers and
+large dispatch limits still require real model/device validation.
 Native diagnostics are available during the operation, including before a failure, in opt-in debug mode. No resolution reduction or backend
-switch is silently retried. Up to four PNGs remain in memory; URLs are revoked
-on deletion/unmount. Results are not written into chat/history/storage.
+switch is silently retried. Final PNGs have a configurable count (20 by default,
+1..100) and a 256 MiB ownership budget including estimated decoded pixels. The
+live preview has one URL; optional preview history has its own configurable
+count and 64 MiB budget. Live/history owners use distinct URLs, so replacing a
+live frame never revokes a retained snapshot. Eviction, deletion and page disposal
+revoke each URL exactly once. Results are not written to chat/history/storage.
+
+### Intermediate previews and live control
+
+Preview is OFF by default. Native latent projection is the low-cost mode, with
+optional full VAE decoding for detail. The supplied upstream includes projection
+coefficients for Z-Image and Qwen Image 2.1; no extra model is downloaded. Projection
+is approximate and native latent resolution may be smaller than the chosen
+maximum preview edge. Resize never upscales it. In VAE mode reducing delivered PNG
+dimensions reduces output/retention costs, NOT full native decoder work.
+
+ON/OFF, interval (1 means every eligible step) and maximum edge are live controls
+outside the disabled generation fieldset. The decoder mode is fixed for a run
+because upstream snapshots it at sampler entry. Run IDs and monotonic revisions
+reject delayed controls/frames. The sampler always receives a non-null preview
+callback; the denoised flag disables actual native preview calculation. Messages
+apply when the Worker can process them, not by interrupting arbitrary synchronous
+CPU code. A decode already in progress is not cancelled by turning preview OFF.
+
+The generated `_sdc_sd_set_preview_callback` is the sole reviewed busy-time native
+export: the pinned util.cpp implementation only assigns six global scalars and
+never accesses a context/graph, allocates or suspends. Normal native API calls
+keep the host helper's busy guard. No generic re-entry, unchecked record offset,
+new ABI, SharedArrayBuffer or cross-origin-isolation requirement is introduced.
+
+Borrowed native preview pixels are copied synchronously. A queue owns at most one
+active encoder and one replaceable pending frame, checking revision after async
+encoding. Under backpressure superseded frames can be dropped, even at interval 1;
+this is reported in diagnostics and does not skip denoising steps. Full VAE preview
+tile progress is not shown as new sampling steps. This feature stores images only,
+not resumable latent/sampler checkpoints.
+
+### Qwen 512 blank-output investigation
+
+The supplied 512x512 image is uniformly opaque white. Its log completed sampling
+and one 32x32-latent decoder tile with a 2450.50 MiB work buffer and several split
+WebGPU dispatches. This alone does not locate the first erroneous tensor.
+A visible bounded-Qwen policy (default ON) caps decoder tiles at 16x16 only when
+tiling is enabled and the native context identifies Qwen Image 2.1. The requested
+output dimensions and sampling settings are unchanged. Tiled decoding need not be
+bit-identical to a full tile; the option can be disabled for native behavior.
+This avoids the reported large-tile route but is a mitigation, not proof of root
+cause or a real-device-confirmed fix. Native pre-PNG pixel statistics distinguish
+uniform native output from display/encoding problems. Uniform colour produces a
+warning, never a colour-triggered automatic rerun or rejection of a legitimate
+plain image.
 
 ## Live diagnostics and non-completing generations
 
 The image debug checkbox uses the same per-request `debug: "off" | "on"` approach
 as the llama browser/audio requests. It does not reuse another chat's debug state.
-The image request snapshots it before creating its dedicated Worker. Turning it
+The image request snapshots it before selecting its retained or newly created Worker. Turning it
 on does not select test Wasm, change precision, enable an alternative backend or
 change generation parameters. Current published ABI 2 is sufficient; no bicore
 rebuild or generated-code string replacement is involved.
@@ -417,13 +483,13 @@ also used for denoising. The generation boundary is reported before calling
 `generate_image`, including failures before its first progress callback.
 
 A Wasm trap, or rejection while `new_sd_ctx` / `generate_image` is pending, makes
-that single-use instance unsafe to re-enter. Record the original error and
+that instance unsafe to re-enter, including for a later generation. Record the original error and
 bounded numeric Wasm function/offset frames **before** cleanup. Skip native
 context/image frees, callback unregistration, allocator frees and mount removal;
 only JavaScript file-read metrics/cache cleanup runs. The client unconditionally
-terminates the Worker and preserves the primary failure stage instead of
-relabelling it as cleanup. Normally returned failure codes still use ordinary
-native cleanup. There is no automatic runtime/profile retry.
+terminates the failed Worker and preserves the primary failure stage instead of
+relabelling it as cleanup. Normally returned failure codes allow per-image native cleanup, but the client
+still retires the failed worker rather than risking reuse. There is no automatic runtime/profile retry.
 
 Raw JavaScript stacks, signed URLs and prompt/token dumps are not exported.
 `split prompt ... to ... tokens [...]` is omitted as a whole, since redacting
@@ -450,7 +516,7 @@ limit is `65535`. This is not the earlier Qwen timestep in-place alias trap.
 `worker/webgpu.ts` reuses Naidan's existing `createCoreWebGpuNavigator` from
 `llama-cpp-browser/runtime/webgpu-dispatch.ts`. Before the published image
 factory loads, it installs only an own `requestAdapter` method on this
-single-use Worker's GPU object. The shared facade captures its original
+page-owned Worker's GPU object; the wrapper lives for that Worker's lifetime. The shared facade captures its original
 acquisition method before installation; looking it up dynamically would recurse.
 The original property is restored in reverse installation order on exit.
 Window/global prototypes, device limits, runtime files, model files, dtypes,

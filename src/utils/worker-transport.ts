@@ -142,8 +142,10 @@ export function postWorkerNotification<T>({ endpoint, schema, value }: {
 }
 
 export function subscribeWorkerNotifications<T>({ endpoint, schema, listener }: {
-  endpoint: Comlink.Endpoint, schema: import('zod').ZodType<T>, listener: ({ value }: { value: T }) => void,
+  endpoint: Comlink.Endpoint | undefined, schema: import('zod').ZodType<T>, listener: ({ value }: { value: T }) => void,
 }): () => void {
+  // Undefined is the current dedicated Worker, matching postWorkerNotification.
+  const target = endpoint ?? globalThis as unknown as Comlink.Endpoint;
   let active = true;
   const receive: EventListener = event => {
     if (!active) return;
@@ -152,10 +154,10 @@ export function subscribeWorkerNotifications<T>({ endpoint, schema, listener }: 
       if (parsed.success) listener({ value: parsed.data });
     } catch { /* Neither malformed telemetry nor a renderer controls the Worker. */ }
   };
-  endpoint.addEventListener('message', receive);
-  endpoint.start?.();
+  target.addEventListener('message', receive);
+  target.start?.();
   return () => {
-    active = false; endpoint.removeEventListener('message', receive);
+    active = false; target.removeEventListener('message', receive);
   };
 }
 

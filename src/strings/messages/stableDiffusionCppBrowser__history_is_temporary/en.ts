@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__history_is_temporary = (): string => "Only the latest four images are kept in this page. Download images to keep them; leaving the page discards the results.";
+export const stableDiffusionCppBrowser__history_is_temporary = (): string => "Images are temporary on this page. Save those you wish to keep before leaving.";

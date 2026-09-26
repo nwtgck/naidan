@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Dateien werden ohne erneutes Aufteilen bereichsweise gelesen. Jede Generierung nutzt einen eigenen Worker; Abbrechen beendet ihn. Die Speicherplanung lässt sich in den erweiterten Einstellungen anpassen.";
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Geladene Modelle können wiederverwendet werden. Abbrechen oder Verlassen der Seite gibt die Laufzeit frei, nicht die gespeicherten Dateien.";

@@ -55,10 +55,13 @@ it('downloads -> verifies -> publishes -> inventories -> selects the actual thre
   expect(view.components.value.find(component => component.slot === 'lm')?.selected).toContain(files[2]!.path);
   const inventory = await listImageRepositories({ signal: undefined });
   expect(inventory.flatMap(repo => repo.files).every(file => file.receipt?.source.kind === 'hugging-face')).toBe(true);
+  const identities = view.selectedModels()!.map(model => model.sourceId);
+  expect(identities.every(id => typeof id === 'string' && id.includes('huggingface.co/'))).toBe(true);
   calls.fetch.mockClear();
   const reopened = library(); await reopened.refresh();
   reopened.chooseRecipe({ recipeId: recipe.id, selections: {} });
   expect(reopened.ready.value).toBe(true); expect(calls.fetch).not.toHaveBeenCalled();
+  expect(reopened.selectedModels()!.map(model => model.sourceId)).toEqual(identities);
 });
 it('does not call a fully downloaded but structurally wrong encoder ready; a filename cannot bypass classification', async () => {
   await serve({ layers: 32, failLast: false });

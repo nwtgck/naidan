@@ -313,7 +313,11 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     return selectionsToUse.map(({ slot, candidate }) => {
       const file = candidate.files.find(entry => entry.path === candidate.path);
       if (!file) throw new Error('Selected model file disappeared from the inventory');
-      return { slot, file: file.file, path: candidate.path, companions: candidate.files.filter(entry => entry.path !== candidate.path) };
+      // Receipts distinguish re-published data; include every member, including index metadata.
+      const sourceId = candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({ repository: candidate.repositoryId, path: candidate.path,
+        files: candidate.files.map(entry => ({ path: entry.path, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
+      }) : undefined;
+      return { slot, ...(sourceId ? { sourceId } : {}), file: file.file, path: candidate.path, companions: candidate.files.filter(entry => entry.path !== candidate.path) };
     });
   }
   function cancelImport(): void {

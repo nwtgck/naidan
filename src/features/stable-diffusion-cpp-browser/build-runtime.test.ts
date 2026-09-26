@@ -10,7 +10,7 @@ const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
-function fixture() {
+function fixture({ omitFunction }: { omitFunction?: string } = {}) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'naidan-image-artifact-')); directories.push(directory);
   const sourceCommit = 'a'.repeat(40);
   const files: { path: string, bytes: number, sha256: string }[] = [];
@@ -23,7 +23,7 @@ function fixture() {
     for (const [extension, data] of Object.entries({ wasm: Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]), mjs: Buffer.from('export default () => { throw Error("fixture only"); };'), 'd.ts': Buffer.from('export {};') })) add({ relative: `profiles/${profile}/browser/core.${extension}`, data });
     profiles[profile] = { variants: { browser: { sourceCommit, sourceDirty: false, profile, variant: 'browser', configuration: { webgpu: true, pthreads: false, memory64: profile.includes('wasm64'), jspi: profile.endsWith('jspi'), asyncify: profile.endsWith('asyncify') }, validation: { compiled: true, browserSmoke: true, fixtureOnly: true, realModelInference: false } } } };
   }
-  const schema = Buffer.from(JSON.stringify({ abiVersion: 2, functions: ['sd_ctx_params_init', 'sd_img_gen_params_init', 'new_sd_ctx', 'free_sd_ctx', 'generate_image', 'free_sd_images', 'sd_get_model_version_name', 'sd_get_default_sample_method', 'sd_get_default_scheduler', 'sd_set_log_callback', 'sd_set_progress_callback', 'sd_ctx_supports_image_generation', 'str_to_sample_method', 'str_to_scheduler'].map(name => ({ name })), records: ['sd_ctx_params_t', 'sd_img_gen_params_t', 'sd_image_t', 'sd_sample_params_t', 'sd_guidance_params_t', 'sd_tiling_params_t'].map(name => ({ name })) }));
+  const schema = Buffer.from(JSON.stringify({ abiVersion: 2, functions: ['sd_ctx_params_init', 'sd_img_gen_params_init', 'new_sd_ctx', 'free_sd_ctx', 'generate_image', 'free_sd_images', 'sd_get_model_version_name', 'sd_get_default_sample_method', 'sd_get_default_scheduler', 'sd_set_log_callback', 'sd_set_progress_callback', 'sd_set_preview_callback', 'sd_ctx_supports_image_generation', 'str_to_sample_method', 'str_to_scheduler'].filter(name => name !== omitFunction).map(name => ({ name })), records: ['sd_ctx_params_t', 'sd_img_gen_params_t', 'sd_image_t', 'sd_sample_params_t', 'sd_guidance_params_t', 'sd_tiling_params_t'].map(name => ({ name })) }));
   const schemaSha256 = createHash('sha256').update(schema).digest('hex');
   add({ relative: 'api/schema.json', data: schema });
   for (const relative of ['api/schema.mjs', 'examples/runtime/index.mjs', 'examples/runtime/bindings.mjs', 'examples/runtime/read-only-file.mjs']) add({ relative, data: Buffer.from('export const fixtureOnly = true;') });
@@ -97,4 +97,9 @@ it('rejects an oversized payload before loading that payload into memory', () =>
   const file = path.join(directory, 'stable-diffusion-cpp/profiles/webgpu-wasm32-jspi/browser/core.wasm');
   writeFileSync(file, new Uint8Array(8192));
   expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('size mismatch');
+});
+
+it('rejects image artifacts without the preview setter before accepting the runtime', () => {
+  const { directory } = fixture({ omitFunction: 'sd_set_preview_callback' });
+  expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('missing a required upstream function: sd_set_preview_callback');
 });

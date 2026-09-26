@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { runImageGeneration } from './session';
+import { runImageGeneration, createImageGenerationSession, effectiveVaeTile } from './session';
 import type { Core, CoreModule, HostHelpers, NativeApi } from './core-types';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { fixtureReader, ggufFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
@@ -13,12 +13,16 @@ function harness({ pointerBytes, outcome, channels }: {
   const recordPointers = new Map<string, bigint>();
   const strings = new Map<bigint, string>();
   const callbacks = new Map<number, (...args: (number | bigint)[]) => void>();
-  const registrations = { log: 0, progress: 0 };
+  const registrations = { log: 0, progress: 0, preview: 0 };
+  const previewWrites: (number | bigint)[][] = [];
   let cursor = 64;
   const allocate = ({ bytes }: { bytes: number | bigint }) => {
     const pointer = BigInt(cursor); cursor += Math.ceil(Number(bytes) / 16) * 16; return pointer;
   };
   const module: CoreModule = {
+    _sdc_sd_set_preview_callback: vi.fn((...args) => {
+      previewWrites.push(args);
+    }),
     HEAPU8: new Uint8Array(2 * 1024 * 1024), FS: { mkdir: vi.fn() }, _sdc_abi_version: () => 2,
     addFunction: vi.fn((callback, signature) => {
       events.push('callback:' + signature); const pointer = callbacks.size + 10; callbacks.set(pointer, callback); return pointer;
@@ -54,11 +58,13 @@ function harness({ pointerBytes, outcome, channels }: {
     sd_set_progress_callback: vi.fn(async pointer => {
       registrations.progress = Number(pointer);
     }),
-    sd_set_preview_callback: vi.fn(async () => undefined), sd_list_devices: vi.fn(async () => 0n),
+    sd_set_preview_callback: vi.fn(async (...args) => {
+      registrations.preview = Number(args[0]); previewWrites.push(args);
+    }), sd_list_devices: vi.fn(async () => 0n),
     generate_image: vi.fn(async (_ctx, _params, imagesOut, countOut) => {
       if (outcome === 'trap') throw new Error('mocked Wasm trap');
       // Deliberately replace the heap to verify views are acquired after await.
-      const old = module.HEAPU8; module.HEAPU8 = new Uint8Array(old.length * 2); module.HEAPU8.set(old);
+      const old = module.HEAPU8; module.HEAPU8 = new Uint8Array(4 * 1024 * 1024); module.HEAPU8.set(old);
       const view = new DataView(module.HEAPU8.buffer);
       if (pointerBytes === 8) view.setBigUint64(Number(imagesOut), 300000n, true);
       else view.setUint32(Number(imagesOut), 300000, true);
@@ -76,7 +82,7 @@ function harness({ pointerBytes, outcome, channels }: {
   };
   const core: Core = {
     module, api, pointerBytes, busy: false,
-    constant: vi.fn(() => 100),
+    constant: vi.fn(name => name === 'PREVIEW_PROJ' ? 1 : name === 'PREVIEW_VAE' ? 3 : name === 'PREVIEW_NONE' ? 0 : 100),
     alloc: vi.fn(bytes => allocate({ bytes })),
     free: vi.fn(() => {
       events.push('free-allocation');
@@ -112,7 +118,7 @@ function harness({ pointerBytes, outcome, channels }: {
   const reader = { readAsArrayBuffer: vi.fn((_blob: Blob) => {
     const header = new ArrayBuffer(24), view = new DataView(header); view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return header;
   }) };
-  return { core, api, helpers, reader, fields, recordPointers, strings, events, callbacks, registrations };
+  return { core, api, helpers, reader, fields, recordPointers, strings, events, callbacks, registrations, previewWrites };
 }
 
 it.each([4, 8] as const)('uses public records and caller policy with %i-byte pointers; releases all native resources before files', async pointerBytes => {
@@ -139,7 +145,7 @@ it.each([4, 8] as const)('uses public records and caller policy with %i-byte poi
   expect(h.events.indexOf('free-images')).toBeLessThan(h.events.indexOf('free-context'));
   expect(h.events.indexOf('free-context')).toBeLessThan(h.events.indexOf('unmount'));
   expect(h.events.indexOf('clear-log')).toBeLessThan(h.events.indexOf('remove-function'));
-  expect(h.core.module.removeFunction).toHaveBeenCalledTimes(2);
+  expect(h.core.module.removeFunction).toHaveBeenCalledTimes(3);
 });
 it('uses upstream defaults and safely handles notification exceptions', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 4 });
@@ -265,11 +271,14 @@ it('also skips native cleanup if a short native boundary traps', async () => {
 });
 it('does not replace an ordinary generation failure when normal native teardown also fails', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'generation-failure', channels: 3 });
-  vi.mocked(h.api.free_sd_ctx).mockRejectedValueOnce(new WebAssembly.RuntimeError('cleanup trap'));
+  let freesAtTrap = 0;
+  vi.mocked(h.api.free_sd_ctx).mockImplementationOnce(async () => {
+    freesAtTrap = vi.mocked(h.core.free).mock.calls.length; throw new WebAssembly.RuntimeError('cleanup trap');
+  });
   const onDiagnostic = vi.fn();
   await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic })).rejects.toThrow('Image generation did not return one complete image');
   expect(h.api.free_sd_images).toHaveBeenCalledOnce(); expect(h.api.free_sd_ctx).toHaveBeenCalledOnce();
-  expect(h.core.free).not.toHaveBeenCalled(); expect(h.events).not.toContain('unmount');
+  expect(vi.mocked(h.core.free).mock.calls.length).toBe(freesAtTrap); expect(h.events).not.toContain('unmount');
   expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', stage: 'cleanup', fields: expect.objectContaining({ errorType: 'wasm-trap' }) }));
 });
 
@@ -291,4 +300,109 @@ it.each([4, 8] as const)('reports VAE tile progress and failures as decoding wit
   expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'decoding', step: 0, steps: 1 } });
   expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', stage: 'decoding' }));
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.core.free).not.toHaveBeenCalled();
+});
+
+it.each([4, 8] as const)('retains one context and mounts across different prompts with %i-byte pointers, freeing only per-image buffers', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
+  const session = createImageGenerationSession(h), request = requestFixture(); request.sessionId = 'retained';
+  const args = { request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic: vi.fn() };
+  await session.generate(args);
+  const ctxRecord = h.recordPointers.get('sd_ctx_params_t')!;
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.events).not.toContain('unmount');
+  expect(h.core.free).not.toHaveBeenCalledWith(ctxRecord);
+  const firstImage = h.recordPointers.get('sd_img_gen_params_t')!;
+  expect(h.core.free).toHaveBeenCalledWith(firstImage);
+  request.parameters.prompt = 'another image'; request.parameters.seed = '123'; request.runId++;
+  await session.generate(args);
+  expect(h.api.new_sd_ctx).toHaveBeenCalledTimes(1); expect(h.helpers.mountReadOnlyFile).toHaveBeenCalledTimes(1);
+  expect(h.api.generate_image).toHaveBeenCalledTimes(2); expect(h.api.free_sd_images).toHaveBeenCalledTimes(2);
+  expect(h.core.module.addFunction).toHaveBeenCalledTimes(3);
+  expect(args.onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ fields: { reused: true } }));
+  await session.close(); await session.close();
+  expect(h.api.free_sd_ctx).toHaveBeenCalledTimes(1); expect(h.core.free).toHaveBeenCalledWith(ctxRecord);
+  expect(h.events.filter(event => event === 'unmount')).toHaveLength(1);
+});
+it('rejects simultaneous generation/cleanup and cannot reuse a poisoned context', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  const pending = Promise.withResolvers<number>(), started = Promise.withResolvers<void>();
+  vi.mocked(h.api.generate_image).mockImplementationOnce(() => {
+    started.resolve(); return pending.promise;
+  });
+  const session = createImageGenerationSession(h), args = { request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() };
+  const first = session.generate(args); await started.promise;
+  await expect(session.generate(args)).rejects.toThrow('busy'); await expect(session.close()).rejects.toThrow('cleanup during generation');
+  const failed = expect(first).rejects.toThrow('native trap'); pending.reject(new WebAssembly.RuntimeError('native trap')); await failed;
+  await expect(session.generate(args)).rejects.toThrow('failed'); await session.close();
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.events).not.toContain('unmount');
+});
+it.each([4, 8] as const)('turns previews ON/OFF during native generation using only the reviewed scalar export (%i-byte pointers)', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
+  const request = requestFixture(); request.runId = 5; request.preview.interval = 1;
+  const onPreview = vi.fn(), session = createImageGenerationSession(h);
+  const original = vi.mocked(h.api.generate_image).getMockImplementation()!;
+  vi.mocked(h.api.generate_image).mockImplementationOnce(async (...args) => {
+    const result = await original(...args);
+    const previewPointer = h.registrations.preview;
+    const updates = (revision: number, enabled: boolean) => ({ type: 'naidan-image-preview-control-v1' as const, runId: 5, revision, settings: { ...request.preview, enabled } });
+    expect(session.updatePreview({ control: updates(1, true) })).toBe(true);
+    h.callbacks.get(previewPointer)?.(1, 1, 300000n, 0, 0n);
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(session.updatePreview({ control: updates(2, false) })).toBe(true);
+    h.callbacks.get(previewPointer)?.(2, 1, 300000n, 0, 0n);
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(session.updatePreview({ control: updates(3, true) })).toBe(true);
+    h.callbacks.get(previewPointer)?.(3, 1, 300000n, 0, 0n);
+    h.callbacks.get(previewPointer)?.(-3, 1, 300000n, 0, 0n); // intermediate multistep evaluation is not a new logical step
+    expect(onPreview).toHaveBeenCalledTimes(2);
+    expect(h.api.sd_set_preview_callback).toHaveBeenCalledTimes(1); // startup only, not generic busy API
+    expect(h.core.module._sdc_sd_set_preview_callback).toHaveBeenCalledTimes(3);
+    return result;
+  });
+  await session.generate({ request, onProgress: vi.fn(), onLog: vi.fn(), onPreview });
+  expect(onPreview.mock.calls.map(([{ capture }]) => [capture.step, capture.revision])).toEqual([[1, 1], [3, 3]]);
+  expect(onPreview.mock.calls[0]![0].capture.image.pixels[0]).toBe(71); // copy survived free_sd_images
+  await session.close();
+});
+it('keeps raw preview control disabled after a native trap', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'trap', channels: 3 }), session = createImageGenerationSession(h), request = requestFixture(); request.runId = 1;
+  await expect(session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow();
+  const writes = h.previewWrites.length;
+  expect(session.updatePreview({ control: { type: 'naidan-image-preview-control-v1', runId: 1, revision: 1, settings: { ...request.preview, enabled: true } } })).toBe(false);
+  await session.close(); expect(h.previewWrites).toHaveLength(writes);
+});
+it.each([
+  ['Qwen Image 2.1', 32, 'bounded', true, 16], ['Qwen Image 2.1', 64, 'native', true, 64],
+  ['Qwen Image 2.1', 32, 'bounded', false, 32], ['Z-Image', 32, 'bounded', true, 32], ['Unknown', 64, 'bounded', true, 64],
+] as const)('bounds VAE working tiles only for the exact native model and explicit policy: %s/%i/%s/%s', (modelVersion, requested, policy, enabled, expected) => {
+  expect(effectiveVaeTile({ modelVersion, requested, policy, enabled })).toBe(expected);
+});
+it('does not automatically rerun intentional white output or change the user prompt, guidance, seed or dimensions', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 4 }), request = requestFixture();
+  const original = vi.mocked(h.api.generate_image).getMockImplementation()!;
+  vi.mocked(h.api.generate_image).mockImplementationOnce(async (...args) => {
+    const result = await original(...args); h.core.module.HEAPU8.fill(255, 400000, 400000 + 256 * 256 * 4); return result;
+  });
+  const output = await runImageGeneration({ ...h, request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic: vi.fn() });
+  expect(output.uniformOutput).toBe(true); expect(h.api.generate_image).toHaveBeenCalledTimes(1);
+  expect(output.width).toBe(request.parameters.width); expect(output.height).toBe(request.parameters.height);
+});
+it('does not relabel detailed preview VAE tiles as denoising steps', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }), request = requestFixture();
+  request.runId = 1; request.preview = { ...request.preview, mode: 'vae', enabled: true }; request.parameters.steps = 8;
+  const onProgress = vi.fn(), onPreview = vi.fn();
+  const original = vi.mocked(h.api.generate_image).getMockImplementation()!;
+  vi.mocked(h.api.generate_image).mockImplementationOnce(async (...args) => {
+    const result = await original(...args);
+    h.strings.set(2n, 'vae.hpp:285 - VAE Tile size: 16x16\n'); h.callbacks.get(h.registrations.log)?.(1, 2, 0);
+    h.callbacks.get(h.registrations.progress)?.(0, 9, 0.1, 0);
+    h.callbacks.get(h.registrations.progress)?.(9, 9, 0.1, 0);
+    h.strings.set(2n, 'vae.hpp:319 - computing vae decode graph completed, taking 1.0s\n'); h.callbacks.get(h.registrations.log)?.(1, 2, 0);
+    h.callbacks.get(h.registrations.preview)?.(1, 1, 300000n, 0, 0n);
+    h.callbacks.get(h.registrations.progress)?.(1, 8, 0.1, 0);
+    return result;
+  });
+  await runImageGeneration({ ...h, request, onProgress, onLog: vi.fn(), onPreview });
+  expect(onProgress.mock.calls.some(([{ event }]) => event.phase === 'sampling' && event.steps === 9)).toBe(false);
+  expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 1, steps: 8 } });
+  expect(onPreview).toHaveBeenCalledTimes(1);
 });

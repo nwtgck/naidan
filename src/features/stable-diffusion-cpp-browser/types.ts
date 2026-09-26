@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { validModelPath } from './logic/model-path';
-import { profileOptions, samplerOptions, schedulerOptions } from './form-options';
+import { profileOptions, samplerOptions, schedulerOptions, defaultPreviewSettings } from './form-options';
+export { defaultPreviewSettings } from './form-options';
 
 export const profileSchema = z.enum(profileOptions);
 export function getProfileConfiguration({ profile }: { profile: z.infer<typeof profileSchema> }): { pointerBytes: 4 | 8, memory64: boolean, jspi: boolean, suspension: 'direct' | 'asyncify' } {
@@ -33,6 +34,33 @@ export const configurationSchema = z.discriminatedUnion('kind', [
 ]);
 export const samplerSchema = z.enum(samplerOptions);
 export const schedulerSchema = z.enum(schedulerOptions);
+export const previewSettingsSchema = z.object({
+  enabled: z.boolean(),
+  interval: z.number().int().min(1).max(100),
+  mode: z.enum(['projection', 'vae']),
+  maxEdge: z.union([z.literal(0), z.number().int().min(64).max(2048)]),
+}).strict();
+export type PreviewSettings = z.infer<typeof previewSettingsSchema>;
+export const previewControlSchema = z.object({
+  type: z.literal('naidan-image-preview-control-v1'),
+  runId: z.number().int().positive(),
+  revision: z.number().int().nonnegative(),
+  settings: previewSettingsSchema,
+}).strict();
+export const previewFrameSchema = z.object({
+  type: z.literal('naidan-image-preview-v1'),
+  runId: z.number().int().positive(),
+  revision: z.number().int().nonnegative(),
+  step: z.number().int().min(1).max(100),
+  steps: z.number().int().min(1).max(100),
+  width: z.number().int().min(1).max(2048),
+  height: z.number().int().min(1).max(2048),
+  mode: z.enum(['projection', 'vae']),
+  png: z.custom<Blob>(value => typeof Blob !== 'undefined' && value instanceof Blob && value.type === 'image/png' && value.size > 0 && value.size < 32 * 1024 * 1024),
+}).strict();
+export type PreviewFrame = z.infer<typeof previewFrameSchema>;
+export type PreviewControl = z.infer<typeof previewControlSchema>;
+
 export const parametersSchema = z.object({
   prompt: z.string().trim().min(1).max(4096).refine(value => !value.includes('\0')),
   negativePrompt: z.string().max(4096).refine(value => !value.includes('\0')),
@@ -48,6 +76,7 @@ export const parametersSchema = z.object({
   vaeTiling: z.boolean(),
   vaeTileSize: z.number().int().min(16).max(256).multipleOf(8),
   flashAttention: z.boolean(),
+  qwenVaePolicy: z.enum(['bounded', 'native']).default('bounded'),
   conditioningCacheSize: z.number().int().min(0).max(32),
   modelArguments: z.string().max(4096).refine(value => !value.includes('\0')),
 
@@ -58,6 +87,8 @@ const localFileSchema = z.custom<File>(value => typeof File !== 'undefined' && v
 const relativePathSchema = z.string().refine(path => validModelPath({ path }));
 export const modelFileSchema = z.object({
   slot: modelSlotSchema,
+  // Issued only by the published local inventory; manual files use identity tokens in the client.
+  sourceId: z.string().min(1).max(1024 * 1024).optional(),
   file: localFileSchema,
   // Relative paths preserve source filenames and index references. Each role
   // receives its own mount root, so identically named files cannot collide.
@@ -77,6 +108,10 @@ export const modelFileSchema = z.object({
 });
 export const requestSchema = z.object({
   debug: z.enum(['off', 'on']).optional(),
+  runId: z.number().int().nonnegative().default(0),
+  // Set by the window owner before transport, not inferred from names in the Worker.
+  sessionId: z.string().max(64).default(''),
+  preview: previewSettingsSchema.default({ ...defaultPreviewSettings }),
   artifact: artifactSchema,
   // The application supplies its own base, never a model-controlled URL.
   baseUrl: z.string().url(),
@@ -102,6 +137,7 @@ export const responseSchema = z.object({
   width: z.number().int().min(128).max(2048),
   height: z.number().int().min(128).max(2048),
   modelVersion: z.string().max(256),
+  uniformOutput: z.boolean().default(false),
 });
 export type Artifact = z.infer<typeof artifactSchema>;
 export type Configuration = z.infer<typeof configurationSchema>;

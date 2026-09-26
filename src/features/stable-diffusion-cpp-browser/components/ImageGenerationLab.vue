@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ImageGenerationPreview from './ImageGenerationPreview.vue';
 import ImageModelLibrary from './ImageModelLibrary.vue';
 import ImageRepositoryImport from './ImageRepositoryImport.vue';
 import ImageModelCatalog from './ImageModelCatalog.vue';
@@ -9,8 +10,9 @@ import { profileOptions, samplerOptions, schedulerOptions } from '@/features/sta
 import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation';
 
 const id = useId();
-const { debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results,
-  library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, copyDiagnostics, saveDiagnostics } = useImageGeneration();
+const view = useImageGeneration();
+const { retainModel, modelResident, maxResults, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results,
+  library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, releaseModel, clearResults, copyDiagnostics, saveDiagnostics } = view;
 const slots = computed(() => {
   switch (layout.value) {
   case 'checkpoint': return [{ slot: 'model' as const, label: lazyStrings.stableDiffusionCppBrowser__model_file() }];
@@ -43,7 +45,7 @@ const phaseLabel = computed(() => {
   default: { const exhaustive: never = progress.value.phase; throw new Error(String(exhaustive)); }
   }
 });
-defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, weightResidency, gpuBudgetMiB, results, generate } }) || {}) });
+defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, generate } }) || {}) });
 </script>
 
 <template>
@@ -61,6 +63,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
           <ImageRepositoryImport :disabled="formDisabled" :view="library" />
         </div>
       </section>
+      <div tw-class="flex flex-wrap items-center gap-3 text-sm" data-testid="image-model-retention">
+        <label tw-class="inline-flex items-center gap-2"><input v-model="retainModel" type="checkbox" :disabled="!supported" data-testid="image-retain-model" />{{ lazyStrings.stableDiffusionCppBrowser__keep_model_loaded() }}</label>
+        <span v-if="modelResident" tw-class="text-xs text-purple-600 dark:text-purple-400">{{ lazyStrings.stableDiffusionCppBrowser__model_resident() }}</span>
+        <button type="button" :disabled="busy || !modelResident" @click="releaseModel" data-testid="image-release-model" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__release_model() }}</button>
+      </div>
       <form @submit.prevent="generate" tw-class="space-y-5">
         <fieldset :disabled="formDisabled" tw-class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
           <legend tw-class="text-base font-semibold px-2">{{ lazyStrings.stableDiffusionCppBrowser__selected_model() }}</legend>
@@ -114,6 +121,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
               <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__vae_tile_size() }}</span><input v-model.number="parameters.vaeTileSize" type="number" min="16" max="256" step="8" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
               <label tw-class="text-sm flex gap-2 items-center"><input v-model="parameters.flashAttention" type="checkbox" />{{ lazyStrings.stableDiffusionCppBrowser__flash_attention() }}</label>
             </div>
+            <label tw-class="text-sm flex gap-2 items-center"><input v-model="parameters.qwenVaePolicy" type="checkbox" true-value="bounded" false-value="native" data-testid="image-qwen-vae-policy" />{{ lazyStrings.stableDiffusionCppBrowser__qwen_vae_bounded() }}</label>
+            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__qwen_vae_help() }}</p>
             <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__model_arguments() }}</span><input v-model="parameters.modelArguments" type="text" maxlength="4096" placeholder="qwen_image_2_1_prefix_cache=false" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
           </details>
         </fieldset>
@@ -125,14 +134,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
         </div>
         <p v-if="cancelled" role="status" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__cancelled() }}</p>
       </form>
+      <ImageGenerationPreview :view="view" />
       <section tw-class="space-y-3">
-        <h2 tw-class="text-lg font-semibold">{{ lazyStrings.stableDiffusionCppBrowser__generated_images() }}</h2>
+        <div tw-class="flex flex-wrap items-center justify-between gap-3">
+          <h2 tw-class="text-lg font-semibold">{{ lazyStrings.stableDiffusionCppBrowser__generated_images() }}</h2>
+          <div tw-class="flex flex-wrap items-center gap-3 text-xs">
+            <label tw-class="inline-flex gap-2 items-center"><span>{{ lazyStrings.stableDiffusionCppBrowser__result_limit() }}</span><input v-model.number="maxResults" :disabled="!supported" type="number" min="1" max="100" step="1" data-testid="image-result-limit" tw-class="w-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
+            <button v-if="results.length" type="button" @click="clearResults" tw-class="text-gray-500 underline">{{ lazyStrings.stableDiffusionCppBrowser__clear_results() }}</button>
+          </div>
+        </div>
+        <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__gallery_budget() }}</p>
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__history_is_temporary() }}</p>
         <p v-if="!results.length" tw-class="py-12 text-center text-gray-500 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl">{{ lazyStrings.stableDiffusionCppBrowser__no_images_yet() }}</p>
         <div tw-class="grid sm:grid-cols-2 gap-5">
           <article data-testid="image-generated-result" v-for="result in results" :key="result.id" tw-class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
             <img :src="result.url" :alt="result.parameters.prompt" :width="result.parameters.width" :height="result.parameters.height" tw-class="w-full h-auto" />
             <div tw-class="p-4 space-y-2">
+              <p v-if="result.uniformOutput" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__uniform_image_warning() }}</p>
               <p tw-class="text-sm whitespace-pre-wrap break-words">{{ result.parameters.prompt }}</p>
               <p tw-class="text-xs text-gray-500">{{ result.modelVersion }} · {{ result.parameters.width }} × {{ result.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__seed() }}: {{ result.parameters.seed }}</p>
               <div tw-class="flex gap-4 text-sm"><a :href="result.url" :download="'naidan-image-' + result.parameters.seed + '.png'" tw-class="text-purple-600 dark:text-purple-400 underline">{{ lazyStrings.stableDiffusionCppBrowser__download_png() }}</a><button type="button" @click="removeResult({ resultId: result.id })" tw-class="text-gray-500 underline">{{ lazyStrings.stableDiffusionCppBrowser__remove() }}</button></div>

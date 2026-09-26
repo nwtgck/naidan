@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_help = (): string => "Puede cambiar la activación, el intervalo y el tamaño durante la generación. Las vistas detalladas añaden trabajo de decodificación; reducir su tamaño no reduce ese trabajo.";

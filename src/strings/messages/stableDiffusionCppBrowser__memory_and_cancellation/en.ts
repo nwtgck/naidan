@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Files are read in ranges without re-splitting. Each generation uses a dedicated Worker; cancellation terminates it. Memory staging can be adjusted in advanced settings.";
+export const stableDiffusionCppBrowser__memory_and_cancellation = (): string => "Models can remain loaded between generations. Cancellation or leaving this page releases the runtime. Model files remain in local storage.";

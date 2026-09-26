@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createImageClient } from './client-hosted';
 import { requestFixture as request } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
-const mocks = vi.hoisted(() => ({ generate: vi.fn(), release: vi.fn(), terminate: vi.fn(), constructed: vi.fn(), workers: [] as EventTarget[] }));
+const mocks = vi.hoisted(() => ({ generate: vi.fn(), release: vi.fn(), terminate: vi.fn(), constructed: vi.fn(), messages: [] as unknown[], workers: [] as EventTarget[] }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({ ...await importOriginal<typeof import('@/utils/worker-transport')>(), wrapWorkerRemote: () => ({ generate: mocks.generate }), releaseWorkerRemote: () => mocks.release(), workerProxy: ({ value }: { value: unknown }) => value }));
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.workers.length = 0;
+  vi.clearAllMocks(); mocks.workers.length = 0; mocks.messages.length = 0;
   vi.stubGlobal('Worker', class extends EventTarget {
     constructor() {
       super(); mocks.constructed(); mocks.workers.push(this);
+    } postMessage(value: unknown) {
+      mocks.messages.push(value);
     } terminate() {
       mocks.terminate();
     }
@@ -35,11 +37,11 @@ it('disposal rejects a pending request even when the proxy never acknowledges re
   const settled = expect(task).rejects.toMatchObject({ name: 'AbortError' }); client.dispose(); await settled;
   expect(mocks.terminate).toHaveBeenCalled();
 });
-it('releases worker after success and rejects malformed responses', async () => {
+it('retains worker after success and retires malformed responses', async () => {
   const client = createImageClient();
   mocks.generate.mockResolvedValue({ png: new Blob(['fixture'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked result' });
   const result = await client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() });
-  expect(result.modelVersion).toBe('mocked result'); expect(mocks.terminate).toHaveBeenCalled();
+  expect(result.modelVersion).toBe('mocked result'); expect(mocks.terminate).not.toHaveBeenCalled();
   mocks.generate.mockResolvedValue({ png: 'not a Blob' });
   await expect(client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() })).rejects.toThrow();
   client.dispose();
@@ -148,4 +150,79 @@ it('bounds native error context even after repeated GPU errors', async () => {
   expect(String(message).length).toBeLessThan(18000);
   expect(message).toContain('uncaptured GPU error: 99'); expect(message).not.toContain('uncaptured GPU error: 0 ');
   client.dispose();
+});
+
+it('reuses one Worker for compatible requests and physically retires it before changed context settings', async () => {
+  const client = createImageClient(), input = request();
+  mocks.generate.mockResolvedValue({ png: new Blob(['x'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mock' });
+  await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  input.parameters.prompt = 'new prompt'; input.parameters.seed = '999'; input.parameters.steps = 8;
+  await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  expect(mocks.constructed).toHaveBeenCalledTimes(1); expect(mocks.terminate).not.toHaveBeenCalled();
+  expect(mocks.generate.mock.calls.map(([r]) => r.runId)).toEqual([1, 2]);
+  input.parameters.flashAttention = true;
+  await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  expect(mocks.constructed).toHaveBeenCalledTimes(2); expect(mocks.terminate).toHaveBeenCalledTimes(1);
+  expect(mocks.terminate.mock.invocationCallOrder[0]).toBeLessThan(mocks.constructed.mock.invocationCallOrder[1]!);
+  client.release(); client.release(); client.dispose(); expect(mocks.terminate).toHaveBeenCalledTimes(2);
+});
+it('invalidates identical-looking manual files and recovers from cancellation in a fresh physical Worker', async () => {
+  const client = createImageClient(), input = request(), cancelled = new AbortController();
+  mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
+  const task = client.generate({ request: input, signal: cancelled.signal, onProgress: vi.fn() });
+  const stopped = expect(task).rejects.toMatchObject({ name: 'AbortError' }); cancelled.abort(); await stopped;
+  mocks.generate.mockResolvedValue({ png: new Blob(['x'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mock' });
+  await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  const file = input.models[0]!.file; input.models[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
+  await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  expect(mocks.constructed).toHaveBeenCalledTimes(3); expect(mocks.terminate).toHaveBeenCalledTimes(2); client.dispose();
+});
+it('sends live control messages with monotonically scoped revisions and rejects old/foreign preview frames', async () => {
+  const client = createImageClient(), input = request(), controller = new AbortController(), onPreview = vi.fn();
+  mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
+  const task = client.generate({ request: input, signal: controller.signal, onProgress: vi.fn(), onPreview });
+  const stopped = expect(task).rejects.toMatchObject({ name: 'AbortError' });
+  client.updatePreview({ settings: { ...input.preview, enabled: true, interval: 1, maxEdge: 128 } });
+  client.updatePreview({ settings: { ...input.preview, enabled: false } });
+  client.updatePreview({ settings: { ...input.preview, enabled: true, mode: 'vae' } }); // mode is startup-only
+  expect(mocks.messages).toHaveLength(2);
+  expect(mocks.messages).toMatchObject([{ runId: 1, revision: 1, settings: { enabled: true, interval: 1 } }, { runId: 1, revision: 2, settings: { enabled: false } }]);
+  const frame = { type: 'naidan-image-preview-v1', runId: 1, revision: 2, step: 2, steps: 20, mode: 'projection', width: 32, height: 32, png: new Blob(['png'], { type: 'image/png' }) };
+  for (const data of [{ ...frame, revision: 1 }, { ...frame, runId: 999 }, { ...frame, png: 'bad' }]) mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data }));
+  expect(onPreview).not.toHaveBeenCalled();
+  mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data: frame })); expect(onPreview).not.toHaveBeenCalled();
+  client.updatePreview({ settings: { ...input.preview, enabled: true } });
+  frame.revision = 3;
+  mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data: frame })); expect(onPreview).toHaveBeenCalledTimes(1);
+  controller.abort(); await stopped;
+  mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data: frame })); expect(onPreview).toHaveBeenCalledTimes(1); client.dispose();
+});
+it('retires an idle crashed worker and notifies the resident-state owner without stale subscriptions', async () => {
+  const onReleased = vi.fn(), client = createImageClient({ onReleased }), input = request();
+  mocks.generate.mockResolvedValue({ png: new Blob(['x'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mock' });
+  await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  mocks.workers[0]!.dispatchEvent(new ErrorEvent('error'));
+  expect(onReleased).toHaveBeenCalledTimes(1); expect(mocks.terminate).toHaveBeenCalledTimes(1);
+  await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  mocks.workers[0]!.dispatchEvent(new ErrorEvent('error'));
+  expect(onReleased).toHaveBeenCalledTimes(1); expect(mocks.constructed).toHaveBeenCalledTimes(2); client.dispose();
+});
+it('terminates a permanently pending native operation if the live scalar control setter fails', async () => {
+  const client = createImageClient(); mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
+  const task = client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() });
+  const failed = expect(task).rejects.toThrow('Live preview control failed');
+  mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic: { event: 'failed', stage: 'worker', elapsedMs: 1, message: 'Live preview control failed', fields: { kind: 'preview-control', runId: 1 } } } }));
+  await failed; expect(mocks.terminate).toHaveBeenCalledTimes(1); client.dispose();
+});
+it('queues generation before a start listener can send live preview control', async () => {
+  const client = createImageClient(), input = request(), stop = new AbortController();
+  mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
+  const task = client.generate({ request: input, signal: stop.signal, onProgress: vi.fn(), onDiagnostic({ diagnostic }) {
+    if (diagnostic.event === 'start' && diagnostic.stage === 'worker') {
+      expect(mocks.generate).toHaveBeenCalledTimes(1);
+      client.updatePreview({ settings: { ...input.preview, enabled: true } });
+    }
+  } });
+  expect(mocks.messages).toHaveLength(1);
+  const cancelled = expect(task).rejects.toMatchObject({ name: 'AbortError' }); stop.abort(); await cancelled; client.dispose();
 });

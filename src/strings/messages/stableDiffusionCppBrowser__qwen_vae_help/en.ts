@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__qwen_vae_help = (): string => "For Qwen Image 2.1 with tiling enabled. Keeps the output resolution; avoids the large single-tile decode path. This is a compatibility workaround, not a guarantee against uniform output.";

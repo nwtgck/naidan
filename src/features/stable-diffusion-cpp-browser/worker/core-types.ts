@@ -27,6 +27,8 @@ export interface CoreModule {
   addFunction(callback: (...args: (number | bigint)[]) => void, signature: string): number | bigint;
   removeFunction(pointer: number | bigint): void;
   _sdc_abi_version(): number;
+  /** Reviewed synchronous, allocation-free callback/flag setter. Not a generic busy-time API. */
+  _sdc_sd_set_preview_callback?(callback: bigint, mode: number, interval: number, denoised: number, noisy: number, data: bigint): void;
   _sdc_model_io_capabilities?(): number;
 }
 export interface Core {

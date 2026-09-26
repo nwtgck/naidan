@@ -1,8 +1,10 @@
 import { MessageChannel, type MessagePort as NodeMessagePort } from 'node:worker_threads';
 import * as Comlink from 'comlink';
+import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import {
   TEST_ONLY,
+  subscribeWorkerNotifications,
   exposeWorkerRemote,
   releaseWorkerRemote,
   workerCapability,
@@ -179,4 +181,21 @@ describe('worker transport', () => {
 
     expect(branded).toBe(value);
   });
+});
+
+it('accepts only schema-checked controls on the implicit worker endpoint and removes the listener', () => {
+  const target = new EventTarget(), listener = vi.fn();
+  const add = vi.spyOn(globalThis, 'addEventListener').mockImplementation((type, callback, options) => target.addEventListener(type, callback, options));
+  const remove = vi.spyOn(globalThis, 'removeEventListener').mockImplementation((type, callback, options) => target.removeEventListener(type, callback, options));
+  try {
+    const stop = subscribeWorkerNotifications({ endpoint: undefined, schema: z.object({ type: z.literal('control'), enabled: z.boolean() }).strict(), listener });
+    target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: true } }));
+    target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: 'bad' } }));
+    target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: true, injection: 1 } }));
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ value: { type: 'control', enabled: true } });
+    stop(); target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: false } }));
+    expect(listener).toHaveBeenCalledTimes(1);
+  } finally {
+    add.mockRestore(); remove.mockRestore();
+  }
 });

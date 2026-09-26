@@ -69,7 +69,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
   if (createHash('sha256').update(schemaBytes).digest('hex') !== image.schemaSha256) throw new Error('Image binding schema fingerprint mismatch');
   const schema = z.object({ abiVersion: z.literal(2), functions: z.array(z.object({ name: z.string() })), records: z.array(z.object({ name: z.string() })) }).parse(JSON.parse(schemaBytes.toString('utf8')));
   const functions = new Set(schema.functions.map(entry => entry.name));
-  for (const name of ['sd_ctx_params_init', 'sd_img_gen_params_init', 'new_sd_ctx', 'free_sd_ctx', 'generate_image', 'free_sd_images', 'sd_get_model_version_name', 'sd_get_default_sample_method', 'sd_get_default_scheduler', 'sd_set_log_callback', 'sd_set_progress_callback', 'sd_ctx_supports_image_generation', 'str_to_sample_method', 'str_to_scheduler']) {
+  for (const name of ['sd_ctx_params_init', 'sd_img_gen_params_init', 'new_sd_ctx', 'free_sd_ctx', 'generate_image', 'free_sd_images', 'sd_get_model_version_name', 'sd_get_default_sample_method', 'sd_get_default_scheduler', 'sd_set_log_callback', 'sd_set_progress_callback', 'sd_set_preview_callback', 'sd_ctx_supports_image_generation', 'str_to_sample_method', 'str_to_scheduler']) {
     if (!functions.has(name)) throw new Error('Image core is missing a required upstream function: ' + name);
   }
   const records = new Set(schema.records.map(entry => entry.name));
@@ -106,7 +106,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
 }
 
 const standaloneUiFiles = new Set([
-  'components/ImageGenerationLab.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
+  'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
   'components/ImageModelCatalog.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts',
   'form.ts',
   'form-options.ts',

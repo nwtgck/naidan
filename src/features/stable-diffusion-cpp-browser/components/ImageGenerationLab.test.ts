@@ -4,9 +4,9 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageGenerationLab from './ImageGenerationLab.vue';
 import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 vi.mock('../capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
-const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn() }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), updatePreview: vi.fn() }));
 vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({ createImageClient: () => {
-  mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose };
+  mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, updatePreview: mocks.updatePreview };
 } }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: {
   kind: 'available', sourceCommit: 'a'.repeat(40), artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
@@ -17,8 +17,9 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.clearAllMocks(); vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
   Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
+  let url = 0;
   vi.stubGlobal('URL', class extends URL {
-    static override createObjectURL = vi.fn(() => 'blob:test-image'); static override revokeObjectURL = vi.fn();
+    static override createObjectURL = vi.fn(() => `blob:test-image-${++url}`); static override revokeObjectURL = vi.fn();
   });
 });
 afterEach(() => {
@@ -45,7 +46,7 @@ it('uses independent requests, saves a temporary result, and revokes it on unmou
   expect(wrapper.get('[data-testid="image-generated-result"] a[download]').attributes('download')).toBe('naidan-image-42.png');
   expect(mocks.generate.mock.calls[0]?.[0]?.request.weightResidency).toBe('auto');
   expect(mocks.generate.mock.calls[0]?.[0]?.request.gpuBudgetMiB).toBeUndefined();
-  wrapper.unmount(); wrapper = undefined; expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-image');
+  wrapper.unmount(); wrapper = undefined; expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-image-1');
 });
 
 it('keeps an optional empty budget in advanced settings and the catalog outside the model fieldset', async () => {
@@ -123,4 +124,78 @@ it('shows image decoding separately from sampling without changing requested ste
   expect(wrapper.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(true);
   finish!({ png: new Blob(['mock PNG'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
   await running;
+});
+
+it('retains one client over six results, supports explicit release, and does not enforce the old four-image limit', async () => {
+  mocks.generate.mockResolvedValue({ png: new Blob(['mock PNG'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'first'; await flushPromises();
+  for (let n = 0; n < 6; n++) {
+    wrapper.vm.TEST_ONLY.parameters.value.prompt = `image ${n}`; await wrapper.vm.TEST_ONLY.generate();
+  }
+  await flushPromises();
+  expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.dispose).not.toHaveBeenCalled();
+  expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(true);
+  expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(6);
+  await wrapper.get('[data-testid="image-result-limit"]').setValue(3); await flushPromises();
+  expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(3);
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3);
+  await wrapper.get('[data-testid="image-release-model"]').trigger('click');
+  expect(mocks.release).toHaveBeenCalled(); expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(false);
+  expect(wrapper.vm.TEST_ONLY.results.value).toHaveLength(3);
+  wrapper.unmount(); wrapper = undefined;
+  expect(mocks.dispose).toHaveBeenCalledTimes(1); expect(URL.revokeObjectURL).toHaveBeenCalledTimes(6);
+});
+it('keeps live preview ON/OFF and interval/size controls usable while sampling, and OFF still works with an empty interval', async () => {
+  const finish = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
+  mocks.generate.mockReturnValueOnce(finish.promise);
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test'; await flushPromises();
+  const task = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const enabled = wrapper.get('[data-testid="image-preview-enabled"]');
+  expect(enabled.element.closest('fieldset')).toBeNull(); expect(enabled.element.matches(':disabled')).toBe(false);
+  expect(wrapper.get('[data-testid="image-preview-mode"]').element.matches(':disabled')).toBe(true);
+  await enabled.setValue(true);
+  await wrapper.get('[data-testid="image-preview-interval"]').setValue(1);
+  await wrapper.get('[data-testid="image-preview-size"]').setValue(128);
+  expect(mocks.updatePreview).toHaveBeenLastCalledWith({ settings: { enabled: true, interval: 1, maxEdge: 128, mode: 'projection' } });
+  await wrapper.get('[data-testid="image-preview-interval"]').setValue('');
+  await enabled.setValue(false);
+  expect(mocks.updatePreview).toHaveBeenLastCalledWith({ settings: { enabled: false, interval: 1, maxEdge: 128, mode: 'projection' } });
+  finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' }); await task;
+});
+it('keeps snapshot URLs valid when the live image changes, bounds history, and revokes every owner on unmount', async () => {
+  const finish = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
+  mocks.generate.mockReturnValueOnce(finish.promise);
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test';
+  await wrapper.get('[data-testid="image-preview-enabled"]').setValue(true);
+  await wrapper.get('[data-testid="image-keep-previews"]').setValue(true);
+  wrapper.vm.TEST_ONLY.maxPreviews.value = 2; await flushPromises();
+  const task = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const onPreview = mocks.generate.mock.calls[0]![0].onPreview;
+  for (let step = 1; step <= 3; step++) {
+    onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step, steps: 20, width: 32, height: 32, mode: 'projection', png: new Blob(['preview'], { type: 'image/png' }) } });
+  }
+  await flushPromises();
+  const keep = wrapper.vm.TEST_ONLY.previewSnapshots.value;
+  expect(keep.map(frame => frame.step)).toEqual([3, 2]);
+  for (const frame of keep) expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(frame.url);
+  expect(wrapper.findAll('[data-testid="image-preview-snapshot"]')).toHaveLength(2);
+  finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' }); await task;
+  wrapper.unmount(); wrapper = undefined;
+  const created = vi.mocked(URL.createObjectURL).mock.results.map(result => result.value).sort();
+  const revoked = vi.mocked(URL.revokeObjectURL).mock.calls.map(call => call[0]).sort();
+  expect(revoked).toEqual(created);
+});
+it('leaves explicit generation parameters untouched and releases after success when retention is disabled', async () => {
+  mocks.generate.mockResolvedValue({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'Qwen Image 2.1' });
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
+  Object.assign(wrapper.vm.TEST_ONLY.parameters.value, { prompt: 'test', guidance: 3.25, seed: '99', qwenVaePolicy: 'native', vaeTileSize: 64 });
+  await wrapper.get('[data-testid="image-retain-model"]').setValue(false); await flushPromises();
+  await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  expect(mocks.generate.mock.calls[0]![0].request.parameters).toMatchObject({ guidance: 3.25, seed: '99', qwenVaePolicy: 'native', vaeTileSize: 64 });
+  expect(mocks.release).toHaveBeenCalled(); expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(false);
+  expect(wrapper.vm.TEST_ONLY.results.value).toHaveLength(1);
 });

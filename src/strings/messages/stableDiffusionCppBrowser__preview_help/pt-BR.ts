@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_help = (): string => "É possível mudar a ativação, o intervalo e o tamanho durante a geração. Prévias detalhadas exigem trabalho extra do decodificador; reduzir a exibição não reduz esse trabalho.";

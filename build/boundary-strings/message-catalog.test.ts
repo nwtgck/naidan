@@ -150,7 +150,7 @@ describe('Boundary Strings message catalog', () => {
     fs.mkdirSync(messageDirectory, { recursive: true });
 
     expect(() => readFixtureCatalog({ root })).toThrow(
-      `Missing en.ts for catalog message "${messageKey}".`,
+      `Missing en.ts for catalog message "${messageKey}". Expected file: src/strings/messages/${messageKey}/en.ts.`,
     );
   });
 

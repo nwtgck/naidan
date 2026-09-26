@@ -1,11 +1,12 @@
 import { createImageDiagnosticBuffer, type ImageDiagnostic } from './diagnostics';
-import { computed, onMounted, onUnmounted, shallowRef } from 'vue';
+import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
 import { lazyStrings, ensureStrings } from '@/strings';
 import rawConfiguration from 'virtual:stable-diffusion-cpp-browser/config';
-import { configurationSchema, parametersSchema, requestSchema, type ModelSlot } from './types';
+import { configurationSchema, parametersSchema, requestSchema, previewSettingsSchema, type Parameters, type PreviewFrame, type ModelSlot } from './types';
 import { createImageClient } from '@/features/stable-diffusion-cpp-browser/worker/client';
 import { initialProfile, supportsJspi, supportsMemory64 } from './capabilities';
 import { useImageLibrary } from './use-image-library';
+import { createImageGallery } from './image-gallery';
 import { createImageForm } from './form';
 import type { ImageGenerationView } from './use-image-generation-types';
 
@@ -13,7 +14,7 @@ import type { ImageGenerationView } from './use-image-generation-types';
 export function useImageGeneration(): ImageGenerationView {
   const configuration = configurationSchema.parse(rawConfiguration);
   const form = createImageForm({ profile: initialProfile() });
-  const { debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results } = form;
+  const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, results } = form;
   const controller = shallowRef<AbortController>();
   const diagnosticBuffer = createImageDiagnosticBuffer();
   function recordDiagnostic({ diagnostic }: { diagnostic: ImageDiagnostic }): void {
@@ -39,7 +40,9 @@ export function useImageGeneration(): ImageGenerationView {
     const link = document.createElement('a'); link.href = url; link.download = 'naidan-image-diagnostics.jsonl'; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
-  let nextId = 0;
+  const finalGallery = createImageGallery<{ parameters: Parameters, modelVersion: string, uniformOutput: boolean }>({ initialLimit: 20, maxBytes: 256 * 1024 ** 2 });
+  const liveGallery = createImageGallery<Omit<PreviewFrame, 'png'>>({ initialLimit: 1, maxBytes: 64 * 1024 ** 2 });
+  const snapshotGallery = createImageGallery<Omit<PreviewFrame, 'png'>>({ initialLimit: 16, maxBytes: 64 * 1024 ** 2 });
   let disposed = false;
   let client: ReturnType<typeof createImageClient> | undefined;
   const busy = computed(() => controller.value !== undefined);
@@ -98,11 +101,52 @@ export function useImageGeneration(): ImageGenerationView {
     library.useManualFiles();
     files.value = {};
   }
-  function removeResult({ resultId }: { resultId: number }): void {
-    const result = results.value.find(item => item.id === resultId);
-    if (result) URL.revokeObjectURL(result.url);
-    results.value = results.value.filter(item => item.id !== resultId);
+  function releaseModel(): void {
+    client?.release(); modelResident.value = false;
   }
+  function removeResult({ resultId }: { resultId: number }): void {
+    finalGallery.remove({ id: resultId }); results.value = finalGallery.entries();
+  }
+  function clearResults(): void {
+    finalGallery.clear(); results.value = [];
+  }
+  function removePreview({ previewId }: { previewId: number }): void {
+    snapshotGallery.remove({ id: previewId }); previewSnapshots.value = snapshotGallery.entries();
+  }
+  function clearPreviews(): void {
+    liveGallery.clear(); snapshotGallery.clear(); livePreview.value = undefined; previewSnapshots.value = [];
+  }
+  watch(maxResults, value => {
+    finalGallery.setLimit({ value }); results.value = finalGallery.entries();
+  });
+  watch(maxPreviews, value => {
+    snapshotGallery.setLimit({ value }); previewSnapshots.value = snapshotGallery.entries();
+  });
+  let lastValidPreview = { ...preview.value };
+  watch(preview, settings => {
+    const parsed = previewSettingsSchema.safeParse(settings);
+    previewError.value = parsed.success ? '' : 'invalid';
+    if (parsed.success) {
+      lastValidPreview = parsed.data;
+      if (busy.value) client?.updatePreview({ settings: parsed.data });
+    } else if (!settings.enabled && busy.value) {
+      // Turning capture OFF must work even while an interval input is empty.
+      client?.updatePreview({ settings: { ...lastValidPreview, enabled: false } });
+    }
+  }, { deep: true, flush: 'sync' });
+  watch(retainModel, value => {
+    if (!value && !busy.value) releaseModel();
+  });
+  // IDs stay stable across a local refresh. File content/publication identity is
+  // checked again by the client at the next explicit generation.
+  watch(() => JSON.stringify([library.main.value, library.components.value.map(item => item.selected), profile.value,
+    weightResidency.value, gpuBudgetMiB.value, parameters.value.flashAttention, parameters.value.conditioningCacheSize,
+    parameters.value.modelArguments, debug.value]), () => {
+    if (!busy.value) releaseModel();
+  });
+  watch(files, () => {
+    if (!busy.value) releaseModel();
+  });
   async function generate(): Promise<void> {
     if (!supported.value || !artifact.value || busy.value || library.importing.value || library.downloading.value || disposed) return;
     invalid.value = false; failure.value = ''; cancelled.value = false;
@@ -120,31 +164,50 @@ export function useImageGeneration(): ImageGenerationView {
     if (!models) {
       invalid.value = true; return;
     }
-    const parsed = requestSchema.safeParse({ debug: debug.value, artifact: artifact.value, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href, models, parameters: parameters.value, weightResidency: weightResidency.value, gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value });
+    const parsed = requestSchema.safeParse({ debug: debug.value, artifact: artifact.value, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href, models, parameters: parameters.value, preview: preview.value, weightResidency: weightResidency.value, gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value });
     if (!parsed.success) {
       invalid.value = true; return;
     }
     diagnosticBuffer.clear(); diagnosticText.value = ''; diagnosticStatus.value = ''; diagnosticFeedback.value = '';
+    liveGallery.clear(); livePreview.value = undefined;
     const operation = new AbortController(); controller.value = operation;
     progress.value = { phase: 'runtime', step: 0, steps: 0 };
     try {
-      client = createImageClient();
+      client ??= createImageClient({ onReleased: () => {
+        modelResident.value = false;
+      } });
       const result = await client.generate({ request: parsed.data, signal: operation.signal, onDiagnostic: recordDiagnostic, onProgress({ event }) {
-        if (!disposed && !operation.signal.aborted) progress.value = event;
+        if (!disposed && !operation.signal.aborted) {
+          progress.value = event;
+          switch (event.phase) {
+          case 'model': modelResident.value = false; break;
+          case 'runtime': case 'sampling': case 'decoding': case 'encoding': break;
+          default: { const exhaustive: never = event.phase; throw new Error(String(exhaustive)); }
+          }
+        }
+      }, onPreview({ frame }) {
+        if (disposed || operation.signal.aborted || !preview.value.enabled) return;
+        const { png, ...metadata } = frame;
+        liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata });
+        livePreview.value = liveGallery.entries()[0];
+        if (keepPreviews.value) {
+          snapshotGallery.add({ blob: png, width: frame.width, height: frame.height, metadata });
+          previewSnapshots.value = snapshotGallery.entries();
+        }
       } });
       if (disposed || operation.signal.aborted) return;
-      const image = { url: URL.createObjectURL(result.png), parameters: parametersSchema.parse(parsed.data.parameters), modelVersion: result.modelVersion, id: ++nextId };
-      results.value = [image, ...results.value];
-      while (results.value.length > 4) {
-        const last = results.value.at(-1); if (last) removeResult({ resultId: last.id });
-      }
+      finalGallery.add({ blob: result.png, width: result.width, height: result.height,
+        metadata: { parameters: parametersSchema.parse(parsed.data.parameters), modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false } });
+      results.value = finalGallery.entries();
+      modelResident.value = true;
+      if (!retainModel.value) releaseModel();
     } catch (error) {
+      releaseModel();
       if (!disposed) {
         if (operation.signal.aborted) cancelled.value = true;
         else failure.value = (error instanceof Error ? error.message : String(error)).slice(-32768);
       }
     } finally {
-      client?.dispose(); client = undefined;
       if (!disposed) {
         controller.value = undefined; progress.value = undefined;
       }
@@ -162,9 +225,9 @@ export function useImageGeneration(): ImageGenerationView {
   onUnmounted(() => {
     window.removeEventListener('focus', refreshLocalModels);
     disposed = true; controller.value?.abort(); client?.dispose();
-    for (const result of results.value) URL.revokeObjectURL(result.url);
+    modelResident.value = false; finalGallery.clear(); clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

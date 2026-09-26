@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__uniform_image_warning = (): string => "The returned pixels are uniform. This can be intentional; otherwise review the diagnostic log. No automatic rerun was performed.";

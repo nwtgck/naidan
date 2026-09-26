@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ViteDevServer } from 'vite';
 
 import { createBoundaryStringCatalogState } from './catalog-state';
-import { createBoundaryStringProjectPaths } from './message-catalog';
+import { createBoundaryStringProjectPaths, type BoundaryStringMessageCatalog } from './message-catalog';
+import { createBoundaryStringDiagnosticError } from './diagnostics';
 import { createBoundaryStringServeCoordinator } from './serve-coordinator';
 import { createBoundaryStringSourceRegistry } from './source-registry';
 
@@ -17,7 +18,9 @@ class FakeWatcher extends EventEmitter {
   readonly add = vi.fn();
 }
 
-function createFixture() {
+function createFixture({ readCatalog = () => ({ messages: [], messagesByKey: new Map() }) }: {
+  readCatalog?: () => BoundaryStringMessageCatalog;
+} = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-boundary-coordinator-'));
   temporaryDirectories.push(root);
   const sourcePath = path.join(root, 'src/example.ts');
@@ -60,13 +63,9 @@ function createFixture() {
     boundaryRelativeModulePath: 'src/example.ts',
     moduleId: sourcePath,
   });
+  const catalogState = createBoundaryStringCatalogState({ readCatalog });
   const coordinator = createBoundaryStringServeCoordinator({
-    catalogState: createBoundaryStringCatalogState({
-      readCatalog: () => ({
-        messages: [],
-        messagesByKey: new Map(),
-      }),
-    }),
+    catalogState,
     missingSourcePaths: new Set(),
     paths: createBoundaryStringProjectPaths({ root }),
     registry,
@@ -74,6 +73,8 @@ function createFixture() {
   });
   coordinator.watchSourceDirectory({ moduleId: sourcePath });
   return {
+    catalogState,
+    server,
     coordinator,
     invalidateModule,
     restart,
@@ -145,6 +146,30 @@ describe('Boundary Strings serve coordinator', () => {
 
     expect(restart).not.toHaveBeenCalled();
     expect(fs.readFileSync(coordinator.revisionFilePath, 'utf8')).toBe('0\n');
+    coordinator.dispose();
+  });
+
+  it('coalesces message changes into one recovery reload for a cached invalid catalog', async () => {
+    vi.useFakeTimers();
+    const readCatalog = vi.fn((): BoundaryStringMessageCatalog => {
+      throw createBoundaryStringDiagnosticError({
+        code: 'message-locale-file-missing',
+        message: 'Missing en.ts for catalog message "stableDiffusionCppBrowser__decoding_image".',
+      });
+    });
+    const { catalogState, coordinator, restart, root, server, watcher } = createFixture({ readCatalog });
+    server.config.server.hmr = true;
+    expect(catalogState.resolve()).toMatchObject({ status: 'invalid' });
+    const messagePath = path.join(root, 'src/strings/messages/stableDiffusionCppBrowser__decoding_image/en.ts');
+    for (let index = 0; index < 10; index += 1) watcher.emit('change', messagePath);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(readCatalog).toHaveBeenCalledOnce();
+    expect(restart).not.toHaveBeenCalled();
+    expect(server.ws.send).toHaveBeenCalledExactlyOnceWith({ type: 'full-reload' });
+    expect(fs.readFileSync(coordinator.revisionFilePath, 'utf8')).toBe('1\n');
+    // Revalidation still fails while the physical file really is missing.
+    expect(catalogState.resolve()).toMatchObject({ status: 'invalid' });
+    expect(readCatalog).toHaveBeenCalledTimes(2);
     coordinator.dispose();
   });
 
