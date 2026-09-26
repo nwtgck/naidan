@@ -260,3 +260,21 @@ it('retires a GPU-failed context even when cancellation was requested first', as
   gate.resolve({ cancelled: true, modelResident: true });
   await failed; expect(mocks.terminate).toHaveBeenCalledOnce(); client.dispose();
 });
+
+it('explains a fresh, retained and explicitly released runtime without disclosing its key', async () => {
+  const logger = vi.spyOn(console, 'log').mockImplementation(() => {});
+  try {
+    const client = createImageClient(), input = request(); input.debug = 'on'; input.parameters.prompt = 'private prompt';
+    mocks.generate.mockResolvedValue({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
+    const onDiagnostic = vi.fn();
+    const run = () => client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn(), onDiagnostic });
+    await run(); await run(); client.release(); await run();
+    input.parameters.flashAttention = !input.parameters.flashAttention; await run();
+    const selections = onDiagnostic.mock.calls.map(([{ diagnostic }]) => diagnostic.fields).filter(f => f.metric === 'worker-selection');
+    expect(selections.map(f => f.reason)).toEqual(['first-use', 'same-session-key', 'explicit-release', 'context-key-changed']);
+    expect(selections.map(f => f.reusedWorker)).toEqual([false, true, false, false]);
+    expect(JSON.stringify(selections)).not.toContain('private prompt'); client.dispose();
+  } finally {
+    logger.mockRestore();
+  }
+});

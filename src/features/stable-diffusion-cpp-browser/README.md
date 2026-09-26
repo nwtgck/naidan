@@ -629,3 +629,11 @@ Tests use stalled promises, late completions, focus bursts, physical worker
 termination mocks, renamed synthetic headers and reviewed receipt evidence.
 These regressions establish the supported failure/recovery paths, not the exact
 cause of a user's unlogged hang or a benchmark of real multi-GB OPFS files.
+
+
+## Passive performance measurement design
+
+The per-generation debug switch is beside Generate. See [PERFORMANCE.md](./PERFORMANCE.md)
+for run/step/window records, counter units and overlap rules, measurement limits,
+and the staged Naidan versus bicore optimization plan. This instrumentation does
+not change inference parameters or insert extra GPU work.

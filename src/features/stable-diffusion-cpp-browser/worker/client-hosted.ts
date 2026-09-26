@@ -2,21 +2,22 @@ import { imageDiagnosticEnvelopeSchema, sanitizeImageLog, imageErrorContext, typ
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, subscribeWorkerNotifications, postWorkerNotification, type WorkerRemote } from '@/utils/worker-transport';
 import { progressSchema, requestSchema, workerResultSchema, cancelControlSchema, previewSettingsSchema, previewControlSchema, previewFrameSchema, type PreviewSettings } from '@/features/stable-diffusion-cpp-browser/types';
 import { createImageSessionKeys } from '@/features/stable-diffusion-cpp-browser/session-key';
-import type { ImageClient, ImageWorker } from './types';
+import type { ImageClient, ImageReleaseReason, ImageWorker } from './types';
 
 type WorkerState = { worker: Worker, remote: WorkerRemote<ImageWorker>, key: string, id: string, closed: boolean, unsubscribe: (() => void)[] };
 type Active = { state: WorkerState, runId: number, revision: number, mode: PreviewSettings['mode'], enabled: boolean, cancelRequested: boolean,
   reject({ error }: { error: unknown }): void, diagnostic({ diagnostic }: { diagnostic: ImageDiagnostic }): void,
   preview: NonNullable<Parameters<ImageClient['generate']>[0]['onPreview']>, crash: EventListener };
 
-/** Page-owned, lazy client. Success retains one compatible worker; every failed
- * or cancelled operation retires its physical realm. No profiles are retried. */
+/** Page-owned, lazy client. Success and safe cooperative cancellation retain a
+ * compatible worker. Failure or forced abort retires it. No profiles are retried. */
 export function createImageClient({ onReleased }: { onReleased?: () => void } = {}): ImageClient {
   const keys = createImageSessionKeys();
   let disposed = false, state: WorkerState | undefined, active: Active | undefined, nextRun = 0, nextWorker = 0;
-  function retire({ target }: { target: WorkerState | undefined }): void {
+  let lastRetired: ImageReleaseReason | undefined;
+  function retire({ target, reason = 'failed' }: { target: WorkerState | undefined, reason?: ImageReleaseReason }): void {
     if (!target || target.closed) return;
-    target.closed = true;
+    target.closed = true; lastRetired = reason;
     for (const unsubscribe of target.unsubscribe) unsubscribe();
     // Never wait for a response from a suspended native call.
     try {
@@ -60,17 +61,18 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
     });
     return target;
   }
-  function release(): void {
+  function release({ reason = 'explicit-release' }: { reason?: ImageReleaseReason } = {}): void {
     const target = state;
     if (active && active.state === target) active.reject({ error: new DOMException('Image runtime released', 'AbortError') });
-    retire({ target });
+    retire({ target, reason });
   }
   return {
     async generate({ request: rawRequest, signal, onProgress, onPreview, onDiagnostic }) {
       if (disposed || active) throw new Error('Image client is disposed or busy');
       signal.throwIfAborted();
       const parsedRequest = requestSchema.parse(rawRequest), key = keys.key({ request: parsedRequest });
-      if (state && state.key !== key) retire({ target: state });
+      if (state && state.key !== key) retire({ target: state, reason: 'context-key-changed' });
+      const reused = !!state, workerReason = reused ? 'same-session-key' : lastRetired ?? 'first-use';
       state ??= create({ key });
       const target = state, request = { ...parsedRequest, runId: ++nextRun, sessionId: target.id };
       const began = performance.now(); let lastMessage = began, lastStage: ImageDiagnostic['stage'] = 'worker', firstFailureStage: ImageDiagnostic['stage'] | undefined;
@@ -141,7 +143,7 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
       };
       active = operation;
       const abort = () => {
-        stopped.reject(new DOMException('Image generation cancelled', 'AbortError')); retire({ target });
+        stopped.reject(new DOMException('Image generation cancelled', 'AbortError')); retire({ target, reason: 'forced-abort' });
       };
       signal.addEventListener('abort', abort, { once: true });
       const heartbeat = setInterval(() => publish({ diagnostic: { event: 'waiting', stage: lastStage, elapsedMs: performance.now() - began, fields: { workerSilentMs: performance.now() - lastMessage } } }), 5000);
@@ -156,6 +158,12 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
         // Queue the generate command before callbacks may request a live update.
         // Worker endpoint ordering then preserves even an immediate ON/OFF.
         publish({ diagnostic: { event: 'start', stage: 'worker', elapsedMs: 0, fields: { profile: request.artifact.profile } } });
+        switch (request.debug) {
+        case 'on': publish({ diagnostic: { event: 'native', stage: 'worker', elapsedMs: Math.max(0, performance.now() - began),
+          fields: { metric: 'worker-selection', perfVersion: 1, runId: request.runId, reusedWorker: reused, reason: workerReason } } }); break;
+        case 'off': case undefined: break;
+        default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
+        }
         const result = await Promise.race([generated, stopped.promise]);
         const response = workerResultSchema.parse(result);
         if ('cancelled' in response) return response;
@@ -198,7 +206,7 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
     },
     release,
     dispose() {
-      if (disposed) return; disposed = true; release();
+      if (disposed) return; disposed = true; release({ reason: 'page-exit' });
     },
   };
 }

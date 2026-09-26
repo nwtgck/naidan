@@ -198,3 +198,39 @@ it('does not treat a native abort after a cancel request as successful cancellat
   await expect(task).rejects.toThrow('aborted');
   await expect(worker.generate({ ...request, runId: 8 }, vi.fn())).rejects.toThrow('failed');
 });
+
+it('emits complete debug measurement scopes for each retained run without recreating the runtime', async () => {
+  loaded();
+  mocks.generate.mockImplementation(async ({ onPerformance, onDiagnostic, onLog }) => {
+    onDiagnostic({ event: 'complete', stage: 'model-load', fields: {}, message: undefined });
+    onPerformance({ signal: { kind: 'conditioning' } });
+    onLog({ message: 'image.cpp:522 - get_learned_condition completed, taking 0.25s', level: 2 });
+    onPerformance({ signal: { kind: 'sampling-progress', step: 0, steps: 20 } });
+    onPerformance({ signal: { kind: 'sampling-progress', step: 1, steps: 20 } });
+    return pixels();
+  });
+  const diagnostic = vi.fn(), worker = createImageWorker({ reportDiagnostic: diagnostic }), request = requestFixture(); request.debug = 'on';
+  await worker.generate({ ...request, runId: 1 }, vi.fn()); await worker.generate({ ...request, runId: 2 }, vi.fn());
+  const records = diagnostic.mock.calls.map(([{ diagnostic }]) => diagnostic);
+  const totals = records.filter(e => e.fields.metric === 'run-wall');
+  expect(totals).toHaveLength(2); expect(totals.map(t => t.fields.runId)).toEqual([1, 2]);
+  expect(totals.map(t => t.fields.nativeConditionMs)).toEqual([250, 250]);
+  expect(records.filter(e => e.fields.metric === 'gpu-counters' && e.fields.scope === 'run-total')).toHaveLength(2);
+  expect(mocks.load).toHaveBeenCalledOnce(); expect(mocks.createSession).toHaveBeenCalledOnce();
+});
+it('flushes cancelled and failing measurement scopes but never enters native cleanup after a failure', async () => {
+  loaded(); const request = requestFixture(); request.debug = 'on';
+  const cancelledLog = vi.fn(); mocks.generate.mockResolvedValueOnce({ cancelled: true, modelResident: true });
+  await createImageWorker({ reportDiagnostic: cancelledLog }).generate(request, vi.fn());
+  expect(cancelledLog.mock.calls.some(([e]) => e.diagnostic.fields.metric === 'run-wall' && e.diagnostic.fields.outcome === 'cancelled')).toBe(true);
+  const failedLog = vi.fn(); mocks.generate.mockRejectedValueOnce(new WebAssembly.RuntimeError('trap'));
+  await expect(createImageWorker({ reportDiagnostic: failedLog }).generate(request, vi.fn())).rejects.toThrow('trap');
+  expect(failedLog.mock.calls.some(([e]) => e.diagnostic.fields.metric === 'run-wall' && e.diagnostic.fields.outcome === 'failed')).toBe(true);
+  expect(failedLog.mock.calls.some(([e]) => e.diagnostic.fields.metric === 'gpu-counters' && e.diagnostic.fields.scope === 'run-total')).toBe(true);
+  expect(mocks.close).not.toHaveBeenCalled();
+});
+it('does not add detailed performance records for debug OFF', async () => {
+  loaded(); mocks.generate.mockResolvedValue(pixels()); const diagnostic = vi.fn(); const request = requestFixture(); request.debug = 'off';
+  await createImageWorker({ reportDiagnostic: diagnostic }).generate(request, vi.fn());
+  expect(diagnostic.mock.calls.some(([e]) => e.diagnostic.fields.metric !== undefined)).toBe(false);
+});

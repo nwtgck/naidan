@@ -8,12 +8,13 @@ export interface ImageWorker {
   cancel({ control }: { control: CancelControl }): void;
   updatePreview({ control }: { control: PreviewControl }): void;
 }
+export type ImageReleaseReason = 'explicit-release' | 'view-settings-changed' | 'retention-disabled' | 'context-key-changed' | 'forced-abort' | 'failed' | 'page-exit';
 export interface ImageClient {
   generate({ request, signal, onProgress, onPreview, onDiagnostic }: { request: Request, signal: AbortSignal, onProgress: Report,
     onPreview?: ({ frame }: { frame: PreviewFrame }) => void, onDiagnostic?: ImageDiagnosticListener }): Promise<WorkerResult>;
   updatePreview({ settings }: { settings: PreviewSettings }): void;
   cancel(): void;
-  release(): void;
+  release({ reason }?: { reason?: ImageReleaseReason }): void;
   dispose(): void;
 }
 export const TEST_ONLY = {

@@ -262,3 +262,17 @@ it('inspects manual model contents and applies technical settings only on the ex
   expect(wrapper.vm.TEST_ONLY.preview.value).toMatchObject({ enabled: false, startStep: 8 });
   expect(mocks.generate).not.toHaveBeenCalled();
 });
+
+it('places the single debug toggle next to generation controls and keeps it locked while generating', async () => {
+  const finish = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValue(finish.promise);
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const toggles = wrapper.findAll('[data-testid="image-debug-mode"]'); expect(toggles).toHaveLength(1);
+  expect(wrapper.get('[data-testid="image-generation-actions"]').find('[data-testid="image-debug-mode"]').exists()).toBe(true);
+  expect(wrapper.get('[data-testid="image-live-diagnostics"]').find('[data-testid="image-debug-mode"]').exists()).toBe(false);
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test'; await flushPromises();
+  await toggles[0]!.setValue(true); const operation = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  expect(toggles[0]!.element.matches(':disabled')).toBe(true);
+  expect(mocks.generate.mock.calls[0]?.[0].request.debug).toBe('on');
+  finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
+  await operation; await flushPromises(); expect(toggles[0]!.element.matches(':disabled')).toBe(false);
+});

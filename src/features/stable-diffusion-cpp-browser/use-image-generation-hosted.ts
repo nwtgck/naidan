@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { lazyStrings, ensureStrings } from '@/strings';
 import rawConfiguration from 'virtual:stable-diffusion-cpp-browser/config';
 import { configurationSchema, parametersSchema, requestSchema, previewSettingsSchema, type Parameters, type PreviewFrame, type ModelSlot } from './types';
+import type { ImageReleaseReason } from '@/features/stable-diffusion-cpp-browser/worker/types';
 import { createImageClient } from '@/features/stable-diffusion-cpp-browser/worker/client';
 import { initialProfile, supportsJspi, supportsMemory64 } from './capabilities';
 import { useImageLibrary } from './use-image-library';
@@ -154,8 +155,11 @@ export function useImageGeneration(): ImageGenerationView {
     manualInspection?.abort(); manualInspection = undefined; manualInspectionState.value = 'idle';
     files.value = {};
   }
+  function releaseFor({ reason }: { reason: ImageReleaseReason }): void {
+    client?.release({ reason }); modelResident.value = false;
+  }
   function releaseModel(): void {
-    client?.release(); modelResident.value = false;
+    releaseFor({ reason: 'explicit-release' });
   }
   function removeResult({ resultId }: { resultId: number }): void {
     finalGallery.remove({ id: resultId }); results.value = finalGallery.entries();
@@ -188,17 +192,17 @@ export function useImageGeneration(): ImageGenerationView {
     }
   }, { deep: true, flush: 'sync' });
   watch(retainModel, value => {
-    if (!value && !busy.value) releaseModel();
+    if (!value && !busy.value) releaseFor({ reason: 'retention-disabled' });
   });
   // IDs stay stable across a local refresh. File content/publication identity is
   // checked again by the client at the next explicit generation.
   watch(() => JSON.stringify([library.main.value, library.components.value.map(item => item.selected), profile.value,
     weightResidency.value, gpuBudgetMiB.value, parameters.value.flashAttention, parameters.value.conditioningCacheSize,
     parameters.value.modelArguments, debug.value]), () => {
-    if (!busy.value) releaseModel();
+    if (!busy.value) releaseFor({ reason: 'view-settings-changed' });
   });
   watch(files, () => {
-    if (!busy.value) releaseModel();
+    if (!busy.value) releaseFor({ reason: 'view-settings-changed' });
   });
   async function generate(): Promise<void> {
     if (!supported.value || !artifact.value || busy.value || library.importing.value || library.downloading.value || disposed) return;
@@ -254,16 +258,16 @@ export function useImageGeneration(): ImageGenerationView {
       if (disposed || operation.signal.aborted) return;
       if ('cancelled' in result) {
         cancelled.value = true; modelResident.value = result.modelResident;
-        if (!retainModel.value) releaseModel();
+        if (!retainModel.value) releaseFor({ reason: 'retention-disabled' });
         return;
       }
       finalGallery.add({ blob: result.png, width: result.width, height: result.height,
         metadata: { parameters: parametersSchema.parse(parsed.data.parameters), modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs: Math.max(0, now() - generateStartedAt) } });
       results.value = finalGallery.entries();
       modelResident.value = true;
-      if (!retainModel.value) releaseModel();
+      if (!retainModel.value) releaseFor({ reason: 'retention-disabled' });
     } catch (error) {
-      releaseModel();
+      releaseFor({ reason: 'failed' });
       if (!disposed) {
         if (operation.signal.aborted) cancelled.value = true;
         else failure.value = (error instanceof Error ? error.message : String(error)).slice(-32768);

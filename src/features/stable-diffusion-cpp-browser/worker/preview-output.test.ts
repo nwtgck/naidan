@@ -40,3 +40,22 @@ it('recovers from an encoder rejection and never strands a frame arriving at the
   output.push({ capture: capture({ step: 3 }) }); await output.finish();
   expect(onError).toHaveBeenCalledTimes(1); expect(seen).toEqual([2, 3]);
 });
+
+it('records native and delivered sizes plus encoding/queue wall time without including native decoding', async () => {
+  let time = 0; const measure = vi.fn(), gate = Promise.withResolvers<ReturnType<typeof encoded>>();
+  const output = createPreviewOutput({ publish: vi.fn(), valid: () => true, onError: vi.fn(), onMeasure: measure, now: () => time,
+    encode: vi.fn<typeof encodeImagePixels>().mockReturnValue(gate.promise),
+  });
+  output.push({ capture: capture({ step: 2 }) }); time = 15; gate.resolve(encoded()); await output.finish();
+  expect(measure).toHaveBeenCalledWith({ fields: expect.objectContaining({ step: 2, nativeWidth: 1, nativeHeight: 1, outputWidth: 1, outputHeight: 1,
+    queueWallMs: 0, encodeWallMs: 15, delivered: true, includesNativeDecode: false }) });
+});
+it('does not let a broken measurement sink change a successfully delivered preview', async () => {
+  const publish = vi.fn(), onError = vi.fn();
+  const output = createPreviewOutput({ publish, valid: () => true, onError, encode: vi.fn<typeof encodeImagePixels>().mockResolvedValue(encoded()),
+    onMeasure() {
+      throw new Error('observation only');
+    },
+  });
+  output.push({ capture: capture({ step: 1 }) }); await output.finish(); expect(publish).toHaveBeenCalledOnce(); expect(onError).not.toHaveBeenCalled();
+});

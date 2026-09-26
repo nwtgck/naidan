@@ -1,3 +1,4 @@
+import type { NativePerformanceSignal } from './run-performance';
 import { imageErrorContext, type ImageDiagnosticInput, type createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import { cancelControlSchema, previewControlSchema, type CancelControl, type CancelledResult, type PreviewControl, type Request, type Progress, type ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Core, HostHelpers } from './core-types';
@@ -11,7 +12,7 @@ type Emit = ReturnType<typeof createImageTrace>['emit'];
 export type PreviewPixels = { image: ImagePixels, step: number, steps: number, revision: number, maxEdge: number, mode: 'projection' | 'vae' };
 type Run = { request: Request, onProgress: ({ event }: { event: Progress }) => void,
   onLog: ({ message, level }: { message: string, level?: number }) => void,
-  onDiagnostic?: Emit, onPreview?: ({ capture }: { capture: PreviewPixels }) => void };
+  onDiagnostic?: Emit, onPerformance?: ({ signal }: { signal: NativePerformanceSignal }) => void, onPreview?: ({ capture }: { capture: PreviewPixels }) => void };
 const pathFields = { model: 'model_path', diffusion: 'diffusion_model_path', vae: 'vae_path', clipL: 'clip_l_path', clipG: 'clip_g_path', t5: 't5xxl_path', lm: 'llm_path' } satisfies Record<ModelSlot, string>;
 function totalModelBytes({ request }: { request: Request }): number {
   return request.models.reduce((total, model) => total + model.file.size + (model.companions ?? []).reduce((sum, companion) => sum + companion.file.size, 0), 0);
@@ -97,7 +98,12 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       if (previewDecoding) return;
       const step = Number(args[0]), steps = Number(args[1]);
       if (Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps >= 0) {
-        if (nativePhase === 'sampling' && steps === active?.request.parameters.steps) active.preview?.observeStep({ step });
+        if (nativePhase === 'sampling' && steps === active?.request.parameters.steps) {
+          try {
+            active.onPerformance?.({ signal: { kind: 'sampling-progress', step, steps } });
+          } catch { /* measurement only */ }
+          active.preview?.observeStep({ step });
+        }
         notify({ event: { phase: nativePhase, step, steps } });
       }
     }, 'viifp'));
@@ -153,7 +159,24 @@ export function createImageGenerationSession({ core, helpers, reader }: {
             cachePageBytes: MODEL_FILE_PAGE_BYTES, cacheCapacityBytes: MODEL_FILE_CACHE_BYTES, cacheRetainedBytes: fileReadCache.retainedBytes(),
           } });
         };
-        reportFinalReads.push(() => reportReads({ report: 'final' }));
+        let previousRun = source.metrics();
+        reportFinalReads.push(() => {
+          reportReads({ report: 'final' });
+          const current = source.metrics();
+          const debug = active?.request.debug;
+          switch (debug) {
+          case 'on': emit({ event: 'file-read', stage: 'generation', message: 'Per-run file reads (not lifetime totals)', fields: {
+            metric: 'file-read-run', perfVersion: 1, slot, path: entry.path.slice(0, 512),
+            reads: current.reads - previousRun.reads, bytes: current.bytes - previousRun.bytes,
+            readMs: current.readMs - previousRun.readMs, blobReads: current.blobReads - previousRun.blobReads,
+            blobBytes: current.blobBytes - previousRun.blobBytes, blobReadMs: current.blobReadMs - previousRun.blobReadMs,
+            cacheHits: current.cacheHits - previousRun.cacheHits, cacheHitBytes: current.cacheHitBytes - previousRun.cacheHitBytes,
+          } }); break;
+          case 'off': case undefined: break;
+          default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
+          }
+          previousRun = current;
+        });
         mounts.push(helpers.mountReadOnlyFile(core, path, { size: source.size,
           // eslint-disable-next-line local-rules-named-args/require-named-args -- External filesystem range-reader signature.
           read(destination, offset) {
@@ -279,6 +302,9 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       emit({ event: 'start', stage: 'generation', message: 'generate_image includes text encoding, denoising and VAE decoding', fields: { width, height, steps, guidance, sampler: sampleMethod, scheduler: sampleScheduler, vaeTiling, flashAttention } });
       await active!.preview!.start();
       if (active.cancelRequested) throw cancelledRun;
+      try {
+        active.onPerformance?.({ signal: { kind: 'conditioning' } });
+      } catch { /* measurement only */ }
       nativeCall = 'generate_image';
       const generated = await core.api.generate_image(context, params, imagesOut, countOut);
       nativeCall = undefined;

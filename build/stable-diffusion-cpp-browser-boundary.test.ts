@@ -94,7 +94,7 @@ describe('hosted-only bicore image boundary', () => {
     expect(modules.some(id => id.endsWith('/download-worker/fetch-bridge.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/diagnostics.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/use-image-generation-standalone.ts'))).toBe(false);
-    for (const name of ['entry.ts', 'session.ts', 'core-loader.ts', 'gguf-file.ts', 'gpu-diagnostics.ts', 'webgpu.ts', 'preview-control.ts', 'preview-output.ts', 'image-output.ts']) {
+    for (const name of ['entry.ts', 'session.ts', 'core-loader.ts', 'gguf-file.ts', 'gpu-diagnostics.ts', 'gpu-performance.ts', 'performance-counters.ts', 'run-performance.ts', 'webgpu.ts', 'preview-control.ts', 'preview-output.ts', 'image-output.ts']) {
       expect(workerModules.some(id => id.endsWith('/stable-diffusion-cpp-browser/worker/' + name)), name).toBe(true);
     }
     for (const name of ['webgpu-dispatch.ts', 'webgpu-dispatch-shader.ts']) {
@@ -150,7 +150,7 @@ describe('hosted-only bicore image boundary', () => {
   it('rejects accidentally emitted image binaries even with the correct facade', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: true })).rejects.toThrow('Image runtime asset');
   }, 60_000);
-  it.each(['inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'recommendations.ts', 'session-key.ts', 'image-gallery.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
+  it.each(['worker/gpu-performance.ts', 'worker/performance-counters.ts', 'worker/run-performance.ts', 'inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'recommendations.ts', 'session-key.ts', 'image-gallery.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).toThrow('Hosted image implementation');
   });
 });

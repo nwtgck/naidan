@@ -1,3 +1,5 @@
+import { createRunPerformance } from './run-performance';
+import type { MeasurementOutcome } from './gpu-performance';
 import { createImageTrace, sanitizeImageLog, imageErrorContext, type ImageDiagnosticInput, type ImageDiagnosticListener } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import { observeImageGpu } from './gpu-diagnostics';
 import { installImageWebGpu } from './webgpu';
@@ -22,7 +24,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
   let session: ReturnType<typeof createImageGenerationSession> | undefined;
   let observed: ReturnType<typeof observeImageGpu> | undefined, boundary: ReturnType<typeof installImageWebGpu> | undefined;
   let current: { request: Request, trace: ReturnType<typeof createImageTrace>, phase: Progress['phase'], latest: PreviewControl, cancelRequested: boolean,
-    log: ({ message, level }: { message: string, level?: number }) => void } | undefined;
+    measured: boolean, log: ({ message, level }: { message: string, level?: number }) => void } | undefined;
   const emitCurrent = ({ ...entry }: ImageDiagnosticInput) => {
     if (entry.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(entry.message ?? '')) failed = true;
     if (current) current.trace.emit(entry);
@@ -49,13 +51,34 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
       identity = key; busy = true;
       const diagnostics: string[] = [], secrets = [request.parameters.prompt, request.parameters.negativePrompt, request.parameters.modelArguments];
       const trace = createImageTrace({ debug: request.debug ?? 'off', secrets, listener: reportDiagnostic ? ({ diagnostic }) => reportDiagnostic({ diagnostic: { ...diagnostic, fields: { ...diagnostic.fields, runId: request.runId } } }) : undefined, now: () => performance.now() });
+      const measured = (() => {
+        switch (request.debug) {
+        case 'on': return true;
+        case 'off': case undefined: return false;
+        default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
+        }
+      })();
+      const performanceTrace = createRunPerformance({ enabled: measured, request, emit: trace.emit,
+        checkpoint: ({ point }) => observed?.checkpoint({ point }),
+      });
+      let outcome: MeasurementOutcome = 'failed';
+      const sessionDiagnostic = ({ ...entry }: ImageDiagnosticInput): void => {
+        if (entry.event === 'start' && entry.stage === 'model-header') performanceTrace.phase({ next: 'model-header' });
+        if (entry.event === 'start' && entry.stage === 'model-load') performanceTrace.phase({ next: 'model-load' });
+        if (entry.event === 'complete' && entry.stage === 'model-load') performanceTrace.phase({ next: 'prepare' });
+        if (entry.event === 'complete' && entry.stage === 'generation') performanceTrace.phase({ next: 'cleanup' });
+        trace.emit(entry);
+      };
       const log = ({ message, level }: { message: string, level?: number }) => {
+        performanceTrace.log({ message });
         trace.native({ message, level }); diagnostics.push(sanitizeImageLog({ message, secrets }).slice(0, 1024));
         if (diagnostics.length > 24) diagnostics.shift();
       };
-      current = { request, trace, cancelRequested: false, phase: 'runtime', latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: request.preview }, log };
+      current = { request, trace, measured, cancelRequested: false, phase: 'runtime', latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: request.preview }, log };
       const operation = current;
+      if (session) observed?.beginRun({ runId: request.runId });
       const previews = createPreviewOutput({
+        onMeasure: measured ? performanceTrace.preview : undefined,
         publish({ frame }) {
           reportPreview?.({ frame: previewFrameSchema.parse(frame) });
         },
@@ -66,6 +89,12 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
       });
       const notify = ({ event }: { event: Progress }) => {
         operation.phase = event.phase;
+        switch (event.phase) {
+        case 'decoding': performanceTrace.phase({ next: 'decoding' }); break;
+        case 'encoding': performanceTrace.phase({ next: 'encoding' }); break;
+        case 'runtime': case 'model': case 'sampling': break;
+        default: { const exhaustive: never = event.phase; throw new Error(String(exhaustive)); }
+        }
         // Handles controls received while runtime/model initialization was pending.
         if (operation.cancelRequested) session?.cancel({ control: { type: 'naidan-image-cancel-v1', runId: request.runId } });
         else if (operation.latest.revision) session?.updatePreview({ control: operation.latest });
@@ -82,11 +111,13 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         flashAttention: request.parameters.flashAttention, vaeTiling: request.parameters.vaeTiling, vaeTileSize: request.parameters.vaeTileSize,
         previewEnabled: request.preview.enabled, previewMode: request.preview.mode, previewInterval: request.preview.interval, reuse: !!session,
       } });
+      performanceTrace.settings();
       try {
         if (!session) {
           if (typeof FileReaderSync !== 'function') throw new Error('Synchronous file reading is unavailable in this Worker');
           if (!navigator.gpu?.requestAdapter) throw new Error('WebGPU is unavailable in this Worker');
           observed = observeImageGpu({ emit: emitCurrent, debug: request.debug ?? 'off' });
+          observed.beginRun({ runId: request.runId });
           boundary = installImageWebGpu({ gpu: navigator.gpu, emit: emitCurrent });
           notify({ event: { phase: 'runtime', step: 0, steps: 0 } });
           trace.emit({ event: 'start', stage: 'runtime-fetch', message: undefined, fields: {} });
@@ -130,7 +161,8 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
           if (core.pointerBytes !== profile.pointerBytes) throw new Error('Image profile pointer width mismatch');
           session = createImageGenerationSession({ core, helpers, reader: new FileReaderSync() });
         }
-        const pendingGeneration = session.generate({ request, onProgress: notify, onLog: log, onDiagnostic: trace.emit,
+        performanceTrace.phase({ next: 'prepare' });
+        const pendingGeneration = session.generate({ request, onProgress: notify, onLog: log, onDiagnostic: sessionDiagnostic, onPerformance: measured ? performanceTrace.native : undefined,
           onPreview({ capture }) {
             previews.push({ capture: { image: capture.image, maxEdge: capture.maxEdge,
               frame: { type: 'naidan-image-preview-v1', runId: request.runId, revision: capture.revision, step: capture.step, steps: capture.steps, mode: capture.mode },
@@ -141,6 +173,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         const generated = await pendingGeneration;
         if (failed) throw new Error('Image runtime aborted during generation');
         if ('cancelled' in generated || operation.cancelRequested) {
+          outcome = 'cancelled';
           trace.emit({ event: 'cancelled', stage: 'worker', message: 'Generation stopped; native context retained after cleanup', fields: { modelResident: true } });
           return cancelledResultSchema.parse({ cancelled: true, modelResident: true });
         }
@@ -152,19 +185,28 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         const output = await encodeImagePixels({ image, maxEdge: 0 });
         if (failed) throw new Error('Image runtime aborted during output encoding');
         trace.emit({ event: 'complete', stage: 'encoding', message: undefined, fields: { pngBytes: output.png.size, retainedContext: true, uniformOutput } });
-        if (operation.cancelRequested) return cancelledResultSchema.parse({ cancelled: true, modelResident: true });
-        return responseSchema.parse({ ...output, modelVersion, uniformOutput });
+        if (operation.cancelRequested) {
+          outcome = 'cancelled'; return cancelledResultSchema.parse({ cancelled: true, modelResident: true });
+        }
+        const response = responseSchema.parse({ ...output, modelVersion, uniformOutput });
+        outcome = 'complete'; return response;
       } catch (error) {
         failed = true;
         // Never call session.close()/free_sd_ctx here: the native call may have
         // been interrupted. The window unconditionally terminates this Worker.
         const message = sanitizeImageLog({ message: error instanceof Error ? error.message : String(error), secrets }), details = imageErrorContext({ error });
         trace.emit({ event: 'failed', stage: 'worker', message, fields: { phase: operation.phase, ...details } });
-        boundary?.dispose(); observed?.dispose();
         throw new Error([`Image generation failed: phase=${operation.phase}, profile=${request.artifact.profile}, source=${request.artifact.modulePath.split('/')[1]}`,
           message, ...(details.wasmFrames ? [`Wasm frames: ${details.wasmFrames}`] : []), ...diagnostics].join('\n'));
       } finally {
-        previews.close(); current = undefined; busy = false;
+        previews.close();
+        // Flush the failing/cancelled run before changing the listener or retiring
+        // the observer. Never wait on GPU work just to finish the measurements.
+        performanceTrace.finish({ outcome }); observed?.endRun({ outcome });
+        if (failed) {
+          boundary?.dispose(); observed?.dispose();
+        }
+        current = undefined; busy = false;
         // Explicitly close the per-run Comlink callback port without awaiting a
         // renderer acknowledgement. It must not accumulate in a retained worker.
         try {
@@ -189,6 +231,9 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
       // The only setter legal during native work is reviewed in preview-control.ts.
       try {
         session?.updatePreview({ control }); current.latest = control;
+        if (current.measured) current.trace.emit({ event: 'native', stage: 'sampling', message: undefined,
+          fields: { metric: 'preview-control', perfVersion: 1, revision: control.revision, enabled: control.settings.enabled,
+            interval: control.settings.interval, startStep: control.settings.startStep, maxEdge: control.settings.maxEdge, mode: control.settings.mode } });
       } catch (error) {
         failed = true;
         emitCurrent({ event: 'failed', stage: 'worker', message: 'Live preview control failed; the runtime must be released', fields: { kind: 'preview-control', workerTerminationRequired: true, ...imageErrorContext({ error }) } });

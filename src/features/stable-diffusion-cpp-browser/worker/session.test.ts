@@ -488,3 +488,20 @@ it('does not confuse a trap after a cancel request with successful cancellation'
   expect(h.api.sd_cancel_generation).not.toHaveBeenCalled(); expect(h.api.free_sd_images).not.toHaveBeenCalled();
   await session.close(); expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
 });
+
+it('emits zero per-run file traffic for a retained generation without re-reading weights for diagnostics', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  const session = createImageGenerationSession(h), request = requestFixture(); request.debug = 'on'; request.sessionId = 'one';
+  vi.mocked(h.api.new_sd_ctx).mockImplementationOnce(async () => {
+    const source = vi.mocked(h.helpers.mountReadOnlyFile).mock.calls[0]![2];
+    source.read(new Uint8Array(12), 0); return 200000n;
+  });
+  const onDiagnostic = vi.fn(), options = { request, onDiagnostic, onProgress: vi.fn(), onLog: vi.fn() };
+  await session.generate(options);
+  const read = onDiagnostic.mock.calls.map(([event]) => event.fields).find(fields => fields.metric === 'file-read-run');
+  expect(read).toMatchObject({ reads: 1, bytes: 12, blobReads: 1 });
+  onDiagnostic.mockClear(); await session.generate({ ...options, request: { ...request, runId: request.runId + 1 } });
+  const second = onDiagnostic.mock.calls.map(([event]) => event.fields).find(fields => fields.metric === 'file-read-run');
+  expect(second).toMatchObject({ reads: 0, bytes: 0, blobReads: 0, blobBytes: 0, cacheHits: 0, readMs: 0 });
+  expect(h.api.new_sd_ctx).toHaveBeenCalledOnce(); await session.close();
+});

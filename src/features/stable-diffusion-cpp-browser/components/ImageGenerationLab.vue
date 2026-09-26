@@ -152,10 +152,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
           </details>
         </fieldset>
         <p v-if="invalid" role="alert" tw-class="text-red-600 dark:text-red-400 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
-        <div tw-class="flex flex-wrap items-center gap-3">
+        <div tw-class="flex flex-wrap items-center gap-3" data-testid="image-generation-actions">
           <button type="submit" :disabled="busy || !supported || library.importing.value || library.downloading.value || (!!library.main.value && !library.ready.value)" data-testid="image-generate" tw-class="rounded-lg px-5 py-2.5 bg-purple-600 text-white hover:bg-purple-700 font-medium disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
           <button type="button" :disabled="!busy || stopping" @click="cancel" data-testid="image-cancel" tw-class="rounded-xl px-5 py-2.5 border border-gray-200 dark:border-gray-700 disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
           <button v-if="stopping" type="button" @click="forceCancel" data-testid="image-force-cancel" tw-class="rounded-xl border border-red-300 dark:border-red-800 px-4 py-2 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__force_stop() }}</button>
+          <label tw-class="text-sm flex items-center gap-2"><input v-model="debug" type="checkbox" true-value="on" false-value="off" :disabled="formDisabled" data-testid="image-debug-mode" />{{ lazyStrings.stableDiffusionCppBrowser__debug_mode() }}</label>
           <span v-if="busy" role="status" aria-live="polite" tw-class="text-sm">{{ stopping ? lazyStrings.stableDiffusionCppBrowser__stopping_retained() : phaseLabel }} <template v-if="progress && progress.steps > 0">{{ progress.step }} / {{ progress.steps }}</template></span>
         </div>
         <p v-if="stopping" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__cancel_wait_help() }}</p>
@@ -187,9 +188,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { files, parameters, 
       </section>
       <details tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="image-live-diagnostics">
         <summary tw-class="cursor-pointer text-sm font-medium">{{ lazyStrings.stableDiffusionCppBrowser__diagnostics() }}</summary>
-        <div tw-class="flex flex-wrap items-center justify-between gap-3">
-          <label tw-class="text-sm flex items-center gap-2"><input v-model="debug" type="checkbox" true-value="on" false-value="off" :disabled="formDisabled" data-testid="image-debug-mode" />{{ lazyStrings.stableDiffusionCppBrowser__debug_mode() }}</label>
-        </div>
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__debug_help() }}</p>
         <p v-if="diagnosticStatus" role="status" tw-class="text-xs font-mono break-words">{{ diagnosticStatus }}</p>
         <div tw-class="flex flex-wrap gap-3 text-sm">

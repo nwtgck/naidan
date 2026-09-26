@@ -1,1 +1,1 @@
-export const stableDiffusionCppBrowser__debug_help = (): string => "llama.cpp browser처럼 생성별로 상세 로그를 선택하며 다른 채팅의 스위치와 연동되지 않습니다. 생성 전에 켜면 내부 로그, 텐서 형식, 파일 읽기 및 GPU 활동을 기록합니다. 실행 중에도 복사할 수 있습니다. Worker 알림이 없다고 멈춘 것은 아닙니다. 프롬프트 출력은 억제하지만 파일명이 남을 수 있으니 공유 전에 확인하세요. 외부로 전송하지 않습니다.";
+export const stableDiffusionCppBrowser__debug_help = (): string => "생성 버튼 옆에서 시작 전에 활성화하면 생성·스텝별 경과 시간, 전송량, 기존 GPU 대기를 기록합니다. 대기 시간은 GPU 연산 시간이 아니며 서로 겹칠 수 있으므로 단순 합산하지 마세요. 로그는 용량 제한을 두고 기기에만 보관합니다. 프롬프트와 토큰 출력은 숨기지만 공유 전 파일명 등 기술 정보를 확인하세요.";
