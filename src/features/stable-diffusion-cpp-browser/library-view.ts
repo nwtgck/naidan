@@ -13,7 +13,15 @@ export type ImageComponentChoice = {
   slot: ModelSlot; selected: string; required: boolean; choices: ImageModelChoice[];
 };
 export type ImageRecipeAvailability = { available: number, total: number, selected: boolean, bytes: number };
+/** Known primary model, with its explicitly resolved local component set. */
+export type ImageBenchmarkTarget = {
+  id: string; label: string; detail: string;
+  facts: Pick<ModelCandidate, 'family' | 'variant' | 'evidence'>;
+  composition: 'selected' | 'automatic'; models: Request['models'] | undefined;
+  missing: ModelSlot[]; issue: string | undefined;
+};
 export type ImageLibraryView = {
+  benchmarkTargets: ComputedRef<ImageBenchmarkTarget[]>;
   selectedFacts: ComputedRef<Pick<ModelCandidate, 'family' | 'variant' | 'evidence'> | undefined>;
   models: ComputedRef<ImageModelChoice[]>;
   main: Ref<string>;

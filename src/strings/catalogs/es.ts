@@ -2099,6 +2099,104 @@ import { stableDiffusionCppBrowser__vae_tiling } from '@/strings/messages/stable
 import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/stableDiffusionCppBrowser__vae_tile_size/es';
 import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/es';
 import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/es';
+import { imageBenchmark__speed_measurement } from '@/strings/messages/imageBenchmark__speed_measurement/es';
+
+import { imageBenchmark__introduction } from '@/strings/messages/imageBenchmark__introduction/es';
+
+import { imageBenchmark__shared_settings } from '@/strings/messages/imageBenchmark__shared_settings/es';
+
+import { imageBenchmark__model_sampling_defaults } from '@/strings/messages/imageBenchmark__model_sampling_defaults/es';
+
+import { imageBenchmark__defaults_help } from '@/strings/messages/imageBenchmark__defaults_help/es';
+
+import { imageBenchmark__protocol } from '@/strings/messages/imageBenchmark__protocol/es';
+
+import { imageBenchmark__cold_then_warm } from '@/strings/messages/imageBenchmark__cold_then_warm/es';
+
+import { imageBenchmark__fresh_each } from '@/strings/messages/imageBenchmark__fresh_each/es';
+
+import { imageBenchmark__runs_per_model } from '@/strings/messages/imageBenchmark__runs_per_model/es';
+
+import { imageBenchmark__order } from '@/strings/messages/imageBenchmark__order/es';
+
+import { imageBenchmark__listed_order } from '@/strings/messages/imageBenchmark__listed_order/es';
+
+import { imageBenchmark__reverse_order } from '@/strings/messages/imageBenchmark__reverse_order/es';
+
+import { imageBenchmark__cooldown } from '@/strings/messages/imageBenchmark__cooldown/es';
+
+import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/es';
+
+import { imageBenchmark__keep_images } from '@/strings/messages/imageBenchmark__keep_images/es';
+
+import { imageBenchmark__limits } from '@/strings/messages/imageBenchmark__limits/es';
+
+import { imageBenchmark__fairness } from '@/strings/messages/imageBenchmark__fairness/es';
+
+import { imageBenchmark__environment_notes } from '@/strings/messages/imageBenchmark__environment_notes/es';
+
+import { imageBenchmark__available_models } from '@/strings/messages/imageBenchmark__available_models/es';
+
+import { imageBenchmark__select_all } from '@/strings/messages/imageBenchmark__select_all/es';
+
+import { imageBenchmark__select_none } from '@/strings/messages/imageBenchmark__select_none/es';
+
+import { imageBenchmark__no_models } from '@/strings/messages/imageBenchmark__no_models/es';
+
+import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/es';
+
+import { imageBenchmark__overrides } from '@/strings/messages/imageBenchmark__overrides/es';
+
+import { imageBenchmark__override } from '@/strings/messages/imageBenchmark__override/es';
+
+import { imageBenchmark__effective_request } from '@/strings/messages/imageBenchmark__effective_request/es';
+
+import { imageBenchmark__start } from '@/strings/messages/imageBenchmark__start/es';
+
+import { imageBenchmark__stop } from '@/strings/messages/imageBenchmark__stop/es';
+
+import { imageBenchmark__download_zip } from '@/strings/messages/imageBenchmark__download_zip/es';
+
+import { imageBenchmark__new_measurement } from '@/strings/messages/imageBenchmark__new_measurement/es';
+
+import { imageBenchmark__include_prompts } from '@/strings/messages/imageBenchmark__include_prompts/es';
+
+import { imageBenchmark__export_privacy } from '@/strings/messages/imageBenchmark__export_privacy/es';
+
+import { imageBenchmark__archive_saved } from '@/strings/messages/imageBenchmark__archive_saved/es';
+
+import { imageBenchmark__results } from '@/strings/messages/imageBenchmark__results/es';
+
+import { imageBenchmark__run } from '@/strings/messages/imageBenchmark__run/es';
+
+import { imageBenchmark__cold } from '@/strings/messages/imageBenchmark__cold/es';
+
+import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/es';
+
+import { imageBenchmark__queued } from '@/strings/messages/imageBenchmark__queued/es';
+
+import { imageBenchmark__running } from '@/strings/messages/imageBenchmark__running/es';
+
+import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__succeeded/es';
+
+import { imageBenchmark__failed } from '@/strings/messages/imageBenchmark__failed/es';
+
+import { imageBenchmark__cancelled } from '@/strings/messages/imageBenchmark__cancelled/es';
+
+import { imageBenchmark__skipped } from '@/strings/messages/imageBenchmark__skipped/es';
+
+import { imageBenchmark__elapsed } from '@/strings/messages/imageBenchmark__elapsed/es';
+
+import { imageBenchmark__sampling } from '@/strings/messages/imageBenchmark__sampling/es';
+
+import { imageBenchmark__model_load } from '@/strings/messages/imageBenchmark__model_load/es';
+
+import { imageBenchmark__check_plan } from '@/strings/messages/imageBenchmark__check_plan/es';
+
+import { imageBenchmark__exporting } from '@/strings/messages/imageBenchmark__exporting/es';
+
+import { imageBenchmark__freshness_warning } from '@/strings/messages/imageBenchmark__freshness_warning/es';
+
 export const catalog = {
   stableDiffusionCppBrowser__preview_mode_locked,
   stableDiffusionCppBrowser__preset_unknown,
@@ -4197,4 +4295,53 @@ export const catalog = {
   audioGeneration__copy_text,
   audioGeneration__text_copied,
   audioGeneration__copy_failed_select_text,
+  imageBenchmark__speed_measurement,
+  imageBenchmark__introduction,
+  imageBenchmark__shared_settings,
+  imageBenchmark__model_sampling_defaults,
+  imageBenchmark__defaults_help,
+  imageBenchmark__protocol,
+  imageBenchmark__cold_then_warm,
+  imageBenchmark__fresh_each,
+  imageBenchmark__runs_per_model,
+  imageBenchmark__order,
+  imageBenchmark__listed_order,
+  imageBenchmark__reverse_order,
+  imageBenchmark__cooldown,
+  imageBenchmark__timeout,
+  imageBenchmark__keep_images,
+  imageBenchmark__limits,
+  imageBenchmark__fairness,
+  imageBenchmark__environment_notes,
+  imageBenchmark__available_models,
+  imageBenchmark__select_all,
+  imageBenchmark__select_none,
+  imageBenchmark__no_models,
+  imageBenchmark__unavailable_components,
+  imageBenchmark__overrides,
+  imageBenchmark__override,
+  imageBenchmark__effective_request,
+  imageBenchmark__start,
+  imageBenchmark__stop,
+  imageBenchmark__download_zip,
+  imageBenchmark__new_measurement,
+  imageBenchmark__include_prompts,
+  imageBenchmark__export_privacy,
+  imageBenchmark__archive_saved,
+  imageBenchmark__results,
+  imageBenchmark__run,
+  imageBenchmark__cold,
+  imageBenchmark__warm,
+  imageBenchmark__queued,
+  imageBenchmark__running,
+  imageBenchmark__succeeded,
+  imageBenchmark__failed,
+  imageBenchmark__cancelled,
+  imageBenchmark__skipped,
+  imageBenchmark__elapsed,
+  imageBenchmark__sampling,
+  imageBenchmark__model_load,
+  imageBenchmark__check_plan,
+  imageBenchmark__exporting,
+  imageBenchmark__freshness_warning,
 } satisfies Strings;

@@ -9,7 +9,7 @@ import { type listImageRepositories, importImageRepository } from './logic/repos
 import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
 import { imageDirectoryFromFiles, imageDirectoriesFromDrop } from './logic/repository-input';
 import type { ModelSlot, Request } from './types';
-import type { ImageLibraryView, ImageModelChoice, ImageRecipeAvailability } from './library-view';
+import type { ImageBenchmarkTarget, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability } from './library-view';
 
 type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader };
 const defaultDependencies: Pick<Dependencies, 'import' | 'download'> = { import: importImageRepository, download: downloadImageRecipeInWorker };
@@ -333,16 +333,38 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const slot = primarySlot({ family: selected.value.family });
     if (!slot) return undefined;
     const selectionsToUse = [{ slot, candidate: selected.value }, ...requirements.value.map(({ slot }) => ({ slot, candidate: inventory.value.candidates.find(item => item.id === selections.value[slot])! }))];
-    return selectionsToUse.map(({ slot, candidate }) => {
-      const file = candidate.files.find(entry => entry.path === candidate.path);
-      if (!file) throw new Error('Selected model file disappeared from the inventory');
-      // Receipts distinguish re-published data; include every member, including index metadata.
-      const sourceId = candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({ repository: candidate.repositoryId, path: candidate.path,
-        files: candidate.files.map(entry => ({ path: entry.path, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
-      }) : undefined;
-      return { slot, ...(sourceId ? { sourceId } : {}), file: file.file, path: candidate.path, companions: candidate.files.filter(entry => entry.path !== candidate.path) };
-    });
+    return selectionsToUse.map(({ slot, candidate }) => modelForCandidate({ slot, candidate }));
   }
+  function modelForCandidate({ slot, candidate }: { slot: ModelSlot, candidate: ModelCandidate }): Request['models'][number] {
+    const file = candidate.files.find(entry => entry.path === candidate.path);
+    if (!file) throw new Error('Selected model file disappeared from the inventory');
+    // Preserve publication identity and shard membership; never copy weight bytes.
+    const sourceId = candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({ repository: candidate.repositoryId, path: candidate.path,
+      files: candidate.files.map(entry => ({ path: entry.path, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
+    }) : undefined;
+    return { slot, ...(sourceId ? { sourceId } : {}), file: file.file, path: candidate.path, companions: candidate.files.filter(entry => entry.path !== candidate.path) };
+  }
+  const benchmarkTargets = computed<ImageBenchmarkTarget[]>(() => inventory.value.candidates.flatMap(candidate => {
+    const slot = primarySlot({ family: candidate.family });
+    if (!slot) return [];
+    const useSelection = candidate.id === main.value && origin !== 'files';
+    const missing: ModelSlot[] = [];
+    const members = [{ slot, candidate }];
+    for (const requirement of componentRequirements({ family: candidate.family })) {
+      // Honour deliberate empty/changed companions on the normal generation tab.
+      // Other targets resolve independently and never mutate that tab's selection.
+      const id = useSelection ? selections.value[requirement.slot] : defaultCompanion({ main: candidate, candidates: inventory.value.candidates, requirement });
+      const component = inventory.value.candidates.find(item => item.id === id);
+      if (!component || componentMatch({ candidate: component, requirement }) === 'incompatible') missing.push(requirement.slot);
+      else members.push({ slot: requirement.slot, candidate: component });
+    }
+    const issue = candidate.issue ?? (members.some(item => !item.candidate.files.some(file => file.path === item.candidate.path)) ? 'Missing local file' : undefined);
+    return [{ id: candidate.id, label: candidate.path.split('/').at(-1) ?? candidate.path,
+      detail: `${candidate.repositoryId}/${candidate.path}`, facts: { family: candidate.family, variant: candidate.variant, evidence: [...candidate.evidence] },
+      composition: useSelection ? 'selected' as const : 'automatic' as const, missing, issue,
+      models: !issue && missing.length === 0 ? members.map(item => modelForCandidate(item)) : undefined }];
+  }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
   function cancelImport(): void {
     activeImport.value?.abort();
   }
@@ -352,7 +374,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   onScopeDispose(() => {
     disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort();
   });
-  return { selectedFacts, models, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
+  return { benchmarkTargets, selectedFacts, models, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
     chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }

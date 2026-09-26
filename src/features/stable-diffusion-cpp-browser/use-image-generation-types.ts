@@ -6,6 +6,8 @@ import type { ImageGenerationRecommendation } from './recommendations';
 
 export type ImageGenerationView = ReturnType<typeof createImageForm> & {
   library: ImageLibraryView;
+  acquireBenchmark(): boolean;
+  releaseBenchmark(): void;
   busy: ComputedRef<boolean>;
   supported: ComputedRef<boolean>;
   formDisabled: ComputedRef<boolean>;

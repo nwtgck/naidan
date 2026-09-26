@@ -1,0 +1,1 @@
+export const imageBenchmark__limits = (): string => "Bis zu 100 Läufe je Messung. PNGs sind insgesamt auf 128 MiB begrenzt; Auslassungen werden vermerkt. Ergebnisse bleiben bis zum Export im Speicher.";

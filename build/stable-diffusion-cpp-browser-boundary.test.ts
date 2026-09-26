@@ -66,7 +66,7 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     const local = [...new Set(modules.filter(id => id.includes('/' + feature)).map(id => id.slice(id.indexOf(feature) + feature.length).split('?')[0]))].sort();
-    expect(local).toEqual(['components/ImageCatalogDownloadStatus.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'form-options.ts', 'form.ts', 'library-standalone.ts', 'model-recipes.ts', 'preview-presentation.ts', 'use-image-generation-standalone.ts']);
+    expect(local).toEqual(['benchmark-form.ts', 'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'form-options.ts', 'form.ts', 'library-standalone.ts', 'model-recipes.ts', 'preview-presentation.ts', 'use-image-benchmark-standalone.ts', 'use-image-generation-standalone.ts']);
     expect(workerModules).toEqual([]);
     expect(Object.keys(files).some(name => name.startsWith('stable-diffusion-cpp-runtime/') || /\.wasm(\.|$)/.test(name))).toBe(false);
     const code = Object.values(files).map(file => file.type === 'chunk' ? file.code : '').join('\n');
@@ -84,6 +84,8 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'hosted', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     expect(modules.some(id => id.endsWith('/use-image-generation-hosted.ts'))).toBe(true);
+    for (const name of ['use-image-benchmark-hosted.ts', 'benchmark/runner.ts', 'benchmark/archive.ts']) expect(modules.some(id => id.endsWith('/' + name)), name).toBe(true);
+    expect(modules.some(id => id.includes('/node_modules/jszip/'))).toBe(false);
     expect(modules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(false);
     expect(modules.some(id => id.endsWith('/download-worker/client.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/inventory-worker/client.ts'))).toBe(true);
@@ -111,6 +113,11 @@ describe('hosted-only bicore image boundary', () => {
     const chunks = Object.values(files).filter(file => file.type === 'chunk');
     const modules = chunks.flatMap(file => Object.keys(file.modules));
     for (const key of [
+      'imageBenchmark__speed_measurement',
+      'imageBenchmark__start',
+      'imageBenchmark__overrides',
+      'imageBenchmark__download_zip',
+      'imageBenchmark__export_privacy',
       'stableDiffusionCppBrowser__decoding_image',
       'stableDiffusionCppBrowser__preview_title',
       'stableDiffusionCppBrowser__keep_model_loaded',
@@ -150,7 +157,7 @@ describe('hosted-only bicore image boundary', () => {
   it('rejects accidentally emitted image binaries even with the correct facade', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: true })).rejects.toThrow('Image runtime asset');
   }, 60_000);
-  it.each(['worker/gpu-performance.ts', 'worker/performance-counters.ts', 'worker/run-performance.ts', 'inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'recommendations.ts', 'session-key.ts', 'image-gallery.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
+  it.each(['use-image-benchmark-hosted.ts', 'benchmark/types.ts', 'benchmark/plan.ts', 'benchmark/runner.ts', 'benchmark/archive.ts', 'benchmark/measurements.ts', 'worker/gpu-performance.ts', 'worker/performance-counters.ts', 'worker/run-performance.ts', 'inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'recommendations.ts', 'session-key.ts', 'image-gallery.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).toThrow('Hosted image implementation');
   });
 });

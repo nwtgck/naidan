@@ -1,0 +1,1 @@
+export const imageBenchmark__defaults_help = (): string => "Size, steps, prompts and seed stay common unless overridden. Equal steps do not mean equal work or quality. Model-specific arguments are shown in each effective request.";

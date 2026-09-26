@@ -1,0 +1,1 @@
+export const imageBenchmark__fairness = (): string => "Se libera el modelo normal antes de medir y los Workers al cambiar de modelo. No se controlan cachés del navegador/SO, otras apps, temperatura ni recuperación de memoria GPU.";

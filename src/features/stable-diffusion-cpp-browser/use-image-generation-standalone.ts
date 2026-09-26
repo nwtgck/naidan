@@ -10,6 +10,7 @@ export function useImageGeneration(): ImageGenerationView {
   return {
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
     ...form,
+    acquireBenchmark: () => false, releaseBenchmark() {},
     library: createDisabledImageLibrary(),
     busy: computed(() => false),
     supported: computed(() => false),

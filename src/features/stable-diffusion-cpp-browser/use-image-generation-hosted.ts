@@ -21,6 +21,7 @@ export function useImageGeneration(): ImageGenerationView {
   const form = createImageForm({ profile: initialProfile() });
   const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results } = form;
   const controller = shallowRef<AbortController>();
+  const benchmarkActive = ref(false);
   const diagnosticBuffer = createImageDiagnosticBuffer();
   const manualFacts = shallowRef<ImageModelFacts>();
   const manualInspectionState = ref<'idle' | 'scanning' | 'failed'>('idle');
@@ -60,7 +61,7 @@ export function useImageGeneration(): ImageGenerationView {
   let generateStartedAt = 0;
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const busy = computed(() => controller.value !== undefined);
-  const formDisabled = computed(() => busy.value || configuration.kind === 'unavailable');
+  const formDisabled = computed(() => busy.value || benchmarkActive.value || configuration.kind === 'unavailable');
   const library = useImageLibrary({ blocked: () => formDisabled.value, dependencies: undefined,
     onSelection({ family, turbo }) {
       // Preserve established selection-time helpers for recognized models. The
@@ -158,6 +159,17 @@ export function useImageGeneration(): ImageGenerationView {
   function releaseFor({ reason }: { reason: ImageReleaseReason }): void {
     client?.release({ reason }); modelResident.value = false;
   }
+  function acquireBenchmark(): boolean {
+    if (disposed || benchmarkActive.value || busy.value || !supported.value || library.importing.value || library.downloading.value || library.scanState.value === 'scanning') return false;
+    benchmarkActive.value = true;
+    manualInspection?.abort(); manualInspection = undefined; manualInspectionState.value = 'idle';
+    library.cancelScan();
+    releaseModel();
+    return true;
+  }
+  function releaseBenchmark(): void {
+    benchmarkActive.value = false;
+  }
   function releaseModel(): void {
     releaseFor({ reason: 'explicit-release' });
   }
@@ -205,7 +217,7 @@ export function useImageGeneration(): ImageGenerationView {
     if (!busy.value) releaseFor({ reason: 'view-settings-changed' });
   });
   async function generate(): Promise<void> {
-    if (!supported.value || !artifact.value || busy.value || library.importing.value || library.downloading.value || disposed) return;
+    if (!supported.value || !artifact.value || benchmarkActive.value || busy.value || library.importing.value || library.downloading.value || disposed) return;
     invalid.value = false; failure.value = ''; cancelled.value = false; stopping.value = false;
     const selectedSlots: ModelSlot[] = (() => {
       switch (layout.value) {
@@ -296,7 +308,7 @@ export function useImageGeneration(): ImageGenerationView {
     disposed = true; manualInspection?.abort(); controller.value?.abort(); client?.dispose();
     modelResident.value = false; finalGallery.clear(); clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, library, busy, supported, formDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

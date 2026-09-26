@@ -1,0 +1,1 @@
+export const imageBenchmark__defaults_help = (): string => "Tamanho, etapas, textos e semente são comuns salvo alterações individuais. Etapas iguais não significam trabalho ou qualidade iguais. Veja os argumentos na solicitação efetiva.";

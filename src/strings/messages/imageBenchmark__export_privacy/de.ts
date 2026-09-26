@@ -1,0 +1,1 @@
+export const imageBenchmark__export_privacy = (): string => "Das ZIP enthält lokale Dateinamen, Einstellungen, Modellargumente, Notizen und optionale Bilder. Vor Weitergabe prüfen. Prompts sind standardmäßig ausgelassen.";

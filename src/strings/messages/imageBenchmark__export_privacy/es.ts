@@ -1,0 +1,1 @@
+export const imageBenchmark__export_privacy = (): string => "El ZIP contiene nombres de archivos, ajustes, argumentos, notas e imágenes opcionales. Revísalo antes de compartir. Los textos se omiten por defecto.";

@@ -2099,6 +2099,104 @@ import { stableDiffusionCppBrowser__vae_tiling } from '@/strings/messages/stable
 import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/stableDiffusionCppBrowser__vae_tile_size/zh-Hans';
 import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/zh-Hans';
 import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/zh-Hans';
+import { imageBenchmark__speed_measurement } from '@/strings/messages/imageBenchmark__speed_measurement/zh-Hans';
+
+import { imageBenchmark__introduction } from '@/strings/messages/imageBenchmark__introduction/zh-Hans';
+
+import { imageBenchmark__shared_settings } from '@/strings/messages/imageBenchmark__shared_settings/zh-Hans';
+
+import { imageBenchmark__model_sampling_defaults } from '@/strings/messages/imageBenchmark__model_sampling_defaults/zh-Hans';
+
+import { imageBenchmark__defaults_help } from '@/strings/messages/imageBenchmark__defaults_help/zh-Hans';
+
+import { imageBenchmark__protocol } from '@/strings/messages/imageBenchmark__protocol/zh-Hans';
+
+import { imageBenchmark__cold_then_warm } from '@/strings/messages/imageBenchmark__cold_then_warm/zh-Hans';
+
+import { imageBenchmark__fresh_each } from '@/strings/messages/imageBenchmark__fresh_each/zh-Hans';
+
+import { imageBenchmark__runs_per_model } from '@/strings/messages/imageBenchmark__runs_per_model/zh-Hans';
+
+import { imageBenchmark__order } from '@/strings/messages/imageBenchmark__order/zh-Hans';
+
+import { imageBenchmark__listed_order } from '@/strings/messages/imageBenchmark__listed_order/zh-Hans';
+
+import { imageBenchmark__reverse_order } from '@/strings/messages/imageBenchmark__reverse_order/zh-Hans';
+
+import { imageBenchmark__cooldown } from '@/strings/messages/imageBenchmark__cooldown/zh-Hans';
+
+import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/zh-Hans';
+
+import { imageBenchmark__keep_images } from '@/strings/messages/imageBenchmark__keep_images/zh-Hans';
+
+import { imageBenchmark__limits } from '@/strings/messages/imageBenchmark__limits/zh-Hans';
+
+import { imageBenchmark__fairness } from '@/strings/messages/imageBenchmark__fairness/zh-Hans';
+
+import { imageBenchmark__environment_notes } from '@/strings/messages/imageBenchmark__environment_notes/zh-Hans';
+
+import { imageBenchmark__available_models } from '@/strings/messages/imageBenchmark__available_models/zh-Hans';
+
+import { imageBenchmark__select_all } from '@/strings/messages/imageBenchmark__select_all/zh-Hans';
+
+import { imageBenchmark__select_none } from '@/strings/messages/imageBenchmark__select_none/zh-Hans';
+
+import { imageBenchmark__no_models } from '@/strings/messages/imageBenchmark__no_models/zh-Hans';
+
+import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/zh-Hans';
+
+import { imageBenchmark__overrides } from '@/strings/messages/imageBenchmark__overrides/zh-Hans';
+
+import { imageBenchmark__override } from '@/strings/messages/imageBenchmark__override/zh-Hans';
+
+import { imageBenchmark__effective_request } from '@/strings/messages/imageBenchmark__effective_request/zh-Hans';
+
+import { imageBenchmark__start } from '@/strings/messages/imageBenchmark__start/zh-Hans';
+
+import { imageBenchmark__stop } from '@/strings/messages/imageBenchmark__stop/zh-Hans';
+
+import { imageBenchmark__download_zip } from '@/strings/messages/imageBenchmark__download_zip/zh-Hans';
+
+import { imageBenchmark__new_measurement } from '@/strings/messages/imageBenchmark__new_measurement/zh-Hans';
+
+import { imageBenchmark__include_prompts } from '@/strings/messages/imageBenchmark__include_prompts/zh-Hans';
+
+import { imageBenchmark__export_privacy } from '@/strings/messages/imageBenchmark__export_privacy/zh-Hans';
+
+import { imageBenchmark__archive_saved } from '@/strings/messages/imageBenchmark__archive_saved/zh-Hans';
+
+import { imageBenchmark__results } from '@/strings/messages/imageBenchmark__results/zh-Hans';
+
+import { imageBenchmark__run } from '@/strings/messages/imageBenchmark__run/zh-Hans';
+
+import { imageBenchmark__cold } from '@/strings/messages/imageBenchmark__cold/zh-Hans';
+
+import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/zh-Hans';
+
+import { imageBenchmark__queued } from '@/strings/messages/imageBenchmark__queued/zh-Hans';
+
+import { imageBenchmark__running } from '@/strings/messages/imageBenchmark__running/zh-Hans';
+
+import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__succeeded/zh-Hans';
+
+import { imageBenchmark__failed } from '@/strings/messages/imageBenchmark__failed/zh-Hans';
+
+import { imageBenchmark__cancelled } from '@/strings/messages/imageBenchmark__cancelled/zh-Hans';
+
+import { imageBenchmark__skipped } from '@/strings/messages/imageBenchmark__skipped/zh-Hans';
+
+import { imageBenchmark__elapsed } from '@/strings/messages/imageBenchmark__elapsed/zh-Hans';
+
+import { imageBenchmark__sampling } from '@/strings/messages/imageBenchmark__sampling/zh-Hans';
+
+import { imageBenchmark__model_load } from '@/strings/messages/imageBenchmark__model_load/zh-Hans';
+
+import { imageBenchmark__check_plan } from '@/strings/messages/imageBenchmark__check_plan/zh-Hans';
+
+import { imageBenchmark__exporting } from '@/strings/messages/imageBenchmark__exporting/zh-Hans';
+
+import { imageBenchmark__freshness_warning } from '@/strings/messages/imageBenchmark__freshness_warning/zh-Hans';
+
 export const catalog = {
   stableDiffusionCppBrowser__preview_mode_locked,
   stableDiffusionCppBrowser__preset_unknown,
@@ -4197,4 +4295,53 @@ export const catalog = {
   audioGeneration__copy_text,
   audioGeneration__text_copied,
   audioGeneration__copy_failed_select_text,
+  imageBenchmark__speed_measurement,
+  imageBenchmark__introduction,
+  imageBenchmark__shared_settings,
+  imageBenchmark__model_sampling_defaults,
+  imageBenchmark__defaults_help,
+  imageBenchmark__protocol,
+  imageBenchmark__cold_then_warm,
+  imageBenchmark__fresh_each,
+  imageBenchmark__runs_per_model,
+  imageBenchmark__order,
+  imageBenchmark__listed_order,
+  imageBenchmark__reverse_order,
+  imageBenchmark__cooldown,
+  imageBenchmark__timeout,
+  imageBenchmark__keep_images,
+  imageBenchmark__limits,
+  imageBenchmark__fairness,
+  imageBenchmark__environment_notes,
+  imageBenchmark__available_models,
+  imageBenchmark__select_all,
+  imageBenchmark__select_none,
+  imageBenchmark__no_models,
+  imageBenchmark__unavailable_components,
+  imageBenchmark__overrides,
+  imageBenchmark__override,
+  imageBenchmark__effective_request,
+  imageBenchmark__start,
+  imageBenchmark__stop,
+  imageBenchmark__download_zip,
+  imageBenchmark__new_measurement,
+  imageBenchmark__include_prompts,
+  imageBenchmark__export_privacy,
+  imageBenchmark__archive_saved,
+  imageBenchmark__results,
+  imageBenchmark__run,
+  imageBenchmark__cold,
+  imageBenchmark__warm,
+  imageBenchmark__queued,
+  imageBenchmark__running,
+  imageBenchmark__succeeded,
+  imageBenchmark__failed,
+  imageBenchmark__cancelled,
+  imageBenchmark__skipped,
+  imageBenchmark__elapsed,
+  imageBenchmark__sampling,
+  imageBenchmark__model_load,
+  imageBenchmark__check_plan,
+  imageBenchmark__exporting,
+  imageBenchmark__freshness_warning,
 } satisfies Strings;
