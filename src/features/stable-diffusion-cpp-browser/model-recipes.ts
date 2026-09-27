@@ -13,7 +13,7 @@ export type ImageRecipeFile = {
   approximateBytes: number;
 };
 export type ImageModelRecipe = {
-  id: 'z-image-turbo' | 'qwen-image-2.1' | 'z-image-base' | 'sdxl-base-1.0';
+  id: 'z-image-turbo' | 'qwen-image-2.1' | 'z-image-base' | 'sdxl-base-1.0' | 'flux2-klein-4b' | 'anima-turbo-1.1';
   title: string;
   files: readonly ImageRecipeFile[];
   components: readonly ImageRecipeComponent[];
@@ -57,6 +57,24 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
       // Match the upstream SDXL example's explicit VAE override. The checkpoint
       // also has a VAE; users can clear this selection to use that component.
       { role: 'vae', repository: 'madebyollin/sdxl-vae-fp16-fix', revision: 'c2fda8dd4afc6ddcb52e874cdc7ae79087cb8616', path: 'sdxl_vae.safetensors', directory: 'sdxl-vae-fp16-fix', approximateBytes: 334641162 },
+    ],
+  },
+  {
+    id: 'flux2-klein-4b', title: 'FLUX.2 [klein] 4B Distilled',
+    source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/flux2.md',
+    files: [
+      { role: 'diffusion', repository: 'leejet/FLUX.2-klein-4B-GGUF', revision: '4a253eddf43d4a449233a1cbd5fe8e8232110964', path: 'flux-2-klein-4b-Q4_0.gguf', directory: 'FLUX.2-klein-4B-GGUF', approximateBytes: 2460378560 },
+      { role: 'vae', repository: 'Comfy-Org/vae-text-encorder-for-flux-klein-4b', revision: '5f526678002e43af5551dadb73ce2e8c91b43afe', path: 'split_files/vae/flux2-vae.safetensors', directory: 'vae-text-encorder-for-flux-klein-4b', approximateBytes: 336000000 },
+      { role: 'lm', repository: 'Comfy-Org/vae-text-encorder-for-flux-klein-4b', revision: '5f526678002e43af5551dadb73ce2e8c91b43afe', path: 'split_files/text_encoders/qwen_3_4b.safetensors', directory: 'vae-text-encorder-for-flux-klein-4b', approximateBytes: 8040000000 },
+    ],
+  },
+  {
+    id: 'anima-turbo-1.1', title: 'Anima Turbo 1.1',
+    source: 'https://huggingface.co/circlestone-labs/Anima',
+    files: [
+      { role: 'diffusion', repository: 'circlestone-labs/Anima', revision: 'f973fc41ec7545364ac9776c2440285f43ff2a30', path: 'split_files/diffusion_models/anima-turbo-v1.1.safetensors', directory: 'Anima', approximateBytes: 4182000000 },
+      { role: 'vae', repository: 'circlestone-labs/Anima', revision: 'f973fc41ec7545364ac9776c2440285f43ff2a30', path: 'split_files/vae/qwen_image_vae.safetensors', directory: 'Anima', approximateBytes: 253800000 },
+      { role: 'lm', repository: 'circlestone-labs/Anima', revision: 'f973fc41ec7545364ac9776c2440285f43ff2a30', path: 'split_files/text_encoders/qwen_3_06b_base.safetensors', directory: 'Anima', approximateBytes: 1192000000 },
     ],
   },
 ];

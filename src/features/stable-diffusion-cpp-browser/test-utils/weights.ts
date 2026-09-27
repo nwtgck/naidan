@@ -68,6 +68,17 @@ export function tensor({ name, shape }: { name: string, shape: number[] }): Tens
 export const zImageTensors: TensorInfo[] = [tensor({ name: 'cap_embedder.0.weight', shape: [2560] }), tensor({ name: 'cap_embedder.1.weight', shape: [3840, 2560] }), tensor({ name: 'all_x_embedder.2-1.weight', shape: [3840, 64] })];
 export const qwenImageTensors: TensorInfo[] = [tensor({ name: 'txt_in.text_norm.weight', shape: [4096] }), tensor({ name: 'img_in.weight', shape: [4096, 64] }), tensor({ name: 'txt_in.in_layer.weight', shape: [4096, 4096] })];
 export const fluxVaeTensors: TensorInfo[] = [tensor({ name: 'decoder.conv_in.weight', shape: [512, 16, 3, 3] }), tensor({ name: 'decoder.conv_out.weight', shape: [3, 128, 3, 3] }), tensor({ name: 'encoder.conv_out.weight', shape: [32, 512, 3, 3] })];
+export const flux2KleinTensors: TensorInfo[] = [
+  tensor({ name: 'double_stream_modulation_img.lin.weight', shape: [18432, 3072] }),
+  tensor({ name: 'img_in.weight', shape: [3072, 128] }),
+  tensor({ name: 'txt_in.weight', shape: [3072, 7680] }),
+];
+export const animaTensors: TensorInfo[] = [
+  tensor({ name: 'llm_adapter.blocks.0.cross_attn.q_proj.weight', shape: [1024, 1024] }),
+  tensor({ name: 'x_embedder.proj.1.weight', shape: [2048, 68] }),
+];
+export const flux2VaeTensors: TensorInfo[] = [tensor({ name: 'decoder.conv_in.weight', shape: [512, 32, 3, 3] }), tensor({ name: 'decoder.conv_out.weight', shape: [3, 128, 3, 3] }), tensor({ name: 'encoder.conv_out.weight', shape: [64, 512, 3, 3] })];
+export const wanVaeTensors: TensorInfo[] = [tensor({ name: 'conv2.weight', shape: [16, 16, 1, 1, 1] }), tensor({ name: 'decoder.conv1.weight', shape: [384, 16, 3, 3, 3] }), tensor({ name: 'decoder.head.2.weight', shape: [3, 96, 3, 3, 3] })];
 export const sdVaeTensors: TensorInfo[] = [tensor({ name: 'decoder.conv_in.weight', shape: [512, 4, 3, 3] }), tensor({ name: 'decoder.conv_out.weight', shape: [3, 128, 3, 3] }), tensor({ name: 'encoder.conv_out.weight', shape: [8, 512, 3, 3] })];
 export const sdCheckpointTensors: TensorInfo[] = [
   tensor({ name: 'model.diffusion_model.input_blocks.0.0.weight', shape: [320, 4, 3, 3] }),

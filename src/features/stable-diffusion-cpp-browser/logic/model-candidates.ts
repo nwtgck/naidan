@@ -6,13 +6,13 @@ import { inspectWeightFile, readModelJson, type TensorInfo, type WeightMetadata 
 import { relativeCompanionPath } from './model-path';
 import type { LocalImageRepository, RepositoryFile, HostImageRepositorySource } from './repository-store';
 
-export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'unknown';
-export type ComponentClass = 'vae-flux16' | 'vae-sd4' | 'vae-qwen21' | 'lm-qwen3-4b' | 'lm-qwen3vl-8b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae';
+export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'flux2-klein-4b' | 'anima' | 'unknown';
+export type ComponentClass = 'vae-flux16' | 'vae-flux32' | 'vae-sd4' | 'vae-qwen21' | 'vae-wan16' | 'lm-qwen3-4b' | 'lm-qwen3-06b' | 'lm-qwen3vl-8b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae';
 export type ModelCandidate = {
   id: string; repositoryId: string; path: string; files: RepositoryFile[];
   format: 'gguf' | 'safetensors' | 'safetensors-index';
   size: number; family: ImageFamily; classes: ComponentClass[]; roles: ModelSlot[];
-  evidence: string[]; issue: string | undefined; turboHint: boolean; variant: 'turbo' | 'base' | 'unknown';
+  evidence: string[]; issue: string | undefined; turboHint: boolean; variant: 'turbo' | 'base' | 'distilled' | 'unknown';
   hostSource?: HostImageRepositorySource;
 };
 export type ModelInventory = { candidates: ModelCandidate[], issues: { repositoryId: string, path: string, message: string }[] };
@@ -35,18 +35,30 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
   const unet = has({ pattern: /(^|\.)(input_blocks\.0\.0|down_blocks\.0\.resnets\.0\.conv1)\.weight$/ });
   const decoder = find({ suffix: 'decoder.conv_in.weight' });
   const text = has({ pattern: /(^|\.)token_embedding\.weight$/ });
+  const flux2Modulation = find({ suffix: 'double_stream_modulation_img.lin.weight' });
+  const fluxText = find({ suffix: 'txt_in.weight' });
+  const animaAdapter = find({ suffix: 'llm_adapter.blocks.0.cross_attn.q_proj.weight' });
+  const animaInput = find({ suffix: 'x_embedder.proj.1.weight' });
   if (cap?.shape[0] === 2560 && capProjection?.shape.at(-1) === 2560 && zInput?.shape.at(-1) === 64) {
     family = 'z-image'; roles.push('diffusion'); evidence.push('cap_embedder: 2560; image patch input: 64');
   } else if (qText?.shape[0] === 4096 && qInput?.shape.at(-1) === 64 && find({ suffix: 'txt_in.in_layer.weight' })?.shape.at(-1) === 4096) {
     family = 'qwen-image-2.1'; roles.push('diffusion'); evidence.push('txt_in.text_norm: 4096; image latent: 64');
   } else if (unet && decoder && text) {
     family = 'sd-checkpoint'; roles.push('model'); evidence.push('UNet + text encoder + image decoder in one checkpoint');
-  } else if (has({ pattern: /(^|\.)double_blocks\.0\.img_attn\./ }) && has({ pattern: /(^|\.)single_blocks\.0\./ })) {
+  } else if (flux2Modulation && qInput?.shape[0] === 3072 && qInput.shape[1] === 128 && fluxText?.shape[0] === 3072 && fluxText.shape[1] === 7680) {
+    // Klein 9B and FLUX.2-dev use different widths/text encoders. Do not
+    // classify every model with shared FLUX modulation as the 4B recipe.
+    family = 'flux2-klein-4b'; roles.push('diffusion'); evidence.push('FLUX.2 shared modulation; hidden 3072, image 128, text 7680');
+  } else if (animaAdapter?.shape[0] === 1024 && animaAdapter.shape[1] === 1024 && animaInput?.shape[0] === 2048 && animaInput.shape[1] === 68) {
+    family = 'anima'; roles.push('diffusion'); evidence.push('Anima LM adapter: 1024; hidden 2048, image patch input 68');
+  } else if (!flux2Modulation && has({ pattern: /(^|\.)double_blocks\.0\.img_attn\./ }) && has({ pattern: /(^|\.)single_blocks\.0\./ })) {
     family = 'flux1'; roles.push('diffusion'); evidence.push('FLUX double/single transformer blocks');
   }
   const vaeOutput = find({ suffix: 'decoder.conv_out.weight' });
   if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 16 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 32) {
     classes.push('vae-flux16'); roles.push('vae'); evidence.push('2D VAE: latent 16, RGB output, encoder 32');
+  } else if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 32 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 64) {
+    classes.push('vae-flux32'); roles.push('vae'); evidence.push('2D VAE: latent 32, RGB output, encoder 64');
   } else if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 4 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 8) {
     // Shape evidence alone does not identify training weights or latent scaling.
     // Checkpoint VAE overrides are explicit, never an automatic substitution.
@@ -56,6 +68,8 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
     const conv1 = find({ suffix: 'decoder.conv1.weight' });
     if (conv2?.shape[0] === 64 && conv2.shape[1] === 64 && head?.shape[0] === 4 && conv1?.shape[1] === 64) {
       classes.push('vae-qwen21'); roles.push('vae'); evidence.push('Qwen Image 2.1 VAE: latent 64, RGBA output');
+    } else if (conv2?.shape.length === 5 && conv2.shape[0] === 16 && conv2.shape[1] === 16 && head?.shape[0] === 3 && conv1?.shape[1] === 16) {
+      classes.push('vae-wan16'); roles.push('vae'); evidence.push('Wan-style VAE: latent 16, RGB output, 3D convolutions');
     } else if (decoder || has({ pattern: /(^|\.)decoder\.(conv1|head\.2)\.weight$/ })) {
       classes.push('other-vae'); roles.push('vae'); evidence.push('Image decoder with a different or unknown latent format');
     }
@@ -77,10 +91,11 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
     // Dimensions and architecture must agree. Qwen2.5-VL / Gemma / differently
     // sized Qwen models never become defaults merely from a filename hint.
     if ((q3 || (!q3vl && !architecture && !config?.model_type && !config?.text_config?.model_type && qNorm?.shape[0] === 128)) && width === 2560 && layers === 36) classes.push('lm-qwen3-4b');
+    else if ((q3 || (!q3vl && !architecture && !config?.model_type && !config?.text_config?.model_type && qNorm?.shape[0] === 128)) && width === 1024 && layers === 28) classes.push('lm-qwen3-06b');
     // Qwen3-VL-8B has 36 text layers, not 32 attention heads.
     // https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct/blob/main/config.json
     else if (q3vl && width === 4096 && layers === 36) classes.push('lm-qwen3vl-8b');
-    else if (architecture || config?.model_type || config?.text_config?.model_type || !((width === 2560 && layers === 36) || (width === 4096 && layers === 36))) classes.push('other-lm');
+    else if (architecture || config?.model_type || config?.text_config?.model_type || !((width === 2560 && layers === 36) || (width === 1024 && layers === 28) || (width === 4096 && layers === 36))) classes.push('other-lm');
     // A stripped text-only export can lack evidence identifying its model
     // family. Matching dimensions alone are not sufficient for an automatic
     // choice, but absence of evidence is not a known incompatibility either.
@@ -103,7 +118,7 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
   const variant = (() => {
     switch (family) {
     case 'z-image': return /\bturbo\b/i.test(training) ? 'turbo' : /\bbase\b/i.test(training) ? 'base' : 'unknown';
-    case 'sd-checkpoint': case 'qwen-image-2.1': case 'flux1': case 'unknown': return 'unknown';
+    case 'sd-checkpoint': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'unknown': return 'unknown';
     default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
     }
   })();
@@ -182,8 +197,17 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       // Published immutable catalog provenance can identify a training variant
       // whose exported header has no training label. Require structure AND receipt.
       const source = fileMap.get(path)?.receipt?.source;
-      if (facts.family === 'z-image' && source?.kind === 'hugging-face') {
-        const recipe = imageModelRecipes.find(recipe => (recipe.id === 'z-image-turbo' || recipe.id === 'z-image-base')
+      if ((facts.family === 'z-image' || facts.family === 'flux2-klein-4b' || facts.family === 'anima') && source?.kind === 'hugging-face') {
+        const family = facts.family;
+        const recipeIds = (() => {
+          switch (family) {
+          case 'z-image': return ['z-image-turbo', 'z-image-base'];
+          case 'flux2-klein-4b': return ['flux2-klein-4b'];
+          case 'anima': return ['anima-turbo-1.1'];
+          default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
+          }
+        })();
+        const recipe = imageModelRecipes.find(recipe => recipeIds.includes(recipe.id)
           && recipe.components.some(component => component.role === 'diffusion' && component.options.some(option =>
             option.repository === source.repository && option.revision === source.revision && option.path === source.path)));
         if (recipe) {
@@ -192,6 +216,10 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
             facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: verified catalog download receipt'); break;
           case 'z-image-base':
             facts.variant = 'base'; facts.turboHint = false; facts.evidence.push('Base variant: verified catalog download receipt'); break;
+          case 'flux2-klein-4b':
+            facts.variant = 'distilled'; facts.evidence.push('Distilled variant: verified catalog download receipt'); break;
+          case 'anima-turbo-1.1':
+            facts.variant = 'turbo'; facts.evidence.push('Turbo variant: verified catalog download receipt'); break;
           case 'qwen-image-2.1': case 'sdxl-base-1.0': break;
           default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
           }
@@ -249,6 +277,8 @@ export function componentRequirements({ family }: { family: ImageFamily }): { sl
   case 'z-image': return [{ slot: 'vae', accepts: ['vae-flux16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-4b'], required: true }];
   case 'qwen-image-2.1': return [{ slot: 'vae', accepts: ['vae-qwen21'], required: true }, { slot: 'lm', accepts: ['lm-qwen3vl-8b'], required: true }];
   case 'flux1': return [{ slot: 'vae', accepts: ['vae-flux16'], required: true }, { slot: 'clipL', accepts: ['clip-l'], required: true }, { slot: 't5', accepts: ['t5-xxl'], required: true }];
+  case 'flux2-klein-4b': return [{ slot: 'vae', accepts: ['vae-flux32'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-4b'], required: true }];
+  case 'anima': return [{ slot: 'vae', accepts: ['vae-wan16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-06b'], required: true }];
   case 'sd-checkpoint': return [{ slot: 'vae', accepts: ['vae-sd4'], required: false }];
   case 'unknown': return [];
   default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }

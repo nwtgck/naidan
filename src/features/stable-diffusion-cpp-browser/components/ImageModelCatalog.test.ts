@@ -21,9 +21,10 @@ it('shows all static recipes without networking or remote resources when opened'
   for (const toggle of wrapper.findAll('[data-testid^="recipe-details-toggle-"]')) await toggle.trigger('click');
   for (const detail of wrapper.findAll('[data-testid="image-recipe-details"]')) expect(detail.attributes('inert')).toBeUndefined();
   await flushPromises();
-  expect(wrapper.findAll('article')).toHaveLength(4);
+  expect(wrapper.findAll('article')).toHaveLength(6);
   expect(wrapper.text()).toContain('Z-Image-Turbo'); expect(wrapper.text()).toContain('Qwen Image 2.1');
   expect(wrapper.text()).toContain('Z-Image Base'); expect(wrapper.text()).toContain('SDXL Base 1.0');
+  expect(wrapper.text()).toContain('FLUX.2 [klein] 4B Distilled'); expect(wrapper.text()).toContain('Anima Turbo 1.1');
   expect(wrapper.text()).toContain('split_files/vae/ae.safetensors');
   expect(wrapper.text()).toContain('Qwen3VL-8B-Instruct-Q4_K_M.gguf');
   expect(wrapper.text()).not.toContain('optional');
@@ -33,7 +34,7 @@ it('shows all static recipes without networking or remote resources when opened'
 it('uses only explicit, referrer-free browser links to immutable file revisions', () => {
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: createDisabledImageLibrary() } });
   const downloads = wrapper.findAll('[data-testid^="recipe-download-selected-"]');
-  expect(downloads).toHaveLength(4);
+  expect(downloads).toHaveLength(6);
   for (const link of wrapper.findAll('a')) {
     const url = new URL(link.attributes('href')!);
     expect(url.origin).toBe('https://huggingface.co');
