@@ -47,6 +47,28 @@ it('does not fetch on construction, refresh, or explicit selection from local fi
   expect(h.library.selectedModels()?.map(model => model.path)).toEqual(files.map(file => file.path));
   expect(h.downloader).not.toHaveBeenCalled();
 });
+it('keeps identical repository files in OPFS and two linked roots distinct and checks the selected destination', async () => {
+  const files = selectedRecipeFiles({ recipe, selections: {} });
+  const opfs = files.map(file => repository({ file, user: false }));
+  function host({ rootId }: { rootId: string }): LocalImageRepository[] {
+    return files.map(file => ({ ...repository({ file, user: false }), id: `host/${rootId}/${file.repository}`,
+      hostSource: { directoryId: rootId, directoryName: 'same-folder-name', repository: file.repository } }));
+  }
+  const h = harness({ initial: [...opfs, ...host({ rootId: 'first' }), ...host({ rootId: 'second' })], download: undefined });
+  await h.library.refresh();
+  expect(h.library.models.value).toHaveLength(3);
+  expect(new Set(h.library.models.value.map(model => model.id)).size).toBe(3);
+  expect(h.library.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(3);
+  h.library.hostDirectories.destination.value = 'second';
+  h.library.chooseRecipe({ recipeId: recipe.id, selections: {} });
+  expect(h.library.main.value).toContain('host/second/');
+  expect(h.library.selectedModels()?.every(model => model.sourceId === undefined)).toBe(true);
+  h.update({ repositories: [...opfs, ...host({ rootId: 'first' })] });
+  await h.library.refresh();
+  expect(h.library.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(0);
+  h.library.hostDirectories.destination.value = 'opfs';
+  expect(h.library.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(3);
+});
 it('retains the explicitly requested quantization after downloads, even if a smaller default already exists', async () => {
   const defaults = selectedRecipeFiles({ recipe, selections: {} });
   const choices = { diffusion: 'q8-0' }; const wanted = selectedRecipeFiles({ recipe, selections: choices });

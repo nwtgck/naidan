@@ -154,6 +154,10 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
       z.literal('full'),
     ])),
   }))),
+  hostModelDirectories: missingAsUndefined(z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+  }))),
 }));
 
 const ExperimentalUnreadableRootKey = '_root';

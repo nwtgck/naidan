@@ -44,18 +44,28 @@ export class MemoryFile {
       },
     };
   }
-  async createWritable() {
-    const chunks: Uint8Array[] = []; let closed = false;
+  async createWritable(options?: { keepExistingData?: boolean }) {
+    let data = options?.keepExistingData ? this.data.slice() : new Uint8Array(0);
+    let position = 0, closed = false;
+    const truncate = async (size: number) => {
+      if (closed || this.failWrite) throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      const next = new Uint8Array(size); next.set(data.subarray(0, size)); data = next;
+      position = Math.min(position, size);
+    };
     return {
-      write: async (data: Uint8Array | string) => {
+      write: async (input: Uint8Array | string | { type: 'write', position: number, data: Uint8Array }) => {
         if (closed || this.failWrite) throw new DOMException('Quota exceeded', 'QuotaExceededError');
-        chunks.push(typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data));
+        let bytes: Uint8Array;
+        if (typeof input === 'string') bytes = new TextEncoder().encode(input);
+        else if ('type' in input) {
+          position = input.position; bytes = input.data;
+        } else bytes = input;
+        const next = new Uint8Array(Math.max(data.length, position + bytes.length)); next.set(data); next.set(bytes, position);
+        data = next; position += bytes.length;
       },
+      truncate,
       close: async () => {
-        this.data = new Uint8Array(chunks.reduce((n, chunk) => n + chunk.length, 0));
-        let offset = 0; for (const chunk of chunks) {
-          this.data.set(chunk, offset); offset += chunk.length;
-        }
+        this.data = data;
         this.modified = ++stamp; closed = true;
       },
       abort: async () => {
@@ -69,6 +79,12 @@ export class MemoryDirectory {
   name: string; children = new Map<string, MemoryFile | MemoryDirectory>();
   constructor(name: string) {
     this.name = name;
+  }
+  async queryPermission(): Promise<PermissionState> {
+    return 'granted';
+  }
+  async requestPermission(): Promise<PermissionState> {
+    return 'granted';
   }
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MemoryDirectory> {
     let entry = this.children.get(name);

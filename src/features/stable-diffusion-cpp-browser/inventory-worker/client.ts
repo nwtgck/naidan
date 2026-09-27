@@ -1,12 +1,12 @@
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 import type { ModelInventory } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
-import type { LocalImageRepository } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
+import type { LocalImageRepository, HostImageDirectory } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import { inspectionProgressSchema, type InspectionReport, type InventoryWorker } from './types';
 
 // This is an inactivity bound, not a maximum duration for a large model library.
 export const INSPECTION_STALL_MS = 60_000;
-export async function inspectImageInventory({ signal, onProgress, repositories }: {
-  signal: AbortSignal, onProgress: InspectionReport, repositories?: LocalImageRepository[],
+export async function inspectImageInventory({ signal, onProgress, repositories, hostDirectories }: {
+  signal: AbortSignal, onProgress: InspectionReport, repositories?: LocalImageRepository[], hostDirectories?: HostImageDirectory[],
 }): Promise<ModelInventory> {
   signal.throwIfAborted();
   const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'image-model-inspection' });
@@ -35,7 +35,7 @@ export async function inspectImageInventory({ signal, onProgress, repositories }
       try {
         onProgress({ progress: parsed.data });
       } catch { /* observational */ }
-    } })), stopped.promise]);
+    } }), hostDirectories), stopped.promise]);
   } finally {
     closed = true; clearTimeout(timer); signal.removeEventListener('abort', abort);
     worker.removeEventListener('error', crash); worker.removeEventListener('messageerror', crash);

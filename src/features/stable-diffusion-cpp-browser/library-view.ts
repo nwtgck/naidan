@@ -13,6 +13,19 @@ export type ImageComponentChoice = {
   slot: ModelSlot; selected: string; required: boolean; choices: ImageModelChoice[];
 };
 export type ImageRecipeAvailability = { available: number, total: number, selected: boolean, bytes: number };
+export type HostModelDirectoryChoice = {
+  id: string, name: string,
+  access: 'readwrite' | 'read' | 'prompt' | 'missing' | 'error' | 'unsupported',
+  error: string | undefined,
+};
+export type HostModelDirectoriesView = {
+  supported: ComputedRef<boolean>, entries: ComputedRef<HostModelDirectoryChoice[]>, busy: Ref<boolean>,
+  destination: Ref<string>,
+  add(): Promise<void>,
+  reconnect({ id }: { id: string }): Promise<void>,
+  remove({ id }: { id: string }): Promise<void>,
+  selectDestination({ id }: { id: string }): void,
+};
 /** Known primary model, with its explicitly resolved local component set. */
 export type ImageBenchmarkTarget = {
   id: string; label: string; detail: string;
@@ -22,6 +35,7 @@ export type ImageBenchmarkTarget = {
   missing: ModelSlot[]; issue: string | undefined;
 };
 export type ImageLibraryView = {
+  hostDirectories: HostModelDirectoriesView;
   benchmarkTargets({ selections }: { selections: Readonly<Record<string, Partial<Record<ModelSlot, string>>>> }): ImageBenchmarkTarget[];
   selectedFacts: ComputedRef<Pick<ModelCandidate, 'family' | 'variant' | 'evidence'> | undefined>;
   models: ComputedRef<ImageModelChoice[]>;

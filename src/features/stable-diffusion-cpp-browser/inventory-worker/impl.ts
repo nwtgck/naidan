@@ -1,6 +1,6 @@
 import { releaseWorkerRemote, type WorkerRemote, type WorkerServerApi } from '@/utils/worker-transport';
 import { scanImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
-import { listImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
+import { listImageRepositories, listHostImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import type { InspectionProgress, InspectionReport, InventoryWorker } from './types';
 
 /** Read-only, single-use realm: cancellation can terminate synchronous parsing
@@ -9,7 +9,7 @@ export function createInventoryWorker(): WorkerServerApi<InventoryWorker> {
   let used = false;
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Top-level Comlink callback.
-    async inspect(input, report) {
+    async inspect(input, report, hostDirectories) {
       if (used) throw new Error('Inventory workers are single-use');
       used = true;
       let previous = 0, lastPhase: InspectionProgress['phase'] | undefined;
@@ -23,6 +23,7 @@ export function createInventoryWorker(): WorkerServerApi<InventoryWorker> {
       }
       try {
         const repositories = input ?? await listImageRepositories({ signal: undefined, onProgress: publish });
+        if (hostDirectories?.length) repositories.push(...await listHostImageRepositories({ directories: hostDirectories, signal: undefined, onProgress: publish }));
         return await scanImageRepositories({ repositories, signal: undefined, onProgress: publish });
       } finally {
         try {

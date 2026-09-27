@@ -2,7 +2,8 @@ import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-brow
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import type { HostModelDirectoryChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageModelCatalog from './ImageModelCatalog.vue';
 let wrapper: VueWrapper | undefined;
 beforeEach(async () => {
@@ -68,4 +69,33 @@ it('keeps option changes offline and sends a frozen choice only on the explicit 
   await wrapper.get('[data-testid="recipe-use-local-z-image-turbo"]').trigger('click');
   expect(view.chooseRecipe).toHaveBeenCalledWith({ recipeId: 'z-image-turbo', selections: { diffusion: 'q8-0' } });
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it('allows permission requests on explicit downloads but blocks unavailable registrations and registry writes', async () => {
+  const entry = ref<HostModelDirectoryChoice>({ id: 'root-a', name: 'models', access: 'prompt', error: undefined });
+  const view = createDisabledImageLibrary();
+  view.hostDirectories = {
+    ...view.hostDirectories, supported: computed(() => true), entries: computed(() => [entry.value]),
+    destination: ref('root-a'),
+  };
+  view.downloadRecipe = vi.fn(async () => {});
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
+  const button = () => wrapper!.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
+  expect(wrapper.get<HTMLOptionElement>('option[value="root-a"]').element.disabled).toBe(false);
+  expect(button().element.disabled).toBe(false);
+  await button().trigger('click');
+  expect(view.downloadRecipe).toHaveBeenCalledOnce();
+  entry.value = { ...entry.value, access: 'read' };
+  await flushPromises();
+  expect(button().element.disabled).toBe(false);
+  entry.value = { ...entry.value, access: 'missing' };
+  await flushPromises();
+  expect(button().element.disabled).toBe(true);
+  view.hostDirectories.destination.value = 'opfs';
+  view.hostDirectories.busy.value = true;
+  await flushPromises();
+  expect(button().element.disabled).toBe(true);
+  view.hostDirectories.busy.value = false;
+  await flushPromises();
+  expect(button().element.disabled).toBe(false);
 });

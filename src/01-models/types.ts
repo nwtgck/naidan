@@ -14,6 +14,7 @@ import type {
   ChatGroupId,
   ChatId,
   MessageId,
+  HostModelDirectoryId,
   ProviderProfileId,
   ToolCallId,
   VolumeId,
@@ -436,6 +437,7 @@ export interface Settings {
     readonly unreadable?: {
       readonly [key: string]: unknown,
     },
+    hostModelDirectories?: { id: HostModelDirectoryId, name: string }[],
   },
 }
 

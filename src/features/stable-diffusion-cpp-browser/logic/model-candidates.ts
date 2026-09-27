@@ -4,7 +4,7 @@ import type { InspectionReport } from '@/features/stable-diffusion-cpp-browser/i
 import type { ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import { inspectWeightFile, readModelJson, type TensorInfo, type WeightMetadata } from './model-metadata';
 import { relativeCompanionPath } from './model-path';
-import type { LocalImageRepository, RepositoryFile } from './repository-store';
+import type { LocalImageRepository, RepositoryFile, HostImageRepositorySource } from './repository-store';
 
 export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'unknown';
 export type ComponentClass = 'vae-flux16' | 'vae-qwen21' | 'lm-qwen3-4b' | 'lm-qwen3vl-8b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae';
@@ -13,6 +13,7 @@ export type ModelCandidate = {
   format: 'gguf' | 'safetensors' | 'safetensors-index';
   size: number; family: ImageFamily; classes: ComponentClass[]; roles: ModelSlot[];
   evidence: string[]; issue: string | undefined; turboHint: boolean; variant: 'turbo' | 'base' | 'unknown';
+  hostSource?: HostImageRepositorySource;
 };
 export type ModelInventory = { candidates: ModelCandidate[], issues: { repositoryId: string, path: string, message: string }[] };
 const configSchema = z.object({
@@ -182,7 +183,8 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
         option.repository === source.repository && option.revision === source.revision && option.path === source.path))) {
         facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: verified catalog download receipt');
       }
-      candidates.push({ id: JSON.stringify([repository.id, path]), repositoryId: repository.id, path, files, format, size: files.reduce((n, f) => n + f.file.size, 0), ...facts, issue });
+      candidates.push({ id: JSON.stringify([repository.id, path]), repositoryId: repository.id, path, files, format, size: files.reduce((n, f) => n + f.file.size, 0), ...facts, issue,
+        ...(repository.hostSource ? { hostSource: repository.hostSource } : {}) });
     }
     for (const index of indices) {
       const shards = new Set<string>(); let issue: string | undefined;

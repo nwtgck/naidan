@@ -10,6 +10,8 @@ import { type scanImageRepositories, componentRequirements, componentMatch, defa
 import { imageDirectoryFromFiles, imageDirectoriesFromDrop } from './logic/repository-input';
 import type { ModelSlot, Request } from './types';
 import type { ImageBenchmarkTarget, ImageComponentChoice, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability } from './library-view';
+import { useHostModelDirectories } from './composables/use-host-model-directories';
+import { createDisabledImageLibrary } from './library-standalone';
 
 type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader };
 const defaultDependencies: Pick<Dependencies, 'import' | 'download'> = { import: importImageRepository, download: downloadImageRecipeInWorker };
@@ -49,12 +51,42 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   const failure = ref('');
   const activeImport = shallowRef<AbortController>();
   const activeDownload = shallowRef<AbortController>();
+  let downloadCompletion: { directoryId: string | undefined, promise: Promise<void> } | undefined;
   const downloadProgress = shallowRef<CatalogDownloadProgress>();
   const downloadState = ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>('idle');
   const downloadRecipeId = ref('');
   const downloadSelections = shallowRef<ImageRecipeSelection>({});
   let recipeIntent: { family: 'z-image' | 'qwen-image-2.1', files: ImageRecipeFile[] } | undefined;
   const downloading = computed(() => activeDownload.value !== undefined);
+  const host = dependencies ? undefined : useHostModelDirectories({
+    blocked: () => blocked() || importing.value,
+    async stopDownload({ id }) {
+      if (downloadCompletion?.directoryId !== id) return;
+      const completed = downloadCompletion.promise;
+      activeDownload.value?.abort();
+      await completed;
+    },
+    async changed() {
+      cancelScan(); await refreshInventory();
+    },
+    failed({ error }) {
+      failure.value = error instanceof Error ? error.message : String(error);
+    },
+  });
+  const hostView = host?.view ?? createDisabledImageLibrary().hostDirectories;
+  const hostDirectories: ImageLibraryView['hostDirectories'] = {
+    ...hostView,
+    async add() {
+      if (!downloading.value) await hostView.add();
+    },
+    async reconnect({ id }) {
+      if (!downloading.value) await hostView.reconnect({ id });
+    },
+    selectDestination({ id }) {
+      if (downloading.value || importing.value || blocked()) return;
+      hostView.selectDestination({ id }); resetDownloadIntent();
+    },
+  };
   let activeScan: { controller: AbortController, promise: Promise<boolean> } | undefined;
   let origin: 'automatic' | 'manual' | 'files' = 'automatic';
   let disposed = false;
@@ -65,7 +97,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   function describe({ candidate, status }: { candidate: ModelCandidate, status: ImageModelChoice['status'] }): ImageModelChoice {
     return {
       id: candidate.id, label: candidate.path.split('/').at(-1) ?? candidate.path,
-      detail: `${candidate.repositoryId}/${candidate.path} · ${candidate.format} · ${(candidate.size / 1024 ** 3).toFixed(2)} GiB`,
+      detail: `${candidate.hostSource ? `${candidate.hostSource.directoryName}/${candidate.hostSource.repository}` : candidate.repositoryId}/${candidate.path} · ${candidate.format} · ${(candidate.size / 1024 ** 3).toFixed(2)} GiB`,
       evidence: candidate.evidence, status: candidate.issue ? 'incompatible' : status, issue: candidate.issue,
     };
   }
@@ -128,12 +160,20 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const target = `huggingface.co/${file.repository}/resolve/main`;
     const matches = inventory.value.candidates.filter(candidate => {
       if (candidate.issue || candidate.path !== file.path || !match({ candidate })) return false;
-      if (!candidate.repositoryId.startsWith('user/') && candidate.repositoryId !== target && candidate.repositoryId !== `huggingface.co/${file.repository}/resolve/${file.revision}`) return false;
+      // Catalog availability belongs to the explicitly selected destination.
+      // A copy in another root must not suppress Download for this root.
+      if (hostDirectories.destination.value === 'opfs' ? candidate.hostSource !== undefined
+        : candidate.hostSource?.directoryId !== hostDirectories.destination.value) return false;
+      if (candidate.hostSource) {
+        if (candidate.hostSource.repository !== file.repository) return false;
+      } else if (!candidate.repositoryId.startsWith('user/') && candidate.repositoryId !== target && candidate.repositoryId !== `huggingface.co/${file.repository}/resolve/${file.revision}`) return false;
       const receipt = candidate.files.find(entry => entry.path === file.path)?.receipt;
       if (receipt?.source.kind === 'hugging-face' && receipt.source.revision !== file.revision) return false;
       return true;
     });
-    matches.sort((a, b) => Number(b.repositoryId === target) - Number(a.repositoryId === target) || a.id.localeCompare(b.id));
+    const preferred = ({ candidate }: { candidate: ModelCandidate }) => hostDirectories.destination.value === 'opfs'
+      ? candidate.repositoryId === target : candidate.hostSource?.directoryId === hostDirectories.destination.value;
+    matches.sort((a, b) => Number(preferred({ candidate: b })) - Number(preferred({ candidate: a })) || a.id.localeCompare(b.id));
     return matches[0];
   }
   function recipeAvailability({ recipeId, selections: requested }: { recipeId: string, selections: ImageRecipeSelection }): ImageRecipeAvailability {
@@ -197,11 +237,16 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const recipe = imageModelRecipes.find(recipe => recipe.id === recipeId); if (!recipe) return;
     const choices = { ...requested }; const files = selectedRecipeFiles({ recipe, selections: choices });
     const controller = new AbortController(); activeDownload.value = controller;
+    const completion = Promise.withResolvers<void>();
+    downloadCompletion = { promise: completion.promise,
+      directoryId: hostDirectories.destination.value === 'opfs' ? undefined : hostDirectories.destination.value };
     cancelScan(); failure.value = ''; downloadState.value = 'downloading'; downloadRecipeId.value = recipeId;
     downloadProgress.value = undefined; downloadSelections.value = choices;
     let transferred = false;
     try {
-      await deps.download({ files, signal: controller.signal, onProgress: ({ progress }) => {
+      const destination = host ? await host.downloadDestination() : { kind: 'opfs' as const };
+      controller.signal.throwIfAborted();
+      await deps.download({ files, destination, signal: controller.signal, onProgress: ({ progress }) => {
         if (!disposed && !controller.signal.aborted) downloadProgress.value = progress;
       } });
       controller.signal.throwIfAborted(); transferred = true;
@@ -225,6 +270,8 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
         if (problem) failure.value = [problem, failure.value].filter(Boolean).join('\n');
       }
       if (activeDownload.value === controller) activeDownload.value = undefined;
+      completion.resolve();
+      if (downloadCompletion?.promise === completion.promise) downloadCompletion = undefined;
     }
   }
   function resetDownloadIntent(): void {
@@ -255,6 +302,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     scanProgress.value = { phase: 'listing', completed: 0, total: 0, path: '' };
     operation.promise = (async () => {
       try {
+        await host?.refresh();
         const onProgress = ({ progress }: { progress: InspectionProgress }) => {
           if (activeScan === operation && !scan.signal.aborted) scanProgress.value = progress;
         };
@@ -263,7 +311,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
           const repositories = await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress }), signal: scan.signal });
           scan.signal.throwIfAborted();
           return dependencies.scan({ repositories, signal: scan.signal, onProgress });
-        })() : inspectImageInventory({ signal: scan.signal, onProgress }) });
+        })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations() }) });
         if (disposed || blocked() || scan.signal.aborted || activeScan !== operation) return false;
         inventory.value = next;
         if (!next.candidates.some(candidate => candidate.id === main.value)) {
@@ -339,7 +387,9 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const file = candidate.files.find(entry => entry.path === candidate.path);
     if (!file) throw new Error('Selected model file disappeared from the inventory');
     // Preserve publication identity and shard membership; never copy weight bytes.
-    const sourceId = candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({ repository: candidate.repositoryId, path: candidate.path,
+    // Host files can change outside Naidan. Fresh File snapshots deliberately
+    // invalidate retained-model identity, even when an old receipt still matches.
+    const sourceId = !candidate.hostSource && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({ repository: candidate.repositoryId, path: candidate.path,
       files: candidate.files.map(entry => ({ path: entry.path, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
     }) : undefined;
     return { slot, ...(sourceId ? { sourceId } : {}), file: file.file, path: candidate.path, companions: candidate.files.filter(entry => entry.path !== candidate.path) };
@@ -383,7 +433,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   onScopeDispose(() => {
     disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort();
   });
-  return { benchmarkTargets, selectedFacts, models, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
+  return { hostDirectories, benchmarkTargets, selectedFacts, models, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
     chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }

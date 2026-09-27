@@ -75,6 +75,7 @@ import {
   toChatGroupId,
   toChatId,
   toMessageId,
+  toHostModelDirectoryId,
   toProviderProfileId,
   toToolCallId,
   toVolumeId,
@@ -2096,6 +2097,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       sidebarSendMessageReorder,
       globalSearch,
       unreadable,
+      hostModelDirectories,
       ...unhandledExperimental
     } = experimental ?? {};
 
@@ -2131,6 +2133,13 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
       unreadable,
+      hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
+        unhandledDirectory satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['hostModelDirectories']>[number]>()({
+          id: toHostModelDirectoryId({ raw: id }),
+          name,
+        });
+      }),
     });
   })();
 
@@ -2201,6 +2210,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       sidebarSendMessageReorder,
       globalSearch,
       unreadable: _unreadable,
+      hostModelDirectories,
       ...unhandledExperimental
     } = experimental ?? {};
 
@@ -2240,6 +2250,13 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDto,
       unreadable: undefined,
+      hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
+        unhandledDirectory satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['hostModelDirectories']>[number]>()({
+          id: idToRaw({ id }),
+          name,
+        });
+      }),
     });
   })();
 

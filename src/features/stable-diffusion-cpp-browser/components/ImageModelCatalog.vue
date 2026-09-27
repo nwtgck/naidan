@@ -6,6 +6,7 @@ import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/d
 import { imageModelRecipes, imageRecipeLink, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageCatalogDownloadStatus from './ImageCatalogDownloadStatus.vue';
+import ImageHostModelDirectories from './ImageHostModelDirectories.vue';
 const props = defineProps<{ disabled: boolean, view: ImageLibraryView }>();
 const { downloading, importing, downloadState, downloadRecipeId, downloadSelections, scanState } = props.view;
 const id = useId(), open = ref(true);
@@ -21,6 +22,15 @@ const cards = computed(() => imageModelRecipes.map(recipe => {
   const availability = props.view.recipeAvailability({ recipeId: recipe.id, selections });
   return { recipe, files, availability, selections, bytes: files.reduce((sum, file) => sum + file.approximateBytes, 0) };
 }));
+const layoutFile = computed(() => cards.value.find(card => card.recipe.id === downloadRecipeId.value)?.files[0]);
+const downloadDestinationUnavailable = computed(() => {
+  const directories = props.view.hostDirectories;
+  if (directories.busy.value) return true;
+  if (directories.destination.value === 'opfs') return false;
+  const entry = directories.entries.value.find(item => item.id === directories.destination.value);
+  // An explicit download can request read/write permission for a known handle.
+  return !directories.supported.value || !entry || ['missing', 'error', 'unsupported'].includes(entry.access);
+});
 function locked({ recipeId: _recipeId }: { recipeId: string }): boolean {
   return props.disabled || downloading.value || importing.value;
 }
@@ -46,7 +56,7 @@ function change({ recipeId, role, event }: { recipeId: string, role: ImageRecipe
   }
 }
 async function download({ recipeId }: { recipeId: string }): Promise<void> {
-  if (!props.disabled) await props.view.downloadRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
+  if (!props.disabled && !downloadDestinationUnavailable.value) await props.view.downloadRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
 }
 function select({ recipeId }: { recipeId: string }): void {
   if (!props.disabled) props.view.chooseRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
@@ -61,6 +71,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
     <div :id="id + '-content'" class="catalog-disclosure" :class="{ 'catalog-disclosure-open': open }" :inert="open ? undefined : true" :aria-hidden="!open">
       <div class="catalog-disclosure-inner">
         <div tw-class="px-4 pb-2">
+          <ImageHostModelDirectories :view="view.hostDirectories" :disabled="disabled || importing" :downloading="downloading" :layout-file="layoutFile" />
           <article v-for="card in cards" :key="card.recipe.id" :data-testid="'image-recipe-' + card.recipe.id" tw-class="min-w-0 border-t border-gray-100 dark:border-gray-800 py-3">
             <!-- Wrapping follows the available card width, NOT the viewport.
                  A desktop sidebar must not compress the model name into a sliver. -->
@@ -74,7 +85,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                 </div>
               </div>
               <button v-if="card.availability.available === card.availability.total" type="button" :disabled="disabled || downloading || importing || card.availability.selected" @click="select({ recipeId: card.recipe.id })" :data-testid="'recipe-use-local-' + card.recipe.id" tw-class="ml-auto max-w-full rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 disabled:opacity-50">{{ card.availability.selected ? lazyStrings.stableDiffusionCppBrowser__selected() : lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
-              <button v-else-if="downloadRecipeId !== card.recipe.id || !['downloading', 'paused', 'failed'].includes(downloadState)" type="button" :disabled="disabled || downloading || importing || scanState === 'scanning'" @click="download({ recipeId: card.recipe.id })" :data-testid="'recipe-download-selected-' + card.recipe.id" tw-class="ml-auto inline-flex max-w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-50"><DownloadIcon tw-class="w-3.5 h-3.5 shrink-0" />{{ lazyStrings.llamaCppBrowserDownloads__download() }}</button>
+              <button v-else-if="downloadRecipeId !== card.recipe.id || !['downloading', 'paused', 'failed'].includes(downloadState)" type="button" :disabled="disabled || downloading || importing || scanState === 'scanning' || downloadDestinationUnavailable" @click="download({ recipeId: card.recipe.id })" :data-testid="'recipe-download-selected-' + card.recipe.id" tw-class="ml-auto inline-flex max-w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-50"><DownloadIcon tw-class="w-3.5 h-3.5 shrink-0" />{{ lazyStrings.llamaCppBrowserDownloads__download() }}</button>
             </div>
             <div tw-class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
               <span tw-class="tabular-nums">{{ card.availability.available === card.availability.total ? formatDownloadBytes({ bytes: card.availability.bytes }) : lazyStrings.llamaCppBrowserDownloads__approximately_size({ size: formatDownloadBytes({ bytes: card.bytes }) }) }} · {{ lazyStrings.stableDiffusionCppBrowser__file_count({ count: card.files.length }) }}</span>
