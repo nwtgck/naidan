@@ -33,7 +33,7 @@
     "marked-katex-extension": "^5.1.10",
     "mermaid": "11.16.0",
     "nanoid": "^5.1.16",
-    "stable-diffusion-cpp-browser-core": "github:nwtgck/browser-inference-core#e5b63eeec1600456796c4323a976b0baf7f0f511",
+    "stable-diffusion-cpp-browser-core": "github:nwtgck/browser-inference-core#789e317286c3f9bfb88198c30485e8aa2500f025",
     "vue": "^3.5.39",
     "vue-router": "^5.1.0",
     "vuedraggable": "^4.1.0",

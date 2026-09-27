@@ -52,7 +52,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     if (bytes.length !== file.bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw new Error('Image artifact integrity mismatch: ' + relative);
     return bytes;
   };
-  const parsedImage = imageManifestSchema.safeParse(JSON.parse(checked({ relative: 'stable-diffusion-cpp/manifest.json' }).toString('utf8')));
+  const parsedImage = imageManifestSchema.safeParse(JSON.parse(checked({ relative: 'stable-diffusion-cpp-browser-core/manifest.json' }).toString('utf8')));
   if (!parsedImage.success) throw new Error('Image runtime ABI 2 with caller-owned large-GGUF access is required; install a compatible bicore artifact with successful browser smoke validation');
   const image = parsedImage.data;
   if (image.sourceCommit !== root.sourceCommit) throw new Error('Mixed runtime source commits');
@@ -60,12 +60,12 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
   if (entries.size !== image.files.length) throw new Error('Duplicate image manifest entry');
   // The inner tree and parent inventory must agree, including licensing notices.
   for (const entry of image.files) {
-    const parent = rootEntries.get('stable-diffusion-cpp/' + entry.path);
+    const parent = rootEntries.get('stable-diffusion-cpp-browser-core/' + entry.path);
     if (!parent || parent.bytes !== entry.bytes || parent.sha256 !== entry.sha256) throw new Error('Image inventory differs from parent');
   }
   const prefix = `stable-diffusion-cpp-runtime/${root.sourceCommit}/`;
   const artifacts: Artifact[] = [];
-  const schemaBytes = checked({ relative: 'stable-diffusion-cpp/api/schema.json' });
+  const schemaBytes = checked({ relative: 'stable-diffusion-cpp-browser-core/api/schema.json' });
   if (createHash('sha256').update(schemaBytes).digest('hex') !== image.schemaSha256) throw new Error('Image binding schema fingerprint mismatch');
   const schema = z.object({ abiVersion: z.literal(2), functions: z.array(z.object({ name: z.string() })), records: z.array(z.object({ name: z.string() })) }).parse(JSON.parse(schemaBytes.toString('utf8')));
   const functions = new Set(schema.functions.map(entry => entry.name));
@@ -78,7 +78,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
   }
   for (const name of ['api/schema.mjs', 'examples/runtime/index.mjs', 'examples/runtime/bindings.mjs', 'examples/runtime/read-only-file.mjs']) {
     if (!entries.has(name)) throw new Error('Missing image host helper');
-    files.set(prefix + name, checked({ relative: 'stable-diffusion-cpp/' + name }));
+    files.set(prefix + name, checked({ relative: 'stable-diffusion-cpp-browser-core/' + name }));
   }
   const helpersPath = prefix + 'examples/runtime/index.mjs';
 
@@ -90,16 +90,16 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     for (const extension of ['mjs', 'wasm', 'd.ts']) if (!entries.has(relative + 'core.' + extension)) throw new Error('Missing image runtime member');
     const wasmEntry = entries.get(relative + 'core.wasm');
     if (!wasmEntry) throw new Error('Missing image Wasm');
-    const wasm = checked({ relative: 'stable-diffusion-cpp/' + relative + 'core.wasm' });
+    const wasm = checked({ relative: 'stable-diffusion-cpp-browser-core/' + relative + 'core.wasm' });
     if (!wasm.subarray(0, 8).equals(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))) throw new Error('Image binary is not WebAssembly');
     const modulePath = prefix + profile + '/core.mjs';
     const wasmPath = prefix + profile + '/core.wasm.gz';
-    files.set(modulePath, checked({ relative: 'stable-diffusion-cpp/' + relative + 'core.mjs' }));
+    files.set(modulePath, checked({ relative: 'stable-diffusion-cpp-browser-core/' + relative + 'core.mjs' }));
     files.set(wasmPath, gzipSync(wasm, { level: 9 }));
     artifacts.push({ profile, modulePath, wasmPath, helpersPath, schemaSha256: image.schemaSha256, wasmBytes: wasm.length, wasmSha256: wasmEntry.sha256 });
   }
   for (const entry of image.files) {
-    if (entry.path === 'LICENSE' || entry.path.startsWith('licenses/')) files.set(prefix + entry.path, checked({ relative: 'stable-diffusion-cpp/' + entry.path }));
+    if (entry.path === 'LICENSE' || entry.path.startsWith('licenses/')) files.set(prefix + entry.path, checked({ relative: 'stable-diffusion-cpp-browser-core/' + entry.path }));
   }
   if (!entries.has('LICENSE') || ![...entries.keys()].some(name => name.startsWith('licenses/'))) throw new Error('Missing runtime notices');
   return { configuration: configurationSchema.parse({ kind: 'available', sourceCommit: root.sourceCommit, artifacts }), files };

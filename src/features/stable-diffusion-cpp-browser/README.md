@@ -11,7 +11,7 @@ The normal dependency installation now supplies the image runtime separately:
 
 ```text
 stable-diffusion-cpp-browser-core
-  -> github:nwtgck/browser-inference-core#cd726c3f08fa54563d4bad132d1bc488f1700046
+  -> github:nwtgck/browser-inference-core#789e317286c3f9bfb88198c30485e8aa2500f025
 ```
 
 This is a dependency name for the existing **Browser Inference Core (bicore)**
@@ -20,6 +20,8 @@ existing `llama-cpp-browser-core` dependency pinned; reuse its scoped dispatch
 adapter without altering its tensor computation or generated-code checks. The image
 package's `resolved` and `integrity` lock fields come from the supplied CI-generated
 consumer metadata. The underlying package remains `llama-cpp-browser-core`.
+Its image runtime files live under `stable-diffusion-cpp-browser-core/` inside
+the installed dependency; the runtime identifier remains `stable-diffusion-cpp`.
 Installation has no compiler, postinstall hook, model download or generated-code rewrite. Model acquisition is a separate explicit action in the hosted UI.
 
 ```sh
@@ -34,11 +36,13 @@ then start generation explicitly. No environment variable or manual
 copy into node_modules is needed with the committed dependency installed.
 
 The pinned artifact is source commit
-`473ed681c49fb6790f74087cea42ddf92aad5b1e`, image ABI 2 / image manifest format 2.
+`42623f0eabc6dc1bd853252d3a08e11aa0b48914`, image ABI 2 / image manifest format 2.
 The supplied build report records all three profiles in both variants as compiled
 and browser-smoke validated, including real-Wasm Worker/public-record/callback
 tests, sparse GGUF/safetensors/shard I/O, and synthetic Qwen BF16 timestep
-arithmetic on CPU in the test variants. **It does not certify trained-model
+arithmetic on CPU and deep graph construction/selection in the test variants.
+The graph traversal uses an explicit stack to avoid exhausting the native call
+stack while constructing deep dependency graphs. **It does not certify trained-model
 loading, actual WebGPU image generation, model compatibility, speed or memory.**
 Naidan ships only the `browser` variants, not the diagnostic `test` variants.
 
