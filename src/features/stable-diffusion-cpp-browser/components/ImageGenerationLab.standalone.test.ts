@@ -36,13 +36,13 @@ it('keeps the entire image form visible and disabled in standalone', async () =>
   expect(wrapper.get('[data-testid="image-unavailable"]').text()).toContain('hosted');
   expect(wrapper.find('[data-testid="image-file-model"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="image-prompt"]').exists()).toBe(true);
-  expect(wrapper.findAll('fieldset')).toHaveLength(5);
+  expect(wrapper.findAll('fieldset')).toHaveLength(4);
   expect(wrapper.get('[data-testid="image-input-initial"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.get('[data-testid="image-input-references"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.get('[data-testid="image-lora-files"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.find('[data-testid="image-model-library"]').exists()).toBe(true);
   for (const field of wrapper.findAll('input, select, textarea, button')) {
-    if (field.attributes('role') === 'tab') {
+    if (field.attributes('role') === 'tab' || ['image-return-to-generation', 'image-open-history', 'image-results-prepare'].includes(field.attributes('data-testid') ?? '')) {
       await field.trigger('click');
     } else if (field.attributes('data-testid') === 'image-catalog-toggle' || field.attributes('data-testid')?.startsWith('recipe-details-toggle-')) {
       // Presentation stays interactive; it never authorizes hosted capabilities.
@@ -63,5 +63,15 @@ it('does not execute even when generation is invoked programmatically', async ()
   await wrapper.vm.TEST_ONLY.generate();
   expect(wrapper.vm.TEST_ONLY.files.value).toEqual({});
   expect(wrapper.vm.TEST_ONLY.results.value).toEqual([]);
+  expect(worker).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(reader).not.toHaveBeenCalled();
+});
+
+it('allows opening history while keeping local history reads and saving disabled', async () => {
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  expect(wrapper.get('[data-testid="image-save-history"]').element.matches(':disabled')).toBe(true);
+  await wrapper.get('[data-testid="image-tab-history"]').trigger('click'); await flushPromises();
+  expect(wrapper.get('[data-testid="image-history-unavailable"]').text()).toContain('OPFS');
+  expect(wrapper.get('[data-testid="image-history-search"]').element.matches(':disabled')).toBe(true);
+  expect(wrapper.get('[data-testid="image-history-refresh"]').element.matches(':disabled')).toBe(true);
   expect(worker).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(reader).not.toHaveBeenCalled();
 });

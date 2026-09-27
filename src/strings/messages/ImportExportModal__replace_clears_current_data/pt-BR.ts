@@ -1,1 +1,1 @@
-export const ImportExportModal__replace_clears_current_data = (): string => 'Limpe os dados atuais e restaure o estado a partir do arquivo ZIP.';
+export const ImportExportModal__replace_clears_current_data = (): string => 'Limpe os dados atuais e restaure o estado a partir do arquivo ZIP. O histórico experimental de geração de imagens (vínculos entre imagens e configurações) não está nos backups ZIP e será removido.';

@@ -237,6 +237,118 @@ export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>(
   return transformed.optional();
 };
 
+
+// Image history is deliberately independent of chat persistence and runtime
+// transport defaults. Stored requests describe what was requested, not a
+// guarantee that a future runtime can reproduce the same image.
+const ImageHistoryRawIdSchemaDto = z.string().regex(/^[a-zA-Z0-9_-]{2,128}$/);
+const ImageGenerationPathSchemaDto = z.string().min(1).refine(value =>
+  !value.includes('\\') && !value.includes('\0')
+  && value.split('/').every(part => part !== '' && part !== '.' && part !== '..'));
+const ImageGenerationFileMetadataSchemaDto = {
+  name: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  lastModified: z.number().finite().nonnegative(),
+};
+const ImageGenerationModelFileSchemaDto = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('opfs'), path: ImageGenerationPathSchemaDto, ...ImageGenerationFileMetadataSchemaDto }),
+  z.object({ type: z.literal('host'), directoryId: z.string().min(1), path: ImageGenerationPathSchemaDto, ...ImageGenerationFileMetadataSchemaDto }),
+  z.object({ type: z.literal('file'), ...ImageGenerationFileMetadataSchemaDto }),
+]);
+const ImageGenerationImageSchemaDto = z.object({
+  binaryObjectId: ImageHistoryRawIdSchemaDto,
+  name: z.string().min(1),
+});
+
+export const ExperimentalImageGenerationSchemaDto = z.object({
+  id: ImageHistoryRawIdSchemaDto,
+  createdAt: z.number().finite().nonnegative(),
+  request: z.object({
+    parameters: z.object({
+      prompt: z.string(),
+      negativePrompt: z.string(),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+      steps: z.number().int().positive(),
+      guidance: z.number().finite(),
+      seed: z.string().regex(/^-?(0|[1-9][0-9]*)$/),
+      sampler: z.enum(['auto', 'euler', 'euler_a', 'heun', 'dpm2', 'dpm++2m', 'lcm']),
+      scheduler: z.enum(['auto', 'discrete', 'karras', 'exponential', 'simple', 'sgm_uniform']),
+      distilledGuidance: z.number().finite(),
+      vaeTiling: z.boolean(),
+      vaeTileSize: z.number().int().positive(),
+      flashAttention: z.boolean(),
+      bf16WeightType: z.enum(['f32', 'f16']),
+      qwenVaePolicy: z.enum(['bounded', 'native']),
+      conditioningCacheSize: z.number().int().nonnegative(),
+      modelArguments: z.string(),
+    }),
+    models: z.array(z.object({
+      slot: z.enum(['model', 'diffusion', 'vae', 'clipL', 'clipG', 't5', 'lm']),
+      path: ImageGenerationPathSchemaDto,
+      file: ImageGenerationModelFileSchemaDto,
+      companions: z.array(z.object({ path: ImageGenerationPathSchemaDto, file: ImageGenerationModelFileSchemaDto })),
+    })),
+    loras: z.array(z.object({
+      path: ImageGenerationPathSchemaDto,
+      file: ImageGenerationModelFileSchemaDto,
+      strength: z.number().finite(),
+    })),
+    imageInputs: resolveMissingAsUndefined(z.object({
+      initImage: missingAsUndefined(ImageGenerationImageSchemaDto),
+      strength: z.number().finite(),
+      referenceImages: z.array(ImageGenerationImageSchemaDto),
+    })),
+    preview: z.object({
+      enabled: z.boolean(),
+      interval: z.number().int().positive(),
+      startStep: z.number().int().positive(),
+      mode: z.enum(['projection', 'vae']),
+      maxEdge: z.number().int().nonnegative(),
+    }),
+    runtime: resolveMissingAsUndefined(z.object({
+      sourceCommit: z.string(),
+      profile: z.enum(['webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi']),
+      weightResidency: z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']),
+      gpuBudgetMiB: missingAsUndefined(z.number().finite().nonnegative()),
+    })),
+  }),
+  result: z.object({
+    binaryObjectId: ImageHistoryRawIdSchemaDto,
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    modelVersion: z.string(),
+    uniformOutput: z.boolean(),
+    elapsedMs: z.number().finite().nonnegative(),
+  }),
+  previews: z.array(z.object({
+    binaryObjectId: ImageHistoryRawIdSchemaDto,
+    step: z.number().int().positive(),
+    steps: z.number().int().positive(),
+    mode: z.enum(['projection', 'vae']),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+  })),
+});
+export type ExperimentalImageGenerationDto = z.infer<typeof ExperimentalImageGenerationSchemaDto>;
+
+export const ExperimentalImageGenerationSummarySchemaDto = z.object({
+  id: ImageHistoryRawIdSchemaDto,
+  createdAt: z.number().finite().nonnegative(),
+  prompt: z.string(),
+  modelName: z.string(),
+  binaryObjectId: ImageHistoryRawIdSchemaDto,
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  previewCount: z.number().int().nonnegative(),
+});
+export type ExperimentalImageGenerationSummaryDto = z.infer<typeof ExperimentalImageGenerationSummarySchemaDto>;
+
+export const ExperimentalImageGenerationIndexSchemaDto = z.object({
+  generations: z.record(ImageHistoryRawIdSchemaDto, ExperimentalImageGenerationSummarySchemaDto),
+});
+export type ExperimentalImageGenerationIndexDto = z.infer<typeof ExperimentalImageGenerationIndexSchemaDto>;
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {

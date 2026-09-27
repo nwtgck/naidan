@@ -4,6 +4,7 @@ import { effectScope } from 'vue';
 import { useImageLibrary } from './use-image-library';
 import { scanImageRepositories, type ModelInventory } from './logic/model-candidates';
 import type { LocalImageRepository } from './logic/repository-store';
+import { idToRaw } from '@/01-models/ids';
 import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
@@ -44,6 +45,34 @@ it('resolves required components across repositories and keeps the original file
   expect(models.every(model => model.companions?.length === 0)).toBe(true);
   h.library.showAll.value = true;
   expect(h.library.models.value).toHaveLength(3);
+});
+it('resolves history weights only by their local location and matching file metadata', async () => {
+  const entries = repositories();
+  const h = harness({ entries, scan: undefined }); await h.library.refresh();
+  const file = entries[0]!.files[0]!.file;
+  const location = h.library.historyFileLocation({ file });
+  expect(location).toMatchObject({ type: 'opfs', path: 'models/user/0/original/z_image_turbo.gguf' });
+  expect(h.library.findHistoryFile({ location })).toBe(file);
+  expect(h.library.findHistoryFile({ location: { ...location, size: file.size + 1 } })).toBeUndefined();
+  expect(h.library.findHistoryFile({ location: { ...location, lastModified: file.lastModified + 1 } })).toBeUndefined();
+  expect(h.library.findHistoryFile({ location: { ...location, type: 'opfs', path: 'models/user/other/original/z_image_turbo.gguf' } })).toBeUndefined();
+  const direct = new File([file], file.name, { lastModified: file.lastModified });
+  const directLocation = h.library.historyFileLocation({ file: direct });
+  expect(directLocation.type).toBe('file');
+  expect(h.library.findHistoryFile({ location: directLocation })).toBeUndefined();
+  expect(h.list).toHaveBeenCalledOnce();
+});
+it('keeps the registered host directory identity separate from OPFS history paths', async () => {
+  const entries = repositories();
+  entries[0]!.hostSource = { directoryId: 'host-models', directoryName: 'Shared weights', repository: 'org/model' };
+  const h = harness({ entries, scan: undefined }); await h.library.refresh();
+  const file = entries[0]!.files[0]!.file;
+  const location = h.library.historyFileLocation({ file });
+  if (location.type !== 'host') throw new Error('Expected host model location');
+  expect(idToRaw({ id: location.directoryId })).toBe('host-models');
+  expect(location.path).toBe('org/model/original/z_image_turbo.gguf');
+  expect(h.library.findHistoryFile({ location })).toBe(file);
+  expect(h.library.findHistoryFile({ location: { type: 'opfs', path: location.path, name: file.name, size: file.size, lastModified: file.lastModified } })).toBeUndefined();
 });
 it('does not replace a deliberate empty component, even after refresh; generation stays blocked', async () => {
   const h = harness({ entries: repositories(), scan: undefined }); await h.library.refresh();
@@ -119,6 +148,32 @@ it('coalesces repeated focus/refresh calls instead of starving a long scan', asy
   expect(h.library.scanState.value).toBe('scanning');
   gate.resolve({ candidates: [], issues: [] }); await Promise.all([first, ...others]);
   expect(h.library.scanState.value).toBe('idle');
+});
+it('lets explicit history reuse await the initial scan without applying automatic model settings', async () => {
+  const entries = repositories();
+  const actual = await scanImageRepositories({ repositories: entries, signal: undefined });
+  const entered = Promise.withResolvers<void>(), gate = Promise.withResolvers<ModelInventory>();
+  const scan = vi.fn(async () => {
+    entered.resolve(); return gate.promise;
+  });
+  const h = harness({ entries, scan });
+  const initial = h.library.refresh(); await entered.promise;
+  h.block();
+  const preparing = h.library.prepareHistoryFiles();
+  expect(scan).toHaveBeenCalledOnce();
+  gate.resolve(actual); await Promise.all([initial, preparing]);
+  expect(h.onSelection).not.toHaveBeenCalled(); expect(h.library.main.value).toBe('');
+  const file = entries[0]!.files[0]!.file;
+  const location = h.library.historyFileLocation({ file });
+  expect(h.library.findHistoryFile({ location })).toBe(file);
+});
+it('starts a local history preparation scan when needed and rejects read failures instead of reporting missing weights', async () => {
+  const scan = vi.fn(async () => {
+    throw new Error('Local directory cannot be read');
+  });
+  const h = harness({ entries: [], scan }); h.block();
+  await expect(h.library.prepareHistoryFiles()).rejects.toThrow('Local directory cannot be read');
+  expect(h.list).toHaveBeenCalledOnce(); expect(h.onSelection).not.toHaveBeenCalled();
 });
 it('cancels an unresponsive injected read immediately and ignores its late rejection', async () => {
   const gate = Promise.withResolvers<ModelInventory>(), entered = Promise.withResolvers<void>();

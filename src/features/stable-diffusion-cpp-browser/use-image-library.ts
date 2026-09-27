@@ -14,6 +14,9 @@ import type { ModelSlot, Request } from './types';
 import type { ImageBenchmarkTarget, ImageComponentChoice, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability, SavedImageLoraChoice } from './library-view';
 import { useHostModelDirectories } from './composables/use-host-model-directories';
 import { createDisabledImageLibrary } from './library-standalone';
+import { OPFS_MODELS_DIR } from '@/constants';
+import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
+import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 
 type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader };
 const defaultDependencies: Pick<Dependencies, 'import' | 'download'> = { import: importImageRepository, download: downloadImageRecipeInWorker };
@@ -102,6 +105,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     },
   };
   let activeScan: { controller: AbortController, promise: Promise<boolean> } | undefined;
+  let preparingHistoryFiles = false;
   let origin: 'automatic' | 'manual' | 'files' = 'automatic';
   let disposed = false;
   const importing = computed(() => activeImport.value !== undefined);
@@ -366,12 +370,24 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     if (downloading.value) return;
     await refreshInventory();
   }
+  async function prepareHistoryFiles(): Promise<void> {
+    if (disposed || importing.value || downloading.value || preparingHistoryFiles) throw new Error('Local model files are busy');
+    // Explicit history reuse owns this read while the editor is disabled. Share
+    // an initial scan already in flight, without selecting a different model or
+    // applying its presets before the saved request has been resolved.
+    preparingHistoryFiles = true;
+    try {
+      if (!await refreshInventory()) throw new Error(failure.value || 'Local model files could not be inspected');
+    } finally {
+      preparingHistoryFiles = false;
+    }
+  }
   function cancelScan(): void {
     const previous = activeScan; activeScan = undefined;
     previous?.controller.abort(); scanState.value = 'idle'; scanProgress.value = undefined;
   }
   function refreshInventory(): Promise<boolean> {
-    if (disposed || importing.value || blocked()) return Promise.resolve(false);
+    if (disposed || importing.value || blocked() && !preparingHistoryFiles) return Promise.resolve(false);
     // Repeated window focus/refresh must not cancel and restart a large scan.
     if (activeScan) return activeScan.promise;
     const scan = new AbortController();
@@ -390,8 +406,9 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
           scan.signal.throwIfAborted();
           return dependencies.scan({ repositories, signal: scan.signal, onProgress });
         })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations() }) });
-        if (disposed || blocked() || scan.signal.aborted || activeScan !== operation) return false;
+        if (disposed || blocked() && !preparingHistoryFiles || scan.signal.aborted || activeScan !== operation) return false;
         inventory.value = next;
+        if (preparingHistoryFiles) return true;
         if (!next.candidates.some(candidate => candidate.id === main.value)) {
           main.value = ''; selections.value = {}; overrides.clear();
           if (automaticOrigin({ origin })) {
@@ -464,6 +481,40 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     })];
     return selectionsToUse.map(({ slot, candidate }) => modelForCandidate({ slot, candidate }));
   }
+  function historyFileLocation({ file }: { file: File }): ImageGenerationModelFile {
+    const metadata = { name: file.name, size: file.size, lastModified: file.lastModified };
+    for (const candidate of inventory.value.candidates) {
+      const entry = candidate.files.find(entry => entry.file === file);
+      if (!entry) continue;
+      if (candidate.hostSource) return { ...metadata, type: 'host', directoryId: toHostModelDirectoryId({ raw: candidate.hostSource.directoryId }), path: `${candidate.hostSource.repository}/${entry.path}` };
+      return { ...metadata, type: 'opfs', path: `${OPFS_MODELS_DIR}/${candidate.repositoryId}/${entry.path}` };
+    }
+    return { ...metadata, type: 'file' };
+  }
+  function findHistoryFile({ location }: { location: ImageGenerationModelFile }): File | undefined {
+    // Only the already inspected local inventory is consulted. A same-named
+    // file or a remote repository is never substituted for a missing source.
+    // This is a location/metadata check, not content identity: an external
+    // replacement retaining the same size and modification time is undetectable.
+    for (const candidate of inventory.value.candidates) {
+      if (candidate.issue) continue;
+      for (const entry of candidate.files) {
+        const file = entry.file;
+        if (file.name !== location.name || file.size !== location.size || file.lastModified !== location.lastModified) continue;
+        switch (location.type) {
+        case 'file': return undefined;
+        case 'opfs':
+          if (!candidate.hostSource && `${OPFS_MODELS_DIR}/${candidate.repositoryId}/${entry.path}` === location.path) return file;
+          break;
+        case 'host':
+          if (candidate.hostSource?.directoryId === idToRaw({ id: location.directoryId }) && `${candidate.hostSource.repository}/${entry.path}` === location.path) return file;
+          break;
+        default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
+        }
+      }
+    }
+    return undefined;
+  }
   function modelForCandidate({ slot, candidate }: { slot: ModelSlot, candidate: ModelCandidate }): Request['models'][number] {
     const file = candidate.files.find(entry => entry.path === candidate.path);
     if (!file) throw new Error('Selected model file disappeared from the inventory');
@@ -516,7 +567,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort();
   });
   return { hostDirectories, benchmarkTargets, selectedFacts, models, savedLoras, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadLoraId, downloadLora, loraAvailable, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
-    chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels,
+    chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels, historyFileLocation, findHistoryFile, prepareHistoryFiles,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
 export const TEST_ONLY = {

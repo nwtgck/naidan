@@ -1,246 +1,148 @@
 <script setup lang="ts">
-import ImageGenerationPreview from './ImageGenerationPreview.vue';
-import ImageModelLibrary from './ImageModelLibrary.vue';
+import { computed, ref, useId, watch } from 'vue';
+import { ImageIcon, FolderOpenIcon, HistoryIcon, SlidersHorizontalIcon } from 'lucide-vue-next';
+import { lazyStrings } from '@/strings';
+import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation';
+import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-image-benchmark';
+import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
+import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
+import ImageGenerationHistory from './ImageGenerationHistory.vue';
+import ImageGenerationEditor from './ImageGenerationEditor.vue';
+import ImageGenerationResults from './ImageGenerationResults.vue';
 import ImageRepositoryImport from './ImageRepositoryImport.vue';
 import ImageModelCatalog from './ImageModelCatalog.vue';
+import ImageModelPicker from './ImageModelPicker.vue';
+import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageBenchmark from './ImageBenchmark.vue';
-import ImageLoraControls from './ImageLoraControls.vue';
-import ImageInputControls from './ImageInputControls.vue';
-import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-image-benchmark';
-import { computed, ref, useId, watch } from 'vue';
-import { ImageIcon } from 'lucide-vue-next';
-import { lazyStrings } from '@/strings';
-import { profileOptions, samplerOptions, schedulerOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
-import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation';
-
 const id = useId();
 const view = useImageGeneration();
 const benchmark = useImageBenchmark({ generation: view });
-const activeTab = defineModel<'generate' | 'measure'>('tab', { default: 'generate' });
+const activeTab = defineModel<'generate' | 'models' | 'history' | 'measure'>('tab', { default: 'generate' });
+const resultsElement = ref<HTMLElement>();
+function viewResult(): void {
+  resultsElement.value?.scrollIntoView({ block: 'start' });
+}
 const benchmarkVisited = ref(false);
+const historyVisited = ref(false);
 watch(activeTab, tab => {
   switch (tab) {
-  case 'measure': benchmarkVisited.value = true; break; case 'generate': break; default: { const exhaustive: never = tab; throw new Error(String(exhaustive)); }
+  case 'measure':
+    benchmarkVisited.value = true;
+    break;
+  case 'history':
+    historyVisited.value = true;
+    void view.history.reload();
+    break;
+  case 'generate': case 'models': break;
+  default: {
+    const exhaustive: never = tab;
+    throw new Error(String(exhaustive));
+  }
   }
 }, { immediate: true });
-function openTab({ tab }: { tab: 'generate' | 'measure' }): void {
+const tabs = computed(() => [
+  { id: 'generate' as const, label: lazyStrings.stableDiffusionCppBrowser__generate(), icon: ImageIcon },
+  { id: 'history' as const, label: lazyStrings.ImageGenerationLab__history(), icon: HistoryIcon },
+  { id: 'models' as const, label: lazyStrings.ImageGenerationLab__models(), icon: FolderOpenIcon },
+  { id: 'measure' as const, label: lazyStrings.imageBenchmark__diagnostics(), icon: SlidersHorizontalIcon },
+]);
+function openTab({ tab }: { tab: typeof activeTab.value }): void {
   activeTab.value = tab;
 }
 function tabKey({ event }: { event: KeyboardEvent }): void {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
-  const other = (() => {
-    switch (activeTab.value) {
-    case 'generate': return 'measure'; case 'measure': return 'generate'; default: { const exhaustive: never = activeTab.value; throw new Error(String(exhaustive)); }
-    }
-  })();
-  const tab = event.key === 'Home' ? 'generate' : event.key === 'End' ? 'measure' : other;
-  openTab({ tab }); document.getElementById(id + '-tab-' + tab)?.focus();
-}
-const { retainModel, modelResident, maxResults, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results, recommendation, manualInspectionState,
-  library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, forceCancel, releaseModel, clearResults, copyDiagnostics, saveDiagnostics, applyRecommendedSettings } = view;
-const slots = computed(() => {
-  switch (layout.value) {
-  case 'checkpoint': return [{ slot: 'model' as const, label: lazyStrings.stableDiffusionCppBrowser__model_file() }];
-  case 'components': return [
-    { slot: 'diffusion' as const, label: lazyStrings.stableDiffusionCppBrowser__diffusion_file() },
-    { slot: 'vae' as const, label: lazyStrings.stableDiffusionCppBrowser__vae_file() },
-    { slot: 'clipL' as const, label: lazyStrings.stableDiffusionCppBrowser__clip_l_file() },
-    { slot: 'clipG' as const, label: lazyStrings.stableDiffusionCppBrowser__clip_g_file() },
-    { slot: 't5' as const, label: lazyStrings.stableDiffusionCppBrowser__t5_file() },
-    { slot: 'lm' as const, label: lazyStrings.stableDiffusionCppBrowser__lm_file() },
-  ];
-  default: { const exhaustive: never = layout.value; throw new Error(String(exhaustive)); }
+  const index = tabs.value.findIndex(tab => tab.id === activeTab.value);
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.value.length - 1 : (index + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1) + tabs.value.length) % tabs.value.length;
+  const tab = tabs.value[next];
+  if (tab) {
+    openTab({ tab: tab.id });
+    document.getElementById(id + '-tab-' + tab.id)?.focus();
   }
-});
-const weightResidencyOptions = computed(() => [
-  { value: 'auto' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_auto() },
-  { value: 'cpu' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_cpu() },
-  { value: 'hybrid' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_hybrid() },
-  { value: 'disk' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_disk() },
-]);
-
-
-function formatElapsed({ elapsedMs }: { elapsedMs: number }): string {
-  return `${(elapsedMs / 1000).toFixed(elapsedMs >= 10000 ? 0 : 1)} s`;
 }
-
-const phaseLabel = computed(() => {
-  if (!progress.value) return undefined;
-  switch (progress.value.phase) {
-  case 'runtime': return lazyStrings.stableDiffusionCppBrowser__loading_runtime();
-  case 'model': return lazyStrings.stableDiffusionCppBrowser__loading_model();
-  case 'sampling': return lazyStrings.stableDiffusionCppBrowser__sampling();
-  case 'decoding': return lazyStrings.stableDiffusionCppBrowser__decoding_image();
-  case 'encoding': return lazyStrings.stableDiffusionCppBrowser__encoding();
-  default: { const exhaustive: never = progress.value.phase; throw new Error(String(exhaustive)); }
-  }
-});
+async function openHistory({ id }: { id: ImageGenerationId | undefined }): Promise<void> {
+  openTab({ tab: 'history' });
+  if (id) await view.history.select({ id });
+}
+async function reuseHistory({ record }: { record: ImageGenerationRecord }): Promise<void> {
+  await view.reuseHistory({ record });
+  if (!view.historyActions.error.value) openTab({ tab: 'generate' });
+}
+async function useHistoryImage({ binaryObjectId, role }: { binaryObjectId: BinaryObjectId, role: 'initial' | 'reference' }): Promise<void> {
+  await view.useHistoryImage({ binaryObjectId, role });
+  if (!view.historyActions.error.value) openTab({ tab: 'generate' });
+}
+const { library, busy, supported, formDisabled, unavailable, files, loras, imageInputs, parameters, retainModel, modelResident, maxResults, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } = view;
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTab, files, loras, imageInputs, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } }) || {}) });
 </script>
-
 <template>
   <main tw-class="h-full overflow-y-auto bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" data-testid="image-generation-lab">
-    <div tw-class="max-w-6xl mx-auto p-4 sm:p-8 space-y-6">
-      <header tw-class="space-y-3">
-        <h1 tw-class="text-2xl font-semibold flex items-center gap-3"><ImageIcon tw-class="w-7 h-7" />{{ lazyStrings.stableDiffusionCppBrowser__image_generation_lab() }}</h1>
-        <p tw-class="text-sm text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__experimental_local_workspace() }}</p>
+    <div tw-class="max-w-[100rem] mx-auto p-4 sm:px-6 sm:py-4 space-y-4">
+      <header tw-class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h1 tw-class="text-lg font-semibold flex items-center gap-2">
+          <ImageIcon tw-class="w-5 h-5" />{{ lazyStrings.stableDiffusionCppBrowser__image_generation_lab() }}</h1>
+        <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__experimental_local_workspace() }}</p>
       </header>
-      <p v-if="!supported" role="status" tw-class="rounded-xl border border-gray-300 dark:border-gray-700 p-4 text-sm" data-testid="image-unavailable">{{ unavailable }}</p>
-      <div role="tablist" :aria-label="lazyStrings.stableDiffusionCppBrowser__image_generation_lab()" tw-class="inline-flex gap-1 p-1 rounded-2xl border border-gray-200 dark:border-gray-800" @keydown="tabKey({ event: $event })">
-        <button type="button" role="tab" :id="id + '-tab-generate'" :aria-controls="id + '-panel-generate'" :aria-selected="activeTab === 'generate'" :tabindex="activeTab === 'generate' ? 0 : -1" @click="openTab({ tab: 'generate' })" data-testid="image-tab-generate" :tw-class="['px-4 py-2 rounded-xl text-sm font-medium', activeTab === 'generate' ? 'bg-purple-600 text-white' : 'text-gray-600 dark:text-gray-300']">{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
-        <button type="button" role="tab" :id="id + '-tab-measure'" :aria-controls="id + '-panel-measure'" :aria-selected="activeTab === 'measure'" :tabindex="activeTab === 'measure' ? 0 : -1" @click="openTab({ tab: 'measure' })" data-testid="image-tab-measure" :tw-class="['px-4 py-2 rounded-xl text-sm font-medium', activeTab === 'measure' ? 'bg-purple-600 text-white' : 'text-gray-600 dark:text-gray-300']">{{ lazyStrings.imageBenchmark__diagnostics() }}<span v-if="benchmark.busy.value"> · {{ lazyStrings.imageBenchmark__running() }}</span></button>
+      <p v-if="!supported" role="status" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm" data-testid="image-unavailable">{{ unavailable }}</p>
+      <p v-if="view.historyActions.error.value" role="alert" tw-class="text-sm text-red-600 dark:text-red-400 break-words" data-testid="image-history-action-error">{{ view.historyActions.error.value }}</p>
+      <div v-if="view.historyActions.missingInactiveFiles.value.length" role="status" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2" data-testid="image-history-missing-inactive-files">
+        <p tw-class="text-sm">{{ lazyStrings.ImageGenerationLab__disabled_loras_not_restored() }}</p>
+        <ul tw-class="text-xs space-y-1 break-all">
+          <li v-for="file in view.historyActions.missingInactiveFiles.value" :key="file">{{ file }}</li>
+        </ul>
       </div>
-      <div v-show="activeTab === 'generate'" role="tabpanel" :id="id + '-panel-generate'" :aria-labelledby="id + '-tab-generate'" tw-class="space-y-6">
-        <section tw-class="space-y-3">
-          <h2 tw-class="font-semibold text-base">{{ lazyStrings.stableDiffusionCppBrowser__add_models() }}</h2>
-          <div tw-class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]">
-            <ImageModelCatalog :disabled="formDisabled" :view="library" />
-            <ImageRepositoryImport :disabled="formDisabled" :view="library" />
-          </div>
-        </section>
-        <div tw-class="flex flex-wrap items-center gap-3 text-sm" data-testid="image-model-retention">
-          <label tw-class="inline-flex items-center gap-2"><input v-model="retainModel" type="checkbox" :disabled="!supported" data-testid="image-retain-model" />{{ lazyStrings.stableDiffusionCppBrowser__keep_model_loaded() }}</label>
-          <span v-if="modelResident" tw-class="text-xs text-purple-600 dark:text-purple-400">{{ lazyStrings.stableDiffusionCppBrowser__model_resident() }}</span>
-          <button type="button" :disabled="busy || !modelResident" @click="releaseModel" data-testid="image-release-model" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__release_model() }}</button>
+      <div v-if="view.historyActions.missingFiles.value.length" tw-class="rounded-lg border border-amber-300 dark:border-amber-800 p-3 space-y-2" data-testid="image-history-missing-files">
+        <p tw-class="text-sm">{{ lazyStrings.ImageGenerationLab__select_missing_files() }}</p>
+        <ul tw-class="text-xs space-y-1 break-all">
+          <li v-for="file in view.historyActions.missingFiles.value" :key="file">{{ file }}</li>
+        </ul>
+        <button type="button" @click="view.clearHistoryMissingFiles()" :disabled="view.historyActions.busy.value" tw-class="text-xs underline disabled:opacity-40">{{ lazyStrings.ImageGenerationLab__continue_without_missing_files() }}</button>
+      </div>
+      <div tw-class="space-y-6">
+        <div role="tablist" :aria-label="lazyStrings.stableDiffusionCppBrowser__image_generation_lab()" tw-class="flex gap-1 w-full overflow-x-auto border-b border-gray-200 dark:border-gray-800 pb-2" @keydown="tabKey({ event: $event })">
+          <button v-for="tab in tabs" :key="tab.id" type="button" role="tab" :id="id + '-tab-' + tab.id" :aria-controls="id + '-panel-' + tab.id" :aria-selected="activeTab === tab.id" :tabindex="activeTab === tab.id ? 0 : -1" @click="openTab({ tab: tab.id })" :data-testid="'image-tab-' + tab.id" :tw-class="['flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500', activeTab === tab.id ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50']">
+            <component :is="tab.icon" tw-class="w-4 h-4 shrink-0" />{{ tab.label }}<span v-if="(tab.id === 'measure' && benchmark.busy.value) || (tab.id === 'generate' && busy)" tw-class="w-1.5 h-1.5 rounded-full bg-purple-500" :aria-label="lazyStrings.imageBenchmark__running()" />
+          </button>
         </div>
-        <form @submit.prevent="generate" tw-class="space-y-5">
-          <fieldset :disabled="formDisabled" tw-class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
-            <legend tw-class="text-base font-semibold px-2">{{ lazyStrings.stableDiffusionCppBrowser__selected_model() }}</legend>
-            <ImageModelLibrary :view="library" :disabled="formDisabled" />
-            <details tw-class="space-y-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-              <summary tw-class="cursor-pointer text-sm font-medium">{{ lazyStrings.stableDiffusionCppBrowser__manual_model_files() }}</summary>
-              <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__model_layout() }}</span>
-                <select v-model="layout" @change="resetFiles" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2">
-                  <option value="checkpoint">{{ lazyStrings.stableDiffusionCppBrowser__checkpoint() }}</option>
-                  <option value="components">{{ lazyStrings.stableDiffusionCppBrowser__separate_components() }}</option>
-                </select>
-              </label>
-              <div v-for="item in slots" :key="layout + item.slot" tw-class="space-y-1">
-                <label :for="id + item.slot" tw-class="block text-sm">{{ item.label }}</label>
-                <input :id="id + item.slot" :disabled="library.importing.value || library.downloading.value" type="file" accept=".gguf,.safetensors,.sft" @change="chooseFile({ slot: item.slot, event: $event })" tw-class="block w-full text-sm" :data-testid="'image-file-' + item.slot" />
-              </div>
-              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__companion_files_help() }}</p>
-            </details>
-          </fieldset>
-          <ImageLoraControls v-model="loras" :saved="library.savedLoras.value" :disabled="formDisabled || !supported || library.importing.value || library.downloading.value" />
-          <ImageInputControls v-model="imageInputs" :disabled="formDisabled || !supported || library.importing.value || library.downloading.value" />
-          <section v-if="recommendation" tw-class="rounded-2xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/60 dark:bg-purple-950/20 p-4 space-y-2" data-testid="image-recommendation">
+        <div tw-class="min-w-0 flex-1 w-full">
+          <!-- Pane visibility must not own the form, generation, downloads, or result URLs. -->
+          <div v-show="activeTab === 'generate'" role="tabpanel" :id="id + '-panel-generate'" :aria-labelledby="id + '-tab-generate'" tw-class="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(28rem,0.9fr)_minmax(0,1.1fr)] gap-6 xl:gap-10 items-start">
+            <ImageGenerationEditor :view="view" :active="activeTab === 'generate'" @manage-models="openTab({ tab: 'models' })" @view-result="viewResult" />
+            <div ref="resultsElement" tw-class="min-w-0 scroll-mt-4">
+              <ImageGenerationResults :view="view" :active="activeTab === 'generate'" @open-history="openHistory" @prepare="openTab({ tab: 'models' })" />
+            </div>
+          </div>
+          <div v-show="activeTab === 'models'" role="tabpanel" :id="id + '-panel-models'" :aria-labelledby="id + '-tab-models'" tw-class="space-y-4">
             <div tw-class="flex flex-wrap items-center justify-between gap-3">
               <div tw-class="space-y-1">
-                <h3 tw-class="text-sm font-semibold">{{ lazyStrings.stableDiffusionCppBrowser__recommended_settings() }}</h3>
-                <p tw-class="text-xs text-gray-600 dark:text-gray-300">{{ recommendation.title }}</p>
+                <h2 tw-class="font-semibold">{{ lazyStrings.ImageGenerationLab__models() }}</h2>
+                <p tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationLab__prepare_models_help() }}</p>
               </div>
-              <button type="button" @click="applyRecommendedSettings" :disabled="formDisabled" data-testid="image-apply-recommendation" tw-class="rounded-xl border border-purple-300 dark:border-purple-700 px-3 py-2 text-sm disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__apply_recommended_settings() }}</button>
+              <button type="button" @click="openTab({ tab: 'generate' })" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm" data-testid="image-return-to-generation">{{ lazyStrings.ImageGenerationLab__back_to_generation() }}</button>
             </div>
-            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ recommendation.parameters.width }} × {{ recommendation.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ recommendation.parameters.steps }} · {{ lazyStrings.stableDiffusionCppBrowser__guidance() }} {{ recommendation.parameters.guidance }} · {{ recommendation.parameters.sampler }}</p>
-            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__recommended_preview_summary() }} {{ recommendation.preview.mode === 'vae' ? lazyStrings.stableDiffusionCppBrowser__preview_vae() : lazyStrings.stableDiffusionCppBrowser__preview_projection() }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_interval() }} {{ recommendation.preview.interval }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_after_step() }} {{ recommendation.preview.startStep }}</p>
-            <details tw-class="text-xs space-y-2">
-              <summary tw-class="cursor-pointer text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preset_sources() }}</summary>
-              <p tw-class="text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.stableDiffusionCppBrowser__preset_policy() }}</p>
-              <p v-if="recommendation.id === 'qwen-image-2.1'" tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__qwen_preset_policy() }}</p>
-              <p>{{ recommendation.checkedAt }}</p>
-              <a v-for="source in recommendation.sources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" tw-class="block text-purple-600 dark:text-purple-400 underline">{{ source.label }}</a>
-            </details>
-          </section>
-          <p v-else-if="manualInspectionState === 'scanning'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }}</p>
-          <p v-else-if="library.main.value || files.model || files.diffusion" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preset_unknown() }}</p>
-          <fieldset :disabled="formDisabled" tw-class="space-y-4">
-            <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</span><textarea v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3" /></label>
-            <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</span><textarea v-model="parameters.negativePrompt" rows="2" maxlength="4096" tw-class="block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3" /></label>
-            <div tw-class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__width() }}</span><input v-model.number="parameters.width" type="number" min="128" max="2048" step="64" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-              <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__height() }}</span><input v-model.number="parameters.height" type="number" min="128" max="2048" step="64" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-              <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__steps() }}</span><input v-model.number="parameters.steps" type="number" min="1" max="100" step="1" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-              <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__guidance() }}</span><input v-model.number="parameters.guidance" type="number" min="0" max="30" step="0.1" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-              <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__seed() }}</span><input v-model="parameters.seed" type="text" inputmode="numeric" maxlength="20" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
+            <p v-if="library.failure.value" role="alert" tw-class="text-sm text-red-600 dark:text-red-400 break-words">{{ library.failure.value }}</p>
+            <div v-if="library.scanState.value === 'scanning'" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2" data-testid="image-models-scan-status">
+              <div tw-class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <p role="status">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }} <span v-if="library.scanProgress.value?.total">{{ library.scanProgress.value.completed }} / {{ library.scanProgress.value.total }}</span></p>
+                <button type="button" @click="library.cancelScan()" data-testid="image-models-cancel-scan" tw-class="underline">{{ lazyStrings.SHARED__cancel() }}</button>
+              </div>
+              <p v-if="library.scanProgress.value?.path" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.path }}</p>
             </div>
-            <details tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
-              <summary tw-class="font-medium cursor-pointer">{{ lazyStrings.stableDiffusionCppBrowser__runtime_settings() }}</summary>
-              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__advanced_parameters_help() }}</p>
-              <div tw-class="grid sm:grid-cols-2 gap-4">
-                <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__profile() }}</span>
-                  <select v-model="profile" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2"><option v-for="value in profileOptions" :key="value" :value="value">{{ value }}</option></select>
-                </label>
-                <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__weight_residency() }}</span>
-                  <select v-model="weightResidency" data-testid="image-weight-residency" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2"><option v-for="option in weightResidencyOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
-                </label>
-              </div>
-              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__weight_residency_help() }}</p>
-              <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion() }}</span><select v-model="parameters.bf16WeightType" data-testid="image-bf16-weight-type" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2"><option value="f32">F32</option><option value="f16">F16</option></select></label>
-              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion_help() }}</p>
-              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__memory_and_cancellation() }}</p>
-              <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget() }}</span><input v-model.number="gpuBudgetMiB" data-testid="image-memory-budget" type="number" min="512" :max="profile === 'webgpu-wasm64-jspi' ? undefined : 4095" step="1" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-              <p data-testid="image-memory-budget-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget_help() }}</p>
-              <div tw-class="grid sm:grid-cols-2 gap-4">
-                <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__sampler() }}</span><select v-model="parameters.sampler" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2"><option v-for="value in samplerOptions" :key="value" :value="value">{{ value }}</option></select></label>
-                <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__scheduler() }}</span><select v-model="parameters.scheduler" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2"><option v-for="value in schedulerOptions" :key="value" :value="value">{{ value }}</option></select></label>
-                <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__distilled_guidance() }}</span><input v-model.number="parameters.distilledGuidance" type="number" min="0" max="30" step="0.1" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-                <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__conditioning_cache() }}</span><input v-model.number="parameters.conditioningCacheSize" type="number" min="0" max="32" step="1" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-                <label tw-class="text-sm flex gap-2 items-center"><input v-model="parameters.vaeTiling" type="checkbox" />{{ lazyStrings.stableDiffusionCppBrowser__vae_tiling() }}</label>
-                <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__vae_tile_size() }}</span><input v-model.number="parameters.vaeTileSize" type="number" min="16" max="256" step="8" required tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-                <label tw-class="text-sm flex gap-2 items-center"><input v-model="parameters.flashAttention" type="checkbox" />{{ lazyStrings.stableDiffusionCppBrowser__flash_attention() }}</label>
-              </div>
-              <label tw-class="text-sm flex gap-2 items-center"><input v-model="parameters.qwenVaePolicy" type="checkbox" true-value="bounded" false-value="native" data-testid="image-qwen-vae-policy" />{{ lazyStrings.stableDiffusionCppBrowser__qwen_vae_bounded() }}</label>
-              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__qwen_vae_help() }}</p>
-              <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__model_arguments() }}</span><input v-model="parameters.modelArguments" type="text" maxlength="4096" placeholder="qwen_image_2_1_prefix_cache=false" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-            </details>
-          </fieldset>
-          <p v-if="invalid" role="alert" tw-class="text-red-600 dark:text-red-400 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
-          <div tw-class="flex flex-wrap items-center gap-3" data-testid="image-generation-actions">
-            <button type="submit" :disabled="formDisabled || !supported || library.importing.value || library.downloading.value || (!!library.main.value && !library.ready.value)" data-testid="image-generate" tw-class="rounded-lg px-5 py-2.5 bg-purple-600 text-white hover:bg-purple-700 font-medium disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
-            <button type="button" :disabled="!busy || stopping" @click="cancel" data-testid="image-cancel" tw-class="rounded-xl px-5 py-2.5 border border-gray-200 dark:border-gray-700 disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
-            <button v-if="stopping" type="button" @click="forceCancel" data-testid="image-force-cancel" tw-class="rounded-xl border border-red-300 dark:border-red-800 px-4 py-2 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__force_stop() }}</button>
-            <label tw-class="text-sm flex items-center gap-2"><input v-model="debug" type="checkbox" true-value="on" false-value="off" :disabled="formDisabled" data-testid="image-debug-mode" />{{ lazyStrings.stableDiffusionCppBrowser__debug_mode() }}</label>
-            <span v-if="busy" role="status" aria-live="polite" tw-class="text-sm">{{ stopping ? lazyStrings.stableDiffusionCppBrowser__stopping_retained() : phaseLabel }} <template v-if="progress && progress.steps > 0">{{ progress.step }} / {{ progress.steps }}</template></span>
-          </div>
-          <p v-if="stopping" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__cancel_wait_help() }}</p>
-          <p v-if="cancelled" role="status" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__cancelled() }}</p>
-        </form>
-        <ImageGenerationPreview :view="view" />
-        <section tw-class="space-y-3">
-          <div tw-class="flex flex-wrap items-center justify-between gap-3">
-            <h2 tw-class="text-lg font-semibold">{{ lazyStrings.stableDiffusionCppBrowser__generated_images() }}</h2>
-            <div tw-class="flex flex-wrap items-center gap-3 text-xs">
-              <label tw-class="inline-flex gap-2 items-center"><span>{{ lazyStrings.stableDiffusionCppBrowser__result_limit() }}</span><input v-model.number="maxResults" :disabled="!supported" type="number" min="1" max="100" step="1" data-testid="image-result-limit" tw-class="w-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
-              <button v-if="results.length" type="button" @click="clearResults" tw-class="text-gray-500 underline">{{ lazyStrings.stableDiffusionCppBrowser__clear_results() }}</button>
+            <ImageSettingsSection :title="lazyStrings.ImageGenerationLab__saved_models()" :summary="library.models.value.length.toString()" :open="true">
+              <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.main.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.downloading.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ id: $event })" data-testid="image-saved-main-model" />
+            </ImageSettingsSection>
+            <div tw-class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
+              <ImageModelCatalog :disabled="formDisabled" :view="library" @selected="openTab({ tab: 'generate' })" />
+              <ImageRepositoryImport :disabled="formDisabled" :view="library" />
             </div>
           </div>
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__gallery_budget() }}</p>
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__history_is_temporary() }}</p>
-          <p v-if="!results.length" tw-class="py-12 text-center text-gray-500 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl">{{ lazyStrings.stableDiffusionCppBrowser__no_images_yet() }}</p>
-          <div tw-class="grid sm:grid-cols-2 gap-5">
-            <article data-testid="image-generated-result" v-for="result in results" :key="result.id" tw-class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-              <img :src="result.url" :alt="result.parameters.prompt" :width="result.parameters.width" :height="result.parameters.height" tw-class="w-full h-auto" />
-              <div tw-class="p-4 space-y-2">
-                <p v-if="result.uniformOutput" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__uniform_image_warning() }}</p>
-                <p tw-class="text-sm whitespace-pre-wrap break-words">{{ result.parameters.prompt }}</p>
-                <p tw-class="text-xs text-gray-500">{{ result.modelVersion }} · {{ result.parameters.width }} × {{ result.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__seed() }}: {{ result.parameters.seed }} · {{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ formatElapsed({ elapsedMs: result.elapsedMs }) }}</p>
-                <div tw-class="flex gap-4 text-sm"><a :href="result.url" :download="'naidan-image-' + result.parameters.seed + '.png'" tw-class="text-purple-600 dark:text-purple-400 underline">{{ lazyStrings.stableDiffusionCppBrowser__download_png() }}</a><button type="button" @click="removeResult({ resultId: result.id })" tw-class="text-gray-500 underline">{{ lazyStrings.stableDiffusionCppBrowser__remove() }}</button></div>
-              </div>
-            </article>
+          <div v-show="activeTab === 'history'" role="tabpanel" :id="id + '-panel-history'" :aria-labelledby="id + '-tab-history'" data-testid="image-history-workspace">
+            <ImageGenerationHistory v-if="historyVisited" :view="view.history" :active="activeTab === 'history'" :disabled="formDisabled || view.historyActions.busy.value" @reuse="reuseHistory" @use-image="useHistoryImage" :on-download="view.downloadHistory" />
           </div>
-        </section>
-        <details tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="image-live-diagnostics">
-          <summary tw-class="cursor-pointer text-sm font-medium">{{ lazyStrings.stableDiffusionCppBrowser__diagnostics() }}</summary>
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__debug_help() }}</p>
-          <p v-if="diagnosticStatus" role="status" tw-class="text-xs font-mono break-words">{{ diagnosticStatus }}</p>
-          <div tw-class="flex flex-wrap gap-3 text-sm">
-            <button type="button" :disabled="!diagnosticText" @click="copyDiagnostics" data-testid="image-copy-diagnostics" tw-class="underline disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__copy_logs() }}</button>
-            <button type="button" :disabled="!diagnosticText" @click="saveDiagnostics" data-testid="image-save-diagnostics" tw-class="underline disabled:opacity-40">{{ lazyStrings.stableDiffusionCppBrowser__save_logs() }}</button>
-            <span role="status" tw-class="text-xs">{{ diagnosticFeedback }}</span>
+          <div v-show="activeTab === 'measure'" role="tabpanel" :id="id + '-panel-measure'" :aria-labelledby="id + '-tab-measure'">
+            <ImageBenchmark :active="activeTab === 'measure'" v-if="benchmarkVisited" :bench="benchmark" :generation="view" />
           </div>
-          <details v-if="diagnosticText">
-            <summary tw-class="text-xs cursor-pointer">{{ lazyStrings.stableDiffusionCppBrowser__show_logs() }}</summary>
-            <pre tw-class="text-xs whitespace-pre-wrap break-all max-h-72 overflow-auto mt-2">{{ diagnosticText }}</pre>
-          </details>
-        </details>
-        <details v-if="failure" open tw-class="rounded-xl border border-red-300 dark:border-red-800 p-4">
-          <summary tw-class="font-medium">{{ lazyStrings.stableDiffusionCppBrowser__diagnostics() }}</summary><pre role="alert" tw-class="text-xs whitespace-pre-wrap break-words mt-3 max-h-72 overflow-auto">{{ failure }}</pre>
-        </details>
-      </div>
-      <div v-show="activeTab === 'measure'" role="tabpanel" :id="id + '-panel-measure'" :aria-labelledby="id + '-tab-measure'">
-        <ImageBenchmark v-if="benchmarkVisited" :bench="benchmark" :generation="view" />
+        </div>
       </div>
     </div>
   </main>

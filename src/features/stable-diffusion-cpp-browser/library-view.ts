@@ -4,6 +4,7 @@ import type { CatalogDownloadProgress } from './logic/catalog-download';
 import type { ImageRecipeSelection } from './model-recipes';
 import type { ComputedRef, Ref, ShallowRef } from 'vue';
 import type { ModelSlot, Request } from './types';
+import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 
 export type ImageModelChoice = {
   id: string; label: string; detail: string; evidence: string[];
@@ -77,6 +78,9 @@ export type ImageLibraryView = {
   cancelImport(): void;
   useManualFiles(): void;
   selectedModels(): Request['models'] | undefined;
+  historyFileLocation({ file }: { file: File }): ImageGenerationModelFile;
+  findHistoryFile({ location }: { location: ImageGenerationModelFile }): File | undefined;
+  prepareHistoryFiles(): Promise<void>;
 };
 export const TEST_ONLY = {
 };

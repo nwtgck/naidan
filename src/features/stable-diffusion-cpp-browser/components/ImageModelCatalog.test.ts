@@ -96,6 +96,7 @@ it('keeps option changes offline and sends a frozen choice only on the explicit 
   const view = { ...createDisabledImageLibrary(), downloadRecipe: vi.fn(async () => {
     available.value = 3;
   }), chooseRecipe: vi.fn(),
+  ready: computed(() => available.value === 3),
   recipeAvailability: () => ({ available: available.value, total: 3, selected: false, bytes: 32 }) };
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
   await wrapper.get('[data-testid="recipe-option-z-image-turbo-diffusion"]').setValue('q8-0');
@@ -103,8 +104,10 @@ it('keeps option changes offline and sends a frozen choice only on the explicit 
   await wrapper.get('[data-testid="recipe-download-selected-z-image-turbo"]').trigger('click');
   expect(view.downloadRecipe).toHaveBeenCalledWith({ recipeId: 'z-image-turbo', selections: { diffusion: 'q8-0' } });
   await flushPromises();
+  expect(wrapper.emitted('selected')).toBeUndefined();
   await wrapper.get('[data-testid="recipe-use-local-z-image-turbo"]').trigger('click');
   expect(view.chooseRecipe).toHaveBeenCalledWith({ recipeId: 'z-image-turbo', selections: { diffusion: 'q8-0' } });
+  expect(wrapper.emitted('selected')).toHaveLength(1);
   expect(fetch).not.toHaveBeenCalled();
 });
 
@@ -135,4 +138,17 @@ it('allows permission requests on explicit downloads but blocks unavailable regi
   view.hostDirectories.busy.value = false;
   await flushPromises();
   expect(button().element.disabled).toBe(false);
+});
+
+it('explains a local scan next to disabled download actions without queuing a hidden request', async () => {
+  const view = createDisabledImageLibrary(); view.downloadRecipe = vi.fn(); view.scanState.value = 'scanning';
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
+  const card = wrapper.get('[data-testid="image-recipe-z-image-turbo"]');
+  expect(card.get('[data-testid="image-catalog-scan-status"]').text()).toContain('Checking saved models');
+  expect(card.get('[data-testid="recipe-download-selected-z-image-turbo"]').element.matches(':disabled')).toBe(true);
+  view.scanState.value = 'idle'; await flushPromises();
+  expect(card.find('[data-testid="image-catalog-scan-status"]').exists()).toBe(false);
+  expect(view.downloadRecipe).not.toHaveBeenCalled();
+  await card.get('[data-testid="recipe-download-selected-z-image-turbo"]').trigger('click');
+  expect(view.downloadRecipe).toHaveBeenCalledTimes(1);
 });

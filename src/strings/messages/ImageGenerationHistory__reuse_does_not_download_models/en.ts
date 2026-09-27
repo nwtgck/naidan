@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__reuse_does_not_download_models = (): string => 'Reusing settings does not download models. Missing files need to be selected again. A requested seed of -1 does not identify the random seed used.';

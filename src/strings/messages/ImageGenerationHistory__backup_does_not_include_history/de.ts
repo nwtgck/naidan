@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__backup_does_not_include_history = (): string => 'ZIP-Sicherungen enthalten Bilddateien, aber keinen Verlauf, der Bilder mit Einstellungen verknüpft. Beim Ersetzen aus einer Sicherung wird dieser Verlauf gelöscht.';

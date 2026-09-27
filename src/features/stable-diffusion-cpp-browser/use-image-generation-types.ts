@@ -3,9 +3,37 @@ import type { Ref, ComputedRef } from 'vue';
 import type { createImageForm } from './form';
 import type { ModelSlot } from './types';
 import type { ImageGenerationRecommendation } from './recommendations';
+import type { ImageGenerationHistoryView } from './history-view';
+import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
+import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
+
+export type ImageDownloadFormat = 'png' | 'webp' | 'jpeg';
+export type ImageDownloadResult =
+  | { status: 'downloaded' }
+  | { status: 'failed', message: string }
+  | { status: 'cancelled' };
 
 export type ImageGenerationView = ReturnType<typeof createImageForm> & {
+  seedMode: Ref<'random' | 'fixed'>;
+  randomizeSeed(): void;
   library: ImageLibraryView;
+  history: ImageGenerationHistoryView;
+  historySaving: {
+    enabled: Ref<boolean>;
+    supported: ComputedRef<boolean>;
+    status: Ref<'idle' | 'saving' | 'saved' | 'failed'>;
+    error: Ref<string>;
+    pendingCount: Ref<number>;
+    retry(): Promise<void>;
+  };
+  historyActions: { busy: Ref<boolean>; error: Ref<string>; missingFiles: Ref<string[]>; missingInactiveFiles: Ref<string[]> };
+  reuseHistory({ record }: { record: ImageGenerationRecord }): Promise<void>;
+  useHistoryImage({ binaryObjectId, role }: { binaryObjectId: BinaryObjectId, role: 'initial' | 'reference' }): Promise<void>;
+  savedHistoryId({ resultId }: { resultId: number }): ImageGenerationId | undefined;
+  downloadHistory({ binaryObjectId, record, format, includeMetadata }: { binaryObjectId: BinaryObjectId, record: ImageGenerationRecord, format: ImageDownloadFormat, includeMetadata: boolean }): Promise<ImageDownloadResult>;
+  downloadResult({ resultId, format, includeMetadata }: { resultId: number, format: ImageDownloadFormat, includeMetadata: boolean }): Promise<ImageDownloadResult>;
+  downloadPreview({ previewId, format, includeMetadata }: { previewId: number, format: ImageDownloadFormat, includeMetadata: boolean }): Promise<ImageDownloadResult>;
+  clearHistoryMissingFiles(): void;
   acquireBenchmark(): boolean;
   releaseBenchmark(): void;
   busy: ComputedRef<boolean>;

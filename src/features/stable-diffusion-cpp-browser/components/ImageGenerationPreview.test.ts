@@ -23,7 +23,7 @@ function openPreview({ width = 32, height = 32, mode = 'projection', maxEdge = 2
   view.preview.value = { ...view.preview.value, enabled: true, maxEdge };
   view.livePreview.value = { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 2, steps: 8,
     mode, width, height, url: 'blob:original-small-preview', id: 1, elapsedMs: 2500 };
-  wrapper = mount(ImageGenerationPreview, { props: { view } });
+  wrapper = mount(ImageGenerationPreview, { props: { view, active: true } });
   return { view, wrapper };
 }
 
@@ -74,20 +74,22 @@ it('shows elapsed time and the configurable first preview step', async () => {
   expect(view.preview.value.startStep).toBe(6);
 });
 
-it('sizes saved projection thumbnails too, while leaving the download link and metadata unchanged', async () => {
+it('sizes saved projection thumbnails while downloading the original frame and preserving metadata', async () => {
   const { view, wrapper } = openPreview({ width: 16, height: 32 });
   view.previewSnapshots.value = [{ ...view.livePreview.value!, id: 2, url: 'blob:saved-small-preview' }];
   await wrapper.vm.$nextTick();
   const snapshot = wrapper.get('[data-testid="image-preview-snapshot"]');
   expect(snapshot.get('img').attributes('width')).toBe('128');
   expect(snapshot.get('img').attributes('height')).toBe('256');
-  expect(snapshot.get('a').attributes('href')).toBe('blob:saved-small-preview');
+  view.downloadPreview = vi.fn(async () => ({ status: 'downloaded' as const }));
+  await snapshot.get('[data-testid="image-download-default"]').trigger('click');
+  expect(view.downloadPreview).toHaveBeenCalledWith({ previewId: 2, format: 'png', includeMetadata: false });
   expect(view.previewSnapshots.value[0]).toMatchObject({ width: 16, height: 32 });
 });
 
 it('defaults history ON without starting preview, and preserves an explicit opt-out across ON/OFF toggles', async () => {
   const view = { ...useImageGeneration(), supported: computed(() => true) };
-  wrapper = mount(ImageGenerationPreview, { props: { view } });
+  wrapper = mount(ImageGenerationPreview, { props: { view, active: true } });
   expect(view.preview.value.enabled).toBe(false);
   expect(view.preview.value.mode).toBe('vae');
   expect(view.keepPreviews.value).toBe(true);
@@ -97,4 +99,16 @@ it('defaults history ON without starting preview, and preserves an explicit opt-
   await wrapper.get('[data-testid="image-preview-enabled"]').setValue(false);
   await wrapper.get('[data-testid="image-preview-enabled"]').setValue(true);
   expect(view.keepPreviews.value).toBe(false);
+});
+
+it('closes an expanded snapshot when its pane becomes inactive while preserving the running preview', async () => {
+  const { view, wrapper } = openPreview({});
+  view.previewSnapshots.value = [{ ...view.livePreview.value!, id: 2, url: 'blob:saved-preview' }];
+  await wrapper.vm.$nextTick();
+  await wrapper.get('[data-testid="image-preview-snapshot"] button').trigger('click');
+  expect(document.querySelector('[data-testid="image-viewer"]')).not.toBeNull();
+  await wrapper.setProps({ active: false });
+  expect(document.querySelector('[data-testid="image-viewer"]')).toBeNull();
+  expect(view.livePreview.value?.url).toBe('blob:original-small-preview');
+  expect(view.previewSnapshots.value).toHaveLength(1);
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import ImageModelPicker from './ImageModelPicker.vue';
 import ImageLoraControls from './ImageLoraControls.vue';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
 
@@ -9,7 +10,7 @@ let selections: ImageLoraSelection[];
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   selections = [];
-  wrapper = mount(ImageLoraControls, { props: { modelValue: selections, saved: [], disabled: false,
+  wrapper = mount(ImageLoraControls, { props: { active: true, modelValue: selections, saved: [], disabled: false,
     'onUpdate:modelValue': value => {
       selections = value;
       void wrapper?.setProps({ modelValue: value });
@@ -64,24 +65,24 @@ it('adds multiple saved adapters only on request and distinguishes the same path
   const saved = [{ id: 'opfs', label: one.name, path: 'styles/style.gguf', file: one, detail: 'OPFS: user/adapters/styles/style.gguf' },
     { id: 'host', label: two.name, path: 'styles/style.gguf', file: two, detail: 'Host: models/owner/adapters/styles/style.gguf' }];
   await wrapper!.setProps({ saved });
-  const selector = wrapper!.get<HTMLSelectElement>('[data-testid="image-lora-saved"]');
-  expect(selector.element.value).toBe(''); expect(selections).toEqual([]);
-  expect(selector.text()).toContain('OPFS:'); expect(selector.text()).toContain('Host:');
-  await selector.setValue('opfs'); expect(selections).toEqual([]);
+  const selector = wrapper!.getComponent(ImageModelPicker);
+  expect(selector.props('modelValue')).toBe(''); expect(selections).toEqual([]);
+  expect(selector.props('choices').map(choice => choice.detail)).toEqual(saved.map(choice => choice.detail));
+  selector.vm.$emit('update:modelValue', 'opfs'); await wrapper!.vm.$nextTick(); expect(selections).toEqual([]);
   await wrapper!.get('[data-testid="image-lora-add-saved"]').trigger('click');
-  expect(selections[0]?.file).toBe(one); expect(selector.element.value).toBe('');
-  await selector.setValue('host'); await wrapper!.get('[data-testid="image-lora-add-saved"]').trigger('click');
+  expect(selections[0]?.file).toBe(one); expect(selector.props('modelValue')).toBe('');
+  selector.vm.$emit('update:modelValue', 'host'); await wrapper!.vm.$nextTick(); await wrapper!.get('[data-testid="image-lora-add-saved"]').trigger('click');
   expect(selections[1]?.file).toBe(two);
   expect(wrapper!.findAll('[data-testid="image-lora-row"]').map(row => row.text())).toEqual([expect.stringContaining('OPFS:'), expect.stringContaining('Host:')]);
   await wrapper!.setProps({ saved: [] });
   expect(selections).toHaveLength(2); expect(selections[1]?.file).toBe(two);
   await wrapper!.setProps({ saved });
-  expect(selector.element.value).toBe(''); expect(selections).toHaveLength(2);
+  expect(selector.props('modelValue')).toBe(''); expect(selections).toHaveLength(2);
 });
 it('never substitutes a different saved adapter when the selected inventory entry disappears', async () => {
   const file = new File(['adapter fixture'], 'style.gguf');
   await wrapper!.setProps({ saved: [{ id: 'one', label: file.name, detail: 'OPFS: one/style.gguf', file, path: file.name }] });
-  await wrapper!.get('[data-testid="image-lora-saved"]').setValue('one');
+  wrapper!.getComponent(ImageModelPicker).vm.$emit('update:modelValue', 'one'); await wrapper!.vm.$nextTick();
   await wrapper!.setProps({ saved: [{ id: 'two', label: file.name, detail: 'OPFS: two/style.gguf', file, path: file.name }] });
   const add = wrapper!.get('[data-testid="image-lora-add-saved"]');
   expect(add.element.matches(':disabled')).toBe(true); await add.trigger('click');

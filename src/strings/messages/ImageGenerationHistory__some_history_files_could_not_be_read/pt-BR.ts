@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__some_history_files_could_not_be_read = (): string => "Alguns arquivos do histórico não puderam ser lidos. Apenas registros legíveis são incluídos; seus arquivos não foram alterados.";

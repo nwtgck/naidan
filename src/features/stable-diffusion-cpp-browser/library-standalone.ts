@@ -14,8 +14,14 @@ export function createDisabledImageLibrary(): ImageLibraryView {
     recipeAvailability({ recipeId }) {
       return { available: 0, total: imageModelRecipes.find(recipe => recipe.id === recipeId)?.components.length ?? 0, selected: false, bytes: 0 };
     }, failure: ref(''), issues: computed(() => []), ready: computed(() => false),
-    async refresh() {}, chooseMain() {}, chooseComponent() {}, async importDirectory() {},
+    async refresh() {}, async prepareHistoryFiles() {}, chooseMain() {}, chooseComponent() {}, async importDirectory() {},
     async dropDirectory() {}, cancelImport() {}, useManualFiles() {}, selectedModels() {
+      return undefined;
+    },
+    historyFileLocation({ file }) {
+      return { type: 'file', name: file.name, size: file.size, lastModified: file.lastModified };
+    },
+    findHistoryFile() {
       return undefined;
     },
   };

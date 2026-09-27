@@ -107,9 +107,9 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
 
 const standaloneUiFiles = new Set([
   'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'benchmark-form.ts', 'use-image-benchmark-standalone.ts',
-  'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
-  'components/ImageModelCatalog.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts', 'lora-catalog.ts',
-  'components/ImageLoraControls.vue',
+  'components/ImageGenerationEditor.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationViewer.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
+  'components/ImageModelCatalog.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts', 'lora-catalog.ts',
+  'components/ImageLoraControls.vue', 'components/ImageDownloadMenu.vue', 'components/ImageSettingsSection.vue', 'components/ImageModelConfiguration.vue',
   'components/ImageInputControls.vue', 'image-input-form.ts',
   'form.ts',
   'form-options.ts',

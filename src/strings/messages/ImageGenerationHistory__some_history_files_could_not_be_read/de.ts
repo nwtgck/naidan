@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__some_history_files_could_not_be_read = (): string => "Einige Verlaufsdateien konnten nicht gelesen werden. Nur lesbare Einträge werden angezeigt; deine Dateien wurden nicht verändert.";

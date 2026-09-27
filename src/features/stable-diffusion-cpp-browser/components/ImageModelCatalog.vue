@@ -9,6 +9,7 @@ import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/l
 import ImageCatalogDownloadStatus from './ImageCatalogDownloadStatus.vue';
 import ImageHostModelDirectories from './ImageHostModelDirectories.vue';
 const props = defineProps<{ disabled: boolean, view: ImageLibraryView }>();
+const emit = defineEmits<{ selected: [] }>();
 const { downloading, importing, downloadState, downloadRecipeId, downloadLoraId, downloadSelections, scanState } = props.view;
 const id = useId(), open = ref(true);
 const choices = reactive<Record<string, ImageRecipeSelection>>({});
@@ -64,7 +65,9 @@ async function downloadLora({ id }: { id: string }): Promise<void> {
   if (!props.disabled && !downloadDestinationUnavailable.value) await props.view.downloadLora({ id });
 }
 function select({ recipeId }: { recipeId: string }): void {
-  if (!props.disabled) props.view.chooseRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
+  if (props.disabled) return;
+  props.view.chooseRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
+  if (props.view.ready.value) emit('selected');
 }
 function loraHelp({ usage }: { usage: ImageCatalogLora['usage'] }): string | undefined {
   switch (usage) {
@@ -98,6 +101,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
               <button v-if="card.availability.available === card.availability.total" type="button" :disabled="disabled || downloading || importing || card.availability.selected" @click="select({ recipeId: card.recipe.id })" :data-testid="'recipe-use-local-' + card.recipe.id" tw-class="ml-auto max-w-full rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 disabled:opacity-50">{{ card.availability.selected ? lazyStrings.stableDiffusionCppBrowser__selected() : lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
               <button v-else-if="downloadRecipeId !== card.recipe.id || !['downloading', 'paused', 'failed'].includes(downloadState)" type="button" :disabled="disabled || downloading || importing || scanState === 'scanning' || downloadDestinationUnavailable" @click="download({ recipeId: card.recipe.id })" :data-testid="'recipe-download-selected-' + card.recipe.id" tw-class="ml-auto inline-flex max-w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-50"><DownloadIcon tw-class="w-3.5 h-3.5 shrink-0" />{{ lazyStrings.llamaCppBrowserDownloads__download() }}</button>
             </div>
+            <p v-if="scanState === 'scanning'" role="status" data-testid="image-catalog-scan-status" tw-class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageModelCatalog__checking_saved_models() }}</p>
             <div tw-class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
               <span tw-class="tabular-nums">{{ card.availability.available === card.availability.total ? formatDownloadBytes({ bytes: card.availability.bytes }) : lazyStrings.llamaCppBrowserDownloads__approximately_size({ size: formatDownloadBytes({ bytes: card.bytes }) }) }} · {{ lazyStrings.stableDiffusionCppBrowser__file_count({ count: card.files.length }) }}</span>
               <span v-if="card.availability.available > 0 && card.availability.available < card.availability.total">{{ lazyStrings.stableDiffusionCppBrowser__files_available({ available: card.availability.available, total: card.availability.total }) }}</span>

@@ -34,7 +34,7 @@ async function open({ path }: { path: string }): Promise<Router> {
   // Use the actual file-router record so the alias declaration is exercised.
   const records = routes.filter(route => route.path === '/image-generation-lab');
   expect(records).toHaveLength(1);
-  expect(records[0]!.alias).toEqual(['/image-generation-lab/diagnostics']);
+  expect(records[0]!.alias).toEqual(['/image-generation-lab/diagnostics', '/image-generation-lab/models', '/image-generation-lab/history']);
   const router = createRouter({ history: createMemoryHistory(), routes: records });
   await router.push(path); await router.isReady();
   wrapper = mount(RouterView, { global: { plugins: [router] } });
@@ -91,4 +91,18 @@ it('preserves an active benchmark and its retained results across browser back a
   expect(wrapper!.getComponent(ImageGenerationLab).vm.$.uid).toBe(owner.$.uid);
   expect(bench.runs.value[0]!.png).toBe(retained);
   expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.dispose).toHaveBeenCalledTimes(1);
+});
+
+it('keeps one owner and form when navigating model management and history aliases', async () => {
+  const router = await open({ path: '/image-generation-lab/models' });
+  const owner = wrapper!.getComponent(ImageGenerationLab).vm;
+  expect(owner.TEST_ONLY.activeTab.value).toBe('models');
+  owner.TEST_ONLY.parameters.value.prompt = 'preserve between panes';
+  await wrapper!.get('[data-testid="image-tab-history"]').trigger('click'); await flushPromises();
+  expect(router.currentRoute.value.path).toBe('/image-generation-lab/history');
+  expect(wrapper!.getComponent(ImageGenerationLab).vm.$.uid).toBe(owner.$.uid);
+  await historyStep({ router, delta: -1 });
+  expect(owner.TEST_ONLY.activeTab.value).toBe('models');
+  expect(owner.TEST_ONLY.parameters.value.prompt).toBe('preserve between panes');
+  expect(mocks.create).not.toHaveBeenCalled();
 });

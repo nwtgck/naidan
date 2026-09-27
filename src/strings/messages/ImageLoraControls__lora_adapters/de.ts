@@ -1,1 +1,1 @@
-export const ImageLoraControls__lora_adapters = (): string => 'LoRA-Adapter';
+export const ImageLoraControls__lora_adapters = (): string => 'LoRA';

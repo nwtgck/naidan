@@ -14,7 +14,9 @@ import { chatToDto, hierarchyToDomain, hierarchyToDto } from '@/00-storage/mappe
 import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } from './synchronizer';
-import { idToRaw, toChatId } from '@/01-models/ids';
+import { idToRaw, toChatId, toBinaryObjectId } from '@/01-models/ids';
+import type { ImageGenerationId } from '@/01-models/ids';
+import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 
 
 // Match Wesh VFS lexical mount normalization without introducing a storage -> feature dependency.
@@ -327,6 +329,78 @@ export class StorageService {
   }
 
   // --- Volume Management ---
+
+  async saveImageGeneration({ record, files }: {
+    record: ImageGenerationRecord,
+    files: { binaryObjectId: BinaryObjectId, blob: Blob, name: string }[],
+  }): Promise<void> {
+    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
+    const storageType = this.getCurrentType();
+    switch (storageType) {
+    case 'opfs': break;
+    case 'local': case 'memory': throw new Error('Image generation history requires OPFS storage');
+    default: { const exhaustive: never = storageType; throw new Error(String(exhaustive)); }
+    }
+    // Capture the provider before awaiting. A storage switch must not split
+    // one generation's bytes between OPFS and another storage provider.
+    const provider = this.getProvider();
+    const snapshot = structuredClone(record);
+    const images = files.map(file => ({ ...file }));
+    const { saveImageGenerationRecord } = await import('./image-generation-history');
+    await this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      ...this.getLockOptions({ source: 'saveImageGeneration' }),
+      fn: () => saveImageGenerationRecord({
+        storageType,
+        record: snapshot,
+        writeImages: async () => {
+          const referenced = new Set([
+            snapshot.result.binaryObjectId,
+            ...snapshot.previews.map(image => image.binaryObjectId),
+            ...(snapshot.request.imageInputs.initImage ? [snapshot.request.imageInputs.initImage.binaryObjectId] : []),
+            ...snapshot.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
+          ].map(binaryObjectId => idToRaw({ id: binaryObjectId })));
+          const supplied = new Set<string>();
+          for (const image of images) {
+            const rawId = idToRaw({ id: image.binaryObjectId });
+            if (supplied.has(rawId) || !referenced.has(rawId)) throw new Error('Image history files must match unique record references');
+            supplied.add(rawId);
+          }
+          for (const { binaryObjectId, blob, name } of images) {
+            const metadata = await provider.getBinaryObject({ binaryObjectId });
+            const existing = await provider.getFile({ binaryObjectId });
+            if (metadata && !existing) throw new Error('Image history binary object is missing or unreadable');
+            if (existing) {
+              if (existing.size !== blob.size || metadata && existing.type !== blob.type) throw new Error('Image history binary objects are immutable');
+              for (let offset = 0; offset < blob.size; offset += 65536) {
+                const left = new Uint8Array(await existing.slice(offset, offset + 65536).arrayBuffer());
+                const right = new Uint8Array(await blob.slice(offset, offset + 65536).arrayBuffer());
+                if (left.some((byte, index) => byte !== right[index])) throw new Error('Image history binary objects are immutable');
+              }
+            }
+            if (!existing || !metadata) {
+              await provider.saveFile({ binaryObjectId, blob, name, mimeType: blob.type || undefined });
+            }
+          }
+          for (const rawId of referenced) {
+            if (!await provider.getFile({ binaryObjectId: toBinaryObjectId({ raw: rawId }) })) throw new Error('Image history references a missing binary object');
+          }
+        },
+      }),
+    });
+  }
+
+  async loadImageGeneration({ id }: { id: ImageGenerationId }): Promise<ImageGenerationRecord | undefined> {
+    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
+    const { loadImageGenerationRecord } = await import('./image-generation-history');
+    return loadImageGenerationRecord({ storageType: this.getCurrentType(), id });
+  }
+
+  async deleteImageGeneration({ id }: { id: ImageGenerationId }): Promise<void> {
+    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
+    const { deleteImageGenerationRecord } = await import('./image-generation-history');
+    return deleteImageGenerationRecord({ storageType: this.getCurrentType(), id });
+  }
 
   listVolumes(): AsyncIterable<Volume> {
     return this.getProvider().listVolumes();
