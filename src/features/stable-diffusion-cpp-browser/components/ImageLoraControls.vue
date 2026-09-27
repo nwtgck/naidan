@@ -2,10 +2,22 @@
 import { ref } from 'vue';
 import { lazyStrings } from '@/strings';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
+import type { SavedImageLoraChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 
-const props = defineProps<{ modelValue: ImageLoraSelection[], disabled: boolean }>();
+const props = defineProps<{ modelValue: ImageLoraSelection[], saved: readonly SavedImageLoraChoice[], disabled: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: ImageLoraSelection[]] }>();
 const invalidFiles = ref(false);
+const savedId = ref('');
+
+function addSaved(): void {
+  if (props.disabled) return;
+  const candidate = props.saved.find(candidate => candidate.id === savedId.value);
+  if (!candidate) return;
+  invalidFiles.value = props.modelValue.length >= 16;
+  if (invalidFiles.value) return;
+  emit('update:modelValue', [...props.modelValue, { file: candidate.file, path: candidate.path, sourceLabel: candidate.detail, strength: 1, enabled: true }]);
+  savedId.value = '';
+}
 
 function add({ event }: { event: Event }): void {
   if (props.disabled || !(event.target instanceof HTMLInputElement)) return;
@@ -50,6 +62,15 @@ defineExpose({
     <legend tw-class="px-1 text-sm font-medium">{{ lazyStrings.ImageLoraControls__lora_adapters() }}</legend>
     <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageLoraControls__choose_adapters_for_selected_model() }}</p>
     <label tw-class="block space-y-1 text-sm">
+      <span>{{ lazyStrings.ImageLoraControls__saved_adapters() }}</span>
+      <select v-model="savedId" :disabled="disabled || !saved.length" data-testid="image-lora-saved" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2 disabled:opacity-40">
+        <option value="">{{ lazyStrings.ImageLoraControls__choose_saved_adapter() }}</option>
+        <option v-for="candidate in saved" :key="candidate.id" :value="candidate.id">{{ candidate.detail }}</option>
+      </select>
+    </label>
+    <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageLoraControls__saved_adapter_compatibility_unverified() }}</p>
+    <button type="button" :disabled="disabled || !saved.some(candidate => candidate.id === savedId)" @click="addSaved()" data-testid="image-lora-add-saved" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs disabled:opacity-40">{{ lazyStrings.ImageLoraControls__add_adapter() }}</button>
+    <label tw-class="block space-y-1 text-sm">
       <span>{{ lazyStrings.ImageLoraControls__choose_files() }}</span>
       <input type="file" multiple accept=".gguf,.safetensors" :disabled="disabled" @change="add({ event: $event })" data-testid="image-lora-files" tw-class="block w-full text-sm" />
     </label>
@@ -57,7 +78,7 @@ defineExpose({
     <div v-for="(selection, index) in modelValue" :key="index" data-testid="image-lora-row" tw-class="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
       <label tw-class="flex min-w-0 flex-1 items-center gap-2 text-sm">
         <input type="checkbox" :checked="selection.enabled" :disabled="disabled" :aria-label="lazyStrings.ImageLoraControls__enabled()" @change="change({ index, event: $event, field: 'enabled' })" data-testid="image-lora-enabled" />
-        <span tw-class="break-all">{{ selection.path ?? selection.file.name }}</span>
+        <span tw-class="break-all">{{ selection.sourceLabel ?? selection.path ?? selection.file.name }}</span>
       </label>
       <label tw-class="flex items-center gap-2 text-xs">
         <span>{{ lazyStrings.ImageLoraControls__strength() }}</span>

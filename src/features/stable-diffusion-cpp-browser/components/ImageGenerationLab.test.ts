@@ -339,13 +339,41 @@ it('places the single debug toggle next to generation controls and keeps it lock
   await operation; await flushPromises(); expect(toggles[0]!.element.matches(':disabled')).toBe(false);
 });
 
-function benchmarkInventory() {
+function benchmarkInventory(): ModelInventory {
   return { candidates: ['one','two'].map(name => {
     const file = ggufFile();
     return { id: `user/${name}`, repositoryId: `user/${name}`, path: 'model.gguf', files: [{ path: 'model.gguf', file }], size: file.size, format: 'gguf',
       family: 'sd-checkpoint', classes: [], roles: ['model'], evidence: ['synthetic test'], variant: 'unknown', turboHint: false, issue: undefined };
   }), issues: [] };
 }
+it('uses saved adapters explicitly in normal generation and independently in one diagnostics target', async () => {
+  const inventory = benchmarkInventory(), file = new File(['adapter fixture'], 'style.safetensors');
+  inventory.candidates.push({ id: 'saved-style', repositoryId: 'user/adapters', path: 'style.safetensors', files: [{ path: 'style.safetensors', file }],
+    size: file.size, format: 'safetensors', family: 'unknown', classes: ['lora'], roles: [], evidence: [], issue: undefined, turboHint: false, variant: 'unknown' });
+  mocks.inspect.mockResolvedValue(inventory);
+  mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['PNG']), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const view = wrapper.vm.TEST_ONLY;
+  expect(view.loras.value).toEqual([]);
+  await wrapper.get('[data-testid="image-lora-saved"]').setValue('saved-style');
+  await wrapper.get('[data-testid="image-lora-add-saved"]').trigger('click');
+  view.parameters.value.prompt = 'saved adapter';
+  await view.generate(); await flushPromises();
+  const request = mocks.generate.mock.calls[0]![0].request;
+  expect(request.loras).toEqual([{ file, path: 'style.safetensors', strength: 1 }]);
+  expect(request.loras[0].file).toBe(file);
+  await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
+  const rows = wrapper.findAll('[data-testid="benchmark-target"]');
+  expect(rows).toHaveLength(2);
+  expect(rows.every(row => row.findAll('[data-testid="image-lora-row"]').length === 0)).toBe(true);
+  await rows[0]!.get('[data-testid="image-lora-saved"]').setValue('saved-style');
+  await rows[0]!.get('[data-testid="image-lora-add-saved"]').trigger('click');
+  await rows[0]!.get('[data-testid="image-lora-strength"]').setValue('0.25');
+  const bench = view.benchmark; bench.protocol.value.repeats = 1; bench.protocol.value.cooldownSeconds = 0;
+  await bench.start(); await flushPromises();
+  expect(mocks.generate.mock.calls.slice(1).map(([{ request }]) => request.loras.map((item: { strength: number }) => item.strength))).toEqual([[0.25], []]);
+  expect(view.loras.value[0]?.strength).toBe(1); expect(request.loras[0].strength).toBe(1);
+});
 it('opens benchmark lazily, selects every complete local model and preserves deselection across refresh', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory()); wrapper = mount(ImageGenerationLab); await flushPromises();
   expect(wrapper.find('[data-testid="image-benchmark"]').exists()).toBe(false);

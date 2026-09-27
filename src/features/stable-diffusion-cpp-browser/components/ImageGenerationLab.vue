@@ -123,7 +123,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
               <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__companion_files_help() }}</p>
             </details>
           </fieldset>
-          <ImageLoraControls v-model="loras" :disabled="formDisabled || !supported || library.importing.value || library.downloading.value" />
+          <ImageLoraControls v-model="loras" :saved="library.savedLoras.value" :disabled="formDisabled || !supported || library.importing.value || library.downloading.value" />
           <ImageInputControls v-model="imageInputs" :disabled="formDisabled || !supported || library.importing.value || library.downloading.value" />
           <section v-if="recommendation" tw-class="rounded-2xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/60 dark:bg-purple-950/20 p-4 space-y-2" data-testid="image-recommendation">
             <div tw-class="flex flex-wrap items-center justify-between gap-3">

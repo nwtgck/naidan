@@ -4,10 +4,11 @@ import type { InspectionReport } from '@/features/stable-diffusion-cpp-browser/i
 import type { ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import { inspectWeightFile, readModelJson, type TensorInfo, type WeightMetadata } from './model-metadata';
 import { relativeCompanionPath } from './model-path';
+import { hasLoraTensors } from './lora-metadata';
 import type { LocalImageRepository, RepositoryFile, HostImageRepositorySource } from './repository-store';
 
 export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image' | 'unknown';
-export type ComponentClass = 'vae-flux16' | 'vae-flux32' | 'vae-sd4' | 'vae-qwen21' | 'vae-wan16' | 'lm-qwen3-4b' | 'lm-qwen3-06b' | 'lm-qwen3vl-8b' | 'lm-qwen3vl-4b' | 'lm-ministral3-3b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae';
+export type ComponentClass = 'vae-flux16' | 'vae-flux32' | 'vae-sd4' | 'vae-qwen21' | 'vae-wan16' | 'lm-qwen3-4b' | 'lm-qwen3-06b' | 'lm-qwen3vl-8b' | 'lm-qwen3vl-4b' | 'lm-ministral3-3b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae' | 'lora';
 export type ModelCandidate = {
   id: string; repositoryId: string; path: string; files: RepositoryFile[];
   format: 'gguf' | 'safetensors' | 'safetensors-index';
@@ -23,6 +24,7 @@ const configSchema = z.object({
 const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string().min(1)).refine(value => Object.keys(value).length > 0) });
 
 function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], metadata: ReadonlyMap<string, string | number | boolean>, config: z.infer<typeof configSchema> | undefined }): Pick<ModelCandidate, 'family' | 'roles' | 'classes' | 'evidence' | 'turboHint' | 'variant'> {
+  if (hasLoraTensors({ tensors })) return { family: 'unknown', roles: [], classes: ['lora'], evidence: ['Native adapter tensor structure; base-model compatibility is unverified'], turboHint: false, variant: 'unknown' };
   const find = ({ suffix }: { suffix: string }): TensorInfo | undefined => tensors.find(t => t.name === suffix || t.name.endsWith('.' + suffix));
   const has = ({ pattern }: { pattern: RegExp }): boolean => tensors.some(t => pattern.test(t.name));
   const classes: ComponentClass[] = [], roles: ModelSlot[] = [], evidence: string[] = [];

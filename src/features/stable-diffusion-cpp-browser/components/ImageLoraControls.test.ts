@@ -9,7 +9,7 @@ let selections: ImageLoraSelection[];
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   selections = [];
-  wrapper = mount(ImageLoraControls, { props: { modelValue: selections, disabled: false,
+  wrapper = mount(ImageLoraControls, { props: { modelValue: selections, saved: [], disabled: false,
     'onUpdate:modelValue': value => {
       selections = value;
       void wrapper?.setProps({ modelValue: value });
@@ -57,5 +57,33 @@ it('keeps unavailable controls visible and rejects programmatic file changes', a
   await wrapper!.setProps({ disabled: true });
   expect(wrapper!.get('[data-testid="image-lora-files"]').element.matches(':disabled')).toBe(true);
   await choose({ files: [new File(['adapter fixture'], 'style.gguf')] });
+  expect(selections).toEqual([]);
+});
+it('adds multiple saved adapters only on request and distinguishes the same path in different stores', async () => {
+  const one = new File(['first adapter'], 'style.gguf'), two = new File(['second adapter'], 'style.gguf');
+  const saved = [{ id: 'opfs', label: one.name, path: 'styles/style.gguf', file: one, detail: 'OPFS: user/adapters/styles/style.gguf' },
+    { id: 'host', label: two.name, path: 'styles/style.gguf', file: two, detail: 'Host: models/owner/adapters/styles/style.gguf' }];
+  await wrapper!.setProps({ saved });
+  const selector = wrapper!.get<HTMLSelectElement>('[data-testid="image-lora-saved"]');
+  expect(selector.element.value).toBe(''); expect(selections).toEqual([]);
+  expect(selector.text()).toContain('OPFS:'); expect(selector.text()).toContain('Host:');
+  await selector.setValue('opfs'); expect(selections).toEqual([]);
+  await wrapper!.get('[data-testid="image-lora-add-saved"]').trigger('click');
+  expect(selections[0]?.file).toBe(one); expect(selector.element.value).toBe('');
+  await selector.setValue('host'); await wrapper!.get('[data-testid="image-lora-add-saved"]').trigger('click');
+  expect(selections[1]?.file).toBe(two);
+  expect(wrapper!.findAll('[data-testid="image-lora-row"]').map(row => row.text())).toEqual([expect.stringContaining('OPFS:'), expect.stringContaining('Host:')]);
+  await wrapper!.setProps({ saved: [] });
+  expect(selections).toHaveLength(2); expect(selections[1]?.file).toBe(two);
+  await wrapper!.setProps({ saved });
+  expect(selector.element.value).toBe(''); expect(selections).toHaveLength(2);
+});
+it('never substitutes a different saved adapter when the selected inventory entry disappears', async () => {
+  const file = new File(['adapter fixture'], 'style.gguf');
+  await wrapper!.setProps({ saved: [{ id: 'one', label: file.name, detail: 'OPFS: one/style.gguf', file, path: file.name }] });
+  await wrapper!.get('[data-testid="image-lora-saved"]').setValue('one');
+  await wrapper!.setProps({ saved: [{ id: 'two', label: file.name, detail: 'OPFS: two/style.gguf', file, path: file.name }] });
+  const add = wrapper!.get('[data-testid="image-lora-add-saved"]');
+  expect(add.element.matches(':disabled')).toBe(true); await add.trigger('click');
   expect(selections).toEqual([]);
 });

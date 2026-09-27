@@ -12,6 +12,10 @@ export type ImageModelChoice = {
 export type ImageComponentChoice = {
   slot: ModelSlot; selected: string; required: boolean; choices: ImageModelChoice[];
 };
+/** Header-identified adapters; compatibility with the selected base is unverified. */
+export type SavedImageLoraChoice = {
+  id: string; label: string; detail: string; file: File; path: string;
+};
 export type ImageRecipeAvailability = { available: number, total: number, selected: boolean, bytes: number };
 export type HostModelDirectoryChoice = {
   id: string, name: string,
@@ -39,6 +43,7 @@ export type ImageLibraryView = {
   benchmarkTargets({ selections }: { selections: Readonly<Record<string, Partial<Record<ModelSlot, string>>>> }): ImageBenchmarkTarget[];
   selectedFacts: ComputedRef<Pick<ModelCandidate, 'family' | 'variant' | 'evidence'> | undefined>;
   models: ComputedRef<ImageModelChoice[]>;
+  savedLoras: ComputedRef<SavedImageLoraChoice[]>;
   main: Ref<string>;
   components: ComputedRef<ImageComponentChoice[]>;
   scanState: Ref<'idle' | 'scanning'>;

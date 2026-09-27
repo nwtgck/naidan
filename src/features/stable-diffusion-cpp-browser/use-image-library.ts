@@ -9,7 +9,7 @@ import { type listImageRepositories, importImageRepository } from './logic/repos
 import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
 import { imageDirectoryFromFiles, imageDirectoriesFromDrop } from './logic/repository-input';
 import type { ModelSlot, Request } from './types';
-import type { ImageBenchmarkTarget, ImageComponentChoice, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability } from './library-view';
+import type { ImageBenchmarkTarget, ImageComponentChoice, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability, SavedImageLoraChoice } from './library-view';
 import { useHostModelDirectories } from './composables/use-host-model-directories';
 import { createDisabledImageLibrary } from './library-standalone';
 
@@ -102,12 +102,21 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     };
   }
   const models = computed(() => inventory.value.candidates.filter(candidate => {
+    if (candidate.classes.includes('lora')) return false;
     if (candidate.id === main.value || showAll.value) return true;
     return candidate.family !== 'unknown' && candidate.roles.some(role => role === 'model' || role === 'diffusion');
   }).map(candidate => describe({ candidate, status: primarySlot({ family: candidate.family }) !== undefined ? 'matching' : candidate.roles.length ? 'incompatible' : 'unverified' })));
+  const savedLoras = computed<SavedImageLoraChoice[]>(() => inventory.value.candidates.flatMap(candidate => {
+    const entry = candidate.files[0];
+    // Native LoRA requests mount one original file, not a shard/index bundle.
+    if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || !entry || !/\.(gguf|safetensors)$/i.test(entry.path)) return [];
+    const source = candidate.hostSource;
+    return [{ id: candidate.id, label: entry.file.name, path: entry.path, file: entry.file,
+      detail: source ? `Host: ${source.directoryName}/${source.repository}/${entry.path}` : `OPFS: ${candidate.repositoryId}/${entry.path}` }];
+  }).sort((a, b) => a.detail.localeCompare(b.detail) || a.id.localeCompare(b.id)));
   const components = computed(() => requirements.value.map(requirement => ({
     slot: requirement.slot, selected: selections.value[requirement.slot] ?? '', required: requirement.required,
-    choices: inventory.value.candidates.filter(candidate => candidate.id !== main.value).map(candidate => describe({ candidate, status: componentMatch({ candidate, requirement }) }))
+    choices: inventory.value.candidates.filter(candidate => candidate.id !== main.value && !candidate.classes.includes('lora')).map(candidate => describe({ candidate, status: componentMatch({ candidate, requirement }) }))
       .filter(choice => showAll.value || choice.status === 'matching' || choice.id === selections.value[requirement.slot])
       .sort((a, b) => Number(b.status === 'matching') - Number(a.status === 'matching') || a.detail.localeCompare(b.detail)),
   })));
@@ -453,7 +462,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   onScopeDispose(() => {
     disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort();
   });
-  return { hostDirectories, benchmarkTargets, selectedFacts, models, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
+  return { hostDirectories, benchmarkTargets, selectedFacts, models, savedLoras, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
     chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }

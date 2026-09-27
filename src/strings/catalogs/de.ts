@@ -2219,6 +2219,10 @@ import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmar
 
 import { ImageLoraControls__lora_adapters } from '@/strings/messages/ImageLoraControls__lora_adapters/de';
 import { ImageLoraControls__choose_files } from '@/strings/messages/ImageLoraControls__choose_files/de';
+import { ImageLoraControls__saved_adapters } from '@/strings/messages/ImageLoraControls__saved_adapters/de';
+import { ImageLoraControls__choose_saved_adapter } from '@/strings/messages/ImageLoraControls__choose_saved_adapter/de';
+import { ImageLoraControls__saved_adapter_compatibility_unverified } from '@/strings/messages/ImageLoraControls__saved_adapter_compatibility_unverified/de';
+import { ImageLoraControls__add_adapter } from '@/strings/messages/ImageLoraControls__add_adapter/de';
 import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/de';
 import { ImageLoraControls__enabled } from '@/strings/messages/ImageLoraControls__enabled/de';
 import { ImageLoraControls__remove } from '@/strings/messages/ImageLoraControls__remove/de';
@@ -4403,6 +4407,10 @@ export const catalog = {
   imageBenchmark__freshness_warning,
   ImageLoraControls__lora_adapters,
   ImageLoraControls__choose_files,
+  ImageLoraControls__saved_adapters,
+  ImageLoraControls__choose_saved_adapter,
+  ImageLoraControls__saved_adapter_compatibility_unverified,
+  ImageLoraControls__add_adapter,
   ImageLoraControls__strength,
   ImageLoraControls__enabled,
   ImageLoraControls__remove,
