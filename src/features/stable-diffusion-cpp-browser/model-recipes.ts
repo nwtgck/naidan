@@ -13,7 +13,7 @@ export type ImageRecipeFile = {
   approximateBytes: number;
 };
 export type ImageModelRecipe = {
-  id: 'z-image-turbo' | 'qwen-image-2.1' | 'z-image-base' | 'sdxl-base-1.0' | 'flux2-klein-4b' | 'anima-turbo-1.1';
+  id: 'z-image-turbo' | 'qwen-image-2.1' | 'z-image-base' | 'sdxl-base-1.0' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
   title: string;
   files: readonly ImageRecipeFile[];
   components: readonly ImageRecipeComponent[];
@@ -75,6 +75,26 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
       { role: 'diffusion', repository: 'circlestone-labs/Anima', revision: 'f973fc41ec7545364ac9776c2440285f43ff2a30', path: 'split_files/diffusion_models/anima-turbo-v1.1.safetensors', directory: 'Anima', approximateBytes: 4182000000 },
       { role: 'vae', repository: 'circlestone-labs/Anima', revision: 'f973fc41ec7545364ac9776c2440285f43ff2a30', path: 'split_files/vae/qwen_image_vae.safetensors', directory: 'Anima', approximateBytes: 253800000 },
       { role: 'lm', repository: 'circlestone-labs/Anima', revision: 'f973fc41ec7545364ac9776c2440285f43ff2a30', path: 'split_files/text_encoders/qwen_3_06b_base.safetensors', directory: 'Anima', approximateBytes: 1192000000 },
+    ],
+  },
+  {
+    id: 'krea2-turbo', title: 'Krea 2 Turbo',
+    source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/krea2.md',
+    files: [
+      { role: 'diffusion', repository: 'realrebelai/KREA-2_GGUFs', revision: '400cf1ca6790b96621e448b40c50650c76078e9e', path: 'TURBO/Krea-2-Turbo-Q4_K_M.gguf', directory: 'KREA-2_GGUFs', approximateBytes: 7216993376 },
+      // Follow this runtime's documented Wan2.1 companion. Other distributions
+      // name a Qwen VAE; shared structural classes do not prove identical weights.
+      { role: 'vae', repository: 'Comfy-Org/Wan_2.1_ComfyUI_repackaged', revision: 'dfcea77bcf258496e20c69cd84e8e8e41909bb3b', path: 'split_files/vae/wan_2.1_vae.safetensors', directory: 'Wan_2.1_ComfyUI_repackaged', approximateBytes: 253815318 },
+      { role: 'lm', repository: 'Qwen/Qwen3-VL-4B-Instruct-GGUF', revision: 'bdc46888d3da9c4578c765ca9eb9f5a385a64e6c', path: 'Qwen3VL-4B-Instruct-Q4_K_M.gguf', directory: 'Qwen3-VL-4B-Instruct-GGUF', approximateBytes: 2500000000 },
+    ],
+  },
+  {
+    id: 'ernie-image-turbo', title: 'ERNIE-Image-Turbo',
+    source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/ernie_image.md',
+    files: [
+      { role: 'diffusion', repository: 'unsloth/ERNIE-Image-Turbo-GGUF', revision: 'f17197b39ee5f51fff1815a3d245a4b876106230', path: 'ERNIE-Image-Turbo-Q4_K_M.gguf', directory: 'ERNIE-Image-Turbo-GGUF', approximateBytes: 5019124416 },
+      { role: 'vae', repository: 'Comfy-Org/ERNIE-Image', revision: '82d237fcf02a10b75154717487d07a724a25dc5b', path: 'vae/flux2-vae.safetensors', directory: 'ERNIE-Image', approximateBytes: 336213556 },
+      { role: 'lm', repository: 'unsloth/Ministral-3-3B-Instruct-2512-GGUF', revision: '7f116d3df13bc7d3820b2ff1d5c273133b5accaa', path: 'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf', directory: 'Ministral-3-3B-Instruct-2512-GGUF', approximateBytes: 2150000000 },
     ],
   },
 ];

@@ -2,7 +2,7 @@ import type { PreviewSettings, Parameters } from './types';
 import type { ModelCandidate } from './logic/model-candidates';
 export type ImageModelFacts = Pick<ModelCandidate, 'family' | 'variant' | 'evidence'>;
 export type ImageGenerationRecommendation = {
-  id: 'z-image-turbo' | 'z-image-base' | 'qwen-image-2.1' | 'flux2-klein-4b' | 'anima-turbo-1.1';
+  id: 'z-image-turbo' | 'z-image-base' | 'qwen-image-2.1' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
   title: string;
   parameters: Omit<Parameters, 'prompt' | 'negativePrompt' | 'seed'>;
   preview: Pick<PreviewSettings, 'mode' | 'interval' | 'startStep' | 'maxEdge'>;
@@ -57,10 +57,25 @@ const presets = {
     sources: [{ label: 'CircleStone Labs · Anima', url: 'https://huggingface.co/circlestone-labs/Anima' },
       { label: 'stable-diffusion.cpp · Anima', url: `${upstream}/docs/anima.md` }],
   },
+  'krea2-turbo': {
+    id: 'krea2-turbo', title: 'Krea 2 Turbo', checkedAt: '2026-09-27',
+    // The official API's guidance=0 disables CFG. sd.cpp uses CFG 1 for that
+    // behavior; CFG 0 there produces unconditioned output instead.
+    parameters: { ...browserDefaults, steps: 8, guidance: 1, sampler: 'euler' },
+    preview: { mode: 'vae', interval: 2, startStep: 4, maxEdge: 256 },
+    sources: [{ label: 'Krea · Krea 2 Turbo', url: 'https://huggingface.co/krea/Krea-2-Turbo' },
+      { label: 'stable-diffusion.cpp · Krea2', url: `${upstream}/docs/krea2.md` }],
+  },
+  'ernie-image-turbo': {
+    id: 'ernie-image-turbo', title: 'ERNIE-Image-Turbo', checkedAt: '2026-09-27',
+    parameters: { ...browserDefaults, steps: 8, guidance: 1 },
+    preview: { mode: 'vae', interval: 2, startStep: 4, maxEdge: 256 },
+    sources: [{ label: 'stable-diffusion.cpp · ERNIE-Image', url: `${upstream}/docs/ernie_image.md` }],
+  },
 } as const satisfies Record<ImageGenerationRecommendation['id'], ImageGenerationRecommendation>;
 
 /** Tensor structure identifies a family; only metadata/receipts select variants.
- * Unlabelled Z-Image, Klein and Anima variants have no guessed preset. */
+ * Unlabelled training variants have no guessed distilled/Turbo preset. */
 export function recommendationForSelection({ model }: { model: ImageModelFacts | undefined }): ImageGenerationRecommendation | undefined {
   if (!model) return undefined;
   switch (model.family) {
@@ -81,6 +96,18 @@ export function recommendationForSelection({ model }: { model: ImageModelFacts |
   case 'anima':
     switch (model.variant) {
     case 'turbo': return presets['anima-turbo-1.1'];
+    case 'distilled': case 'base': case 'unknown': return undefined;
+    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    }
+  case 'krea2':
+    switch (model.variant) {
+    case 'turbo': return presets['krea2-turbo'];
+    case 'distilled': case 'base': case 'unknown': return undefined;
+    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    }
+  case 'ernie-image':
+    switch (model.variant) {
+    case 'turbo': return presets['ernie-image-turbo'];
     case 'distilled': case 'base': case 'unknown': return undefined;
     default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
     }

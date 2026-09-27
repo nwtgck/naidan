@@ -5,8 +5,8 @@ import { parametersSchema, previewSettingsSchema, defaultPreviewSettings } from 
 import { parametersFixture } from './test-fixtures';
 import { scanImageRepositories } from './logic/model-candidates';
 import { imageModelRecipes } from './model-recipes';
-import { ggufFixture, zImageTensors, qwenImageTensors, flux2KleinTensors, animaTensors } from './test-utils/weights';
-it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'flux2-klein-4b', 'anima-turbo-1.1'] as const)('validates every field in the static %s starting point without replacing prompt or seed', id => {
+import { ggufFixture, zImageTensors, qwenImageTensors, flux2KleinTensors, animaTensors, krea2Tensors, ernieImageTensors } from './test-utils/weights';
+it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo'] as const)('validates every field in the static %s starting point without replacing prompt or seed', id => {
   const preset = TEST_ONLY.presets[id], original = { ...parametersFixture(), prompt: 'private', negativePrompt: 'custom', seed: '123' };
   const settings = parametersSchema.parse({ ...original, ...preset.parameters });
   expect(settings).toMatchObject({ prompt: 'private', negativePrompt: 'custom', seed: '123' });
@@ -58,4 +58,20 @@ it('does not infer Anima Turbo from a filename or family structure', async () =>
   const result = await scanImageRepositories({ repositories: [{ id: 'user/anima', name: 'anima', files: [{ path: file.name, file }] }], signal: undefined });
   expect(result.candidates[0]?.variant).toBe('unknown');
   expect(recommendationForSelection({ model: result.candidates[0] })).toBeUndefined();
+});
+
+it.each([
+  { id: 'krea2-turbo', tensors: krea2Tensors },
+  { id: 'ernie-image-turbo', tensors: ernieImageTensors },
+])('requires the reviewed release receipt before using eight-step $id settings', async ({ id, tensors }) => {
+  const entry = imageModelRecipes.find(recipe => recipe.id === id)!.files[0]!;
+  const file = ggufFixture({ name: `${id}.gguf`, tensors, metadata: { 'general.name': id }, extraBytes: 0 }).file;
+  const source = { kind: 'hugging-face' as const, repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) };
+  const receipt = { version: 1 as const, kind: 'naidan-model-file' as const, size: file.size, lastModified: file.lastModified, source };
+  for (const proof of [undefined, receipt, { ...receipt, source: { ...source, revision: '0'.repeat(40) } }]) {
+    const result = await scanImageRepositories({ repositories: [{ id: 'user/renamed', name: 'renamed', files: [{ path: file.name, file, ...(proof ? { receipt: proof } : {}) }] }], signal: undefined });
+    const preset = recommendationForSelection({ model: result.candidates[0] });
+    if (proof === receipt) expect(preset).toMatchObject({ id, parameters: { steps: 8, guidance: 1 } });
+    else expect(preset).toBeUndefined();
+  }
 });

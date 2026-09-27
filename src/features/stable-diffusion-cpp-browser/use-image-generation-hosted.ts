@@ -78,7 +78,7 @@ export function useImageGeneration(): ImageGenerationView {
         parameters.value.guidance = 6;
         if (!parameters.value.modelArguments) parameters.value.modelArguments = 'qwen_image_2_1_prefix_cache=false';
         break;
-      case 'sd-checkpoint': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'unknown': break;
+      case 'sd-checkpoint': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'unknown': break;
       default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
       }
     },

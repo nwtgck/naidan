@@ -19,7 +19,7 @@ const defaultDependencies: Pick<Dependencies, 'import' | 'download'> = { import:
 function primarySlot({ family }: { family: ModelCandidate['family'] }): ModelSlot | undefined {
   switch (family) {
   case 'sd-checkpoint': return 'model';
-  case 'z-image': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': return 'diffusion';
+  case 'z-image': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': return 'diffusion';
   case 'unknown': return undefined;
   default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
   }
@@ -56,7 +56,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   const downloadState = ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>('idle');
   const downloadRecipeId = ref('');
   const downloadSelections = shallowRef<ImageRecipeSelection>({});
-  let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima', files: ImageRecipeFile[] } | undefined;
+  let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image', files: ImageRecipeFile[] } | undefined;
   const downloading = computed(() => activeDownload.value !== undefined);
   const host = dependencies ? undefined : useHostModelDirectories({
     blocked: () => blocked() || importing.value,
@@ -192,6 +192,8 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
       case 'sdxl-base-1.0': return 'sd-checkpoint' as const;
       case 'flux2-klein-4b': return 'flux2-klein-4b' as const;
       case 'anima-turbo-1.1': return 'anima' as const;
+      case 'krea2-turbo': return 'krea2' as const;
+      case 'ernie-image-turbo': return 'ernie-image' as const;
       default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
       }
     })();
@@ -239,6 +241,8 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     case 'sdxl-base-1.0': recipeIntent = { family: 'sd-checkpoint', files }; break;
     case 'flux2-klein-4b': recipeIntent = { family: 'flux2-klein-4b', files }; break;
     case 'anima-turbo-1.1': recipeIntent = { family: 'anima', files }; break;
+    case 'krea2-turbo': recipeIntent = { family: 'krea2', files }; break;
+    case 'ernie-image-turbo': recipeIntent = { family: 'ernie-image', files }; break;
     default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
     }
     origin = 'manual'; main.value = ''; selections.value = {}; overrides.clear();

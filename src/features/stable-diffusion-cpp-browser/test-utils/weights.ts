@@ -77,6 +77,8 @@ export const animaTensors: TensorInfo[] = [
   tensor({ name: 'llm_adapter.blocks.0.cross_attn.q_proj.weight', shape: [1024, 1024] }),
   tensor({ name: 'x_embedder.proj.1.weight', shape: [2048, 68] }),
 ];
+export const krea2Tensors: TensorInfo[] = [tensor({ name: 'txtfusion.projector.weight', shape: [1, 12] }), tensor({ name: 'first.weight', shape: [6144, 64] })];
+export const ernieImageTensors: TensorInfo[] = [tensor({ name: 'layers.0.adaLN_sa_ln.weight', shape: [4096] }), tensor({ name: 'x_embedder.proj.weight', shape: [4096, 128, 1, 1] }), tensor({ name: 'text_proj.weight', shape: [4096, 3072] })];
 export const flux2VaeTensors: TensorInfo[] = [tensor({ name: 'decoder.conv_in.weight', shape: [512, 32, 3, 3] }), tensor({ name: 'decoder.conv_out.weight', shape: [3, 128, 3, 3] }), tensor({ name: 'encoder.conv_out.weight', shape: [64, 512, 3, 3] })];
 export const wanVaeTensors: TensorInfo[] = [tensor({ name: 'conv2.weight', shape: [16, 16, 1, 1, 1] }), tensor({ name: 'decoder.conv1.weight', shape: [384, 16, 3, 3, 3] }), tensor({ name: 'decoder.head.2.weight', shape: [3, 96, 3, 3, 3] })];
 export const sdVaeTensors: TensorInfo[] = [tensor({ name: 'decoder.conv_in.weight', shape: [512, 4, 3, 3] }), tensor({ name: 'decoder.conv_out.weight', shape: [3, 128, 3, 3] }), tensor({ name: 'encoder.conv_out.weight', shape: [8, 512, 3, 3] })];
@@ -89,5 +91,6 @@ export const qwenVaeTensors: TensorInfo[] = [tensor({ name: 'conv2.weight', shap
 export function qwenTextTensors({ width, layers }: { width: number, layers: number }): TensorInfo[] {
   return [tensor({ name: 'token_embd.weight', shape: [151936, width] }), tensor({ name: 'blk.0.attn_q_norm.weight', shape: [128] }), tensor({ name: `blk.${layers - 1}.attn_norm.weight`, shape: [width] })];
 }
+export const ministralTextTensors: TensorInfo[] = [tensor({ name: 'token_embd.weight', shape: [131072, 3072] }), tensor({ name: 'blk.25.attn_norm.weight', shape: [3072] })];
 export const TEST_ONLY = {
 };
