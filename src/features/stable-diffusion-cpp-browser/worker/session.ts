@@ -52,7 +52,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
   let nativeCall: 'new_sd_ctx' | 'generate_image' | undefined;
   let nativePhase: 'model' | 'sampling' | 'decoding' = 'model';
   let previewDecoding = false;
-  let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number, samplingSteps: number, cancelRequested: boolean }) | undefined;
+  let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number, samplingSteps: number | undefined, samplingState: 'input-images' | 'denoising', cancelRequested: boolean }) | undefined;
   const keep = ({ pointer }: { pointer: bigint }) => {
     allocations.push(pointer); return pointer;
   };
@@ -68,6 +68,14 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     } catch { /* observational */ }
   };
   const log = ({ message, level }: { message: string, level?: number }): void => {
+    // Pinned native code announces the image after input VAE/conditioning and
+    // before denoising. Both VAE tiles and denoising report step zero, so the
+    // progress callback alone cannot identify a shortened img2img schedule.
+    if (active && nativeCall === 'generate_image' && nativePhase === 'sampling'
+      && /^image\.cpp:\d+\s+- generating image: 1\/1 - seed -?\d+\s*$/.test(message)) {
+      active.samplingState = 'denoising';
+      previewDecoding = false;
+    }
     // Full VAE previews reuse the same native tile-progress callback as final
     // decoding. Observe only pinned native markers; never show tiles as steps.
     if (nativeCall === 'generate_image' && nativePhase === 'sampling' && active?.request.preview.mode === 'vae') {
@@ -101,10 +109,21 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       if (previewDecoding) return;
       const step = Number(args[0]), steps = Number(args[1]);
       if (Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps >= 0) {
+        if (active && nativePhase === 'sampling') {
+          switch (active.samplingState) {
+          case 'input-images': return;
+          case 'denoising': break;
+          default: { const exhaustive: never = active.samplingState; throw new Error(String(exhaustive)); }
+          }
+          if (active.samplingSteps === undefined) {
+            if (step !== 0 || steps < 1 || steps > active.request.parameters.steps
+              || !active.request.imageInputs.initImage && steps !== active.request.parameters.steps) return;
+            active.samplingSteps = steps;
+          }
+          if ((active.request.imageInputs.initImage || active.request.imageInputs.referenceImages.length) && steps !== active.samplingSteps) return;
+        }
         if (active && nativePhase === 'sampling' && steps > 0 && step <= steps
-          && (steps === active.request.parameters.steps || active.request.imageInputs.initImage && steps < active.request.parameters.steps)) {
-          // Img2img strength can shorten the native denoising schedule.
-          active.samplingSteps = steps;
+          && steps === active.samplingSteps) {
           try {
             active.onPerformance?.({ signal: { kind: 'sampling-progress', step, steps } });
           } catch { /* measurement only */ }
@@ -116,7 +135,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     callbacks.push(core.module.addFunction((...args) => {
       previewDecoding = false;
       const operation = active, snapshot = operation?.preview?.snapshot();
-      if (!operation || operation.cancelRequested || !snapshot?.settings.enabled || !operation.onPreview) return;
+      if (!operation || operation.samplingSteps === undefined || operation.cancelRequested || !snapshot?.settings.enabled || !operation.onPreview) return;
       const rawStep = Number(args[0]), step = Math.abs(rawStep), count = Number(args[1]), pointer = BigInt(args[2] ?? 0);
       // Negative intermediate evaluations are not completed user-visible steps.
       if (!Number.isInteger(step) || step < snapshot.settings.startStep || step > operation.samplingSteps || (rawStep < 0 && step !== operation.samplingSteps) || step <= operation.capturedStep || count !== 1 || !pointer || Number(args[3]) !== 0) return;
@@ -269,8 +288,10 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     if (sessionId !== undefined && sessionId !== run.request.sessionId) throw new Error('Model composition changed; replace the image worker');
     sessionId ??= run.request.sessionId;
     const { request } = run;
+    const hasInputImages = !!request.imageInputs.initImage || request.imageInputs.referenceImages.length > 0;
     previewDecoding = false;
-    active = { ...run, latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } }, capturedStep: 0, samplingSteps: request.parameters.steps, cancelRequested: false };
+    active = { ...run, latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } }, capturedStep: 0,
+      samplingSteps: hasInputImages ? undefined : request.parameters.steps, samplingState: hasInputImages ? 'input-images' : 'denoising', cancelRequested: false };
     const runAllocations: bigint[] = [];
     const keep = ({ pointer }: { pointer: bigint }) => {
       runAllocations.push(pointer); return pointer;

@@ -626,3 +626,48 @@ it('settles cancellation during input decode without entering native generation 
     vi.unstubAllGlobals();
   }
 });
+
+it.each(['projection', 'vae'] as const)('excludes input VAE tile progress and fixes the total before the first %s preview', async mode => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  const request = requestFixture(); request.parameters.steps = 30;
+  request.preview = { ...request.preview, mode, enabled: true, startStep: 1 };
+  request.imageInputs = { initImage: new File(['image'], 'source.png', { type: 'image/png' }), strength: 0.4, referenceImages: [] };
+  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2, height: 1, close() {} })));
+  vi.stubGlobal('OffscreenCanvas', class {
+    getContext() {
+      return { fillStyle: '', fillRect() {}, drawImage() {}, getImageData() {
+        return { data: new Uint8ClampedArray(8) };
+      } };
+    }
+  });
+  const onProgress = vi.fn(), onPreview = vi.fn(), onPerformance = vi.fn();
+  const original = vi.mocked(h.api.generate_image).getMockImplementation()!;
+  vi.mocked(h.api.generate_image).mockImplementationOnce(async (...args) => {
+    const result = await original(...args);
+    const progress = h.callbacks.get(h.registrations.progress)!;
+    const preview = h.callbacks.get(h.registrations.preview)!;
+    h.strings.set(69n, 'vae.hpp:229  - VAE Tile size: 32x32');
+    h.callbacks.get(h.registrations.log)!(1, 69n, 0n);
+    progress(0, 4, 0, 0n); progress(1, 4, 0.1, 0n); progress(4, 4, 0.1, 0n);
+    // A tile count can also equal the requested denoising total.
+    progress(0, 30, 0, 0n); progress(1, 30, 0.1, 0n);
+    expect(onPerformance.mock.calls.filter(([event]) => event.signal.kind === 'sampling-progress')).toEqual([]);
+    h.strings.set(70n, 'image.cpp:859  - generating image: 1/1 - seed 42');
+    h.callbacks.get(h.registrations.log)!(1, 70n, 0n);
+    progress(0, 13, 0, 0n);
+    preview(1, 1, 300000n, 0, 0n);
+    progress(1, 13, 0.1, 0n);
+    progress(2, 4, 0.1, 0n);
+    return result;
+  });
+  try {
+    await runImageGeneration({ ...h, request, onProgress, onLog: vi.fn(), onPerformance, onPreview });
+    expect(onPerformance.mock.calls.filter(([event]) => event.signal.kind === 'sampling-progress').map(([event]) => event.signal)).toEqual([
+      { kind: 'sampling-progress', step: 0, steps: 13 }, { kind: 'sampling-progress', step: 1, steps: 13 },
+    ]);
+    expect(onProgress.mock.calls.some(([{ event }]) => event.phase === 'sampling' && event.steps === 4)).toBe(false);
+    expect(onPreview.mock.calls.map(([{ capture }]) => ({ step: capture.step, steps: capture.steps }))).toEqual([{ step: 1, steps: 13 }]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
