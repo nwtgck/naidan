@@ -48,6 +48,25 @@ it('never treats distinct manual files as equal by name, size and modified time'
   request.models[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
   expect(keys.key({ request })).not.toBe(first);
 });
+it('retains a session for LoRA strength changes but replaces it for changed adapter files or paths', () => {
+  const keys = createImageSessionKeys(), request = requestFixture();
+  const noAdapter = keys.key({ request });
+  const file = request.models[0]!.file;
+  request.loras = [{ file, path: 'styles/adapter.gguf', strength: 1 }];
+  const selected = keys.key({ request });
+  expect(selected).not.toBe(noAdapter);
+  request.loras[0]!.strength = 0.5;
+  expect(keys.key({ request })).toBe(selected);
+  request.loras[0]!.strength = 0;
+  expect(keys.key({ request })).toBe(selected);
+  request.loras[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
+  expect(keys.key({ request })).not.toBe(selected);
+  request.loras[0]!.file = file;
+  request.loras[0]!.path = 'different/adapter.gguf';
+  expect(keys.key({ request })).not.toBe(selected);
+  request.loras = [];
+  expect(keys.key({ request })).toBe(noAdapter);
+});
 it('accepts a stable published identity across refresh and invalidates its companions and revision', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
   request.models[0]!.sourceId = 'reviewed-publication-with-all-companions';

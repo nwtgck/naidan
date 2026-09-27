@@ -15,7 +15,8 @@ type Run = { request: Request, onProgress: ({ event }: { event: Progress }) => v
   onDiagnostic?: Emit, onPerformance?: ({ signal }: { signal: NativePerformanceSignal }) => void, onPreview?: ({ capture }: { capture: PreviewPixels }) => void };
 const pathFields = { model: 'model_path', diffusion: 'diffusion_model_path', vae: 'vae_path', clipL: 'clip_l_path', clipG: 'clip_g_path', t5: 't5xxl_path', lm: 'llm_path' } satisfies Record<ModelSlot, string>;
 function totalModelBytes({ request }: { request: Request }): number {
-  return request.models.reduce((total, model) => total + model.file.size + (model.companions ?? []).reduce((sum, companion) => sum + companion.file.size, 0), 0);
+  return request.models.reduce((total, model) => total + model.file.size + (model.companions ?? []).reduce((sum, companion) => sum + companion.file.size, 0), 0)
+    + request.loras.reduce((total, lora) => total + lora.file.size, 0);
 }
 function resolveWeightResidency({ request }: { request: Request }) {
   switch (request.weightResidency) {
@@ -44,6 +45,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
   const allocations: bigint[] = [], callbacks: (number | bigint)[] = [], mounts: { remove(): void }[] = [];
   const fileReadCache = createModelFileReadCache({ pageBytes: MODEL_FILE_PAGE_BYTES, capacityBytes: MODEL_FILE_CACHE_BYTES });
   const reportFinalReads: (() => void)[] = [];
+  const loraPaths: string[] = [];
   let context = 0n, modelVersion = 'Unknown', sessionId: string | undefined;
   let poisoned = false, closed = false, failed = false;
   let nativeCall: 'new_sd_ctx' | 'generate_image' | undefined;
@@ -133,12 +135,21 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     } catch (cause) {
       throw new Error('The installed image runtime does not support BF16 weight conversion. Update the image runtime before generating.', { cause });
     }
+    if (request.loras.length) {
+      try {
+        core.fieldAddress('sd_img_gen_params_t', 0n, 'loras');
+        core.fieldAddress('sd_img_gen_params_t', 0n, 'lora_count');
+        for (const field of ['is_high_noise', 'multiplier', 'path']) core.fieldAddress('sd_lora_t', 0n, field);
+      } catch (cause) {
+        throw new Error('The installed image runtime does not support LoRA adapters. Update the image runtime before generating.', { cause });
+      }
+    }
     core.module.FS.mkdir('/models');
     const paths = new Map<ModelSlot, string>();
     const directories = new Set(['/models']);
     const capabilities = core.module._sdc_model_io_capabilities?.() ?? 0;
-    for (const input of request.models) {
-      const { slot, file } = input;
+    async function mount({ slot, input }: { slot: string, input: Parameters<typeof validateModelMounts>[0]['input'] }): Promise<string> {
+      const { file } = input;
       emit({ event: 'start', stage: 'model-header', message: undefined, fields: { slot, bytes: file.size } });
       const plan = await validateModelMounts({ input, reader, capabilities });
       emit({ event: 'file-summary', stage: 'model-header', message: 'File tensor types are source metadata, not proof of CPU/GPU placement', fields: { slot, path: plan.path.slice(0, 512), members: plan.files.length, ...plan.summary } });
@@ -197,8 +208,12 @@ export function createImageGenerationSession({ core, helpers, reader }: {
           },
         }, { maxChunkBytes: MODEL_FILE_PAGE_BYTES }));
       }
-      paths.set(slot, root + plan.path);
       log({ message: `Mounted ${slot}: ${file.size} bytes; original paths, bounded random access` });
+      return root + plan.path;
+    }
+    for (const input of request.models) paths.set(input.slot, await mount({ slot: input.slot, input }));
+    for (const [index, input] of request.loras.entries()) {
+      loraPaths.push(await mount({ slot: `lora-${index}`, input }));
     }
     const ctxParams = keep({ pointer: core.allocRecord('sd_ctx_params_t') });
     await core.api.sd_ctx_params_init(ctxParams);
@@ -277,6 +292,28 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       core.setField('sd_img_gen_params_t', params, 'height', height);
       core.setField('sd_img_gen_params_t', params, 'seed', BigInt(seed));
       core.setField('sd_img_gen_params_t', params, 'batch_count', 1);
+      if (request.loras.length !== loraPaths.length) throw new Error('LoRA files changed; replace the image worker');
+      const selectedLoras = request.loras.flatMap((lora, index) => lora.strength === 0 ? [] : [{ path: loraPaths[index]!, strength: lora.strength }]);
+      if (selectedLoras.length) {
+        const recordBytes = core.recordSize('sd_lora_t');
+        const records = keep({ pointer: core.alloc(recordBytes * selectedLoras.length) });
+        core.bytes(records, recordBytes * selectedLoras.length).fill(0);
+        selectedLoras.forEach(({ path, strength }, index) => {
+          const pointer = records + BigInt(index * recordBytes);
+          core.setField('sd_lora_t', pointer, 'is_high_noise', 0);
+          core.setField('sd_lora_t', pointer, 'multiplier', strength);
+          core.setField('sd_lora_t', pointer, 'path', text({ value: path }));
+        });
+        core.setField('sd_img_gen_params_t', params, 'loras', records);
+      } else {
+        // An empty list clears native adapters from a previous retained run.
+        core.setField('sd_img_gen_params_t', params, 'loras', 0n);
+      }
+      core.setField('sd_img_gen_params_t', params, 'lora_count', selectedLoras.length);
+      request.loras.forEach(({ file, path, strength }, index) => emit({ event: 'native', stage: 'generation',
+        message: 'Requested LoRA configuration; image generation success does not verify adapter compatibility or effect',
+        fields: { metric: 'lora-request', index, path: (path ?? file.name).slice(0, 512), bytes: file.size, strength, enabled: strength !== 0 },
+      }));
       const sample = core.fieldAddress('sd_img_gen_params_t', params, 'sample_params');
       const sampleMethod = await (async () => {
         switch (sampler) {

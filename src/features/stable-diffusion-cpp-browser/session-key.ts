@@ -22,6 +22,12 @@ export function createImageSessionKeys() {
         // File objects with identical names/size/time are still distinct.
         source: model.sourceId ?? [token({ file: model.file }), ...(model.companions ?? []).map(entry => [entry.path, token({ file: entry.file })])],
       })).sort((a, b) => a.slot.localeCompare(b.slot)),
+      // Strength is per generation. Files stay mounted while their native
+      // adapter state is retained, including a temporary strength of zero.
+      loras: request.loras.map(({ file, path, strength: _strength, ...unhandled }) => {
+        unhandled satisfies Record<PropertyKey, never>;
+        return { path: path ?? file.name, file: token({ file }) };
+      }),
     });
   }
   return { key };

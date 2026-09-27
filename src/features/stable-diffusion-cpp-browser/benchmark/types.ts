@@ -44,6 +44,8 @@ export const exportedModelSchema = z.object({
     prompt: z.string().optional(), negativePrompt: z.string().optional(), promptsIncluded: z.boolean(),
     preview: previewSettingsSchema, weightResidency: weightResidencySchema, gpuBudgetMiB: requestSchema.shape.gpuBudgetMiB,
     debug: z.literal('on'), models: z.array(z.object({ slot: modelSlotSchema, localCandidateId: z.string(), files: z.array(fileMetadataSchema) }).strict()),
+    // Requested adapters, not evidence that the native runtime applied them.
+    loras: z.array(z.object({ file: fileMetadataSchema, strength: z.number().finite() }).strict()).optional(),
   }).strict(),
 }).strict();
 export const aggregateSchema = z.array(z.object({

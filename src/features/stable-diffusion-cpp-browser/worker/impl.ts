@@ -105,7 +105,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
       };
       trace.emit({ event: 'request', stage: 'worker', message: undefined, fields: {
         profile: request.artifact.profile, source: request.artifact.modulePath.split('/')[1]!, schema: request.artifact.schemaSha256,
-        debug: request.debug ?? 'off', models: request.models.length, width: request.parameters.width, height: request.parameters.height,
+        debug: request.debug ?? 'off', models: request.models.length, loras: request.loras.filter(lora => lora.strength !== 0).length, width: request.parameters.width, height: request.parameters.height,
         steps: request.parameters.steps, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset', weightResidency: request.weightResidency,
         guidance: request.parameters.guidance, sampler: request.parameters.sampler, scheduler: request.parameters.scheduler, seed: request.parameters.seed,
         flashAttention: request.parameters.flashAttention, vaeTiling: request.parameters.vaeTiling, vaeTileSize: request.parameters.vaeTileSize,

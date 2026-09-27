@@ -19,6 +19,10 @@ export function benchmarkManifest({ snapshot, includePrompts, exportedAt }: { sn
           models: request.models.map(model => ({ slot: model.slot, localCandidateId: target.components.find(component => component.slot === model.slot)?.selected ?? target.id,
             files: [{ path: model.path ?? model.file.name, bytes: model.file.size, lastModified: model.file.lastModified },
               ...(model.companions ?? []).map(entry => ({ path: entry.path, bytes: entry.file.size, lastModified: entry.file.lastModified }))] })),
+          ...(request.loras.length ? { loras: request.loras.map(({ file, path, strength, ...unhandled }) => {
+            unhandled satisfies Record<PropertyKey, never>;
+            return { file: { path: path ?? file.name, bytes: file.size, lastModified: file.lastModified }, strength };
+          }) } : {}),
         } };
     }),
     runs: runs.map(run => run.record),

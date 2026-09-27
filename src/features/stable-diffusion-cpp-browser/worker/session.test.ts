@@ -130,6 +130,46 @@ it.each(['f32', 'f16'] as const)('passes the explicit BF16 weight conversion to 
   const ctx = h.recordPointers.get('sd_ctx_params_t')!;
   expect(h.fields.get(`sd_ctx_params_t:${ctx}:webgpu_bf16_type`)).toBe(bf16WeightType === 'f32' ? 0 : 1);
 });
+it.each([4, 8] as const)('keeps LoRA sources mounted while changing strengths and clearing adapters with %i-byte pointers', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
+  const request = requestFixture();
+  request.loras = [
+    { file: request.models[0]!.file, path: 'same.gguf', strength: 1 },
+    { file: request.models[0]!.file, path: 'same.gguf', strength: -0.5 },
+  ];
+  const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
+  const onDiagnostic = vi.fn();
+  const run = () => session.generate({ request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic });
+  await run();
+  const image = h.recordPointers.get('sd_img_gen_params_t')!;
+  const records = BigInt(h.fields.get(`sd_img_gen_params_t:${image}:loras`)!);
+  expect(h.fields.get(`sd_img_gen_params_t:${image}:lora_count`)).toBe(2);
+  for (const [index, strength] of [1, -0.5].entries()) {
+    const pointer = records + BigInt(index * h.core.recordSize('sd_lora_t'));
+    expect(h.fields.get(`sd_lora_t:${pointer}:multiplier`)).toBe(strength);
+    expect(h.fields.get(`sd_lora_t:${pointer}:is_high_noise`)).toBe(0);
+    expect(h.strings.get(BigInt(h.fields.get(`sd_lora_t:${pointer}:path`)!))).toBe(`/models/lora-${index}/same.gguf`);
+  }
+  request.loras[0]!.strength = 0.25;
+  request.loras[1]!.strength = 0;
+  await run();
+  const next = h.recordPointers.get('sd_img_gen_params_t')!;
+  const nextRecords = BigInt(h.fields.get(`sd_img_gen_params_t:${next}:loras`)!);
+  expect(h.fields.get(`sd_img_gen_params_t:${next}:lora_count`)).toBe(1);
+  expect(h.fields.get(`sd_lora_t:${nextRecords}:multiplier`)).toBe(0.25);
+  request.loras[0]!.strength = 0;
+  await run();
+  const cleared = h.recordPointers.get('sd_img_gen_params_t')!;
+  expect(h.fields.get(`sd_img_gen_params_t:${cleared}:loras`)).toBe(0n);
+  expect(h.fields.get(`sd_img_gen_params_t:${cleared}:lora_count`)).toBe(0);
+  expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
+  expect(h.helpers.mountReadOnlyFile).toHaveBeenCalledTimes(3);
+  expect(h.events).not.toContain('unmount');
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ fields: expect.objectContaining({ metric: 'lora-request', strength: 0 }) }));
+  await session.close();
+  expect(h.events.indexOf('free-context')).toBeLessThan(h.events.indexOf('unmount'));
+  expect(h.events.filter(event => event === 'unmount')).toHaveLength(3);
+});
 it('rejects an older artifact before mounting weights rather than ignoring BF16 conversion', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
   const original = h.core.fieldAddress;

@@ -4,7 +4,7 @@ import { relativeCompanionPath, validModelPath } from '@/features/stable-diffusi
 import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
 import type { SyncBlobReader } from './gguf-file';
 
-type Input = Request['models'][number];
+type Input = Pick<Request['models'][number], 'file' | 'path' | 'companions'>;
 const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string().min(1)).refine(map => Object.keys(map).length > 0) });
 /** Validate untrusted model/index data before the native parser can fall back to
  * a different format. No model-provided network path or code is ever executed. */

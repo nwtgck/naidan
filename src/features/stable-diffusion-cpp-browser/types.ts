@@ -116,6 +116,13 @@ export const modelFileSchema = z.object({
     }
   }
 });
+/** Run-local adapters; neither files nor strengths are settings persistence. */
+export const loraFileSchema = z.object({
+  file: localFileSchema,
+  path: relativePathSchema.optional(),
+  strength: z.number().finite().min(-10).max(10),
+});
+export type ImageLora = z.infer<typeof loraFileSchema>;
 export const requestSchema = z.object({
   debug: z.enum(['off', 'on']).optional(),
   runId: z.number().int().nonnegative().default(0),
@@ -131,6 +138,7 @@ export const requestSchema = z.object({
       ctx.addIssue({ code: 'custom', message: 'Choose one checkpoint OR one diffusion model, without duplicate slots' });
     }
   }),
+  loras: z.array(loraFileSchema).max(16).default([]),
   parameters: parametersSchema,
   weightResidency: weightResidencySchema.default('auto'),
   // A GPU budget is not a Wasm heap limit. Bound only exact byte accounting;

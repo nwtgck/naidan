@@ -52,6 +52,20 @@ it('only includes prompts after explicit opt-in and never looks at the live conf
   expect(data.models[0]!.request.prompt).toBe('private prompt'); expect(data.models[0]!.request.negativePrompt).toBe('private negative');
   expect(data.protocol.repeats).toBe(2);
 });
+it('keeps legacy diagnostics readable and records requested adapter strengths without copying weights', async () => {
+  const snapshot = await snapshotFixture();
+  const before = benchmarkManifest({ snapshot, includePrompts: false, exportedAt: '2026-09-27T00:00:00Z' });
+  expect(before.models[0]!.request).not.toHaveProperty('loras');
+  expect(manifestSchema.safeParse(before).success).toBe(true);
+  const file = new File(['adapter-data'], 'style.safetensors', { lastModified: 42 });
+  Object.defineProperty(file, 'arrayBuffer', { value: () => {
+    throw new Error('Do not read adapter weights for diagnostics');
+  } });
+  snapshot.plan.models[0]!.request.loras = [{ file, path: 'styles/style.safetensors', strength: 0.75 }];
+  const after = benchmarkManifest({ snapshot, includePrompts: false, exportedAt: '2026-09-27T00:00:00Z' });
+  expect(after.models[0]!.request.loras).toEqual([{ file: { path: 'styles/style.safetensors', bytes: 12, lastModified: 42 }, strength: 0.75 }]);
+  expect(after.models[1]!.request).not.toHaveProperty('loras');
+});
 it('aggregates warm and cold separately and excludes missing or mismatched reuse evidence', async () => {
   const snapshot = await snapshotFixture(); snapshot.runs[1]!.record.elapsedMs = 20;
   let aggregate = benchmarkAggregate({ snapshot }); expect(aggregate[0]).toMatchObject({ coldSamples: 1, warmSamples: 1, warmMedianMs: 20 });
