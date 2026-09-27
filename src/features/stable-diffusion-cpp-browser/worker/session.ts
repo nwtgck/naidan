@@ -126,6 +126,13 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     await core.api.sd_set_progress_callback(BigInt(callbacks[1]!), 0n);
   }
   async function initialize({ request }: { request: Request }): Promise<void> {
+    try {
+      // Generated record metadata is checked before mounting model files. Older
+      // artifacts must not silently ignore the selected weight conversion.
+      core.fieldAddress('sd_ctx_params_t', 0n, 'webgpu_bf16_type');
+    } catch (cause) {
+      throw new Error('The installed image runtime does not support BF16 weight conversion. Update the image runtime before generating.', { cause });
+    }
     core.module.FS.mkdir('/models');
     const paths = new Map<ModelSlot, string>();
     const directories = new Set(['/models']);
@@ -216,9 +223,14 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     log({ message: `Requested WebGPU compute and ${residency.paramsBackend || '(runtime backend)'} weight residency, eager_load=${residency.eagerLoad}, gpuBudgetMiB=${request.gpuBudgetMiB ?? 'unset'}, modelBytes=${modelBytes}` });
     emit({ event: 'native', stage: 'model-load', message: 'Requested weight placement, not proof of every tensor or operation running on GPU', fields: {
       requested: request.weightResidency, resolved: residency.resolved, requestedComputeBackend: 'WebGPU', requestedParamsBackend: residency.paramsBackend || '(runtime backend)',
-      eagerLoad: residency.eagerLoad, autoFit: false, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset', modelBytes,
+      eagerLoad: residency.eagerLoad, autoFit: false, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset', modelBytes, bf16WeightType: request.parameters.bf16WeightType,
     } });
-    const { flashAttention, conditioningCacheSize, modelArguments } = request.parameters;
+    const { flashAttention, bf16WeightType, conditioningCacheSize, modelArguments } = request.parameters;
+    switch (bf16WeightType) {
+    case 'f32': core.setField('sd_ctx_params_t', ctxParams, 'webgpu_bf16_type', core.constant('SD_TYPE_F32')); break;
+    case 'f16': core.setField('sd_ctx_params_t', ctxParams, 'webgpu_bf16_type', core.constant('SD_TYPE_F16')); break;
+    default: { const exhaustive: never = bf16WeightType; throw new Error(String(exhaustive)); }
+    }
     core.setField('sd_ctx_params_t', ctxParams, 'flash_attn', Number(flashAttention));
     core.setField('sd_ctx_params_t', ctxParams, 'diffusion_flash_attn', Number(flashAttention));
     core.setField('sd_ctx_params_t', ctxParams, 'conditioning_cache_size', conditioningCacheSize);

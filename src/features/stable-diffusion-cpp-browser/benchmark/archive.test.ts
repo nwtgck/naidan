@@ -21,6 +21,7 @@ async function snapshotFixture(): Promise<BenchmarkSnapshot> {
   const plan = planFixture({ mode: 'cold-warm', repeats: 2 }); plan.protocol.keepImages = true;
   plan.models[0]!.target.label = '../日本語/duplicate?.gguf'; plan.models[1]!.target.label = '../日本語/duplicate?.gguf';
   plan.models[0]!.request.parameters.prompt = 'private prompt'; plan.models[0]!.request.parameters.negativePrompt = 'private negative';
+  plan.models[0]!.request.parameters.bf16WeightType = 'f16'; plan.models[0]!.overrides.bf16WeightType = 'f16';
   plan.models[0]!.request.baseUrl = 'https://host.invalid/?token=do-not-export'; plan.models[0]!.request.models[0]!.sourceId = 'opaque-identity-do-not-export';
   await runner.start({ plan }); return runner.snapshot()!;
 }
@@ -33,8 +34,11 @@ it('exports validated immutable settings, per-model directories and real PNG byt
   expect(manifest.models).toHaveLength(2); expect(manifest.runs).toHaveLength(4);
   expect(manifestText).not.toContain('private prompt'); expect(manifestText).not.toContain('private negative'); expect(manifestText).not.toContain('do-not-export');
   expect(manifest.models[0]!.request.artifact.wasmSha256).toHaveLength(64);
+  expect(manifest.models.map(model => model.request.parameters.bf16WeightType)).toEqual(['f16', 'f32']);
+  expect(manifest.models[0]!.overrideKeys).toContain('bf16WeightType');
   for (const index of [1,2]) {
     const root = `models/m00${index}`; expect(zip.file(`${root}/settings.json`)).not.toBeNull();
+    expect(JSON.parse(await zip.file(`${root}/settings.json`)!.async('string')).request.parameters.bf16WeightType).toBe(index === 1 ? 'f16' : 'f32');
     for (const ri of [1,2]) {
       expect(await zip.file(`${root}/runs/r00${ri}/result.png`)!.async('string')).toBe('PNG-test');
       expect(await zip.file(`${root}/runs/r00${ri}/diagnostics.jsonl`)!.async('string')).toContain('worker-selection');

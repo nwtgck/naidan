@@ -85,6 +85,7 @@ export const parametersSchema = z.object({
   vaeTiling: z.boolean(),
   vaeTileSize: z.number().int().min(16).max(256).multipleOf(8),
   flashAttention: z.boolean(),
+  bf16WeightType: z.enum(['f32', 'f16']).default('f32'),
   qwenVaePolicy: z.enum(['bounded', 'native']).default('bounded'),
   conditioningCacheSize: z.number().int().min(0).max(32),
   modelArguments: z.string().max(4096).refine(value => !value.includes('\0')),

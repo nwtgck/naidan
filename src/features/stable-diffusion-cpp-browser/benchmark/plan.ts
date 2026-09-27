@@ -49,7 +49,7 @@ export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol
     const request = requestSchema.parse({ artifact, baseUrl, models: target.models, parameters: resolved.parameters, debug: 'on', preview, weightResidency, gpuBudgetMiB });
     // -1 would resolve to different random seeds; never silently substitute one.
     if (request.parameters.seed === '-1') throw new Error('Benchmark requires an explicit, non-random seed');
-    return { target: { ...target, facts: { ...target.facts, evidence: [...target.facts.evidence] }, missing: [...target.missing], models: request.models }, request, overrides: changes, preset: resolved.preset };
+    return { target: { ...target, facts: { ...target.facts, evidence: [...target.facts.evidence] }, components: structuredClone(target.components), missing: [...target.missing], models: request.models }, request, overrides: changes, preset: resolved.preset };
   });
   // All requests are validated and detached before creating/releasing any worker.
   return { id, createdAt, appVersion, notes, protocol: settings, models };

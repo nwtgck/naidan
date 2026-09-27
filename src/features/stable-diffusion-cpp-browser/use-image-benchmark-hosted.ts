@@ -20,7 +20,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     }
   });
   const busy = computed(() => form.state.value === 'running');
-  const targets = generation.library.benchmarkTargets;
+  const targets = computed(() => generation.library.benchmarkTargets({ selections: form.componentSelections.value }));
   const runner = createBenchmarkRunner({ createClient: () => createImageClient(), now: () => performance.now(), date: () => new Date().toISOString(),
     observeVisibility({ changed }) {
       changed({ hidden: document.visibilityState === 'hidden' });
@@ -38,7 +38,9 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     if (busy.value) return;
     const selectable = values.filter(value => value.models !== undefined).map(value => value.id);
     // A deliberate deselection (including Clear all) survives inventory refreshes.
-    form.selected.value = [...form.selected.value.filter(id => selectable.includes(id)), ...selectable.filter(id => !seen.has(id))];
+    // An incomplete component edit keeps its target selected so validation blocks
+    // the batch instead of silently dropping a model from the measurement.
+    form.selected.value = [...form.selected.value.filter(id => values.some(value => value.id === id)), ...selectable.filter(id => !seen.has(id))];
     for (const id of selectable) seen.add(id);
   }, { immediate: true });
   const plannedRuns = computed(() => form.selected.value.length * form.protocol.value.repeats);
@@ -98,7 +100,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       control.signal.throwIfAborted();
       const url = URL.createObjectURL(blob);
       try {
-        const link = document.createElement('a'); link.href = url; link.download = `naidan-image-benchmark-${snapshot.plan.id}-${nanoid()}.zip`; link.click();
+        const link = document.createElement('a'); link.href = url; link.download = `naidan-image-benchmark-${snapshot.plan.id}.zip`; link.click();
       } finally {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
@@ -122,7 +124,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       }
     },
     toggle({ id, selected }) {
-      if (busy.value || !targets.value.some(t => t.id === id && t.models)) return; form.selected.value = selected ? [...new Set([...form.selected.value, id])] : form.selected.value.filter(value => value !== id);
+      if (busy.value || !targets.value.some(t => t.id === id && (!selected || t.models))) return; form.selected.value = selected ? [...new Set([...form.selected.value, id])] : form.selected.value.filter(value => value !== id);
     },
     effective({ target }) {
       return benchmarkParameters({ common: form.common.value, target, strategy: form.strategy.value, overrides: form.overrides.value[target.id] ?? {} }).parameters;
@@ -132,6 +134,12 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     },
     inherit({ id, key }) {
       if (busy.value) return; const next = { ...form.overrides.value[id] }; delete next[key]; form.overrides.value = { ...form.overrides.value, [id]: next };
+    },
+    chooseComponent({ targetId, slot, id }) {
+      if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value) return;
+      const component = targets.value.find(target => target.id === targetId)?.components.find(component => component.slot === slot);
+      if (!component || id && !component.choices.some(choice => choice.id === id && choice.status !== 'incompatible')) return;
+      form.componentSelections.value = { ...form.componentSelections.value, [targetId]: { ...form.componentSelections.value[targetId], [slot]: id } };
     },
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {

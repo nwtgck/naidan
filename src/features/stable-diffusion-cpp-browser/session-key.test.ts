@@ -15,6 +15,9 @@ it('ignores per-image parameters and preview settings while keeping all context 
       request.parameters.flashAttention = true;
     },
     () => {
+      request.parameters.bf16WeightType = 'f16';
+    },
+    () => {
       request.parameters.conditioningCacheSize = 1;
     },
     () => {

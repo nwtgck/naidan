@@ -40,3 +40,12 @@ it('keeps explicit common model arguments, while a sparse override can clear the
   expect(benchmarkParameters({ common, target, strategy: 'model-defaults', overrides: {} }).parameters.modelArguments).toBe(common.modelArguments);
   expect(benchmarkParameters({ common, target, strategy: 'model-defaults', overrides: { modelArguments: '' } }).parameters.modelArguments).toBe('');
 });
+it('snapshots BF16 conversion independently for shared and overridden models', () => {
+  const override: Partial<ReturnType<typeof parametersFixture>> = { bf16WeightType: 'f32' };
+  const options = { ...input(), overrides: { b: override } }; options.targets.push(targetFixture({ id: 'b' }));
+  options.common.bf16WeightType = 'f16';
+  const plan = createBenchmarkPlan(options);
+  options.common.bf16WeightType = 'f32'; override.bf16WeightType = 'f16';
+  expect(plan.models.map(model => model.request.parameters.bf16WeightType)).toEqual(['f16', 'f32']);
+  expect(plan.models[1]!.overrides).toEqual({ bf16WeightType: 'f32' });
+});

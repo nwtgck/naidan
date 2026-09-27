@@ -1,24 +1,11 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
-import type { ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
+import { componentLabel } from '@/features/stable-diffusion-cpp-browser/component-label';
 import ImageModelPicker from './ImageModelPicker.vue';
 
 const props = defineProps<{ view: ImageLibraryView, disabled: boolean }>();
 const { models, main, components, scanState, scanProgress, showAll, importing, downloading, failure, issues, ready } = props.view;
-function label({ slot }: { slot: ModelSlot }): string | undefined {
-  switch (slot) {
-  case 'model': return lazyStrings.stableDiffusionCppBrowser__model_file();
-  case 'diffusion': return lazyStrings.stableDiffusionCppBrowser__diffusion_file();
-  case 'vae': return lazyStrings.stableDiffusionCppBrowser__vae_file();
-  case 'lm': return lazyStrings.stableDiffusionCppBrowser__lm_file();
-  case 'clipL': return lazyStrings.stableDiffusionCppBrowser__clip_l_file();
-  case 'clipG': return lazyStrings.stableDiffusionCppBrowser__clip_g_file();
-  case 't5': return lazyStrings.stableDiffusionCppBrowser__t5_file();
-  default: { const exhaustive: never = slot; throw new Error(String(exhaustive)); }
-  }
-}
-
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
@@ -42,7 +29,7 @@ defineExpose({
     <ImageModelPicker :model-value="main" :choices="models" :disabled="disabled || importing || downloading" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="view.chooseMain({ id: $event })" data-testid="image-main-model" />
     <div v-if="components.length" tw-class="space-y-3">
       <h3 tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__components_detected() }}</h3>
-      <ImageModelPicker v-for="component in components" :key="component.slot" :model-value="component.selected" :choices="component.choices" :required="component.required" :label="label({ slot: component.slot })" :disabled="disabled || importing || downloading" @update:model-value="view.chooseComponent({ slot: component.slot, id: $event })" :data-testid="'image-component-' + component.slot" />
+      <ImageModelPicker v-for="component in components" :key="component.slot" :model-value="component.selected" :choices="component.choices" :required="component.required" :label="componentLabel({ slot: component.slot })" :disabled="disabled || importing || downloading" @update:model-value="view.chooseComponent({ slot: component.slot, id: $event })" :data-testid="'image-component-' + component.slot" />
     </div>
     <p v-if="main && !ready && !importing" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__incomplete_components() }}</p>
     <details tw-class="text-xs">

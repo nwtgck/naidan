@@ -2,7 +2,7 @@ import type { ComputedRef } from 'vue';
 import type { createBenchmarkForm } from './benchmark-form';
 import type { ImageBenchmarkTarget } from './library-view';
 import type { ParameterChange } from './benchmark/types';
-import type { Parameters } from './types';
+import type { ModelSlot, Parameters } from './types';
 export type ImageBenchmarkView = ReturnType<typeof createBenchmarkForm> & {
   available: ComputedRef<boolean>;
   targets: ComputedRef<ImageBenchmarkTarget[]>; busy: ComputedRef<boolean>; canStart: ComputedRef<boolean>; plannedRuns: ComputedRef<number>;
@@ -12,6 +12,7 @@ export type ImageBenchmarkView = ReturnType<typeof createBenchmarkForm> & {
   effective({ target }: { target: ImageBenchmarkTarget }): Parameters;
   change({ id, change }: { id: string, change: ParameterChange }): void;
   inherit({ id, key }: { id: string, key: keyof Parameters }): void;
+  chooseComponent({ targetId, slot, id }: { targetId: string, slot: ModelSlot, id: string }): void;
 };
 export const TEST_ONLY = {
 };

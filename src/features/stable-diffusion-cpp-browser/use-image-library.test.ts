@@ -143,18 +143,41 @@ it('finishes all waiters when disposed during a stalled read', async () => {
 it('enumerates benchmark targets with the same companion choices, without switching the primary selection', async () => {
   const h = harness({ entries: repositories(), scan: undefined }); await h.library.refresh();
   const before = h.library.main.value;
-  expect(h.library.benchmarkTargets.value).toHaveLength(1);
-  expect(h.library.benchmarkTargets.value[0]?.models).toEqual(h.library.selectedModels());
-  expect(h.library.benchmarkTargets.value[0]?.composition).toBe('selected'); expect(h.library.main.value).toBe(before);
+  expect(h.library.benchmarkTargets({ selections: {} })).toHaveLength(1);
+  expect(h.library.benchmarkTargets({ selections: {} })[0]?.models).toEqual(h.library.selectedModels());
+  expect(h.library.benchmarkTargets({ selections: {} })[0]?.composition).toBe('selected'); expect(h.library.main.value).toBe(before);
   h.library.chooseComponent({ slot: 'vae', id: '' });
-  expect(h.library.benchmarkTargets.value[0]?.models).toBeUndefined(); expect(h.library.benchmarkTargets.value[0]?.missing).toContain('vae');
+  expect(h.library.benchmarkTargets({ selections: {} })[0]?.models).toBeUndefined(); expect(h.library.benchmarkTargets({ selections: {} })[0]?.missing).toContain('vae');
 });
 it('enumerates every complete primary independently, excludes text/VAE-only and records missing components', async () => {
   const entries = repositories();
   const main = entries[0]!;
   const h = harness({ entries: [...entries, { ...main, id: 'user/second-diffusion' }], scan: undefined }); await h.library.refresh();
-  expect(h.library.benchmarkTargets.value).toHaveLength(2);
-  expect(h.library.benchmarkTargets.value.every(target => target.models?.map(model => model.slot).join(',') === 'diffusion,vae,lm')).toBe(true);
+  expect(h.library.benchmarkTargets({ selections: {} })).toHaveLength(2);
+  expect(h.library.benchmarkTargets({ selections: {} }).every(target => target.models?.map(model => model.slot).join(',') === 'diffusion,vae,lm')).toBe(true);
   h.entries({ next: [entries[0]!] }); await h.library.refresh();
-  expect(h.library.benchmarkTargets.value[0]).toMatchObject({ models: undefined, missing: ['vae','lm'] });
+  expect(h.library.benchmarkTargets({ selections: {} })[0]).toMatchObject({ models: undefined, missing: ['vae','lm'] });
+});
+it('resolves benchmark component overrides independently and never replaces a missing or incompatible choice', async () => {
+  const entries = repositories();
+  const alternative = { ...entries[1]!, id: 'user/alternative-vae' };
+  const h = harness({ entries: [...entries, { ...entries[0]!, id: 'user/second-model' }, alternative], scan: undefined });
+  await h.library.refresh();
+  const before = h.library.selectedModels();
+  const targets = h.library.benchmarkTargets({ selections: {} });
+  const first = targets[0]!, second = targets[1]!;
+  const alternativeId = first.components.find(component => component.slot === 'vae')!.choices.find(choice => choice.detail.startsWith(alternative.id + '/'))!.id;
+  const selections = { [first.id]: { vae: alternativeId } };
+  const changed = h.library.benchmarkTargets({ selections });
+  expect(changed[0]!.components.find(component => component.slot === 'vae')!.selected).toBe(alternativeId);
+  expect(changed[1]!.components).toEqual(second.components);
+  expect(h.library.selectedModels()).toEqual(before);
+  const incomplete = h.library.benchmarkTargets({ selections: { [first.id]: { vae: '' } } })[0]!;
+  expect(incomplete.models).toBeUndefined(); expect(incomplete.missing).toContain('vae');
+  const textId = first.components.find(component => component.slot === 'lm')!.selected;
+  expect(h.library.benchmarkTargets({ selections: { [first.id]: { vae: textId } } })[0]!.models).toBeUndefined();
+  h.entries({ next: entries }); await h.library.refresh();
+  const stale = h.library.benchmarkTargets({ selections }).find(target => target.id === first.id)!;
+  expect(stale.components.find(component => component.slot === 'vae')!.selected).toBe(alternativeId);
+  expect(stale.missing).toContain('vae'); expect(stale.models).toBeUndefined();
 });

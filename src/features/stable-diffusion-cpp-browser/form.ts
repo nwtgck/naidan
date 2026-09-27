@@ -11,7 +11,7 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const diagnosticFeedback = ref('');
   const layout = ref<'checkpoint' | 'components'>('checkpoint');
   const files = shallowRef<Partial<Record<ModelSlot, File>>>({});
-  const parameters = ref<Parameters>({ prompt: '', negativePrompt: '', width: 256, height: 256, steps: 20, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' });
+  const parameters = ref<Parameters>({ prompt: '', negativePrompt: '', width: 256, height: 256, steps: 20, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32', qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' });
   const retainModel = ref(true);
   const modelResident = ref(false);
   const preview = ref<PreviewSettings>({ ...defaultPreviewSettings });

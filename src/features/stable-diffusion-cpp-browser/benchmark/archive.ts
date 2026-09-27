@@ -16,8 +16,9 @@ export function benchmarkManifest({ snapshot, includePrompts, exportedAt }: { sn
         request: { artifact: request.artifact, parameters, promptsIncluded: includePrompts,
           ...(includePrompts ? { prompt, negativePrompt } : {}), preview: request.preview, debug: request.debug,
           weightResidency: request.weightResidency, gpuBudgetMiB: request.gpuBudgetMiB,
-          models: request.models.map(model => ({ slot: model.slot, files: [{ path: model.path ?? model.file.name, bytes: model.file.size, lastModified: model.file.lastModified },
-            ...(model.companions ?? []).map(entry => ({ path: entry.path, bytes: entry.file.size, lastModified: entry.file.lastModified }))] })),
+          models: request.models.map(model => ({ slot: model.slot, localCandidateId: target.components.find(component => component.slot === model.slot)?.selected ?? target.id,
+            files: [{ path: model.path ?? model.file.name, bytes: model.file.size, lastModified: model.file.lastModified },
+              ...(model.companions ?? []).map(entry => ({ path: entry.path, bytes: entry.file.size, lastModified: entry.file.lastModified }))] })),
         } };
     }),
     runs: runs.map(run => run.record),

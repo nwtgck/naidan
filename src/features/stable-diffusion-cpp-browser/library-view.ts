@@ -18,10 +18,11 @@ export type ImageBenchmarkTarget = {
   id: string; label: string; detail: string;
   facts: Pick<ModelCandidate, 'family' | 'variant' | 'evidence'>;
   composition: 'selected' | 'automatic'; models: Request['models'] | undefined;
+  components: ImageComponentChoice[];
   missing: ModelSlot[]; issue: string | undefined;
 };
 export type ImageLibraryView = {
-  benchmarkTargets: ComputedRef<ImageBenchmarkTarget[]>;
+  benchmarkTargets({ selections }: { selections: Readonly<Record<string, Partial<Record<ModelSlot, string>>>> }): ImageBenchmarkTarget[];
   selectedFacts: ComputedRef<Pick<ModelCandidate, 'family' | 'variant' | 'evidence'> | undefined>;
   models: ComputedRef<ImageModelChoice[]>;
   main: Ref<string>;

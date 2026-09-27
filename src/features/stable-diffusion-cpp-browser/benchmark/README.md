@@ -1,6 +1,8 @@
 # Image benchmark workspace
 
-The image-generation lab has a secondary benchmark tab. It consumes the existing
+The image-generation lab has a secondary diagnostics tab at
+`/image-generation-lab/diagnostics`. Both URLs share the same owner, preserving
+settings and active work when navigating between them. It consumes the existing
 published local inventory, the existing image Worker client and the existing
 versioned diagnostic events. It does not add a native API, dependency, shader,
 model download or inference fallback. Opening/switching tabs never starts a run.
@@ -11,20 +13,24 @@ The normal model catalog remains on the Generate tab.
 All recognized primary models are listed. Text encoders and VAEs are components,
 not standalone benchmark targets. Missing/incompatible components leave the
 primary visible but disabled. The normal selection's explicit composition is
-preserved; other primaries use the existing structural companion resolver. No
+preserved as the initial composition; other primaries use the existing structural
+companion resolver. Each target shows its resolved component files and allows
+independent local replacements. Missing explicit choices never fall back silently. No
 filename-derived model-family guessing or new file reads occur when listing.
 
 Initially all complete models are selected. An explicit deselection survives a
 refresh; newly discovered complete models are selected once. The initial plan
 uses 512px, 8 steps, fixed seed 42 and a non-personal shared prompt. Model defaults
 only change CFG/sampler/scheduler and fill an empty model-arguments field; they
-never reset dimensions, steps, prompts or seed. The effective request is visible.
+never reset dimensions, steps, prompts or seed. Resolution presets change both
+dimensions; per-model presets deliberately override both inherited values. Manual
+width and height controls remain available. The effective request is visible.
 Sparse per-model overrides apply last and can intentionally override with zero,
 false or an empty string. Unchecked fields continue inheriting shared edits.
 
-By default each model has three serial runs: a new Worker for the first, then two
-runs with the same client and compatible context. Every model boundary disposes
-the prior Worker. The alternative fresh-each mode disposes after every run.
+By default each model has two serial runs, each with a fresh Worker. The
+alternative cold-warm mode retains the client and compatible context after the
+first run. Every model boundary disposes the prior Worker.
 Warm/cold are *planned* labels; actual worker-selection diagnostics are preserved.
 Only a successful run with matching reuse evidence enters its warm/cold median.
 Equal steps are not equal model work or image quality. Browser/OS caches, GPU
@@ -78,8 +84,8 @@ models/m001/runs/r001/result.png  # optional
 ```
 
 The versioned, Zod-validated manifest contains the plan captured before running,
-full artifact identity, resolved request settings, model-slot filenames/sizes/
-mtime, protocol/order, per-run status, timing and limitations. summary.json keeps
+full artifact identity, resolved request settings, model-slot local candidate
+identities and filenames/sizes/mtime, protocol/order, per-run status, timing and limitations. summary.json keeps
 fresh and verified-warm medians separate. File names are not proof of weight
 identity: export never rereads or hashes multi-GB model files. Absolute page URLs
 and sourceId are not exported. Exact prompts require explicit export opt-in.
@@ -92,8 +98,10 @@ There are at most 100 runs, a 384KiB bounded raw log per run, and 128MiB total
 retained PNGs. Image omission is explicit in each record. The streaming ZIP
 producer honors backpressure; the final browser download is a bounded Blob with
 an explicit 256MiB cap, not a claim of a zero-buffer download. Object URLs for
-exports are revoked. No per-result object URLs, model weights, caches or persistent
-benchmark state are created. Leaving the page discards unsaved benchmark results.
+exports are revoked. Final PNG retention is enabled by default. Run details create
+a temporary image URL only when opened and revoke it on close, result replacement
+or unmount. No model weights, caches or persistent benchmark state are created.
+Leaving the page discards unsaved benchmark results.
 
 ## Test scope
 

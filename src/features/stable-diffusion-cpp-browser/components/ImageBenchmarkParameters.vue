@@ -16,11 +16,21 @@ function numeric({ event }: { event: Event }): number {
 function checked({ event }: { event: Event }): boolean {
   return event.target instanceof HTMLInputElement && event.target.checked;
 }
+function resolution({ edge }: { edge: number }): void {
+  // A preset deliberately overrides both dimensions for a model, even when its
+  // size was inherited. Other shared settings continue to be inherited.
+  emit('change', { key: 'width', value: edge });
+  emit('change', { key: 'height', value: edge });
+}
 function sampler({ event }: { event: Event }): void {
   const value = samplerOptions.find(option => option === text({ event })); if (value !== undefined) emit('change', { key: 'sampler', value });
 }
 function scheduler({ event }: { event: Event }): void {
   const value = schedulerOptions.find(option => option === text({ event })); if (value !== undefined) emit('change', { key: 'scheduler', value });
+}
+function bf16WeightType({ event }: { event: Event }): void {
+  const value = text({ event });
+  if (value === 'f32' || value === 'f16') emit('change', { key: 'bf16WeightType', value });
 }
 function setOverride({ key, event }: { key: keyof Parameters, event: Event }): void {
   if (!checked({ event })) emit('inherit', key);
@@ -41,6 +51,7 @@ function setOverride({ key, event }: { key: keyof Parameters, event: Event }): v
     case 'vaeTiling': emit('change', { key, value: props.values.vaeTiling }); break;
     case 'vaeTileSize': emit('change', { key, value: props.values.vaeTileSize }); break;
     case 'flashAttention': emit('change', { key, value: props.values.flashAttention }); break;
+    case 'bf16WeightType': emit('change', { key, value: props.values.bf16WeightType }); break;
     case 'qwenVaePolicy': emit('change', { key, value: props.values.qwenVaePolicy }); break;
     case 'modelArguments': emit('change', { key, value: props.values.modelArguments }); break;
     default: { const exhaustive: never = key; throw new Error(String(exhaustive)); }
@@ -60,6 +71,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <label :id="id + '-label-negativePrompt'" :for="id + '-negativePrompt'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</label>
       <label v-if="props.overrides !== undefined" tw-class="inline-flex gap-2 items-center text-xs text-gray-500"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'negativePrompt')" :aria-describedby="id + '-label-negativePrompt'" @change="setOverride({ key: 'negativePrompt', event: $event })" :data-testid="'override-negativePrompt'" />{{ lazyStrings.imageBenchmark__override() }}</label>
       <textarea :id="id + '-negativePrompt'" :disabled="props.overrides !== undefined && !Object.hasOwn(props.overrides, 'negativePrompt')" :data-testid="'parameter-negativePrompt'" :value="props.values.negativePrompt" @input="emit('change', { key: 'negativePrompt', value: text({ event: $event }) })" rows="2" maxlength="4096" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2 text-sm disabled:opacity-50" />
+    </div>
+    <div role="group" :aria-labelledby="id + '-label-width ' + id + '-label-height'" data-testid="benchmark-resolution-presets" tw-class="flex flex-wrap gap-2">
+      <button v-for="edge in [256, 512, 768, 1024]" :key="edge" type="button" :aria-pressed="props.values.width === edge && props.values.height === edge" :data-testid="'benchmark-resolution-' + edge" @click="resolution({ edge })" :tw-class="['rounded-lg border px-2.5 py-1.5 text-xs font-medium disabled:opacity-40', props.values.width === edge && props.values.height === edge ? 'border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-700 dark:bg-purple-950 dark:text-purple-300' : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800']">{{ edge }} × {{ edge }}</button>
     </div>
     <div tw-class="grid grid-cols-2 sm:grid-cols-3 gap-3">
       <div tw-class="space-y-1" data-parameter="width">
@@ -91,6 +105,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <details tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
       <summary tw-class="text-sm font-medium cursor-pointer">{{ lazyStrings.stableDiffusionCppBrowser__runtime_settings() }}</summary>
       <div tw-class="grid sm:grid-cols-2 gap-3">
+        <div tw-class="space-y-1" data-parameter="bf16WeightType">
+          <label :id="id + '-label-bf16WeightType'" :for="id + '-bf16WeightType'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion() }}</label>
+          <label v-if="props.overrides !== undefined" tw-class="inline-flex gap-2 items-center text-xs text-gray-500"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'bf16WeightType')" :aria-describedby="id + '-label-bf16WeightType'" @change="setOverride({ key: 'bf16WeightType', event: $event })" data-testid="override-bf16WeightType" />{{ lazyStrings.imageBenchmark__override() }}</label>
+          <select :id="id + '-bf16WeightType'" :disabled="props.overrides !== undefined && !Object.hasOwn(props.overrides, 'bf16WeightType')" data-testid="parameter-bf16WeightType" :value="props.values.bf16WeightType" @change="bf16WeightType({ event: $event })" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2 text-sm disabled:opacity-50"><option value="f32">F32</option><option value="f16">F16</option></select>
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion_help() }}</p>
+        </div>
         <div tw-class="space-y-1" data-parameter="sampler">
           <label :id="id + '-label-sampler'" :for="id + '-sampler'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__sampler() }}</label>
           <label v-if="props.overrides !== undefined" tw-class="inline-flex gap-2 items-center text-xs text-gray-500"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'sampler')" :aria-describedby="id + '-label-sampler'" @change="setOverride({ key: 'sampler', event: $event })" :data-testid="'override-sampler'" />{{ lazyStrings.imageBenchmark__override() }}</label>

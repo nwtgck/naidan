@@ -5,7 +5,7 @@ import ImageRepositoryImport from './ImageRepositoryImport.vue';
 import ImageModelCatalog from './ImageModelCatalog.vue';
 import ImageBenchmark from './ImageBenchmark.vue';
 import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-image-benchmark';
-import { computed, ref, useId } from 'vue';
+import { computed, ref, useId, watch } from 'vue';
 import { ImageIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { profileOptions, samplerOptions, schedulerOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
@@ -14,13 +14,15 @@ import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-
 const id = useId();
 const view = useImageGeneration();
 const benchmark = useImageBenchmark({ generation: view });
-const activeTab = ref<'generate' | 'measure'>('generate');
+const activeTab = defineModel<'generate' | 'measure'>('tab', { default: 'generate' });
 const benchmarkVisited = ref(false);
-function openTab({ tab }: { tab: 'generate' | 'measure' }): void {
-  activeTab.value = tab;
+watch(activeTab, tab => {
   switch (tab) {
   case 'measure': benchmarkVisited.value = true; break; case 'generate': break; default: { const exhaustive: never = tab; throw new Error(String(exhaustive)); }
   }
+}, { immediate: true });
+function openTab({ tab }: { tab: 'generate' | 'measure' }): void {
+  activeTab.value = tab;
 }
 function tabKey({ event }: { event: KeyboardEvent }): void {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -85,7 +87,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
       <p v-if="!supported" role="status" tw-class="rounded-xl border border-gray-300 dark:border-gray-700 p-4 text-sm" data-testid="image-unavailable">{{ unavailable }}</p>
       <div role="tablist" :aria-label="lazyStrings.stableDiffusionCppBrowser__image_generation_lab()" tw-class="inline-flex gap-1 p-1 rounded-2xl border border-gray-200 dark:border-gray-800" @keydown="tabKey({ event: $event })">
         <button type="button" role="tab" :id="id + '-tab-generate'" :aria-controls="id + '-panel-generate'" :aria-selected="activeTab === 'generate'" :tabindex="activeTab === 'generate' ? 0 : -1" @click="openTab({ tab: 'generate' })" data-testid="image-tab-generate" :tw-class="['px-4 py-2 rounded-xl text-sm font-medium', activeTab === 'generate' ? 'bg-purple-600 text-white' : 'text-gray-600 dark:text-gray-300']">{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
-        <button type="button" role="tab" :id="id + '-tab-measure'" :aria-controls="id + '-panel-measure'" :aria-selected="activeTab === 'measure'" :tabindex="activeTab === 'measure' ? 0 : -1" @click="openTab({ tab: 'measure' })" data-testid="image-tab-measure" :tw-class="['px-4 py-2 rounded-xl text-sm font-medium', activeTab === 'measure' ? 'bg-purple-600 text-white' : 'text-gray-600 dark:text-gray-300']">{{ lazyStrings.imageBenchmark__speed_measurement() }}<span v-if="benchmark.busy.value"> · {{ lazyStrings.imageBenchmark__running() }}</span></button>
+        <button type="button" role="tab" :id="id + '-tab-measure'" :aria-controls="id + '-panel-measure'" :aria-selected="activeTab === 'measure'" :tabindex="activeTab === 'measure' ? 0 : -1" @click="openTab({ tab: 'measure' })" data-testid="image-tab-measure" :tw-class="['px-4 py-2 rounded-xl text-sm font-medium', activeTab === 'measure' ? 'bg-purple-600 text-white' : 'text-gray-600 dark:text-gray-300']">{{ lazyStrings.imageBenchmark__diagnostics() }}<span v-if="benchmark.busy.value"> · {{ lazyStrings.imageBenchmark__running() }}</span></button>
       </div>
       <div v-show="activeTab === 'generate'" role="tabpanel" :id="id + '-panel-generate'" :aria-labelledby="id + '-tab-generate'" tw-class="space-y-6">
         <section tw-class="space-y-3">
@@ -161,6 +163,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
                 </label>
               </div>
               <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__weight_residency_help() }}</p>
+              <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion() }}</span><select v-model="parameters.bf16WeightType" data-testid="image-bf16-weight-type" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2"><option value="f32">F32</option><option value="f16">F16</option></select></label>
+              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion_help() }}</p>
               <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__memory_and_cancellation() }}</p>
               <label tw-class="block text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget() }}</span><input v-model.number="gpuBudgetMiB" data-testid="image-memory-budget" type="number" min="512" :max="profile === 'webgpu-wasm64-jspi' ? undefined : 4095" step="1" tw-class="block w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-2" /></label>
               <p data-testid="image-memory-budget-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget_help() }}</p>

@@ -2094,12 +2094,14 @@ import { stableDiffusionCppBrowser__advanced_parameters_help } from '@/strings/m
 import { stableDiffusionCppBrowser__sampler } from '@/strings/messages/stableDiffusionCppBrowser__sampler/zh-Hans';
 import { stableDiffusionCppBrowser__scheduler } from '@/strings/messages/stableDiffusionCppBrowser__scheduler/zh-Hans';
 import { stableDiffusionCppBrowser__distilled_guidance } from '@/strings/messages/stableDiffusionCppBrowser__distilled_guidance/zh-Hans';
+import { stableDiffusionCppBrowser__bf16_weight_conversion } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion/zh-Hans';
+import { stableDiffusionCppBrowser__bf16_weight_conversion_help } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion_help/zh-Hans';
 import { stableDiffusionCppBrowser__conditioning_cache } from '@/strings/messages/stableDiffusionCppBrowser__conditioning_cache/zh-Hans';
 import { stableDiffusionCppBrowser__vae_tiling } from '@/strings/messages/stableDiffusionCppBrowser__vae_tiling/zh-Hans';
 import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/stableDiffusionCppBrowser__vae_tile_size/zh-Hans';
 import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/zh-Hans';
 import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/zh-Hans';
-import { imageBenchmark__speed_measurement } from '@/strings/messages/imageBenchmark__speed_measurement/zh-Hans';
+import { imageBenchmark__diagnostics } from '@/strings/messages/imageBenchmark__diagnostics/zh-Hans';
 
 import { imageBenchmark__introduction } from '@/strings/messages/imageBenchmark__introduction/zh-Hans';
 
@@ -2197,6 +2199,11 @@ import { imageBenchmark__exporting } from '@/strings/messages/imageBenchmark__ex
 
 import { imageBenchmark__freshness_warning } from '@/strings/messages/imageBenchmark__freshness_warning/zh-Hans';
 
+import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageBenchmarkResult__generated_image/zh-Hans';
+import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/zh-Hans';
+import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/zh-Hans';
+import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/zh-Hans';
+
 export const catalog = {
   stableDiffusionCppBrowser__preview_mode_locked,
   stableDiffusionCppBrowser__preset_unknown,
@@ -2261,6 +2268,8 @@ export const catalog = {
   stableDiffusionCppBrowser__sampler,
   stableDiffusionCppBrowser__scheduler,
   stableDiffusionCppBrowser__distilled_guidance,
+  stableDiffusionCppBrowser__bf16_weight_conversion,
+  stableDiffusionCppBrowser__bf16_weight_conversion_help,
   stableDiffusionCppBrowser__conditioning_cache,
   stableDiffusionCppBrowser__vae_tiling,
   stableDiffusionCppBrowser__vae_tile_size,
@@ -4295,7 +4304,7 @@ export const catalog = {
   audioGeneration__copy_text,
   audioGeneration__text_copied,
   audioGeneration__copy_failed_select_text,
-  imageBenchmark__speed_measurement,
+  imageBenchmark__diagnostics,
   imageBenchmark__introduction,
   imageBenchmark__shared_settings,
   imageBenchmark__model_sampling_defaults,
@@ -4309,6 +4318,10 @@ export const catalog = {
   imageBenchmark__reverse_order,
   imageBenchmark__cooldown,
   imageBenchmark__timeout,
+  ImageBenchmarkResult__no_image,
+  ImageBenchmarkResult__image_memory_limit_reached,
+  ImageBenchmarkResult__image_not_retained,
+  ImageBenchmarkResult__generated_image,
   imageBenchmark__keep_images,
   imageBenchmark__limits,
   imageBenchmark__fairness,

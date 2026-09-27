@@ -210,7 +210,7 @@ export function useImageGeneration(): ImageGenerationView {
   // checked again by the client at the next explicit generation.
   watch(() => JSON.stringify([library.main.value, library.components.value.map(item => item.selected), profile.value,
     weightResidency.value, gpuBudgetMiB.value, parameters.value.flashAttention, parameters.value.conditioningCacheSize,
-    parameters.value.modelArguments, debug.value]), () => {
+    parameters.value.modelArguments, parameters.value.bf16WeightType, debug.value]), () => {
     if (!busy.value) releaseFor({ reason: 'view-settings-changed' });
   });
   watch(files, () => {

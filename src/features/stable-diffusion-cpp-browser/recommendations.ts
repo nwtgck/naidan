@@ -16,7 +16,7 @@ const zSource = { label: 'stable-diffusion.cpp · Z-Image', url: `${upstream}/do
 // start/interval/size and disabling the Qwen prefix cache for this backend.
 const browserDefaults: ImageGenerationRecommendation['parameters'] = {
   width: 512, height: 512, steps: 20, guidance: 6, sampler: 'auto', scheduler: 'auto',
-  distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false,
+  distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32',
   qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '',
 };
 const presets = {

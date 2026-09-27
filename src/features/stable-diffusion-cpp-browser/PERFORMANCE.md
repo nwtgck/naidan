@@ -41,6 +41,7 @@ their own original units; these counters remain plain bytes.
 | `phase-wall` | Non-overlapping wall-clock intervals across runtime/header/model load, per-run preparation, conditioning, sampling, final decode, cleanup and encoding. |
 | `step-wall` | Interval between actual native completed-step callbacks. The earlier UI step=0 before conditioning is not used as denoising start. Includes preview work; the available rounded native preview decode subtotal is separate. |
 | `run-wall` | Whole observed Worker run, phase totals, completed-step interval aggregate/min/max, unfinished-step wall time on cancellation, known graph-start counts and native log summaries. |
+| `graph-placement-window`, `graph-placement-summary` | Allocated graph node assignments and bounded BF16 weight-matmul operand metadata, per phase/step window or whole run. Scheduled WebGPU-weight/CPU-operation boundaries are **not** observed transfers or completed kernels. |
 | `gpu-observation`, `gpu-device` | Passive nature, feature availability versus enabled features, unchanged device limits, observation coverage. |
 | `gpu-counters` | Requested buffer allocation, shader/pipeline creation, write/submit/encoder/pass/dispatch/copy/map counts and byte totals. Sync shader/pipeline host-call times are **not** compiler/GPU execution times. |
 | `gpu-write-sizes` | Write-call counts in fixed inclusive upper-byte buckets 256, 4096, 65536, 1 MiB, 8 MiB, 64 MiB, 256 MiB, then larger. |
@@ -84,6 +85,26 @@ measurement. Frozen/unobservable objects leave a bounded `unavailableMethods`
 coverage warning. Missing coverage is not evidence of zero traffic.
 
 ### Native summaries and preview timing
+
+The image core's `browser-placement-v1` log snapshots materialized BF16 weight
+operands before scheduler allocation rewrites source references, then reads the
+assigned node backends. `cpuBf16WebgpuUnsupported` counts inspected CPU-assigned
+matmuls whose original node was unsupported by the preferred WebGPU backend.
+Host/WebGPU buffer classification describes the backend buffer, not physical
+residency on a unified-memory device. Operand-use counts/bytes can count the same
+weight repeatedly and cannot be added to the independently observed GPU readbacks.
+Comparing these windows with GPU API counters narrows a hypothesis; it does not
+attribute each readback to a weight or prove which operation dominated elapsed time.
+
+This native hook performs two metadata-only node scans per successful graph
+allocation and at most 256 support checks, with bounded stack storage. Those
+scans also run with debug OFF; they add no synchronization, tensor readback,
+evaluation callbacks or graph changes. JavaScript aggregation/output is debug
+ON only. Structured parsing precedes the raw native log rate limiter.
+`coverage: partial` marks invalid records or the BF16 inspection cap;
+`not-observed` means no usable allocation record (including an older core or a
+retained run without new allocations), not zero CPU/BF16 computation.
+Window counts and the run summary overlap and must not be added together.
 
 An anchored allowlist of existing pinned native log formats counts known
 qwen3/qwen3vl, qwen_image_2_1/z_image and VAE graph starts. These are graph-start
@@ -139,10 +160,11 @@ speedup. Priorities are:
 
 ## Does bicore need to change?
 
-**Not for this passive measurement layer.** The attached bicore develop(11)
-source uses the same image upstream pins as the installed artifact. No bicore
-source, installed artifact, schema hash, npm pin or unrelated llama runtime is
-modified by this patch.
+WebGPU API counters do not require a core change. Allocation placement records
+require the image runtime's prepared-source diagnostic patch and a freshly built
+artifact. It uses the existing native log callback without a new public API or
+schema. An older installed artifact continues working with placement coverage
+reported as unavailable. The unrelated text-inference runtime is unchanged.
 
 For exact semantic tracing, inspecting the existing exported callback alone is
 not enough: pinned `src/core/ggml_runner.cpp:766-774` explicitly ignores
@@ -152,7 +174,8 @@ evaluation callback also adds synchronizations around requested graph views;
 using it indiscriminately would change scheduling. Reading a `ggml_tensor`
 using hard-coded C++ byte offsets in Naidan would be an unstable ABI workaround.
 
-The proposed next native instrumentation is additive and opt-in:
+Broader semantic execution tracing remains a separate proposal, not part of the
+bounded allocation metadata above:
 
 - Report stable numeric metadata at natural planner/model-evaluation/preview
   boundaries: graph category, conditional/unconditional evaluation identity,

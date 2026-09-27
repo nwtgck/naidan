@@ -84,7 +84,7 @@ function harness({ pointerBytes, outcome, channels }: {
   };
   const core: Core = {
     module, api, pointerBytes, busy: false,
-    constant: vi.fn(name => name === 'SD_CANCEL_ALL' ? 0 : name === 'SD_CANCEL_RESET' ? 2 : name === 'PREVIEW_PROJ' ? 1 : name === 'PREVIEW_VAE' ? 3 : name === 'PREVIEW_NONE' ? 0 : 100),
+    constant: vi.fn(name => name === 'SD_TYPE_F32' ? 0 : name === 'SD_TYPE_F16' ? 1 : name === 'SD_CANCEL_ALL' ? 0 : name === 'SD_CANCEL_RESET' ? 2 : name === 'PREVIEW_PROJ' ? 1 : name === 'PREVIEW_VAE' ? 3 : name === 'PREVIEW_NONE' ? 0 : 100),
     alloc: vi.fn(bytes => allocate({ bytes })),
     free: vi.fn(() => {
       events.push('free-allocation');
@@ -123,6 +123,25 @@ function harness({ pointerBytes, outcome, channels }: {
   return { core, api, helpers, reader, fields, recordPointers, strings, events, callbacks, registrations, previewWrites };
 }
 
+it.each(['f32', 'f16'] as const)('passes the explicit BF16 weight conversion to the native context: %s', async bf16WeightType => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
+  const request = requestFixture(); request.parameters.bf16WeightType = bf16WeightType;
+  await runImageGeneration({ core: h.core, helpers: h.helpers, reader: h.reader, request, onProgress: vi.fn(), onLog: vi.fn() });
+  const ctx = h.recordPointers.get('sd_ctx_params_t')!;
+  expect(h.fields.get(`sd_ctx_params_t:${ctx}:webgpu_bf16_type`)).toBe(bf16WeightType === 'f32' ? 0 : 1);
+});
+it('rejects an older artifact before mounting weights rather than ignoring BF16 conversion', async () => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
+  const original = h.core.fieldAddress;
+  vi.mocked(h.core.fieldAddress).mockImplementation((name, pointer, field) => {
+    if (field === 'webgpu_bf16_type') throw new TypeError('Unknown field');
+    return original(name, pointer, field);
+  });
+  await expect(runImageGeneration({ core: h.core, helpers: h.helpers, reader: h.reader, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow('Update the image runtime');
+  expect(h.helpers.mountReadOnlyFile).not.toHaveBeenCalled();
+  expect(h.api.new_sd_ctx).not.toHaveBeenCalled();
+  expect(h.api.generate_image).not.toHaveBeenCalled();
+});
 it.each([4, 8] as const)('uses public records and caller policy with %i-byte pointers; releases all native resources before files', async pointerBytes => {
   const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
   const request = requestFixture(); request.parameters.seed = '9223372036854775807'; request.parameters.sampler = 'heun'; request.parameters.scheduler = 'karras';

@@ -33,7 +33,7 @@
     "marked-katex-extension": "^5.1.10",
     "mermaid": "11.16.0",
     "nanoid": "^5.1.16",
-    "stable-diffusion-cpp-browser-core": "github:nwtgck/llama-cpp-browser-core#cd726c3f08fa54563d4bad132d1bc488f1700046",
+    "stable-diffusion-cpp-browser-core": "github:nwtgck/llama-cpp-browser-core#e5b63eeec1600456796c4323a976b0baf7f0f511",
     "vue": "^3.5.39",
     "vue-router": "^5.1.0",
     "vuedraggable": "^4.1.0",

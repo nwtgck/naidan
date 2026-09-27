@@ -43,7 +43,7 @@ export const exportedModelSchema = z.object({
   request: z.object({ artifact: artifactSchema, parameters: parametersSchema.omit({ prompt: true, negativePrompt: true }),
     prompt: z.string().optional(), negativePrompt: z.string().optional(), promptsIncluded: z.boolean(),
     preview: previewSettingsSchema, weightResidency: weightResidencySchema, gpuBudgetMiB: requestSchema.shape.gpuBudgetMiB,
-    debug: z.literal('on'), models: z.array(z.object({ slot: modelSlotSchema, files: z.array(fileMetadataSchema) }).strict()),
+    debug: z.literal('on'), models: z.array(z.object({ slot: modelSlotSchema, localCandidateId: z.string(), files: z.array(fileMetadataSchema) }).strict()),
   }).strict(),
 }).strict();
 export const aggregateSchema = z.array(z.object({

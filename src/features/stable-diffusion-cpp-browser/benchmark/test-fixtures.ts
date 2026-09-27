@@ -6,7 +6,7 @@ import type { ImageDiagnostic } from '@/features/stable-diffusion-cpp-browser/di
 
 export function targetFixture({ id }: { id: string }): ImageBenchmarkTarget {
   return { id, label: `model-${id}.gguf`, detail: `user/${id}/model.gguf`, facts: { family: 'sd-checkpoint', variant: 'unknown', evidence: ['synthetic fixture'] },
-    composition: 'automatic', models: [{ slot: 'model', path: 'model.gguf', file: ggufFile() }], missing: [], issue: undefined };
+    composition: 'automatic', components: [], models: [{ slot: 'model', path: 'model.gguf', file: ggufFile() }], missing: [], issue: undefined };
 }
 export function planFixture({ mode, repeats }: { mode: BenchmarkProtocol['mode'], repeats: number }) {
   return createBenchmarkPlan({ id: 'test-session', createdAt: '2026-09-27T00:00:00.000Z', appVersion: 'test', notes: '',
