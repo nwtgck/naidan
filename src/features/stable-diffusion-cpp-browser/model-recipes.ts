@@ -139,7 +139,7 @@ export function selectedRecipeFiles({ recipe, selections }: { recipe: ImageModel
 }
 
 /** Ordinary browser navigation, never a background fetch. */
-export function imageRecipeLink({ file, action }: { file: ImageRecipeFile, action: 'download' | 'source' }): string {
+export function imageRecipeLink({ file, action }: { file: Pick<ImageRecipeFile, 'repository' | 'revision' | 'path'>, action: 'download' | 'source' }): string {
   const root = `https://huggingface.co/${file.repository}`;
   const path = file.path.split('/').map(part => encodeURIComponent(part)).join('/');
   switch (action) {

@@ -4,11 +4,12 @@ import { ChevronDownIcon, DownloadIcon, ExternalLinkIcon, LibraryBigIcon } from 
 import { lazyStrings } from '@/strings';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import { imageModelRecipes, imageRecipeLink, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from '@/features/stable-diffusion-cpp-browser/model-recipes';
+import { imageCatalogLoras, type ImageCatalogLora } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageCatalogDownloadStatus from './ImageCatalogDownloadStatus.vue';
 import ImageHostModelDirectories from './ImageHostModelDirectories.vue';
 const props = defineProps<{ disabled: boolean, view: ImageLibraryView }>();
-const { downloading, importing, downloadState, downloadRecipeId, downloadSelections, scanState } = props.view;
+const { downloading, importing, downloadState, downloadRecipeId, downloadLoraId, downloadSelections, scanState } = props.view;
 const id = useId(), open = ref(true);
 const choices = reactive<Record<string, ImageRecipeSelection>>({});
 const detailsOpen = reactive<Record<string, boolean>>({});
@@ -20,9 +21,9 @@ const cards = computed(() => imageModelRecipes.map(recipe => {
   const selections = selection({ recipeId: recipe.id });
   const files = selectedRecipeFiles({ recipe, selections });
   const availability = props.view.recipeAvailability({ recipeId: recipe.id, selections });
-  return { recipe, files, availability, selections, bytes: files.reduce((sum, file) => sum + file.approximateBytes, 0) };
+  return { recipe, files, availability, selections, loras: imageCatalogLoras.filter(item => item.recipeId === recipe.id), bytes: files.reduce((sum, file) => sum + file.approximateBytes, 0) };
 }));
-const layoutFile = computed(() => cards.value.find(card => card.recipe.id === downloadRecipeId.value)?.files[0]);
+const layoutFile = computed(() => imageCatalogLoras.find(item => item.id === downloadLoraId.value)?.source ?? cards.value.find(card => card.recipe.id === downloadRecipeId.value)?.files[0]);
 const downloadDestinationUnavailable = computed(() => {
   const directories = props.view.hostDirectories;
   if (directories.busy.value) return true;
@@ -59,8 +60,17 @@ function change({ recipeId, role, event }: { recipeId: string, role: ImageRecipe
 async function download({ recipeId }: { recipeId: string }): Promise<void> {
   if (!props.disabled && !downloadDestinationUnavailable.value) await props.view.downloadRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
 }
+async function downloadLora({ id }: { id: string }): Promise<void> {
+  if (!props.disabled && !downloadDestinationUnavailable.value) await props.view.downloadLora({ id });
+}
 function select({ recipeId }: { recipeId: string }): void {
   if (!props.disabled) props.view.chooseRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
+}
+function loraHelp({ usage }: { usage: ImageCatalogLora['usage'] }): string | undefined {
+  switch (usage) {
+  case 'style-reference': return lazyStrings.ImageModelCatalog__reference_style_lora_help();
+  default: { const exhaustive: never = usage; throw new Error(String(exhaustive)); }
+  }
 }
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {}) });
 </script>
@@ -113,6 +123,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                   <p tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__catalog_file_notice() }}</p>
                 </div>
               </div>
+            </div>
+            <div v-for="lora in card.loras" :key="lora.id" :data-testid="'catalog-lora-' + lora.id" tw-class="mt-3 space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+              <h5 tw-class="text-xs font-semibold">{{ lazyStrings.ImageModelCatalog__optional_lora() }}</h5>
+              <a :href="disabled ? undefined : imageRecipeLink({ file: lora.source, action: 'source' })" :aria-disabled="disabled ? 'true' : undefined" :tabindex="disabled ? -1 : undefined" @click="disabled && $event.preventDefault()" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" tw-class="block break-all text-xs text-purple-600 dark:text-purple-400 hover:underline">{{ lora.title }} · {{ lora.source.repository }}</a>
+              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ loraHelp({ usage: lora.usage }) }}</p>
+              <div tw-class="flex flex-wrap items-center gap-2 text-xs">
+                <span>{{ formatDownloadBytes({ bytes: lora.source.size }) }}</span>
+                <span v-if="view.loraAvailable({ id: lora.id })" :data-testid="'catalog-lora-saved-' + lora.id">{{ lazyStrings.ImageModelCatalog__saved_choose_in_lora_controls() }}</span>
+                <button v-else-if="downloadLoraId !== lora.id || !['downloading', 'paused', 'failed'].includes(downloadState)" type="button" :disabled="disabled || downloading || importing || scanState === 'scanning' || downloadDestinationUnavailable" @click="downloadLora({ id: lora.id })" :data-testid="'catalog-lora-download-' + lora.id" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-purple-600 dark:text-purple-400 disabled:opacity-50">{{ lazyStrings.llamaCppBrowserDownloads__download() }}</button>
+              </div>
+              <ImageCatalogDownloadStatus v-if="downloadLoraId === lora.id && downloadState !== 'idle'" :view="view" :disabled="disabled || importing" />
             </div>
           </article>
         </div>

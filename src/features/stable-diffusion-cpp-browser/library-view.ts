@@ -55,13 +55,16 @@ export type ImageLibraryView = {
   downloading: ComputedRef<boolean>;
   downloadProgress: ShallowRef<CatalogDownloadProgress | undefined>;
   downloadState: Ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>;
-  downloadRecipeId: Ref<string>;
+  downloadRecipeId: ComputedRef<string>;
+  downloadLoraId: ComputedRef<string>;
   downloadRecipe({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): Promise<void>;
   chooseRecipe({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): void;
+  downloadLora({ id }: { id: string }): Promise<void>;
+  loraAvailable({ id }: { id: string }): boolean;
   cancelDownload(): void;
   resumeDownload(): Promise<void>;
   resetDownloadIntent(): void;
-  downloadSelections: ShallowRef<ImageRecipeSelection>;
+  downloadSelections: ComputedRef<ImageRecipeSelection>;
   recipeAvailability({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): ImageRecipeAvailability;
   failure: Ref<string>;
   issues: ComputedRef<string[]>;

@@ -5,6 +5,7 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { computed, ref } from 'vue';
 import type { HostModelDirectoryChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageModelCatalog from './ImageModelCatalog.vue';
+import { imageCatalogLoras } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
 let wrapper: VueWrapper | undefined;
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -28,7 +29,7 @@ it('shows all static recipes without networking or remote resources when opened'
   expect(wrapper.text()).toContain('Krea 2 Turbo'); expect(wrapper.text()).toContain('ERNIE-Image-Turbo');
   expect(wrapper.text()).toContain('split_files/vae/ae.safetensors');
   expect(wrapper.text()).toContain('Qwen3VL-8B-Instruct-Q4_K_M.gguf');
-  expect(wrapper.text()).not.toContain('optional');
+  expect(wrapper.get('[data-testid="image-recipe-z-image-turbo"]').text()).not.toContain('optional');
   expect(wrapper.findAll('img, iframe, script, link')).toHaveLength(0);
   expect(fetch).not.toHaveBeenCalled(); expect(xhr).not.toHaveBeenCalled(); expect(worker).not.toHaveBeenCalled();
 });
@@ -65,6 +66,29 @@ it('keeps catalog content visible but navigation inert when the feature is disab
   }
   await wrapper.setProps({ disabled: false, view: createDisabledImageLibrary() });
   expect(wrapper.get('a').attributes('href')).toMatch(/^https:/);
+});
+it('offers a separate explicit reference-LoRA download without changing the base recipe selection', async () => {
+  const view = createDisabledImageLibrary(), entry = imageCatalogLoras[0]!;
+  const available = ref(false); view.loraAvailable = () => available.value;
+  view.downloadLora = vi.fn(); view.downloadRecipe = vi.fn(); view.chooseRecipe = vi.fn();
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
+  const optional = wrapper.get('[data-testid="catalog-lora-krea2-style-reference"]');
+  expect(optional.text()).toContain('Optional LoRA'); expect(optional.text()).toContain('Requires a reference image');
+  expect(view.downloadLora).not.toHaveBeenCalled();
+  await optional.get('[data-testid="catalog-lora-download-krea2-style-reference"]').trigger('click');
+  expect(view.downloadLora).toHaveBeenCalledExactlyOnceWith({ id: entry.id });
+  expect(view.downloadRecipe).not.toHaveBeenCalled(); expect(view.chooseRecipe).not.toHaveBeenCalled();
+  available.value = true; await flushPromises();
+  expect(optional.find('[data-testid="catalog-lora-download-krea2-style-reference"]').exists()).toBe(false);
+  expect(optional.get('[data-testid="catalog-lora-saved-krea2-style-reference"]').text()).toContain('choose in LoRA controls');
+  expect(view.chooseRecipe).not.toHaveBeenCalled();
+});
+it('keeps the optional LoRA visible but disabled in an unavailable build', async () => {
+  const view = createDisabledImageLibrary(); view.downloadLora = vi.fn();
+  wrapper = mount(ImageModelCatalog, { props: { disabled: true, view } });
+  const button = wrapper.get('[data-testid="catalog-lora-download-krea2-style-reference"]');
+  expect(button.element.matches(':disabled')).toBe(true); await button.trigger('click');
+  expect(view.downloadLora).not.toHaveBeenCalled();
 });
 it('keeps option changes offline and sends a frozen choice only on the explicit download action', async () => {
   const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);

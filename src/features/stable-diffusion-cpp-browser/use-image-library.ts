@@ -4,6 +4,8 @@ import type { InspectionProgress } from './inventory-worker/types';
 import type { ImageRecipeDownloader, CatalogDownloadProgress } from './logic/catalog-download';
 import { downloadImageRecipeInWorker } from './download-worker/client';
 import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from './model-recipes';
+import { imageCatalogLoras } from './lora-catalog';
+import type { ImageDownloadSource } from './logic/catalog-source';
 import { computed, onScopeDispose, ref, shallowRef } from 'vue';
 import { type listImageRepositories, importImageRepository } from './logic/repository-store';
 import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
@@ -54,8 +56,20 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   let downloadCompletion: { directoryId: string | undefined, promise: Promise<void> } | undefined;
   const downloadProgress = shallowRef<CatalogDownloadProgress>();
   const downloadState = ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>('idle');
-  const downloadRecipeId = ref('');
-  const downloadSelections = shallowRef<ImageRecipeSelection>({});
+  type DownloadTarget = { kind: 'recipe', id: string, selections: ImageRecipeSelection } | { kind: 'lora', id: string };
+  const downloadTarget = shallowRef<DownloadTarget>();
+  const downloadPresentation = computed(() => {
+    const target = downloadTarget.value;
+    switch (target?.kind) {
+    case 'recipe': return { recipeId: target.id, loraId: '', selections: target.selections };
+    case 'lora': return { recipeId: '', loraId: target.id, selections: {} };
+    case undefined: return { recipeId: '', loraId: '', selections: {} };
+    default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+    }
+  });
+  const downloadRecipeId = computed(() => downloadPresentation.value.recipeId);
+  const downloadLoraId = computed(() => downloadPresentation.value.loraId);
+  const downloadSelections = computed<ImageRecipeSelection>(() => downloadPresentation.value.selections);
   let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image', files: ImageRecipeFile[] } | undefined;
   const downloading = computed(() => activeDownload.value !== undefined);
   const host = dependencies ? undefined : useHostModelDirectories({
@@ -240,6 +254,21 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
       main.value = candidate.id; onSelection({ family: candidate.family, turbo: candidate.turboHint });
     }
   }
+  function loraAvailable({ id }: { id: string }): boolean {
+    const entry = imageCatalogLoras.find(item => item.id === id);
+    if (!entry) return false;
+    const expected = entry.source;
+    return inventory.value.candidates.some(candidate => {
+      if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || candidate.path !== expected.path) return false;
+      if (hostDirectories.destination.value === 'opfs' ? candidate.hostSource !== undefined
+        : candidate.hostSource?.directoryId !== hostDirectories.destination.value) return false;
+      const receipt = candidate.files[0]?.receipt, source = receipt?.source;
+      // A selectable, markerless host adapter is not proof this catalog artifact
+      // was acquired. Completion requires the exact published source and bytes.
+      return source?.kind === 'hugging-face' && source.repository === expected.repository && source.revision === expected.revision && source.path === expected.path
+        && receipt?.size === expected.size && source.sha256 === expected.sha256;
+    });
+  }
   function chooseRecipe({ recipeId, selections: requested }: { recipeId: string, selections: ImageRecipeSelection }): void {
     if (blocked() || importing.value || downloading.value || disposed) return;
     const recipe = imageModelRecipes.find(recipe => recipe.id === recipeId); if (!recipe) return;
@@ -261,12 +290,31 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     if (blocked() || importing.value || downloading.value || disposed) return;
     const recipe = imageModelRecipes.find(recipe => recipe.id === recipeId); if (!recipe) return;
     const choices = { ...requested }; const files = selectedRecipeFiles({ recipe, selections: choices });
+    await downloadFiles({ target: { kind: 'recipe', id: recipeId, selections: choices }, files });
+  }
+  async function downloadLora({ id }: { id: string }): Promise<void> {
+    if (blocked() || importing.value || downloading.value || disposed) return;
+    const entry = imageCatalogLoras.find(entry => entry.id === id); if (!entry) return;
+    await downloadFiles({ target: { kind: 'lora', id }, files: [entry.source] });
+  }
+  function completeDownload({ target }: { target: DownloadTarget }): boolean {
+    switch (target.kind) {
+    case 'recipe': {
+      chooseRecipe({ recipeId: target.id, selections: target.selections });
+      const availability = recipeAvailability({ recipeId: target.id, selections: target.selections });
+      return availability.available === availability.total && ready.value;
+    }
+    case 'lora': return loraAvailable({ id: target.id });
+    default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+    }
+  }
+  async function downloadFiles({ target, files }: { target: DownloadTarget, files: readonly ImageDownloadSource[] }): Promise<void> {
     const controller = new AbortController(); activeDownload.value = controller;
     const completion = Promise.withResolvers<void>();
     downloadCompletion = { promise: completion.promise,
       directoryId: hostDirectories.destination.value === 'opfs' ? undefined : hostDirectories.destination.value };
-    cancelScan(); failure.value = ''; downloadState.value = 'downloading'; downloadRecipeId.value = recipeId;
-    downloadProgress.value = undefined; downloadSelections.value = choices;
+    cancelScan(); failure.value = ''; downloadState.value = 'downloading'; downloadTarget.value = target;
+    downloadProgress.value = undefined;
     let transferred = false;
     try {
       const destination = host ? await host.downloadDestination() : { kind: 'opfs' as const };
@@ -288,9 +336,8 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
         const scanned = await refreshInventory();
         if (activeDownload.value === controller) activeDownload.value = undefined;
         if (transferred && !disposed) {
-          chooseRecipe({ recipeId, selections: choices });
-          const availability = recipeAvailability({ recipeId, selections: choices });
-          downloadState.value = controller.signal.aborted ? 'paused' : scanned && availability.available === availability.total && ready.value ? 'complete' : 'incomplete';
+          const available = completeDownload({ target });
+          downloadState.value = controller.signal.aborted ? 'paused' : scanned && available ? 'complete' : 'incomplete';
         }
         if (problem) failure.value = [problem, failure.value].filter(Boolean).join('\n');
       }
@@ -301,10 +348,16 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   }
   function resetDownloadIntent(): void {
     if (downloading.value || blocked() || disposed) return;
-    downloadState.value = 'idle'; downloadRecipeId.value = ''; downloadProgress.value = undefined; downloadSelections.value = {};
+    downloadState.value = 'idle'; downloadTarget.value = undefined; downloadProgress.value = undefined;
   }
   async function resumeDownload(): Promise<void> {
-    if (downloadRecipeId.value) await downloadRecipe({ recipeId: downloadRecipeId.value, selections: { ...downloadSelections.value } });
+    const target = downloadTarget.value;
+    switch (target?.kind) {
+    case 'recipe': await downloadRecipe({ recipeId: target.id, selections: { ...target.selections } }); break;
+    case 'lora': await downloadLora({ id: target.id }); break;
+    case undefined: break;
+    default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+    }
   }
   function cancelDownload(): void {
     activeDownload.value?.abort();
@@ -462,7 +515,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   onScopeDispose(() => {
     disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort();
   });
-  return { hostDirectories, benchmarkTargets, selectedFacts, models, savedLoras, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
+  return { hostDirectories, benchmarkTargets, selectedFacts, models, savedLoras, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadLoraId, downloadLora, loraAvailable, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
     chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }

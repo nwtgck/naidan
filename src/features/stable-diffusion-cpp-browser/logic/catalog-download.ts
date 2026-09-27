@@ -1,14 +1,13 @@
 import type { CatalogFetch } from '@/features/stable-diffusion-cpp-browser/download-worker/fetch-types';
 import { z } from 'zod';
-import type { ImageRecipeFile } from '@/features/stable-diffusion-cpp-browser/model-recipes';
-import { imageFileIdentity, imageDownloadSourceSchema } from './catalog-source';
+import { imageFileIdentity, imageDownloadSourceSchema, type ImageDownloadSource } from './catalog-source';
 import { saveImageCatalogFile } from './catalog-file-download';
 
 import type { CatalogDownloadProgress } from '@/features/stable-diffusion-cpp-browser/download-worker/progress';
 export type { CatalogDownloadProgress } from '@/features/stable-diffusion-cpp-browser/download-worker/progress';
 type Report = ({ progress }: { progress: CatalogDownloadProgress }) => void;
 export type ImageDownloadDestination = { kind: 'opfs' } | { kind: 'host', directoryId: string };
-export type ImageRecipeDownloadRequest = { files: readonly ImageRecipeFile[], signal: AbortSignal, onProgress: Report, destination?: ImageDownloadDestination };
+export type ImageRecipeDownloadRequest = { files: readonly ImageDownloadSource[], signal: AbortSignal, onProgress: Report, destination?: ImageDownloadDestination };
 export type ImageRecipeDownloader = ({ files, signal, onProgress }: ImageRecipeDownloadRequest) => Promise<void>;
 function notify({ report, progress }: { report: Report, progress: CatalogDownloadProgress }): void {
   try {
@@ -18,6 +17,7 @@ function notify({ report, progress }: { report: Report, progress: CatalogDownloa
 /** Explicit acquisition only. Metadata discovery, transfer, verification and
  * publication run in a Worker. A completed file survives failures in later
  * components; pending files can only be resumed by another explicit action.
+ * File acquisition is role-independent, including optional adapter downloads.
  */
 export async function downloadImageRecipe({ files, signal, onProgress, fetch, destination }: ImageRecipeDownloadRequest & { fetch: CatalogFetch }): Promise<void> {
   z.array(imageDownloadSourceSchema).min(1).max(16).parse(files);

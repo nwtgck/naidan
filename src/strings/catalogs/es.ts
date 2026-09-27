@@ -2223,6 +2223,9 @@ import { ImageLoraControls__saved_adapters } from '@/strings/messages/ImageLoraC
 import { ImageLoraControls__choose_saved_adapter } from '@/strings/messages/ImageLoraControls__choose_saved_adapter/es';
 import { ImageLoraControls__saved_adapter_compatibility_unverified } from '@/strings/messages/ImageLoraControls__saved_adapter_compatibility_unverified/es';
 import { ImageLoraControls__add_adapter } from '@/strings/messages/ImageLoraControls__add_adapter/es';
+import { ImageModelCatalog__optional_lora } from '@/strings/messages/ImageModelCatalog__optional_lora/es';
+import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/es';
+import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/es';
 import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/es';
 import { ImageLoraControls__enabled } from '@/strings/messages/ImageLoraControls__enabled/es';
 import { ImageLoraControls__remove } from '@/strings/messages/ImageLoraControls__remove/es';
@@ -4411,6 +4414,9 @@ export const catalog = {
   ImageLoraControls__choose_saved_adapter,
   ImageLoraControls__saved_adapter_compatibility_unverified,
   ImageLoraControls__add_adapter,
+  ImageModelCatalog__optional_lora,
+  ImageModelCatalog__reference_style_lora_help,
+  ImageModelCatalog__saved_choose_in_lora_controls,
   ImageLoraControls__strength,
   ImageLoraControls__enabled,
   ImageLoraControls__remove,

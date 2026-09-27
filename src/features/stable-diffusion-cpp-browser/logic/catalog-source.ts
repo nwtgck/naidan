@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import type { CatalogFetch } from '@/features/stable-diffusion-cpp-browser/download-worker/fetch-types';
 import { validModelPath } from './model-path';
-import type { ImageRecipeFile } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 export const imageDownloadSourceSchema = z.object({
   repository: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/),
   revision: z.string().regex(/^[a-f0-9]{40}$/),
   path: z.string().refine(path => validModelPath({ path }) && /\.(gguf|safetensors|sft)$/i.test(path) && !path.split('/').some(part => part.startsWith('.'))),
 });
+export type ImageDownloadSource = z.infer<typeof imageDownloadSourceSchema>;
 export const imageFileIdentitySchema = imageDownloadSourceSchema.extend({ size: z.number().int().min(8).max(Number.MAX_SAFE_INTEGER), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
 export type ImageFileIdentity = z.infer<typeof imageFileIdentitySchema>;
 const treeSchema = z.array(z.discriminatedUnion('type', [
@@ -15,7 +15,7 @@ const treeSchema = z.array(z.discriminatedUnion('type', [
     lfs: z.object({ oid: z.string().regex(/^[a-f0-9]{64}$/), size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }).optional() }),
 ])).max(10_000);
 /** The caller must have a user download action; NEVER call on mount/focus/expand. */
-export async function imageFileIdentity({ file, signal, fetch }: { file: ImageRecipeFile, signal: AbortSignal, fetch: CatalogFetch }): Promise<ImageFileIdentity> {
+export async function imageFileIdentity({ file, signal, fetch }: { file: ImageDownloadSource, signal: AbortSignal, fetch: CatalogFetch }): Promise<ImageFileIdentity> {
   const source = imageDownloadSourceSchema.parse(file);
   const parent = source.path.split('/').slice(0, -1).map(encodeURIComponent).join('/');
   const prefix = `/api/models/${source.repository}/tree/${source.revision}${parent ? '/' + parent : ''}`;
