@@ -23,7 +23,7 @@ function openPreview({ width = 32, height = 32, mode = 'projection', maxEdge = 2
   view.preview.value = { ...view.preview.value, enabled: true, maxEdge };
   view.livePreview.value = { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 2, steps: 8,
     mode, width, height, url: 'blob:original-small-preview', id: 1, elapsedMs: 2500 };
-  wrapper = mount(ImageGenerationPreview, { props: { view, active: true } });
+  wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' } });
   return { view, wrapper };
 }
 
@@ -89,7 +89,7 @@ it('sizes saved projection thumbnails while downloading the original frame and p
 
 it('defaults history ON without starting preview, and preserves an explicit opt-out across ON/OFF toggles', async () => {
   const view = { ...useImageGeneration(), supported: computed(() => true) };
-  wrapper = mount(ImageGenerationPreview, { props: { view, active: true } });
+  wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' } });
   expect(view.preview.value.enabled).toBe(false);
   expect(view.preview.value.mode).toBe('vae');
   expect(view.keepPreviews.value).toBe(true);
@@ -99,6 +99,29 @@ it('defaults history ON without starting preview, and preserves an explicit opt-
   await wrapper.get('[data-testid="image-preview-enabled"]').setValue(false);
   await wrapper.get('[data-testid="image-preview-enabled"]').setValue(true);
   expect(view.keepPreviews.value).toBe(false);
+});
+
+it('opens preview details independently of the preview switch', async () => {
+  const view = { ...useImageGeneration(), supported: computed(() => true) };
+  wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' } });
+  const panel = wrapper.get('[data-testid="image-preview-panel"]');
+  const closedClasses = panel.attributes('class');
+  const header = panel.element.firstElementChild;
+  const label = wrapper.get('[data-testid="image-preview-enabled"]').element.closest('label');
+  const details = wrapper.get('[data-testid="image-preview-settings-toggle"]');
+  expect(details.attributes('aria-expanded')).toBe('false');
+  await details.trigger('click');
+  expect(details.attributes('aria-expanded')).toBe('true');
+  expect(panel.attributes('class')).toBe(closedClasses);
+  expect(panel.element.firstElementChild).toBe(header);
+  expect(wrapper.get('[data-testid="image-preview-enabled"]').element.closest('label')).toBe(label);
+  expect(view.preview.value.enabled).toBe(false);
+  await wrapper.get('[data-testid="image-preview-enabled"]').setValue(true);
+  expect(details.attributes('aria-expanded')).toBe('true');
+  expect(view.preview.value.enabled).toBe(true);
+  await details.trigger('click');
+  expect(details.attributes('aria-expanded')).toBe('false');
+  expect(panel.attributes('class')).toBe(closedClasses);
 });
 
 it('closes an expanded snapshot when its pane becomes inactive while preserving the running preview', async () => {

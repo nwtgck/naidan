@@ -90,6 +90,50 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     provider = new OPFSStorageProvider();
   });
 
+  it.each(['file', 'marker'] as const)('preserves the index and rejects a %s removal error, then permits a retry', async failure => {
+    const raw = 'selected-a1', binaryObjectId = toBinaryObjectId({ raw });
+    await provider.init();
+    await provider.saveFile({ binaryObjectId, blob: new Blob(['PNG']), name: 'image.png', mimeType: 'image/png' });
+    const root = await mockRoot.getDirectoryHandle('naidan-storage');
+    const binaries = await root.getDirectoryHandle('binary-objects');
+    const shard = await binaries.getDirectoryHandle('a1');
+    const index = await shard.getFileHandle('index.json');
+    const before = await (await index.getFile()).text();
+    const target = failure === 'file' ? `${raw}.bin` : `.${raw}.bin.complete`;
+    const remove = vi.spyOn(shard, 'removeEntry').mockImplementation(async name => {
+      if (name === target) throw new DOMException('Permission denied', 'NotAllowedError');
+      if (!shard.entries.delete(name)) throw new DOMException('Missing', 'NotFoundError');
+    });
+    await expect(provider.deleteBinaryObject({ binaryObjectId })).rejects.toThrow('Permission denied');
+    expect(await (await index.getFile()).text()).toBe(before);
+    expect(shard.entries.has(`.${raw}.bin.complete`)).toBe(true);
+    if (failure === 'file') expect(shard.entries.has(`${raw}.bin`)).toBe(true);
+    remove.mockImplementation(async name => {
+      if (!shard.entries.delete(name)) throw new DOMException('Missing', 'NotFoundError');
+    });
+    await provider.deleteBinaryObject({ binaryObjectId });
+    expect(await provider.getBinaryObject({ binaryObjectId })).toBeNull();
+    remove.mockRestore();
+  });
+
+  it('allows missing binary files while removing only their own index entry', async () => {
+    const removed = toBinaryObjectId({ raw: 'missing-a1' }), retained = toBinaryObjectId({ raw: 'retained-a1' });
+    await provider.init();
+    for (const binaryObjectId of [removed, retained]) await provider.saveFile({ binaryObjectId, blob: new Blob(['PNG']), name: 'image.png', mimeType: 'image/png' });
+    const root = await mockRoot.getDirectoryHandle('naidan-storage');
+    const binaries = await root.getDirectoryHandle('binary-objects');
+    const shard = await binaries.getDirectoryHandle('a1');
+    shard.entries.delete('missing-a1.bin'); shard.entries.delete('.missing-a1.bin.complete');
+    const remove = vi.spyOn(shard, 'removeEntry').mockImplementation(async name => {
+      if (!shard.entries.delete(name)) throw new DOMException('Missing', 'NotFoundError');
+    });
+    await provider.deleteBinaryObject({ binaryObjectId: removed });
+    expect(await provider.getBinaryObject({ binaryObjectId: removed })).toBeNull();
+    expect(await provider.getBinaryObject({ binaryObjectId: retained })).toBeDefined();
+    expect(await provider.getFile({ binaryObjectId: retained })).not.toBeNull();
+    remove.mockRestore();
+  });
+
   it('should save a file with shard directory, atomic marker, and index entry', async () => {
     await provider.init();
     const id = '550e8400-e29b-41d4-a716-4466554400a1'; // Shard 'a1'

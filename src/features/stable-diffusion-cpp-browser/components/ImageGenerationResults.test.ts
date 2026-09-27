@@ -23,6 +23,7 @@ it('keeps the successful image downloadable when history saving fails and retrie
   view.downloadResult = vi.fn(async () => ({ status: 'downloaded' as const }));
   view.results.value = [{ id: 1, url: 'blob:result', parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 }];
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
+  expect(wrapper.get('[data-testid="image-generated-result"]').findAll('button').some(button => button.text() === 'Remove')).toBe(false);
   expect(wrapper.get('[data-testid="image-history-save-failed"]').text()).toContain('The image was generated');
   expect(view.failure.value).toBe('');
   await wrapper.get('[data-testid="image-result-download"] [data-testid="image-download-default"]').trigger('click');
@@ -76,7 +77,32 @@ it('keeps pending saves visible but disables retries until OPFS storage is avail
   expect(view.historySaving.retry).toHaveBeenCalledTimes(1);
 });
 
-it('opens My images explicitly and links only a result with a successful saved record', async () => {
+it('opens history details independently of the save switch', async () => {
+  const view = useImageGeneration();
+  view.historySaving.supported = computed(() => true);
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
+  const panel = wrapper.get('[data-testid="image-history-saving"]');
+  const closedClasses = panel.attributes('class');
+  const header = panel.element.firstElementChild;
+  const label = wrapper.get('[data-testid="image-save-history"]').element.closest('label');
+  const details = wrapper.get('[data-testid="image-history-help-toggle"]');
+  const initial = view.historySaving.enabled.value;
+  expect(details.attributes('aria-expanded')).toBe('false');
+  await details.trigger('click');
+  expect(details.attributes('aria-expanded')).toBe('true');
+  expect(panel.attributes('class')).toBe(closedClasses);
+  expect(panel.element.firstElementChild).toBe(header);
+  expect(wrapper.get('[data-testid="image-save-history"]').element.closest('label')).toBe(label);
+  expect(view.historySaving.enabled.value).toBe(initial);
+  await wrapper.get('[data-testid="image-save-history"]').setValue(!initial);
+  expect(details.attributes('aria-expanded')).toBe('true');
+  expect(view.historySaving.enabled.value).toBe(!initial);
+  await details.trigger('click');
+  expect(details.attributes('aria-expanded')).toBe('false');
+  expect(panel.attributes('class')).toBe(closedClasses);
+});
+
+it('links only a result with a successful saved record without a redundant workspace history button', async () => {
   const view = useImageGeneration();
   const saved = ref(false);
   const id = toImageGenerationId({ raw: 'saved-result' });
@@ -84,8 +110,8 @@ it('opens My images explicitly and links only a result with a successful saved r
   view.history.available.value = true;
   view.results.value = [{ id: 1, url: 'blob:result', parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 }];
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
-  await wrapper.get('[data-testid="image-open-history"]').trigger('click');
-  expect(wrapper.emitted('openHistory')).toEqual([[{ id: undefined }]]);
+  expect(wrapper.find('[data-testid="image-open-history"]').exists()).toBe(false);
+  expect(wrapper.emitted('openHistory')).toBeUndefined();
   expect(wrapper.find('[data-testid="image-result-view-saved"]').exists()).toBe(false);
   view.historySaving.status.value = 'failed';
   await flushPromises();
@@ -94,4 +120,58 @@ it('opens My images explicitly and links only a result with a successful saved r
   await flushPromises();
   await wrapper.get('[data-testid="image-result-view-saved"]').trigger('click');
   expect(wrapper.emitted('openHistory')?.at(-1)).toEqual([{ id }]);
+});
+
+it('replaces the current result placeholder with its live image and final image in the same reserved canvas', async () => {
+  const busy = ref(false);
+  const view = useImageGeneration();
+  view.busy = computed(() => busy.value);
+  view.supported = computed(() => true);
+  view.parameters.value.width = 768; view.parameters.value.height = 512;
+  const oldResult = { id: 1, url: 'blob:old', parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 };
+  view.results.value = [oldResult];
+  const oldPreview = { type: 'naidan-image-preview-v1' as const, runId: 1, revision: 0, step: 2, steps: 8, mode: 'projection' as const, width: 32, height: 16, url: 'blob:old-preview', id: 1, elapsedMs: 100 };
+  view.livePreview.value = oldPreview;
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
+  busy.value = true; await flushPromises();
+  const grid = wrapper.get('[data-testid="image-result-grid"]');
+  expect(grid.element.firstElementChild?.getAttribute('data-testid')).toBe('image-pending-result');
+  expect(wrapper.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="image-live-preview"]').exists()).toBe(false);
+  expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
+  const canvasStyle = wrapper.get('[data-testid="image-generation-canvas"]').attributes('style');
+  expect(canvasStyle).toContain('aspect-ratio: 768 / 512');
+  view.livePreview.value = { ...oldPreview, id: 2, runId: 2, url: 'blob:current-preview' };
+  await flushPromises();
+  expect(wrapper.get('[data-testid="image-generation-current-preview"]').attributes('src')).toBe('blob:current-preview');
+  expect(wrapper.get('[data-testid="image-generation-canvas"]').attributes('style')).toBe(canvasStyle);
+  expect(wrapper.get('[data-testid="image-generation-progress"]').attributes('data-running')).toBe('false');
+  // Final pixels arrive before asynchronous history saving releases busy.
+  view.results.value = [{ ...oldResult, id: 2, url: 'blob:final' }, oldResult];
+  await flushPromises();
+  expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
+  expect(wrapper.get('[data-testid="image-generated-result"] img').attributes('src')).toBe('blob:final');
+  expect(wrapper.get('[data-testid="image-result-canvas"]').attributes('style')).toBe(canvasStyle);
+  expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(2);
+  view.results.value = [oldResult]; await flushPromises();
+  expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
+  view.results.value = [{ ...oldResult, id: 2, url: 'blob:final' }, oldResult]; await flushPromises();
+  busy.value = false; await flushPromises();
+  busy.value = true; await flushPromises();
+  expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(true);
+  expect(wrapper.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
+  // Removing an older completed image must not look like completion of this run.
+  view.results.value = [oldResult]; await flushPromises();
+  expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(true);
+  await wrapper.setProps({ active: false });
+  expect(wrapper.get('[data-testid="image-generation-progress"]').attributes('data-running')).toBe('false');
+  await wrapper.setProps({ active: true });
+  view.stopping.value = true; await flushPromises();
+  expect(wrapper.get('[data-testid="image-generation-progress"]').attributes('data-running')).toBe('false');
+  busy.value = false; view.stopping.value = false; view.cancelled.value = true; await flushPromises();
+  expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
+  expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
+  busy.value = true; await flushPromises();
+  view.failure.value = 'generation failed'; busy.value = false; await flushPromises();
+  expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
 });

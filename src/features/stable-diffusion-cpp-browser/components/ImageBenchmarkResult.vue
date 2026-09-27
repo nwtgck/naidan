@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { lazyStrings } from '@/strings';
+import { ChevronDownIcon } from 'lucide-vue-next';
 import type { BenchmarkRunRecord } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
 
 const props = defineProps<{ runId: string, png: Blob | undefined, imageStatus: BenchmarkRunRecord['image']['status'] }>();
@@ -31,12 +32,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <details data-testid="benchmark-result-details" @toggle="toggle({ event: $event })" tw-class="mt-2 text-xs">
-    <summary tw-class="cursor-pointer text-purple-600 dark:text-purple-400">{{ lazyStrings.ImageBenchmarkResult__generated_image() }}</summary>
-    <div v-if="open" tw-class="mt-2 space-y-2">
+  <details data-testid="benchmark-result-details" @toggle="toggle({ event: $event })" tw-class="group mt-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 text-xs">
+    <summary tw-class="flex min-h-10 items-center justify-between gap-2 cursor-pointer list-none rounded-xl px-3 py-2 font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-details-marker]:hidden">{{ lazyStrings.ImageBenchmarkResult__generated_image() }}<ChevronDownIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" /></summary>
+    <div v-if="open" tw-class="space-y-2 border-t border-gray-100 dark:border-gray-800 p-3">
       <template v-if="url">
         <img :src="url" :alt="lazyStrings.ImageBenchmarkResult__generated_image()" data-testid="benchmark-result-image" tw-class="max-w-full w-80 h-auto rounded-lg border border-gray-200 dark:border-gray-700" />
-        <a :href="url" :download="`naidan-image-${runId}.png`" tw-class="inline-block text-purple-600 dark:text-purple-400 underline">{{ lazyStrings.stableDiffusionCppBrowser__download_png() }}</a>
+        <a :href="url" :download="`naidan-image-${runId}.png`" tw-class="inline-flex min-h-9 items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 font-medium text-blue-600 dark:text-blue-400 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.stableDiffusionCppBrowser__download_png() }}</a>
       </template>
       <p v-else data-testid="benchmark-result-image-unavailable" tw-class="text-gray-500 dark:text-gray-400">{{ unavailable }}</p>
     </div>

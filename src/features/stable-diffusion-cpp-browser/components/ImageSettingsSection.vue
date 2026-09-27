@@ -8,12 +8,12 @@ function toggle({ event }: { event: Event }): void {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <details :open="open" @toggle="toggle({ event: $event })" :tw-class="['group overflow-hidden', embedded ? 'rounded-lg' : 'rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900']">
-    <summary tw-class="flex min-h-12 items-center gap-3 px-4 py-3 cursor-pointer list-none select-none hover:bg-gray-50 dark:hover:bg-gray-800/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 [&::-webkit-details-marker]:hidden">
-      <span tw-class="min-w-0 text-sm font-medium">{{ title }}</span>
-      <span tw-class="ml-auto min-w-0 truncate text-xs text-gray-500 dark:text-gray-400"><slot name="summary">{{ summary }}</slot></span>
+  <details :open="open" @toggle="toggle({ event: $event })" :tw-class="['group min-w-0 max-w-full overflow-hidden', embedded ? 'rounded-xl' : 'rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20']">
+    <summary tw-class="flex min-w-0 min-h-12 items-center gap-3 px-4 py-3 cursor-pointer list-none select-none hover:bg-gray-100/50 dark:hover:bg-gray-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 transition-colors [&::-webkit-details-marker]:hidden">
+      <span tw-class="min-w-0 [overflow-wrap:anywhere] text-sm font-bold text-gray-800 dark:text-gray-100">{{ title }}</span>
+      <span :title="summary" tw-class="ml-auto min-w-0 flex-1 truncate text-right text-xs text-gray-500 dark:text-gray-400"><slot name="summary">{{ summary }}</slot></span>
       <ChevronRightIcon aria-hidden="true" :tw-class="['w-4 h-4 shrink-0 text-gray-400 transition-transform', open ? 'rotate-90' : '']" />
     </summary>
-    <div tw-class="border-t border-gray-100 dark:border-gray-800 p-4 space-y-4"><slot /></div>
+    <div tw-class="min-w-0 border-t border-gray-100 dark:border-gray-800 p-4 space-y-4"><slot /></div>
   </details>
 </template>

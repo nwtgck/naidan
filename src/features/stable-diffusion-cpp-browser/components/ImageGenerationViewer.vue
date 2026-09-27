@@ -66,7 +66,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { zoom, position } })
     <div ref="container" role="dialog" aria-modal="true" :aria-label="lazyStrings.ImageGenerationViewer__image_preview()" tabindex="-1" @keydown="keydown({ event: $event })" data-testid="image-viewer" tw-class="fixed inset-0 z-[120] bg-black/95 text-white flex flex-col outline-none">
       <div tw-class="flex flex-wrap items-center justify-between gap-2 p-3">
         <div tw-class="flex items-center gap-2">
-          <button type="button" @click="move({ offset: -1 })" :disabled="index <= 0" :aria-label="lazyStrings.ImageGenerationViewer__previous_image()" data-testid="image-viewer-previous" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-h-10 min-w-10 p-2 rounded-lg hover:bg-white/10 disabled:opacity-30">
+          <button type="button" @click="move({ offset: -1 })" :disabled="index <= 0" :aria-label="lazyStrings.ImageGenerationViewer__previous_image()" data-testid="image-viewer-previous" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-10 min-w-10 p-2 rounded-lg hover:bg-white/10 disabled:opacity-30">
             <ChevronLeftIcon tw-class="w-5 h-5" />
           </button>
           <span tw-class="text-xs tabular-nums">{{ index + 1 }} / {{ count }}</span>
@@ -75,15 +75,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { zoom, position } })
           </button>
         </div>
         <div tw-class="flex items-center gap-2">
-          <button type="button" @click="magnify({ factor: 1 / 1.25 })" :aria-label="lazyStrings.ImageGenerationViewer__zoom_out()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-h-10 min-w-10 p-2 rounded-lg hover:bg-white/10">
+          <button type="button" @click="magnify({ factor: 1 / 1.25 })" :aria-label="lazyStrings.ImageGenerationViewer__zoom_out()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-10 min-w-10 p-2 rounded-lg hover:bg-white/10">
             <ZoomOutIcon tw-class="w-5 h-5" />
           </button>
-          <button type="button" @click="reset" :aria-label="lazyStrings.ImageGenerationViewer__reset_view()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-h-10 min-w-10 p-2 text-xs tabular-nums rounded-lg hover:bg-white/10">{{ Math.round(zoom * 100) }}%</button>
-          <button type="button" @click="magnify({ factor: 1.25 })" :aria-label="lazyStrings.ImageGenerationViewer__zoom_in()" data-testid="image-viewer-zoom-in" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-h-10 min-w-10 p-2 rounded-lg hover:bg-white/10">
+          <button type="button" @click="reset" :aria-label="lazyStrings.ImageGenerationViewer__reset_view()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-10 min-w-10 p-2 text-xs tabular-nums rounded-lg hover:bg-white/10">{{ Math.round(zoom * 100) }}%</button>
+          <button type="button" @click="magnify({ factor: 1.25 })" :aria-label="lazyStrings.ImageGenerationViewer__zoom_in()" data-testid="image-viewer-zoom-in" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-10 min-w-10 p-2 rounded-lg hover:bg-white/10">
             <ZoomInIcon tw-class="w-5 h-5" />
           </button>
-          <slot v-if="downloadEnabled !== false" name="download"><button type="button" @click="emit('download')" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-h-10 min-w-10 p-2 text-xs underline">{{ lazyStrings.stableDiffusionCppBrowser__download_png() }}</button></slot>
-          <button type="button" @click="emit('close')" :aria-label="lazyStrings.ImageGenerationViewer__close_preview()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-h-10 min-w-10 p-2 rounded-lg hover:bg-white/10">
+          <slot v-if="downloadEnabled !== false" name="download"><button type="button" @click="emit('download')" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-10 min-w-10 p-2 text-xs underline">{{ lazyStrings.stableDiffusionCppBrowser__download_png() }}</button></slot>
+          <button type="button" @click="emit('close')" :aria-label="lazyStrings.ImageGenerationViewer__close_preview()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-10 min-w-10 p-2 rounded-lg hover:bg-white/10">
             <XIcon tw-class="w-5 h-5" />
           </button>
         </div>

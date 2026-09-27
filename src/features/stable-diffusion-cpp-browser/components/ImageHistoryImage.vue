@@ -2,9 +2,13 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { BinaryObjectId } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
-const props = defineProps<{ binaryObjectId: BinaryObjectId, alt: string, eager?: boolean, thumbnail?: boolean, getImage: ({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) => Promise<Blob | undefined> }>();
+const props = defineProps<{ binaryObjectId: BinaryObjectId, width: number, height: number, alt: string, eager?: boolean, thumbnail?: boolean, invalidation?: { binaryObjectId: BinaryObjectId, revision: number }, getImage: ({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) => Promise<Blob | undefined> }>();
 const url = ref<string>(), state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const element = ref<HTMLElement>(), visible = ref(false);
+const imageRevision = ref(0);
+watch(() => props.invalidation, event => {
+  if (event?.binaryObjectId === props.binaryObjectId) imageRevision.value++;
+});
 let observer: IntersectionObserver | undefined;
 let revision = 0;
 onMounted(() => {
@@ -21,7 +25,7 @@ function release(): void {
   if (url.value) URL.revokeObjectURL(url.value);
   url.value = undefined;
 }
-watch(() => [props.binaryObjectId, props.getImage, visible.value] as const, async ([binaryObjectId, , visible]) => {
+watch(() => [props.binaryObjectId, props.getImage, visible.value, imageRevision.value] as const, async ([binaryObjectId, , visible]) => {
   const current = ++revision;
   release();
   state.value = 'loading';
@@ -45,8 +49,14 @@ onBeforeUnmount(() => {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <div ref="element" :tw-class="['rounded-lg bg-gray-50 dark:bg-gray-800/50 overflow-hidden min-h-20 flex items-center justify-center', thumbnail ? 'aspect-square' : '']" data-testid="image-history-image">
-    <img v-if="url" :src="url" :alt="alt" loading="lazy" :tw-class="thumbnail ? 'w-full h-full object-cover' : 'max-w-full max-h-[36rem] object-contain'" />
-    <p v-else role="status" tw-class="p-4 text-xs text-gray-500 dark:text-gray-400">{{ state === 'loading' ? lazyStrings.ImageHistoryImage__loading_image() : state === 'missing' ? lazyStrings.ImageHistoryImage__image_unavailable() : lazyStrings.ImageHistoryImage__could_not_load_image() }}</p>
+  <div ref="element" tw-class="rounded-xl bg-gray-50 dark:bg-gray-800/50 overflow-hidden min-h-20 flex items-center justify-center" data-testid="image-history-image">
+    <!-- Releasing an offscreen URL must not collapse the image area and trigger
+         another intersection/read cycle. Dimensions are known before loading. -->
+    <div :style="thumbnail ? undefined : { width: `${width}px`, aspectRatio: `${width} / ${height}` }" :tw-class="['relative max-w-full', thumbnail ? 'w-full aspect-square' : 'max-h-[36rem]']" data-testid="image-history-frame">
+      <img v-if="url" :src="url" :alt="alt" :width="width" :height="height" :tw-class="['absolute inset-0 w-full h-full', thumbnail ? 'object-cover' : 'object-contain']" />
+      <div v-else tw-class="absolute inset-0 flex items-center justify-center">
+        <p role="status" tw-class="p-4 text-xs text-gray-500 dark:text-gray-400">{{ state === 'loading' ? lazyStrings.ImageHistoryImage__loading_image() : state === 'missing' ? lazyStrings.ImageHistoryImage__image_unavailable() : lazyStrings.ImageHistoryImage__could_not_load_image() }}</p>
+      </div>
+    </div>
   </div>
 </template>

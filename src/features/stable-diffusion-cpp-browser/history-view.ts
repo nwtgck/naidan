@@ -14,11 +14,13 @@ export type ImageGenerationHistoryView = {
   selected: Ref<ImageGenerationRecord | undefined>;
   detailLoading: Ref<boolean>;
   detailError: Ref<string>;
+  imageInvalidation: Ref<{ binaryObjectId: BinaryObjectId, revision: number } | undefined>;
   setQuery({ text }: { text: string }): void;
   reload(): Promise<void>;
   loadMore(): Promise<void>;
   select({ id }: { id: ImageGenerationId }): Promise<void>;
   remove({ id }: { id: ImageGenerationId }): Promise<void>;
+  removeImage({ id, binaryObjectId }: { id: ImageGenerationId, binaryObjectId: BinaryObjectId }): Promise<void>;
   getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined>;
   clearSelection(): void;
   dispose(): void;

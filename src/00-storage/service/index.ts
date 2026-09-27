@@ -318,8 +318,9 @@ export class StorageService {
 
   async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
     try {
+      const provider = this.getProvider();
       await this.synchronizer.withLock({ fn: async () => {
-        await this.getProvider().deleteBinaryObject({ binaryObjectId });
+        await provider.deleteBinaryObject({ binaryObjectId });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteBinaryObject' }) });
       this.notify({ event: { type: 'binary_objects', timestamp: Date.now() } });
     } catch (e) {

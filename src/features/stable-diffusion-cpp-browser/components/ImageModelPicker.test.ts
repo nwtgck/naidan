@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DOMWrapper, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -36,6 +36,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   view?.unmount(); view = undefined; host?.remove(); host = undefined;
+  vi.unstubAllGlobals();
 });
 
 it('makes clearing an optional checkpoint override an explicit built-in component choice', async () => {
@@ -144,4 +145,31 @@ it('bounds a large local candidate list to the viewport and cleans up its portal
   expect(menu.get('[role="listbox"]').attributes('aria-labelledby')).toBe(wrapper.get('label').attributes('id'));
   wrapper.unmount(); view = undefined;
   expect(document.querySelector('[data-testid="image-model-picker-popup"]')).toBeNull();
+});
+
+it('keeps long component filenames and inspection evidence inspectable and searchable on a narrow viewport', async () => {
+  vi.stubGlobal('innerWidth', 320);
+  const filename = `Qwen_Image_2.1-${'text_encoder_'.repeat(12)}Q8_0.gguf`;
+  const detail = `OPFS: local/models/Qwen-Image-2.1/${filename}`;
+  const evidence = `tensor: ${'transformer.layers.0.attention.'.repeat(12)}weight; dimensions: 3584 × 3584`;
+  const choice = { ...choices[0]!, id: 'long-qwen-encoder', label: filename, detail, evidence: [evidence] };
+  const wrapper = create({ props: { modelValue: choice.id, choices: [choice, ...choices], label: 'Text encoder', required: true } });
+  const trigger = wrapper.get('[data-testid="image-model-picker-trigger"]');
+  expect(trigger.text()).toBe(filename);
+  expect(trigger.attributes('title')).toBe(detail);
+  const details = wrapper.get('[data-testid="image-component-details"]');
+  (details.element as HTMLDetailsElement).open = true;
+  await details.trigger('toggle');
+  expect(details.text()).toContain(detail);
+  expect(details.text()).toContain(evidence);
+  const menu = await open({ wrapper });
+  expect(Number.parseFloat(menu.element.style.width)).toBeLessThanOrEqual(296);
+  const row = menu.get('[data-value="long-qwen-encoder"]');
+  expect(row.text()).toContain(filename);
+  expect(row.text()).toContain(detail);
+  await menu.get('[data-testid="image-model-picker-search"]').setValue('Qwen-Image-2.1 Q8_0.gguf');
+  expect(menu.findAll('[role="option"]')).toHaveLength(2);
+  await menu.get('[data-value="long-qwen-encoder"]').trigger('click');
+  expect(wrapper.emitted('update:modelValue')).toEqual([[choice.id]]);
+  expect(document.activeElement).toBe(trigger.element);
 });

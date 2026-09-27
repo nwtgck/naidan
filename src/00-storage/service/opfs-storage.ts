@@ -747,10 +747,14 @@ export class OPFSStorageProvider extends IStorageProvider {
 
     try {
       await dir.removeEntry(fileName);
-    } catch { /* ignore */ }
+    } catch (error) {
+      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) throw error;
+    }
     try {
       await dir.removeEntry(markerName);
-    } catch { /* ignore */ }
+    } catch (error) {
+      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) throw error;
+    }
 
     const index = await this.loadShardIndex({ shard: shard });
     if (index.objects[idToRaw({ id: binaryObjectId })]) {

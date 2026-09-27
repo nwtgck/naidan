@@ -32,7 +32,7 @@ afterEach(() => {
 
 it('keeps the entire image form visible and disabled in standalone', async () => {
   wrapper = mount(ImageGenerationLab); await flushPromises();
-  expect(wrapper.get('h1').text()).toBe('Image generation lab');
+  expect(wrapper.get('h1').text()).toBe('Image generation entirely in your browser');
   expect(wrapper.get('[data-testid="image-unavailable"]').text()).toContain('hosted');
   expect(wrapper.find('[data-testid="image-file-model"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="image-prompt"]').exists()).toBe(true);
@@ -44,10 +44,15 @@ it('keeps the entire image form visible and disabled in standalone', async () =>
   for (const field of wrapper.findAll('input, select, textarea, button')) {
     if (field.attributes('role') === 'tab' || ['image-return-to-generation', 'image-open-history', 'image-results-prepare'].includes(field.attributes('data-testid') ?? '')) {
       await field.trigger('click');
-    } else if (field.attributes('data-testid') === 'image-catalog-toggle' || field.attributes('data-testid')?.startsWith('recipe-details-toggle-')) {
+    } else if (['image-catalog-toggle', 'image-preview-settings-toggle', 'image-history-help-toggle'].includes(field.attributes('data-testid') ?? '') || field.attributes('data-testid')?.startsWith('recipe-details-toggle-')) {
       // Presentation stays interactive; it never authorizes hosted capabilities.
       await field.trigger('click');
     } else expect(field.element.matches(':disabled'), field.html()).toBe(true);
+  }
+  expect(wrapper.get('[data-testid="image-preview-settings-toggle"]').attributes('aria-expanded')).toBe('true');
+  expect(wrapper.get('[data-testid="image-history-help-toggle"]').attributes('aria-expanded')).toBe('true');
+  for (const testId of ['image-preview-enabled', 'image-preview-mode', 'image-preview-start-step', 'image-preview-interval', 'image-preview-size', 'image-keep-previews', 'image-save-history', 'image-generate']) {
+    expect(wrapper.get(`[data-testid="${testId}"]`).element.matches(':disabled')).toBe(true);
   }
   expect(wrapper.text()).not.toContain('Ollama');
   const catalog = wrapper.get('[data-testid="image-model-catalog"]');

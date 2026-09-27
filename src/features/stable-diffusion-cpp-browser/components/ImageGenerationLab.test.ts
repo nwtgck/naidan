@@ -34,7 +34,7 @@ afterEach(() => {
 });
 it('opens without inference workers or model reads', async () => {
   wrapper = mount(ImageGenerationLab); await flushPromises();
-  expect(wrapper.get('h1').text()).toBe('Image generation lab');
+  expect(wrapper.get('h1').text()).toBe('Image generation entirely in your browser');
   expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.generate).not.toHaveBeenCalled();
 });
 it('defaults to F32 and releases retained weights when BF16 conversion changes before the next request', async () => {
@@ -335,18 +335,29 @@ it('inspects manual model contents and applies technical settings only on the ex
   expect(mocks.generate).not.toHaveBeenCalled();
 });
 
-it('keeps the single debug toggle in runtime settings and locks it while generating', async () => {
+it('shows the debug toggle only for generation and locks it while generating', async () => {
   const finish = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValue(finish.promise);
   wrapper = mount(ImageGenerationLab); await flushPromises();
+  const stickyHeader = wrapper.get('[data-testid="image-lab-sticky-header"]');
+  expect(stickyHeader.get('h1').text()).toBe('Image generation entirely in your browser');
+  expect(stickyHeader.findAll('[role="tab"]')).toHaveLength(4);
+  expect(stickyHeader.find('[data-testid="image-debug-mode"]').exists()).toBe(true);
   const toggles = wrapper.findAll('[data-testid="image-debug-mode"]'); expect(toggles).toHaveLength(1);
-  expect(toggles[0]!.element.closest('details')).not.toBeNull();
+  expect(toggles[0]!.element.closest('[role="tablist"]')).toBeNull();
+  expect(toggles[0]!.element.closest('details')).toBeNull();
   expect(wrapper.get('[data-testid="image-live-diagnostics"]').find('[data-testid="image-debug-mode"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="image-tab-models"]').trigger('click');
+  expect(wrapper.find('[data-testid="image-debug-mode"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="image-tab-history"]').trigger('click');
+  expect(wrapper.find('[data-testid="image-debug-mode"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="image-tab-generate"]').trigger('click');
+  const toggle = wrapper.get('[data-testid="image-debug-mode"]');
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test'; await flushPromises();
-  await toggles[0]!.setValue(true); const operation = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
-  expect(toggles[0]!.element.matches(':disabled')).toBe(true);
+  await toggle.setValue(true); const operation = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  expect(toggle.element.matches(':disabled')).toBe(true);
   expect(mocks.generate.mock.calls[0]?.[0].request.debug).toBe('on');
   finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
-  await operation; await flushPromises(); expect(toggles[0]!.element.matches(':disabled')).toBe(false);
+  await operation; await flushPromises(); expect(toggle.element.matches(':disabled')).toBe(false);
 });
 
 function benchmarkInventory(): ModelInventory {

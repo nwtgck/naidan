@@ -671,6 +671,8 @@ import { HistoryManipulationModal__type_message_content } from '@/strings/messag
 import { ImageConjuringLoader__generating_image } from '@/strings/messages/ImageConjuringLoader__generating_image/zh-Hans';
 import { ImageConjuringLoader__generating_images } from '@/strings/messages/ImageConjuringLoader__generating_images/zh-Hans';
 import { ImageConjuringLoader__image_count } from '@/strings/messages/ImageConjuringLoader__image_count/zh-Hans';
+import { ImageGenerationProgress__steps_completed } from '@/strings/messages/ImageGenerationProgress__steps_completed/zh-Hans';
+import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/zh-Hans';
 import { ImageConjuringLoader__steps } from '@/strings/messages/ImageConjuringLoader__steps/zh-Hans';
 import { ImageDownloadButton__download_image } from '@/strings/messages/ImageDownloadButton__download_image/zh-Hans';
 import { ImageDownloadButton__embed_prompt_seed_etc } from '@/strings/messages/ImageDownloadButton__embed_prompt_seed_etc/zh-Hans';
@@ -2233,6 +2235,9 @@ import { ImageLoraControls__saved_adapters } from '@/strings/messages/ImageLoraC
 import { ImageLoraControls__choose_saved_adapter } from '@/strings/messages/ImageLoraControls__choose_saved_adapter/zh-Hans';
 import { ImageLoraControls__saved_adapter_compatibility_unverified } from '@/strings/messages/ImageLoraControls__saved_adapter_compatibility_unverified/zh-Hans';
 import { ImageLoraControls__add_adapter } from '@/strings/messages/ImageLoraControls__add_adapter/zh-Hans';
+import { ImageGenerationLab__image_generation_entirely_in_browser } from '@/strings/messages/ImageGenerationLab__image_generation_entirely_in_browser/zh-Hans';
+import { ImageGenerationLab__debug } from '@/strings/messages/ImageGenerationLab__debug/zh-Hans';
+import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/zh-Hans';
 import { ImageGenerationLab__models } from '@/strings/messages/ImageGenerationLab__models/zh-Hans';
 import { ImageGenerationLab__history } from '@/strings/messages/ImageGenerationLab__history/zh-Hans';
 import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/ImageGenerationLab__prepare_models_help/zh-Hans';
@@ -2259,6 +2264,9 @@ import { ImageGenerationHistory__include_settings_in_png } from '@/strings/messa
 import { ImageGenerationHistory__requested_seed } from '@/strings/messages/ImageGenerationHistory__requested_seed/zh-Hans';
 import { ImageGenerationHistory__requested_settings } from '@/strings/messages/ImageGenerationHistory__requested_settings/zh-Hans';
 import { ImageGenerationHistory__reuse_does_not_download_models } from '@/strings/messages/ImageGenerationHistory__reuse_does_not_download_models/zh-Hans';
+import { ImageGenerationHistory__generation_details } from '@/strings/messages/ImageGenerationHistory__generation_details/zh-Hans';
+import { ImageGenerationHistory__delete_image_file } from '@/strings/messages/ImageGenerationHistory__delete_image_file/zh-Hans';
+import { ImageGenerationHistory__deleting_image_file_affects_other_records } from '@/strings/messages/ImageGenerationHistory__deleting_image_file_affects_other_records/zh-Hans';
 import { ImageGenerationHistory__remove_from_history } from '@/strings/messages/ImageGenerationHistory__remove_from_history/zh-Hans';
 import { ImageGenerationHistory__removing_keeps_image_files } from '@/strings/messages/ImageGenerationHistory__removing_keeps_image_files/zh-Hans';
 import { ImageGenerationViewer__image_preview } from '@/strings/messages/ImageGenerationViewer__image_preview/zh-Hans';
@@ -3086,6 +3094,8 @@ export const catalog = {
   ImageConjuringLoader__generating_image,
   ImageConjuringLoader__generating_images,
   ImageConjuringLoader__image_count,
+  ImageGenerationProgress__steps_completed,
+  ImageGenerationProgress__processing_step,
   ImageConjuringLoader__steps,
   ImageDownloadButton__download_image,
   ImageDownloadButton__embed_prompt_seed_etc,
@@ -4507,6 +4517,9 @@ export const catalog = {
   ImageLoraControls__choose_saved_adapter,
   ImageLoraControls__saved_adapter_compatibility_unverified,
   ImageLoraControls__add_adapter,
+  ImageGenerationLab__image_generation_entirely_in_browser,
+  ImageGenerationLab__debug,
+  ImageGenerationLab__record_detailed_logs,
   ImageGenerationLab__models,
   ImageGenerationLab__history,
   ImageGenerationLab__prepare_models_help,
@@ -4533,6 +4546,9 @@ export const catalog = {
   ImageGenerationHistory__requested_seed,
   ImageGenerationHistory__requested_settings,
   ImageGenerationHistory__reuse_does_not_download_models,
+  ImageGenerationHistory__generation_details,
+  ImageGenerationHistory__delete_image_file,
+  ImageGenerationHistory__deleting_image_file_affects_other_records,
   ImageGenerationHistory__remove_from_history,
   ImageGenerationHistory__removing_keeps_image_files,
   ImageGenerationViewer__image_preview,

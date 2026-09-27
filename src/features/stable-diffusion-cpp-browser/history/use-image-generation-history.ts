@@ -17,13 +17,17 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
   const selected = shallowRef<ImageGenerationRecord>();
   const detailLoading = ref(false);
   const detailError = ref('');
+  const imageInvalidation = shallowRef<{ binaryObjectId: BinaryObjectId, revision: number }>();
   const available = ref(getStorageType() === 'opfs');
   let client: ImageHistoryClient | undefined;
   let queryText = '';
   let queryGeneration = 0;
   let detailGeneration = 0;
+  let pendingSelection: { id: ImageGenerationId, operation: Promise<void> } | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
+  let storageGeneration = 0;
+  let imageRevision = 0;
   let runningQuery: Promise<void> | undefined;
   let queuedQuery: { append: boolean, generation: number, resolve: () => void } | undefined;
 
@@ -42,6 +46,7 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     if (generation !== queryGeneration || disposed) return;
     if (!refreshAvailability()) {
       items.value = []; total.value = 0; loading.value = false;
+      warnings.value = []; warningCount.value = 0;
       return;
     }
     loading.value = true;
@@ -77,6 +82,7 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     });
   }
   function runQuery({ append, generation }: { append: boolean, generation: number }): Promise<void> {
+    if (generation === queryGeneration) loading.value = refreshAvailability();
     return new Promise<void>(resolve => {
       queuedQuery?.resolve();
       queuedQuery = { append, generation, resolve };
@@ -89,41 +95,69 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
   function setQuery({ text }: { text: string }): void {
     queryText = text;
     const generation = invalidateQuery();
-    loading.value = false;
     error.value = '';
-    items.value = [];
-    total.value = 0;
-    warnings.value = [];
-    warningCount.value = 0;
+    loading.value = refreshAvailability();
+    if (!available.value) {
+      items.value = []; total.value = 0;
+      warnings.value = []; warningCount.value = 0;
+      return;
+    }
+    // Keep the last completed result visible throughout debounce and the Worker
+    // read. Its records, count and warnings are replaced together on success.
     timer = setTimeout(() => {
+      timer = undefined;
       void runQuery({ append: false, generation });
     }, 250);
   }
   async function loadMore(): Promise<void> {
-    if (loading.value || items.value.length >= total.value) return;
+    // After a failed replacement, the retained page belongs to the old query.
+    // Retry that query from the beginning rather than appending at its old offset.
+    if (loading.value || error.value || !refreshAvailability() || items.value.length >= total.value) return;
     await runQuery({ append: true, generation: invalidateQuery() });
   }
   function clearSelection(): void {
     detailGeneration++;
+    pendingSelection = undefined;
     selected.value = undefined;
     detailLoading.value = false;
     detailError.value = '';
   }
-  async function select({ id }: { id: ImageGenerationId }): Promise<void> {
-    clearSelection();
-    if (!refreshAvailability()) return;
-    const generation = detailGeneration;
-    detailLoading.value = true;
-    try {
-      const record = await storageService.loadImageGeneration({ id });
-      if (generation !== detailGeneration || !refreshAvailability()) return;
-      if (!record) throw new Error('Image generation history record is missing');
-      selected.value = record;
-    } catch (cause) {
-      if (generation === detailGeneration && !disposed) detailError.value = cause instanceof Error ? cause.message : String(cause);
-    } finally {
-      if (generation === detailGeneration) detailLoading.value = false;
+  function select({ id }: { id: ImageGenerationId }): Promise<void> {
+    if (!refreshAvailability()) {
+      clearSelection();
+      return Promise.resolve();
     }
+    if (selected.value?.id === id) {
+      // Selecting the displayed record also cancels a pending switch away from it.
+      detailGeneration++;
+      pendingSelection = undefined;
+      detailLoading.value = false;
+      detailError.value = '';
+      return Promise.resolve();
+    }
+    if (pendingSelection?.id === id) return pendingSelection.operation;
+    const generation = ++detailGeneration;
+    detailLoading.value = true;
+    detailError.value = '';
+    // Keep the displayed snapshot and the two-column layout until its replacement
+    // is ready. Image, settings and action targets must change together.
+    const operation = (async () => {
+      try {
+        const record = await storageService.loadImageGeneration({ id });
+        if (generation !== detailGeneration || !refreshAvailability()) return;
+        if (!record) throw new Error('Image generation history record is missing');
+        selected.value = record;
+      } catch (cause) {
+        if (generation === detailGeneration && !disposed) detailError.value = cause instanceof Error ? cause.message : String(cause);
+      } finally {
+        if (generation === detailGeneration) {
+          detailLoading.value = false;
+          pendingSelection = undefined;
+        }
+      }
+    })();
+    pendingSelection = { id, operation };
+    return operation;
   }
   async function remove({ id }: { id: ImageGenerationId }): Promise<void> {
     if (!refreshAvailability()) throw new Error('Image generation history requires OPFS storage');
@@ -136,6 +170,18 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     const blob = await storageService.getFile({ binaryObjectId });
     return refreshAvailability() ? blob ?? undefined : undefined;
   }
+  async function removeImage({ id, binaryObjectId }: { id: ImageGenerationId, binaryObjectId: BinaryObjectId }): Promise<void> {
+    if (!refreshAvailability()) throw new Error('Image generation history requires OPFS storage');
+    if (detailLoading.value || selected.value?.id !== id || selected.value.result.binaryObjectId !== binaryObjectId) {
+      throw new Error('The selected image has changed');
+    }
+    const generation = storageGeneration;
+    await storageService.deleteBinaryObject({ binaryObjectId });
+    // Keep records and unrelated Object URLs intact; only this binary was deleted.
+    if (generation === storageGeneration && refreshAvailability()) {
+      imageInvalidation.value = { binaryObjectId, revision: ++imageRevision };
+    }
+  }
   const unsubscribe = storageService.subscribeToChanges({ listener: ({ event }) => {
     switch (event.type) {
     case 'migration': break;
@@ -143,6 +189,8 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
     }
     invalidateQuery();
+    storageGeneration++;
+    imageInvalidation.value = undefined;
     clearSelection();
     items.value = [];
     total.value = 0;
@@ -164,7 +212,7 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     await runningQuery;
     await ownedClient?.dispose();
   }
-  return { items, total, loading, error, warnings, warningCount, selected, detailLoading, detailError, available, setQuery, reload, loadMore, select, remove, getImage, clearSelection, dispose,
+  return { items, total, loading, error, warnings, warningCount, selected, detailLoading, detailError, imageInvalidation, available, setQuery, reload, loadMore, select, remove, removeImage, getImage, clearSelection, dispose,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.

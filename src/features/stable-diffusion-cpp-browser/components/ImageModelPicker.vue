@@ -154,40 +154,40 @@ watch(rows, () => {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <div tw-class="min-w-0 space-y-2">
-    <label :id="id + '-label'" :for="id" tw-class="block text-xs font-medium text-gray-700 dark:text-gray-200">{{ label }} <span v-if="required && !compact" tw-class="font-normal text-gray-400 dark:text-gray-500">· {{ lazyStrings.stableDiffusionCppBrowser__component_required() }}</span></label>
-    <button ref="trigger" :id="id" type="button" :disabled="disabled || !active" :title="selected?.detail" :aria-labelledby="id + '-label ' + id + '-value'" aria-haspopup="listbox" :aria-expanded="open" :aria-controls="open ? id + '-list' : undefined" @click="toggle()" @keydown="triggerKey({ event: $event })" data-testid="image-model-picker-trigger" tw-class="flex w-full min-w-0 min-h-11 items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-left text-sm text-gray-800 dark:text-gray-100 hover:border-purple-300 dark:hover:border-purple-600 outline-none focus-visible:ring-4 focus-visible:ring-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed">
+  <div tw-class="min-w-0 max-w-full space-y-2">
+    <label :id="id + '-label'" :for="id" tw-class="block [overflow-wrap:anywhere] text-xs font-bold text-gray-700 dark:text-gray-200">{{ label }} <span v-if="required && !compact" tw-class="font-normal text-gray-400 dark:text-gray-500">· {{ lazyStrings.stableDiffusionCppBrowser__component_required() }}</span></label>
+    <button ref="trigger" :id="id" type="button" :disabled="disabled || !active" :title="selected?.detail" :aria-labelledby="id + '-label ' + id + '-value'" aria-haspopup="listbox" :aria-expanded="open" :aria-controls="open ? id + '-list' : undefined" @click="toggle()" @keydown="triggerKey({ event: $event })" data-testid="image-model-picker-trigger" tw-class="flex w-full min-w-0 min-h-11 items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-left text-sm font-bold text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600 outline-none focus-visible:ring-4 focus-visible:ring-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed">
       <span :id="id + '-value'" tw-class="min-w-0 flex-1 truncate">{{ selected?.label || emptyText }}</span>
       <ChevronDownIcon aria-hidden="true" :tw-class="['h-4 w-4 shrink-0 text-gray-400 transition-transform', open ? 'rotate-180' : '']" />
     </button>
     <Teleport to="body">
       <div v-if="open" ref="popup" :style="floatingStyle" @keydown="keydown({ event: $event })" data-testid="image-model-picker-popup" tw-class="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 shadow-xl">
-        <div tw-class="shrink-0 border-b border-gray-100 dark:border-gray-800 p-2">
+        <div tw-class="shrink-0 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 p-2">
           <div tw-class="relative">
             <SearchIcon aria-hidden="true" tw-class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input ref="input" v-model="search" type="search" role="combobox" aria-autocomplete="list" aria-expanded="true" :aria-controls="id + '-list'" :aria-activedescendant="highlightedRow ? id + '-option-' + highlighted : undefined" :aria-label="lazyStrings.ImageModelPicker__search_choices()" :placeholder="lazyStrings.ImageModelPicker__search_choices()" data-testid="image-model-picker-search" tw-class="min-h-11 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 py-2 pl-9 pr-3 text-sm outline-none focus:border-purple-400 focus:ring-4 focus:ring-purple-500/10" />
+            <input ref="input" v-model="search" type="search" role="combobox" aria-autocomplete="list" aria-expanded="true" :aria-controls="id + '-list'" :aria-activedescendant="highlightedRow ? id + '-option-' + highlighted : undefined" :aria-label="lazyStrings.ImageModelPicker__search_choices()" :placeholder="lazyStrings.ImageModelPicker__search_choices()" data-testid="image-model-picker-search" tw-class="min-h-11 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-2 pl-9 pr-3 text-sm shadow-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400" />
           </div>
         </div>
         <div ref="list" :id="id + '-list'" role="listbox" :aria-labelledby="id + '-label'" data-testid="image-model-picker-list" tw-class="min-h-0 overflow-y-auto overscroll-contain p-1">
-          <button v-for="(row, index) in rows" :key="row.value" :id="id + '-option-' + index" type="button" role="option" tabindex="-1" :aria-selected="row.value === modelValue" :aria-disabled="row.disabled" :disabled="row.disabled" :data-value="row.value" data-testid="image-model-picker-option" @pointerdown.prevent @click="choose({ value: row.value })" @mouseenter="!row.disabled && (highlighted = index)" :tw-class="['flex w-full min-h-11 items-start gap-3 rounded-lg px-3 py-2.5 text-left outline-none disabled:cursor-not-allowed disabled:opacity-50', highlighted === index ? 'bg-purple-50 dark:bg-purple-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60']">
+          <button v-for="(row, index) in rows" :key="row.value" :id="id + '-option-' + index" type="button" role="option" tabindex="-1" :aria-selected="row.value === modelValue" :aria-disabled="row.disabled" :disabled="row.disabled" :data-value="row.value" data-testid="image-model-picker-option" @pointerdown.prevent @click="choose({ value: row.value })" @mouseenter="!row.disabled && (highlighted = index)" :tw-class="['flex w-full min-w-0 min-h-11 items-start gap-3 rounded-lg px-3 py-2.5 text-left outline-none disabled:cursor-not-allowed disabled:opacity-50', highlighted === index ? 'bg-blue-50 dark:bg-blue-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60']">
             <span tw-class="min-w-0 flex-1 space-y-1">
-              <span :tw-class="['block break-words text-sm', row.value === modelValue ? 'font-medium text-purple-700 dark:text-purple-300' : 'text-gray-800 dark:text-gray-100']">{{ row.choice?.label || emptyText }}</span>
+              <span :tw-class="['block [overflow-wrap:anywhere] text-sm', row.value === modelValue ? 'font-medium text-blue-700 dark:text-blue-300' : 'text-gray-800 dark:text-gray-100']">{{ row.choice?.label || emptyText }}</span>
               <template v-if="row.choice">
                 <span tw-class="block break-all text-xs text-gray-500 dark:text-gray-400">{{ row.choice.detail }}</span>
                 <span :tw-class="['block text-xs', row.choice.status === 'matching' ? 'text-gray-500 dark:text-gray-400' : 'text-amber-700 dark:text-amber-400']">{{ status({ choice: row.choice }) }}</span>
-                <span v-if="row.choice.issue" tw-class="block break-words text-xs text-red-600 dark:text-red-400">{{ row.choice.issue }}</span>
+                <span v-if="row.choice.issue" tw-class="block [overflow-wrap:anywhere] text-xs text-red-600 dark:text-red-400">{{ row.choice.issue }}</span>
               </template>
             </span>
-            <CheckIcon v-if="row.value === modelValue" aria-hidden="true" tw-class="mt-0.5 h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+            <CheckIcon v-if="row.value === modelValue" aria-hidden="true" tw-class="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
           </button>
           <p v-if="!matched.length" role="status" data-testid="image-model-picker-empty" tw-class="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSelector__no_models_found() }}</p>
         </div>
       </div>
     </Teleport>
     <p v-if="!compact && selected && selected.status !== 'matching'" tw-class="text-xs text-amber-700 dark:text-amber-400">{{ status({ choice: selected }) }}</p>
-    <p v-if="!compact && selected?.issue" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ selected.issue }}</p>
+    <p v-if="!compact && selected?.issue" role="alert" tw-class="[overflow-wrap:anywhere] text-xs text-red-600 dark:text-red-400">{{ selected.issue }}</p>
     <ImageSettingsSection v-if="selected && !compact" embedded :title="lazyStrings.llamaCppBrowserDownloads__details()" :summary="status({ choice: selected })" data-testid="image-component-details">
-      <div tw-class="space-y-2 break-words text-xs text-gray-500 dark:text-gray-400">
+      <div tw-class="min-w-0 space-y-2 [overflow-wrap:anywhere] text-xs text-gray-500 dark:text-gray-400">
         <p tw-class="break-all font-mono">{{ selected.detail }}</p>
         <p>{{ status({ choice: selected }) }}</p>
         <p v-for="reason in selected.evidence" :key="reason">{{ reason }}</p>

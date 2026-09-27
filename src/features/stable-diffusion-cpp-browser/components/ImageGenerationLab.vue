@@ -18,10 +18,6 @@ const id = useId();
 const view = useImageGeneration();
 const benchmark = useImageBenchmark({ generation: view });
 const activeTab = defineModel<'generate' | 'models' | 'history' | 'measure'>('tab', { default: 'generate' });
-const resultsElement = ref<HTMLElement>();
-function viewResult(): void {
-  resultsElement.value?.scrollIntoView({ block: 'start' });
-}
 const benchmarkVisited = ref(false);
 const historyVisited = ref(false);
 watch(activeTab, tab => {
@@ -72,17 +68,32 @@ async function useHistoryImage({ binaryObjectId, role }: { binaryObjectId: Binar
   await view.useHistoryImage({ binaryObjectId, role });
   if (!view.historyActions.error.value) openTab({ tab: 'generate' });
 }
-const { library, busy, supported, formDisabled, unavailable, files, loras, imageInputs, parameters, retainModel, modelResident, maxResults, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } = view;
+const { library, busy, supported, formDisabled, debug, unavailable, files, loras, imageInputs, parameters, retainModel, modelResident, maxResults, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } = view;
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTab, files, loras, imageInputs, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } }) || {}) });
 </script>
 <template>
   <main tw-class="h-full overflow-y-auto bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" data-testid="image-generation-lab">
-    <div tw-class="max-w-[100rem] mx-auto p-4 sm:px-6 sm:py-4 space-y-4">
-      <header tw-class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 tw-class="text-lg font-semibold flex items-center gap-2">
-          <ImageIcon tw-class="w-5 h-5" />{{ lazyStrings.stableDiffusionCppBrowser__image_generation_lab() }}</h1>
-        <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__experimental_local_workspace() }}</p>
-      </header>
+    <div tw-class="max-w-[100rem] mx-auto p-4 sm:px-6 sm:py-5 space-y-5">
+      <div tw-class="sticky top-0 z-30 -mx-4 -mt-4 space-y-2 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 px-4 pt-3 pb-2 shadow-sm backdrop-blur-sm sm:-mx-6 sm:-mt-5 sm:px-6 sm:pt-4" data-testid="image-lab-sticky-header">
+        <header tw-class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 tw-class="text-lg font-bold tracking-tight text-gray-800 dark:text-white flex items-center gap-2">
+            <ImageIcon tw-class="w-5 h-5 text-blue-600 dark:text-blue-400" />{{ lazyStrings.ImageGenerationLab__image_generation_entirely_in_browser() }}</h1>
+        </header>
+        <div tw-class="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div tw-class="min-w-0 w-full sm:flex-1">
+            <div role="tablist" :aria-label="lazyStrings.stableDiffusionCppBrowser__image_generation_lab()" tw-class="flex gap-1 w-full overflow-x-auto border-b border-gray-200 dark:border-gray-800 pb-2" @keydown="tabKey({ event: $event })">
+              <button v-for="tab in tabs" :key="tab.id" type="button" role="tab" :id="id + '-tab-' + tab.id" :aria-controls="id + '-panel-' + tab.id" :aria-selected="activeTab === tab.id" :tabindex="activeTab === tab.id ? 0 : -1" @click="openTab({ tab: tab.id })" :data-testid="'image-tab-' + tab.id" :tw-class="['flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', activeTab === tab.id ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50']">
+                <component :is="tab.icon" tw-class="w-4 h-4 shrink-0" />{{ tab.label }}<span v-if="(tab.id === 'measure' && benchmark.busy.value) || (tab.id === 'generate' && busy)" tw-class="w-1.5 h-1.5 rounded-full bg-blue-500" :aria-label="lazyStrings.imageBenchmark__running()" />
+              </button>
+            </div>
+          </div>
+          <!-- This switch configures generation requests; benchmark runs select their own debug setting. -->
+          <label v-if="activeTab === 'generate'" :title="lazyStrings.stableDiffusionCppBrowser__debug_mode()" :tw-class="['self-end sm:self-auto shrink-0 min-h-10 inline-flex items-center gap-2 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 px-3 py-1.5', formDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer']">
+            <input v-model="debug" type="checkbox" role="switch" true-value="on" false-value="off" :disabled="formDisabled" data-testid="image-debug-mode" tw-class="sr-only peer" /><span aria-hidden="true" tw-class="relative h-6 w-10 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 motion-reduce:transition-none motion-reduce:after:transition-none" />
+            <span tw-class="flex flex-col leading-tight"><span tw-class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.ImageGenerationLab__debug() }}</span><span tw-class="text-[10px] text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationLab__record_detailed_logs() }}</span></span>
+          </label>
+        </div>
+      </div>
       <p v-if="!supported" role="status" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm" data-testid="image-unavailable">{{ unavailable }}</p>
       <p v-if="view.historyActions.error.value" role="alert" tw-class="text-sm text-red-600 dark:text-red-400 break-words" data-testid="image-history-action-error">{{ view.historyActions.error.value }}</p>
       <div v-if="view.historyActions.missingInactiveFiles.value.length" role="status" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2" data-testid="image-history-missing-inactive-files">
@@ -96,35 +107,30 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
         <ul tw-class="text-xs space-y-1 break-all">
           <li v-for="file in view.historyActions.missingFiles.value" :key="file">{{ file }}</li>
         </ul>
-        <button type="button" @click="view.clearHistoryMissingFiles()" :disabled="view.historyActions.busy.value" tw-class="text-xs underline disabled:opacity-40">{{ lazyStrings.ImageGenerationLab__continue_without_missing_files() }}</button>
+        <button type="button" @click="view.clearHistoryMissingFiles()" :disabled="view.historyActions.busy.value" tw-class="rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{{ lazyStrings.ImageGenerationLab__continue_without_missing_files() }}</button>
       </div>
       <div tw-class="space-y-6">
-        <div role="tablist" :aria-label="lazyStrings.stableDiffusionCppBrowser__image_generation_lab()" tw-class="flex gap-1 w-full overflow-x-auto border-b border-gray-200 dark:border-gray-800 pb-2" @keydown="tabKey({ event: $event })">
-          <button v-for="tab in tabs" :key="tab.id" type="button" role="tab" :id="id + '-tab-' + tab.id" :aria-controls="id + '-panel-' + tab.id" :aria-selected="activeTab === tab.id" :tabindex="activeTab === tab.id ? 0 : -1" @click="openTab({ tab: tab.id })" :data-testid="'image-tab-' + tab.id" :tw-class="['flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500', activeTab === tab.id ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50']">
-            <component :is="tab.icon" tw-class="w-4 h-4 shrink-0" />{{ tab.label }}<span v-if="(tab.id === 'measure' && benchmark.busy.value) || (tab.id === 'generate' && busy)" tw-class="w-1.5 h-1.5 rounded-full bg-purple-500" :aria-label="lazyStrings.imageBenchmark__running()" />
-          </button>
-        </div>
         <div tw-class="min-w-0 flex-1 w-full">
           <!-- Pane visibility must not own the form, generation, downloads, or result URLs. -->
           <div v-show="activeTab === 'generate'" role="tabpanel" :id="id + '-panel-generate'" :aria-labelledby="id + '-tab-generate'" tw-class="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(28rem,0.9fr)_minmax(0,1.1fr)] gap-6 xl:gap-10 items-start">
-            <ImageGenerationEditor :view="view" :active="activeTab === 'generate'" @manage-models="openTab({ tab: 'models' })" @view-result="viewResult" />
-            <div ref="resultsElement" tw-class="min-w-0 scroll-mt-4">
+            <ImageGenerationEditor :view="view" :active="activeTab === 'generate'" @manage-models="openTab({ tab: 'models' })" />
+            <div tw-class="min-w-0">
               <ImageGenerationResults :view="view" :active="activeTab === 'generate'" @open-history="openHistory" @prepare="openTab({ tab: 'models' })" />
             </div>
           </div>
           <div v-show="activeTab === 'models'" role="tabpanel" :id="id + '-panel-models'" :aria-labelledby="id + '-tab-models'" tw-class="space-y-4">
             <div tw-class="flex flex-wrap items-center justify-between gap-3">
               <div tw-class="space-y-1">
-                <h2 tw-class="font-semibold">{{ lazyStrings.ImageGenerationLab__models() }}</h2>
+                <h2 tw-class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">{{ lazyStrings.ImageGenerationLab__models() }}</h2>
                 <p tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationLab__prepare_models_help() }}</p>
               </div>
-              <button type="button" @click="openTab({ tab: 'generate' })" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm" data-testid="image-return-to-generation">{{ lazyStrings.ImageGenerationLab__back_to_generation() }}</button>
+              <button type="button" @click="openTab({ tab: 'generate' })" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" data-testid="image-return-to-generation">{{ lazyStrings.ImageGenerationLab__back_to_generation() }}</button>
             </div>
             <p v-if="library.failure.value" role="alert" tw-class="text-sm text-red-600 dark:text-red-400 break-words">{{ library.failure.value }}</p>
             <div v-if="library.scanState.value === 'scanning'" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2" data-testid="image-models-scan-status">
               <div tw-class="flex flex-wrap items-center justify-between gap-2 text-xs">
                 <p role="status">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }} <span v-if="library.scanProgress.value?.total">{{ library.scanProgress.value.completed }} / {{ library.scanProgress.value.total }}</span></p>
-                <button type="button" @click="library.cancelScan()" data-testid="image-models-cancel-scan" tw-class="underline">{{ lazyStrings.SHARED__cancel() }}</button>
+                <button type="button" @click="library.cancelScan()" data-testid="image-models-cancel-scan" tw-class="rounded-lg px-2 py-1 text-xs font-bold text-blue-600 dark:text-blue-400 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.SHARED__cancel() }}</button>
               </div>
               <p v-if="library.scanProgress.value?.path" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.path }}</p>
             </div>
