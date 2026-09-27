@@ -2093,6 +2093,7 @@ import { stableDiffusionCppBrowser__structural_match } from '@/strings/messages/
 import { stableDiffusionCppBrowser__unverified_candidate } from '@/strings/messages/stableDiffusionCppBrowser__unverified_candidate/ko';
 import { stableDiffusionCppBrowser__incompatible_candidate } from '@/strings/messages/stableDiffusionCppBrowser__incompatible_candidate/ko';
 import { stableDiffusionCppBrowser__component_required } from '@/strings/messages/stableDiffusionCppBrowser__component_required/ko';
+import { ImageModelPicker__use_built_in_component } from '@/strings/messages/ImageModelPicker__use_built_in_component/ko';
 import { stableDiffusionCppBrowser__select_component } from '@/strings/messages/stableDiffusionCppBrowser__select_component/ko';
 import { stableDiffusionCppBrowser__filter_components } from '@/strings/messages/stableDiffusionCppBrowser__filter_components/ko';
 import { stableDiffusionCppBrowser__scanning_repositories } from '@/strings/messages/stableDiffusionCppBrowser__scanning_repositories/ko';
@@ -2267,6 +2268,7 @@ export const catalog = {
   stableDiffusionCppBrowser__unverified_candidate,
   stableDiffusionCppBrowser__incompatible_candidate,
   stableDiffusionCppBrowser__component_required,
+  ImageModelPicker__use_built_in_component,
   stableDiffusionCppBrowser__select_component,
   stableDiffusionCppBrowser__filter_components,
   stableDiffusionCppBrowser__scanning_repositories,

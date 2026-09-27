@@ -7,7 +7,7 @@ import { relativeCompanionPath } from './model-path';
 import type { LocalImageRepository, RepositoryFile, HostImageRepositorySource } from './repository-store';
 
 export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'unknown';
-export type ComponentClass = 'vae-flux16' | 'vae-qwen21' | 'lm-qwen3-4b' | 'lm-qwen3vl-8b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae';
+export type ComponentClass = 'vae-flux16' | 'vae-sd4' | 'vae-qwen21' | 'lm-qwen3-4b' | 'lm-qwen3vl-8b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae';
 export type ModelCandidate = {
   id: string; repositoryId: string; path: string; files: RepositoryFile[];
   format: 'gguf' | 'safetensors' | 'safetensors-index';
@@ -47,6 +47,10 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
   const vaeOutput = find({ suffix: 'decoder.conv_out.weight' });
   if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 16 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 32) {
     classes.push('vae-flux16'); roles.push('vae'); evidence.push('2D VAE: latent 16, RGB output, encoder 32');
+  } else if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 4 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 8) {
+    // Shape evidence alone does not identify training weights or latent scaling.
+    // Checkpoint VAE overrides are explicit, never an automatic substitution.
+    classes.push('vae-sd4'); roles.push('vae'); evidence.push('2D VAE: latent 4, RGB output, encoder 8');
   } else {
     const conv2 = find({ suffix: 'conv2.weight' }), head = find({ suffix: 'decoder.head.2.weight' });
     const conv1 = find({ suffix: 'decoder.conv1.weight' });
@@ -175,13 +179,23 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       const configPath = relativeCompanionPath({ indexPath: path, reference: 'config.json' });
       const facts = fingerprint({ tensors, metadata, config: configs.get(configPath) ?? configs.get('config.json') });
       const files = [path, ...members.filter(member => member !== path)].map(name => fileMap.get(name)).filter((entry): entry is RepositoryFile => entry !== undefined);
-      // Published immutable catalog provenance can identify a distilled variant
+      // Published immutable catalog provenance can identify a training variant
       // whose exported header has no training label. Require structure AND receipt.
-      const turboRecipe = imageModelRecipes.find(recipe => recipe.id === 'z-image-turbo');
       const source = fileMap.get(path)?.receipt?.source;
-      if (facts.family === 'z-image' && source?.kind === 'hugging-face' && turboRecipe?.components.some(component => component.role === 'diffusion' && component.options.some(option =>
-        option.repository === source.repository && option.revision === source.revision && option.path === source.path))) {
-        facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: verified catalog download receipt');
+      if (facts.family === 'z-image' && source?.kind === 'hugging-face') {
+        const recipe = imageModelRecipes.find(recipe => (recipe.id === 'z-image-turbo' || recipe.id === 'z-image-base')
+          && recipe.components.some(component => component.role === 'diffusion' && component.options.some(option =>
+            option.repository === source.repository && option.revision === source.revision && option.path === source.path)));
+        if (recipe) {
+          switch (recipe.id) {
+          case 'z-image-turbo':
+            facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: verified catalog download receipt'); break;
+          case 'z-image-base':
+            facts.variant = 'base'; facts.turboHint = false; facts.evidence.push('Base variant: verified catalog download receipt'); break;
+          case 'qwen-image-2.1': case 'sdxl-base-1.0': break;
+          default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
+          }
+        }
       }
       candidates.push({ id: JSON.stringify([repository.id, path]), repositoryId: repository.id, path, files, format, size: files.reduce((n, f) => n + f.file.size, 0), ...facts, issue,
         ...(repository.hostSource ? { hostSource: repository.hostSource } : {}) });
@@ -230,17 +244,21 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
   for (const candidate of candidates) if (candidate.issue) issues.push({ repositoryId: candidate.repositoryId, path: candidate.path, message: candidate.issue });
   signal?.throwIfAborted(); onProgress?.({ progress: { phase: 'headers', completed: total, total, path: '' } }); return { candidates, issues };
 }
-export function componentRequirements({ family }: { family: ImageFamily }): { slot: ModelSlot, accepts: ComponentClass[] }[] {
+export function componentRequirements({ family }: { family: ImageFamily }): { slot: ModelSlot, accepts: ComponentClass[], required: boolean }[] {
   switch (family) {
-  case 'z-image': return [{ slot: 'vae', accepts: ['vae-flux16'] }, { slot: 'lm', accepts: ['lm-qwen3-4b'] }];
-  case 'qwen-image-2.1': return [{ slot: 'vae', accepts: ['vae-qwen21'] }, { slot: 'lm', accepts: ['lm-qwen3vl-8b'] }];
-  case 'flux1': return [{ slot: 'vae', accepts: ['vae-flux16'] }, { slot: 'clipL', accepts: ['clip-l'] }, { slot: 't5', accepts: ['t5-xxl'] }];
-  case 'sd-checkpoint': case 'unknown': return [];
+  case 'z-image': return [{ slot: 'vae', accepts: ['vae-flux16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-4b'], required: true }];
+  case 'qwen-image-2.1': return [{ slot: 'vae', accepts: ['vae-qwen21'], required: true }, { slot: 'lm', accepts: ['lm-qwen3vl-8b'], required: true }];
+  case 'flux1': return [{ slot: 'vae', accepts: ['vae-flux16'], required: true }, { slot: 'clipL', accepts: ['clip-l'], required: true }, { slot: 't5', accepts: ['t5-xxl'], required: true }];
+  case 'sd-checkpoint': return [{ slot: 'vae', accepts: ['vae-sd4'], required: false }];
+  case 'unknown': return [];
   default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
   }
 }
 export function componentMatch({ candidate, requirement }: { candidate: ModelCandidate, requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): 'matching' | 'unverified' | 'incompatible' {
   if (candidate.issue) return 'incompatible';
+  // This selector supports standalone VAE files. Embedded decoder tensors do
+  // not establish that a whole different checkpoint is usable as a VAE override.
+  if (requirement.slot === 'vae' && candidate.family === 'sd-checkpoint') return 'incompatible';
   if (candidate.classes.some(value => requirement.accepts.includes(value))) return 'matching';
   if (candidate.classes.length || candidate.roles.length && !candidate.roles.includes(requirement.slot)) return 'incompatible';
   return 'unverified';

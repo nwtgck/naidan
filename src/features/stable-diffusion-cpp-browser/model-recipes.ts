@@ -1,11 +1,11 @@
 /** Static acquisition recipes, not a remote model catalog or an inference
  * compatibility database. Opening/expanding the catalog performs no I/O.
- * Repository revisions were checked on 2026-09-25. Quantized weights are
+ * Repository revisions were checked on 2026-09-27. Quantized weights are
  * publisher-provided files; Naidan never asks the user to convert or re-split.
  * Keep paths relative to EACH repository, including split_files/ and vae/.
  */
 export type ImageRecipeFile = {
-  role: 'diffusion' | 'vae' | 'lm';
+  role: 'model' | 'diffusion' | 'vae' | 'lm';
   repository: string;
   revision: string;
   path: string;
@@ -13,7 +13,7 @@ export type ImageRecipeFile = {
   approximateBytes: number;
 };
 export type ImageModelRecipe = {
-  id: 'z-image-turbo' | 'qwen-image-2.1';
+  id: 'z-image-turbo' | 'qwen-image-2.1' | 'z-image-base' | 'sdxl-base-1.0';
   title: string;
   files: readonly ImageRecipeFile[];
   components: readonly ImageRecipeComponent[];
@@ -38,6 +38,25 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
       { role: 'diffusion', repository: 'leejet/Qwen-Image-2.1-GGUF', revision: '9db551d8368b5d1aa0b93cfe46cd54bb4750eae1', path: 'qwen_image_2.1-Q4_K.gguf', directory: 'Qwen-Image-2.1-GGUF', approximateBytes: 4200000000 },
       { role: 'vae', repository: 'Comfy-Org/Qwen-Image-2.1', revision: '8150226f50722886a275fa08e7b1fdf961732502', path: 'vae/qwen_image_2.1_vae_bf16.safetensors', directory: 'Qwen-Image-2.1', approximateBytes: 676000000 },
       { role: 'lm', repository: 'Qwen/Qwen3-VL-8B-Instruct-GGUF', revision: '00e7d63528e65d7b64e80e1293a8360b4af6a594', path: 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', directory: 'Qwen3-VL-8B-Instruct-GGUF', approximateBytes: 5030000000 },
+    ],
+  },
+  {
+    id: 'z-image-base', title: 'Z-Image Base',
+    source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/z_image.md',
+    files: [
+      { role: 'diffusion', repository: 'unsloth/Z-Image-GGUF', revision: 'c9913e69743c5d9dfa7fdac58a0cc5709a17aa08', path: 'z-image-Q4_K_M.gguf', directory: 'Z-Image-GGUF', approximateBytes: 5066995776 },
+      { role: 'vae', repository: 'Comfy-Org/z_image_turbo', revision: '93fae7d7f6189cc408fdd7cec36c91447b8506a2', path: 'split_files/vae/ae.safetensors', directory: 'z_image_turbo', approximateBytes: 335000000 },
+      { role: 'lm', repository: 'unsloth/Qwen3-4B-Instruct-2507-GGUF', revision: '18727206c51467496bfba014368bd0a30e97f411', path: 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf', directory: 'Qwen3-4B-Instruct-2507-GGUF', approximateBytes: 2500000000 },
+    ],
+  },
+  {
+    id: 'sdxl-base-1.0', title: 'SDXL Base 1.0',
+    source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/sd.md',
+    files: [
+      { role: 'model', repository: 'stabilityai/stable-diffusion-xl-base-1.0', revision: 'e4e60c65aa20ee60092c60ba197f541872cf9373', path: 'sd_xl_base_1.0.safetensors', directory: 'stable-diffusion-xl-base-1.0', approximateBytes: 6938078334 },
+      // Match the upstream SDXL example's explicit VAE override. The checkpoint
+      // also has a VAE; users can clear this selection to use that component.
+      { role: 'vae', repository: 'madebyollin/sdxl-vae-fp16-fix', revision: 'c2fda8dd4afc6ddcb52e874cdc7ae79087cb8616', path: 'sdxl_vae.safetensors', directory: 'sdxl-vae-fp16-fix', approximateBytes: 334641162 },
     ],
   },
 ];

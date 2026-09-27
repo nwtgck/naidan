@@ -68,6 +68,12 @@ export function tensor({ name, shape }: { name: string, shape: number[] }): Tens
 export const zImageTensors: TensorInfo[] = [tensor({ name: 'cap_embedder.0.weight', shape: [2560] }), tensor({ name: 'cap_embedder.1.weight', shape: [3840, 2560] }), tensor({ name: 'all_x_embedder.2-1.weight', shape: [3840, 64] })];
 export const qwenImageTensors: TensorInfo[] = [tensor({ name: 'txt_in.text_norm.weight', shape: [4096] }), tensor({ name: 'img_in.weight', shape: [4096, 64] }), tensor({ name: 'txt_in.in_layer.weight', shape: [4096, 4096] })];
 export const fluxVaeTensors: TensorInfo[] = [tensor({ name: 'decoder.conv_in.weight', shape: [512, 16, 3, 3] }), tensor({ name: 'decoder.conv_out.weight', shape: [3, 128, 3, 3] }), tensor({ name: 'encoder.conv_out.weight', shape: [32, 512, 3, 3] })];
+export const sdVaeTensors: TensorInfo[] = [tensor({ name: 'decoder.conv_in.weight', shape: [512, 4, 3, 3] }), tensor({ name: 'decoder.conv_out.weight', shape: [3, 128, 3, 3] }), tensor({ name: 'encoder.conv_out.weight', shape: [8, 512, 3, 3] })];
+export const sdCheckpointTensors: TensorInfo[] = [
+  tensor({ name: 'model.diffusion_model.input_blocks.0.0.weight', shape: [320, 4, 3, 3] }),
+  tensor({ name: 'conditioner.embedders.0.transformer.text_model.embeddings.token_embedding.weight', shape: [49408, 768] }),
+  ...sdVaeTensors.map(tensor => ({ ...tensor, name: `first_stage_model.${tensor.name}` })),
+];
 export const qwenVaeTensors: TensorInfo[] = [tensor({ name: 'conv2.weight', shape: [64, 64, 1, 1, 1] }), tensor({ name: 'decoder.conv1.weight', shape: [1152, 64, 3, 3, 3] }), tensor({ name: 'decoder.head.2.weight', shape: [4, 144, 3, 3, 3] })];
 export function qwenTextTensors({ width, layers }: { width: number, layers: number }): TensorInfo[] {
   return [tensor({ name: 'token_embd.weight', shape: [151936, width] }), tensor({ name: 'blk.0.attn_q_norm.weight', shape: [128] }), tensor({ name: `blk.${layers - 1}.attn_norm.weight`, shape: [width] })];

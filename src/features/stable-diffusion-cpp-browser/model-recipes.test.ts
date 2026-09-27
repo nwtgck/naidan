@@ -3,13 +3,14 @@ import { expect, it } from 'vitest';
 import { imageModelRecipes, imageRecipeLayout, imageRecipeLink } from './model-recipes';
 import { validModelPath } from './logic/model-path';
 import { scanImageRepositories } from './logic/model-candidates';
-import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors } from './test-utils/weights';
+import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, sdCheckpointTensors, sdVaeTensors } from './test-utils/weights';
 
-it('lists exactly two three-repository, revision-pinned recipes with original inner paths', () => {
-  expect(imageModelRecipes.map(recipe => recipe.id)).toEqual(['z-image-turbo', 'qwen-image-2.1']);
+it('lists revision-pinned component and checkpoint recipes with original inner paths', () => {
+  expect(imageModelRecipes.map(recipe => recipe.id)).toEqual(['z-image-turbo', 'qwen-image-2.1', 'z-image-base', 'sdxl-base-1.0']);
   for (const recipe of imageModelRecipes) {
-    expect(recipe.files.map(file => file.role)).toEqual(['diffusion', 'vae', 'lm']);
-    expect(new Set(recipe.files.map(file => file.repository)).size).toBe(3);
+    const sdxl = recipe.id === 'sdxl-base-1.0';
+    expect(recipe.files.map(file => file.role)).toEqual(sdxl ? ['model', 'vae'] : ['diffusion', 'vae', 'lm']);
+    expect(new Set(recipe.files.map(file => file.repository)).size).toBe(sdxl ? 2 : 3);
     for (const file of recipe.files) {
       expect(file.revision).toMatch(/^[0-9a-f]{40}$/);
       expect(validModelPath({ path: file.path })).toBe(true);
@@ -25,20 +26,21 @@ it('lists exactly two three-repository, revision-pinned recipes with original in
 
 // Actual repository filenames with synthetic tensor metadata. This proves the
 // import/recognition recipe mapping, NOT compatibility of trained weights/GPU.
-it('recognizes both catalog layouts without flattening paths or merging repositories', async () => {
+it('recognizes every catalog layout without flattening paths or merging repositories', async () => {
   for (const recipe of imageModelRecipes) {
-    const qwen = recipe.id === 'qwen-image-2.1';
+    const qwen = recipe.id === 'qwen-image-2.1', sdxl = recipe.id === 'sdxl-base-1.0';
     const repositories = recipe.files.map(entry => {
       const name = entry.path.split('/').at(-1)!;
-      const file = entry.role === 'vae'
-        ? safetensorsFixture({ name, tensors: qwen ? qwenVaeTensors : fluxVaeTensors }).file
+      const file = entry.role === 'model' ? safetensorsFixture({ name, tensors: sdCheckpointTensors }).file : entry.role === 'vae'
+        ? safetensorsFixture({ name, tensors: sdxl ? sdVaeTensors : qwen ? qwenVaeTensors : fluxVaeTensors }).file
         : ggufFixture({ name, tensors: entry.role === 'diffusion' ? (qwen ? qwenImageTensors : zImageTensors) : qwenTextTensors({ width: qwen ? 4096 : 2560, layers: 36 }), metadata: entry.role === 'lm' ? { 'general.architecture': qwen ? 'qwen3vl' : 'qwen3' } : {}, extraBytes: 0 }).file;
       return { id: `user/${entry.directory}`, name: entry.directory, files: [{ path: entry.path, file }] };
     });
     const inventory = await scanImageRepositories({ repositories, signal: undefined });
     expect(inventory.issues).toEqual([]);
-    expect(inventory.candidates.find(candidate => candidate.roles.includes('diffusion'))?.family).toBe(qwen ? 'qwen-image-2.1' : 'z-image');
-    expect(inventory.candidates.find(candidate => candidate.roles.includes('vae'))?.classes).toContain(qwen ? 'vae-qwen21' : 'vae-flux16');
-    expect(inventory.candidates.find(candidate => candidate.roles.includes('lm'))?.classes).toContain(qwen ? 'lm-qwen3vl-8b' : 'lm-qwen3-4b');
+    expect(inventory.candidates.find(candidate => candidate.roles.includes(sdxl ? 'model' : 'diffusion'))?.family).toBe(sdxl ? 'sd-checkpoint' : qwen ? 'qwen-image-2.1' : 'z-image');
+    expect(inventory.candidates.find(candidate => candidate.family === 'unknown' && candidate.roles.includes('vae'))?.classes).toContain(sdxl ? 'vae-sd4' : qwen ? 'vae-qwen21' : 'vae-flux16');
+    if (!sdxl) expect(inventory.candidates.find(candidate => candidate.roles.includes('lm'))?.classes).toContain(qwen ? 'lm-qwen3vl-8b' : 'lm-qwen3-4b');
+    else expect(inventory.candidates.some(candidate => candidate.roles.includes('lm'))).toBe(false);
   }
 });

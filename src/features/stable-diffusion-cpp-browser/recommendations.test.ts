@@ -30,8 +30,8 @@ it('identifies Qwen from tensor structure independently of the filename', async 
   expect(recommendationForSelection({ model: result.candidates[0] })?.parameters).toMatchObject({ guidance: 6, sampler: 'euler' });
 });
 
-it('uses a reviewed receipt plus tensor evidence for metadata-stripped catalog Turbo weights', async () => {
-  const option = imageModelRecipes[0]!.components.find(item => item.role === 'diffusion')!.options[0]!;
+it.each([{ id: 'z-image-turbo', steps: 8 }, { id: 'z-image-base', steps: 50 }])('uses a reviewed receipt plus tensor evidence for metadata-stripped $id weights', async ({ id, steps }) => {
+  const option = imageModelRecipes.find(recipe => recipe.id === id)!.components.find(item => item.role === 'diffusion')!.options[0]!;
   const file = ggufFixture({ name: 'renamed.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
   const receipt = { version: 1 as const, kind: 'naidan-model-file' as const, size: file.size, lastModified: file.lastModified,
     source: { kind: 'hugging-face' as const, repository: option.repository, revision: option.revision, path: option.path, sha256: '0'.repeat(64) } };
@@ -39,7 +39,7 @@ it('uses a reviewed receipt plus tensor evidence for metadata-stripped catalog T
     { path: file.name, file, receipt: { ...receipt, source: { ...receipt.source, revision } } },
   ] }] });
   const known = await scan(option.revision);
-  expect(recommendationForSelection({ model: known.candidates[0] })?.parameters.steps).toBe(8);
+  expect(recommendationForSelection({ model: known.candidates[0] })?.parameters.steps).toBe(steps);
   const unreviewed = await scan('f'.repeat(40));
   expect(recommendationForSelection({ model: unreviewed.candidates[0] })).toBeUndefined();
 });

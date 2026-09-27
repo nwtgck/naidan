@@ -11,6 +11,15 @@ const choices: ImageModelChoice[] = [
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+it('makes clearing an optional checkpoint override an explicit built-in component choice', async () => {
+  const view = mount(ImageModelPicker, { props: { label: 'VAE', modelValue: 'matching', choices, required: false, disabled: false } });
+  expect(view.get('option[value=""]').text()).toBe('Use built-in component');
+  await view.get('select').setValue('');
+  expect(view.emitted('update:modelValue')).toEqual([['']]);
+  await view.setProps({ required: true });
+  expect(view.get('option[value=""]').text()).not.toBe('Use built-in component');
+  view.unmount();
+});
 it('shows structural evidence, and never emits a known-incompatible choice', async () => {
   const view = mount(ImageModelPicker, { props: { label: 'Text encoder', modelValue: 'matching', choices, required: true, disabled: false } });
   expect(view.text()).toContain('width: 2560'); expect(view.get('option[value="wrong"]').attributes('disabled')).toBeDefined();

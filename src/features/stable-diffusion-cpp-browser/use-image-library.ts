@@ -56,7 +56,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   const downloadState = ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>('idle');
   const downloadRecipeId = ref('');
   const downloadSelections = shallowRef<ImageRecipeSelection>({});
-  let recipeIntent: { family: 'z-image' | 'qwen-image-2.1', files: ImageRecipeFile[] } | undefined;
+  let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint', files: ImageRecipeFile[] } | undefined;
   const downloading = computed(() => activeDownload.value !== undefined);
   const host = dependencies ? undefined : useHostModelDirectories({
     blocked: () => blocked() || importing.value,
@@ -106,7 +106,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     return candidate.family !== 'unknown' && candidate.roles.some(role => role === 'model' || role === 'diffusion');
   }).map(candidate => describe({ candidate, status: primarySlot({ family: candidate.family }) !== undefined ? 'matching' : candidate.roles.length ? 'incompatible' : 'unverified' })));
   const components = computed(() => requirements.value.map(requirement => ({
-    slot: requirement.slot, selected: selections.value[requirement.slot] ?? '', required: true,
+    slot: requirement.slot, selected: selections.value[requirement.slot] ?? '', required: requirement.required,
     choices: inventory.value.candidates.filter(candidate => candidate.id !== main.value).map(candidate => describe({ candidate, status: componentMatch({ candidate, requirement }) }))
       .filter(choice => showAll.value || choice.status === 'matching' || choice.id === selections.value[requirement.slot])
       .sort((a, b) => Number(b.status === 'matching') - Number(a.status === 'matching') || a.detail.localeCompare(b.detail)),
@@ -118,7 +118,9 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     // deliberate via the manual component controls, not a guessed checkpoint.
     if (primarySlot({ family: selected.value.family }) === undefined) return false;
     return requirements.value.every(requirement => {
-      const candidate = inventory.value.candidates.find(item => item.id === selections.value[requirement.slot]);
+      const id = selections.value[requirement.slot];
+      if (!requirement.required && !id) return overrides.has(requirement.slot) || !recipeIntent?.files.some(file => file.role === requirement.slot);
+      const candidate = inventory.value.candidates.find(item => item.id === id);
       return candidate !== undefined && componentMatch({ candidate, requirement }) !== 'incompatible';
     });
   });
@@ -130,13 +132,17 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     for (const requirement of requirements.value) {
       const previous = inventory.value.candidates.find(item => item.id === next[requirement.slot]);
       if (overrides.has(requirement.slot)) {
-        if (!previous) next[requirement.slot] = '';
+        // Losing an explicit optional override must not silently select the
+        // checkpoint's built-in component. Retain the unavailable selection.
+        if (!previous && requirement.required) next[requirement.slot] = '';
         continue;
       }
       if (!recipeIntent && previous && componentMatch({ candidate: previous, requirement }) === 'matching') continue;
       const requested = recipeIntent?.files.find(file => file.role === requirement.slot);
+      // A complete checkpoint already contains its VAE. Use an external one only
+      // when the user selects it or explicitly chooses a recipe that names it.
       next[requirement.slot] = requested ? findRecipeFile({ file: requested, match: ({ candidate }) => componentMatch({ candidate, requirement }) === 'matching' })?.id ?? ''
-        : defaultCompanion({ main: selected.value, candidates: inventory.value.candidates, requirement }) ?? '';
+        : requirement.required ? defaultCompanion({ main: selected.value, candidates: inventory.value.candidates, requirement }) ?? '' : '';
     }
     selections.value = next;
   }
@@ -181,8 +187,9 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     if (!recipe) return { available: 0, total: 0, selected: false, bytes: 0 };
     const family = (() => {
       switch (recipe.id) {
-      case 'z-image-turbo': return 'z-image' as const;
+      case 'z-image-turbo': case 'z-image-base': return 'z-image' as const;
       case 'qwen-image-2.1': return 'qwen-image-2.1' as const;
+      case 'sdxl-base-1.0': return 'sd-checkpoint' as const;
       default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
       }
     })();
@@ -190,7 +197,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const files = selectedRecipeFiles({ recipe, selections: requested });
     const candidates = files.map(file => findRecipeFile({ file, match: ({ candidate }) => {
       switch (file.role) {
-      case 'diffusion': return candidate.family === family;
+      case 'model': case 'diffusion': return candidate.family === family;
       case 'vae': case 'lm': {
         const requirement = requirements.find(item => item.slot === file.role);
         return requirement !== undefined && componentMatch({ candidate, requirement }) === 'matching';
@@ -204,7 +211,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
         if (!candidate) return false;
         const role = files[index]!.role;
         switch (role) {
-        case 'diffusion': return candidate.id === main.value;
+        case 'model': case 'diffusion': return candidate.id === main.value;
         case 'vae': case 'lm': return candidate.id === selections.value[role];
         default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
         }
@@ -214,7 +221,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   }
   function resolveRecipe(): void {
     if (!recipeIntent) return;
-    const file = recipeIntent.files.find(file => file.role === 'diffusion');
+    const file = recipeIntent.files.find(file => file.role === 'model' || file.role === 'diffusion');
     const candidate = file && findRecipeFile({ file, match: ({ candidate: item }) => item.family === recipeIntent?.family });
     if (candidate && candidate.id !== main.value) {
       main.value = candidate.id; onSelection({ family: candidate.family, turbo: candidate.turboHint });
@@ -225,8 +232,9 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const recipe = imageModelRecipes.find(recipe => recipe.id === recipeId); if (!recipe) return;
     const files = selectedRecipeFiles({ recipe, selections: requested });
     switch (recipe.id) {
-    case 'z-image-turbo': recipeIntent = { family: 'z-image', files }; break;
+    case 'z-image-turbo': case 'z-image-base': recipeIntent = { family: 'z-image', files }; break;
     case 'qwen-image-2.1': recipeIntent = { family: 'qwen-image-2.1', files }; break;
+    case 'sdxl-base-1.0': recipeIntent = { family: 'sd-checkpoint', files }; break;
     default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
     }
     origin = 'manual'; main.value = ''; selections.value = {}; overrides.clear();
@@ -380,7 +388,10 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     if (!ready.value || !selected.value) return undefined;
     const slot = primarySlot({ family: selected.value.family });
     if (!slot) return undefined;
-    const selectionsToUse = [{ slot, candidate: selected.value }, ...requirements.value.map(({ slot }) => ({ slot, candidate: inventory.value.candidates.find(item => item.id === selections.value[slot])! }))];
+    const selectionsToUse = [{ slot, candidate: selected.value }, ...requirements.value.flatMap(({ slot }) => {
+      const candidate = inventory.value.candidates.find(item => item.id === selections.value[slot]);
+      return candidate ? [{ slot, candidate }] : [];
+    })];
     return selectionsToUse.map(({ slot, candidate }) => modelForCandidate({ slot, candidate }));
   }
   function modelForCandidate({ slot, candidate }: { slot: ModelSlot, candidate: ModelCandidate }): Request['models'][number] {
@@ -402,24 +413,25 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
       const missing: ModelSlot[] = [];
       const members = [{ slot, candidate }];
       const components: ImageComponentChoice[] = [];
-      const overrides = benchmarkSelections[candidate.id];
+      const benchmarkOverrides = benchmarkSelections[candidate.id];
       for (const requirement of componentRequirements({ family: candidate.family })) {
         // Benchmark overrides are independent per primary model. Empty selections
         // are intentional; never silently replace them with an automatic companion.
-        const id = overrides?.[requirement.slot] ?? (useSelection ? selections.value[requirement.slot] : defaultCompanion({ main: candidate, candidates: inventory.value.candidates, requirement }));
-        components.push({ slot: requirement.slot, selected: id ?? '', required: true,
+        const id = benchmarkOverrides?.[requirement.slot] ?? (useSelection ? selections.value[requirement.slot] : requirement.required ? defaultCompanion({ main: candidate, candidates: inventory.value.candidates, requirement }) : undefined);
+        components.push({ slot: requirement.slot, selected: id ?? '', required: requirement.required,
           choices: inventory.value.candidates.filter(item => item.id !== candidate.id && (item.roles.includes(requirement.slot) || item.id === id || componentMatch({ candidate: item, requirement }) !== 'incompatible'))
             .map(item => describe({ candidate: item, status: componentMatch({ candidate: item, requirement }) }))
             .sort((a, b) => a.detail.localeCompare(b.detail)),
         });
         const component = inventory.value.candidates.find(item => item.id === id);
-        if (!component || componentMatch({ candidate: component, requirement }) === 'incompatible') missing.push(requirement.slot);
-        else members.push({ slot: requirement.slot, candidate: component });
+        if (component && componentMatch({ candidate: component, requirement }) !== 'incompatible') members.push({ slot: requirement.slot, candidate: component });
+        else if (requirement.required || id || useSelection && benchmarkOverrides?.[requirement.slot] === undefined
+          && !overrides.has(requirement.slot) && recipeIntent?.files.some(file => file.role === requirement.slot)) missing.push(requirement.slot);
       }
       const issue = candidate.issue ?? (members.some(item => !item.candidate.files.some(file => file.path === item.candidate.path)) ? 'Missing local file' : undefined);
       return [{ id: candidate.id, label: candidate.path.split('/').at(-1) ?? candidate.path,
         detail: `${candidate.repositoryId}/${candidate.path}`, facts: { family: candidate.family, variant: candidate.variant, evidence: [...candidate.evidence] },
-        composition: useSelection || overrides ? 'selected' as const : 'automatic' as const, components, missing, issue,
+        composition: useSelection || benchmarkOverrides ? 'selected' as const : 'automatic' as const, components, missing, issue,
         models: !issue && missing.length === 0 ? members.map(item => modelForCandidate(item)) : undefined }];
     }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   }

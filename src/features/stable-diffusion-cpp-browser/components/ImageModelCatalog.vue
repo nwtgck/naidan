@@ -36,6 +36,7 @@ function locked({ recipeId: _recipeId }: { recipeId: string }): boolean {
 }
 function roleLabel({ role }: { role: ImageRecipeFile['role'] }): string | undefined {
   switch (role) {
+  case 'model': return lazyStrings.stableDiffusionCppBrowser__model_file();
   case 'diffusion': return lazyStrings.stableDiffusionCppBrowser__diffusion_file();
   case 'vae': return lazyStrings.stableDiffusionCppBrowser__vae_file();
   case 'lm': return lazyStrings.stableDiffusionCppBrowser__lm_file();
@@ -79,7 +80,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
               <div tw-class="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1" data-testid="image-recipe-title">
                 <h4 :id="id + card.recipe.id" tw-class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ card.recipe.title }}</h4>
                 <div tw-class="relative flex max-w-full items-center">
-                  <select :aria-labelledby="id + card.recipe.id" :aria-label="roleLabel({ role: 'diffusion' })" :value="card.selections.diffusion ?? card.recipe.components[0]!.defaultOptionId" :disabled="locked({ recipeId: card.recipe.id }) || card.recipe.components[0]!.options.length === 1" @change="change({ recipeId: card.recipe.id, role: 'diffusion', event: $event })" :data-testid="'recipe-option-' + card.recipe.id + '-diffusion'" tw-class="block h-6 max-w-full appearance-none rounded-md border border-transparent bg-transparent py-0 pl-1.5 pr-5 text-[11px] text-gray-500 dark:text-gray-400 enabled:hover:border-gray-200 dark:enabled:hover:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-60">
+                  <select :aria-labelledby="id + card.recipe.id" :aria-label="roleLabel({ role: card.recipe.components[0]!.role })" :value="card.selections[card.recipe.components[0]!.role] ?? card.recipe.components[0]!.defaultOptionId" :disabled="locked({ recipeId: card.recipe.id }) || card.recipe.components[0]!.options.length === 1" @change="change({ recipeId: card.recipe.id, role: card.recipe.components[0]!.role, event: $event })" :data-testid="'recipe-option-' + card.recipe.id + '-' + card.recipe.components[0]!.role" tw-class="block h-6 max-w-full appearance-none rounded-md border border-transparent bg-transparent py-0 pl-1.5 pr-5 text-[11px] text-gray-500 dark:text-gray-400 enabled:hover:border-gray-200 dark:enabled:hover:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-60">
                     <option v-for="option in card.recipe.components[0]!.options" :key="option.id" :value="option.id" tw-class="bg-white text-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ optionLabel({ file: option }) }}</option>
                   </select><ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-1 w-2.5 h-2.5 text-gray-400" />
                 </div>

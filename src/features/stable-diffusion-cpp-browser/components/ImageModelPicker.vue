@@ -37,7 +37,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <input v-if="choices.length > 6" v-model="search" type="search" :aria-label="lazyStrings.stableDiffusionCppBrowser__filter_components()" :placeholder="lazyStrings.stableDiffusionCppBrowser__filter_components()" tw-class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-xs" />
     <div tw-class="relative min-w-0">
       <select :id="id" :value="modelValue" :title="selected?.detail" :aria-labelledby="id + '-label'" @change="change({ event: $event })" tw-class="block w-full min-w-0 appearance-none rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-2.5 pl-3 pr-9 text-sm text-gray-800 dark:text-gray-100 outline-none focus:ring-4 focus:ring-purple-500/10 disabled:opacity-50">
-        <option value="">{{ lazyStrings.stableDiffusionCppBrowser__select_component() }}</option>
+        <option value="">{{ required ? lazyStrings.stableDiffusionCppBrowser__select_component() : lazyStrings.ImageModelPicker__use_built_in_component() }}</option>
         <option v-for="choice in visible" :key="choice.id" :value="choice.id" :disabled="choice.status === 'incompatible'">{{ optionLabel({ choice }) }}</option>
       </select>
       <span v-if="selected" aria-hidden="true" tw-class="pointer-events-none absolute inset-px flex min-w-0 items-center rounded-xl bg-white dark:bg-gray-900 pl-3 pr-9 text-sm text-gray-800 dark:text-gray-100"><span tw-class="truncate">{{ selected.label }}</span></span>

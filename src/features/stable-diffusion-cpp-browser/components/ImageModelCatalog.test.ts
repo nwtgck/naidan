@@ -12,7 +12,7 @@ beforeEach(async () => {
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
 });
-it('shows both static recipes without networking or remote resources when opened', async () => {
+it('shows all static recipes without networking or remote resources when opened', async () => {
   const fetch = vi.fn(), xhr = vi.fn(), worker = vi.fn();
   vi.stubGlobal('fetch', fetch); vi.stubGlobal('XMLHttpRequest', xhr); vi.stubGlobal('Worker', worker);
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: createDisabledImageLibrary() } });
@@ -21,8 +21,9 @@ it('shows both static recipes without networking or remote resources when opened
   for (const toggle of wrapper.findAll('[data-testid^="recipe-details-toggle-"]')) await toggle.trigger('click');
   for (const detail of wrapper.findAll('[data-testid="image-recipe-details"]')) expect(detail.attributes('inert')).toBeUndefined();
   await flushPromises();
-  expect(wrapper.findAll('article')).toHaveLength(2);
+  expect(wrapper.findAll('article')).toHaveLength(4);
   expect(wrapper.text()).toContain('Z-Image-Turbo'); expect(wrapper.text()).toContain('Qwen Image 2.1');
+  expect(wrapper.text()).toContain('Z-Image Base'); expect(wrapper.text()).toContain('SDXL Base 1.0');
   expect(wrapper.text()).toContain('split_files/vae/ae.safetensors');
   expect(wrapper.text()).toContain('Qwen3VL-8B-Instruct-Q4_K_M.gguf');
   expect(wrapper.text()).not.toContain('optional');
@@ -32,7 +33,7 @@ it('shows both static recipes without networking or remote resources when opened
 it('uses only explicit, referrer-free browser links to immutable file revisions', () => {
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: createDisabledImageLibrary() } });
   const downloads = wrapper.findAll('[data-testid^="recipe-download-selected-"]');
-  expect(downloads).toHaveLength(2);
+  expect(downloads).toHaveLength(4);
   for (const link of wrapper.findAll('a')) {
     const url = new URL(link.attributes('href')!);
     expect(url.origin).toBe('https://huggingface.co');
@@ -41,6 +42,16 @@ it('uses only explicit, referrer-free browser links to immutable file revisions'
     expect(link.attributes('referrerpolicy')).toBe('no-referrer');
   }
   for (const button of downloads) expect(button.element.tagName).toBe('BUTTON');
+});
+it('labels the SDXL primary as a checkpoint and shows its explicit external VAE', async () => {
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: createDisabledImageLibrary() } });
+  const card = wrapper.get('[data-testid="image-recipe-sdxl-base-1.0"]');
+  expect(card.get('[data-testid="recipe-option-sdxl-base-1.0-model"]').attributes('aria-label')).toBe('Checkpoint file');
+  expect(card.find('[data-testid="recipe-option-sdxl-base-1.0-diffusion"]').exists()).toBe(false);
+  await card.get('[data-testid="recipe-details-toggle-sdxl-base-1.0"]').trigger('click');
+  expect(card.text()).toContain('sd_xl_base_1.0.safetensors');
+  expect(card.text()).toContain('sdxl_vae.safetensors');
+  expect(card.text()).toContain('madebyollin/sdxl-vae-fp16-fix');
 });
 it('keeps catalog content visible but navigation inert when the feature is disabled', async () => {
   wrapper = mount(ImageModelCatalog, { props: { disabled: true, view: createDisabledImageLibrary() } });
