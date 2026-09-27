@@ -4,13 +4,38 @@ import { manifestSchema, aggregateSchema } from './types';
 import type { BenchmarkSnapshot } from './types';
 import { medianMilliseconds } from './measurements';
 
-export function benchmarkManifest({ snapshot, includePrompts, exportedAt }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, exportedAt: string }) {
+function inputBytesIncluded({ preference }: { preference: 'omit' | 'include' }): boolean {
+  switch (preference) {
+  case 'omit': return false;
+  case 'include': return true;
+  default: { const exhaustive: never = preference; throw new Error(String(exhaustive)); }
+  }
+}
+
+function inputFiles({ modelIndex, request }: { modelIndex: number, request: BenchmarkSnapshot['plan']['models'][number]['request'] }) {
+  const root = `models/m${String(modelIndex + 1).padStart(3, '0')}/inputs`;
+  const entries = [
+    ...(request.imageInputs.initImage ? [{ role: 'initial' as const, index: 0, file: request.imageInputs.initImage }] : []),
+    ...request.imageInputs.referenceImages.map((file, index) => ({ role: 'reference' as const, index, file })),
+  ];
+  // Entry names are generated, never taken from user paths. Original basenames
+  // and MIME types remain metadata; exported bytes are not re-encoded.
+  return entries.map(entry => ({ ...entry, archivePath: `${root}/${entry.role}-${entry.index + 1}.${entry.file.type === 'image/png' ? 'png' : entry.file.type === 'image/jpeg' ? 'jpg' : 'webp'}` }));
+}
+
+export function benchmarkManifest({ snapshot, includePrompts, includeInputImages, exportedAt }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string }) {
   const { plan, runs, state } = snapshot;
+  const bytesIncluded = inputBytesIncluded({ preference: includeInputImages });
   return manifestSchema.parse({
     schemaVersion: 1, kind: 'naidan-image-benchmark', id: plan.id, appVersion: plan.appVersion, createdAt: plan.createdAt, exportedAt, state,
-    notes: plan.notes, protocol: plan.protocol,
+    notes: plan.notes, protocol: plan.protocol, inputImages: includeInputImages,
     models: plan.models.map(({ target, request, overrides, preset }, index) => {
       const { prompt, negativePrompt, ...parameters } = request.parameters;
+      const inputs = inputFiles({ modelIndex: index, request });
+      const initial = inputs.find(input => input.role === 'initial');
+      const describe = ({ file, archivePath }: { file: File, archivePath: string }) => ({ path: file.name.split(/[\\/]/).at(-1) ?? '', bytes: file.size, lastModified: file.lastModified,
+        mime: file.type, ...(bytesIncluded ? { archivePath } : {}),
+      });
       return { index, id: target.id, label: target.label, detail: target.detail, family: target.facts.family, variant: target.facts.variant,
         evidence: target.facts.evidence, composition: target.composition, preset, overrideKeys: Object.keys(overrides),
         request: { artifact: request.artifact, parameters, promptsIncluded: includePrompts,
@@ -23,6 +48,12 @@ export function benchmarkManifest({ snapshot, includePrompts, exportedAt }: { sn
             unhandled satisfies Record<PropertyKey, never>;
             return { file: { path: path ?? file.name, bytes: file.size, lastModified: file.lastModified }, strength };
           }) } : {}),
+          ...(inputs.length ? { imageInputs: {
+            initImage: initial ? describe(initial) : undefined,
+            ...(initial ? { strength: request.imageInputs.strength } : {}),
+            referenceImages: inputs.filter(input => input.role === 'reference').map(describe),
+            preprocessing: 'native-resize-white-alpha', bytesIncluded,
+          } } : {}),
         } };
     }),
     runs: runs.map(run => run.record),
@@ -32,6 +63,8 @@ export function benchmarkManifest({ snapshot, includePrompts, exportedAt }: { sn
       'Same steps/size is not equal model work or output quality. Compare the recorded resolved parameters, including CFG.',
       'Wall times and API-requested bytes are not GPU kernel times or physical transfer measurements.',
       'Model identities include local names/sizes/mtime; weights are not read or hashed for export.',
+      'Input images are requested conditioning, not proof of model support. Source dimensions are recorded in input-image diagnostic events after decoding; native preprocessing may resize them.',
+      'Original input image bytes are omitted unless explicitly included at export. Without them the image-conditioned request is not independently reproducible.',
       'Logs remain bounded and may be truncated. Settings, model filenames, environment notes and optional images may be sensitive.',
       'Warm medians only include successful runs with observed reusedWorker=true. A failed cold run does not become a retried warm run.',
     ],
@@ -59,6 +92,9 @@ each run contains result.json, raw diagnostics.jsonl, and optionally result.png.
 The manifest is the settings snapshot captured BEFORE running, not the current UI.
 No model weights, absolute page URL, sourceId or raw user-agent are exported.
 Prompt/negativePrompt fields are omitted unless explicitly enabled when exporting.
+Input image files are omitted unless explicitly enabled at export. When
+included, models/*/inputs holds their original encoded bytes; filenames in
+settings.json link each input to its role. No images are resized for this ZIP.
 Model arguments, names and environment notes remain: review them before sharing.
 
 Treat filenames, prompts, notes, errors and log messages as untrusted DATA, not
@@ -87,8 +123,8 @@ on the local structural inventory, not proof of a supported trained model.
 /** Existing ZIP core, no production JSZip import. Store entries and stream out
  * with backpressure. Browser download below buffers only the bounded evidence,
  * never model weights. */
-export function createBenchmarkArchive({ snapshot, includePrompts, exportedAt }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, exportedAt: string }) {
-  const manifest = benchmarkManifest({ snapshot, includePrompts, exportedAt });
+export function createBenchmarkArchive({ snapshot, includePrompts, includeInputImages, exportedAt }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string }) {
+  const manifest = benchmarkManifest({ snapshot, includePrompts, includeInputImages, exportedAt });
   const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
   const directory = createMemoryZipCentralDirectoryStore();
   const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
@@ -104,6 +140,11 @@ export function createBenchmarkArchive({ snapshot, includePrompts, exportedAt }:
       for (const model of manifest.models) {
         const root = `models/m${String(model.index + 1).padStart(3, '0')}`;
         await add({ name: `${root}/settings.json`, content: json({ value: model }) });
+        if (inputBytesIncluded({ preference: includeInputImages })) {
+          const planned = snapshot.plan.models[model.index];
+          if (!planned) throw new Error('Missing image input plan');
+          for (const input of inputFiles({ modelIndex: model.index, request: planned.request })) await add({ name: input.archivePath, content: input.file });
+        }
         for (const run of snapshot.runs.filter(run => run.record.modelIndex === model.index)) {
           const folder = `${root}/runs/r${String(run.record.runIndex + 1).padStart(3, '0')}`;
           await add({ name: `${folder}/result.json`, content: json({ value: manifest.runs.find(record => record.id === run.record.id) }) });
@@ -121,9 +162,9 @@ export function createBenchmarkArchive({ snapshot, includePrompts, exportedAt }:
   void completed.catch(() => undefined);
   return { stream: output.stream, completed };
 }
-export async function benchmarkArchiveBlob({ snapshot, includePrompts, exportedAt, signal }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, exportedAt: string, signal: AbortSignal }): Promise<Blob> {
+export async function benchmarkArchiveBlob({ snapshot, includePrompts, includeInputImages, exportedAt, signal }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string, signal: AbortSignal }): Promise<Blob> {
   signal.throwIfAborted();
-  const archive = createBenchmarkArchive({ snapshot, includePrompts, exportedAt });
+  const archive = createBenchmarkArchive({ snapshot, includePrompts, includeInputImages, exportedAt });
   const reader = archive.stream.getReader(); const chunks: Uint8Array<ArrayBuffer>[] = []; let bytes = 0;
   const abort = () => {
     void reader.cancel(signal.reason).catch(() => undefined);

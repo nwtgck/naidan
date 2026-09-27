@@ -1,0 +1,1 @@
+export const ImageInputControls__model_support_required = (): string => "Reference images require a model trained for image conditioning. A successful generation does not prove that the model used them. Initial and reference images can be combined.";

@@ -1,0 +1,1 @@
+export const ImageInputControls__initial_image_help = (): string => "Das Ausgangsbild wird auf die Ausgabegröße skaliert. Höhere Stärke verändert es stärker. Transparente Pixel erhalten einen weißen Hintergrund.";

@@ -2225,6 +2225,16 @@ import { ImageLoraControls__remove } from '@/strings/messages/ImageLoraControls_
 import { ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files } from '@/strings/messages/ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files/es';
 import { ImageLoraControls__choose_adapters_for_selected_model } from '@/strings/messages/ImageLoraControls__choose_adapters_for_selected_model/es';
 
+import { ImageInputControls__input_images } from '@/strings/messages/ImageInputControls__input_images/es';
+import { ImageInputControls__initial_image } from '@/strings/messages/ImageInputControls__initial_image/es';
+import { ImageInputControls__reference_images } from '@/strings/messages/ImageInputControls__reference_images/es';
+import { ImageInputControls__change_strength } from '@/strings/messages/ImageInputControls__change_strength/es';
+import { ImageInputControls__remove } from '@/strings/messages/ImageInputControls__remove/es';
+import { ImageInputControls__choose_png_jpeg_or_webp } from '@/strings/messages/ImageInputControls__choose_png_jpeg_or_webp/es';
+import { ImageInputControls__initial_image_help } from '@/strings/messages/ImageInputControls__initial_image_help/es';
+import { ImageInputControls__model_support_required } from '@/strings/messages/ImageInputControls__model_support_required/es';
+import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/es';
+
 export const catalog = {
   stableDiffusionCppBrowser__preview_mode_locked,
   stableDiffusionCppBrowser__preset_unknown,
@@ -4398,4 +4408,13 @@ export const catalog = {
   ImageLoraControls__remove,
   ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files,
   ImageLoraControls__choose_adapters_for_selected_model,
+  ImageInputControls__input_images,
+  ImageInputControls__initial_image,
+  ImageInputControls__reference_images,
+  ImageInputControls__change_strength,
+  ImageInputControls__remove,
+  ImageInputControls__choose_png_jpeg_or_webp,
+  ImageInputControls__initial_image_help,
+  ImageInputControls__model_support_required,
+  imageBenchmark__include_input_images_in_zip,
 } satisfies Strings;

@@ -564,3 +564,65 @@ it('emits zero per-run file traffic for a retained generation without re-reading
   expect(second).toMatchObject({ reads: 0, bytes: 0, blobReads: 0, blobBytes: 0, cacheHits: 0, readMs: 0 });
   expect(h.api.new_sd_ctx).toHaveBeenCalledOnce(); await session.close();
 });
+
+it.each([4, 8] as const)('keeps image pixels until native return, updates and clears per-run inputs with %i-byte pointers', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
+  const bitmap = { width: 2, height: 1, close: vi.fn() };
+  let value = 9;
+  vi.stubGlobal('createImageBitmap', vi.fn(async () => bitmap));
+  vi.stubGlobal('OffscreenCanvas', class {
+    getContext() {
+      return { fillStyle: '', fillRect() {}, drawImage() {}, getImageData() {
+        return { data: new Uint8ClampedArray([value, 2, 3, 255, 4, 5, 6, 255]) };
+      } };
+    }
+  });
+  const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
+  const request = requestFixture();
+  const first = new File(['one'], 'same.png', { type: 'image/png' }), second = new File(['two'], 'same.png', { type: 'image/png' });
+  request.imageInputs = { initImage: first, strength: 0.4, referenceImages: [first] };
+  const original = h.api.generate_image;
+  const observed: number[] = [];
+  h.api.generate_image = vi.fn<NativeApi['generate_image']>(async (ctx, params, imagesOut, countOut) => {
+    const records = h.fields.get(`sd_img_gen_params_t:${params}:ref_images`);
+    if (records !== undefined) {
+      const data = BigInt(h.fields.get(`sd_image_t:${records}:data`)!);
+      expect(h.core.free).not.toHaveBeenCalledWith(data);
+      observed.push(h.core.bytes(data, 1)[0]!);
+    } else observed.push(-1);
+    return original(ctx, params, imagesOut, countOut);
+  });
+  try {
+    await session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+    value = 8; request.imageInputs = { initImage: undefined, strength: 0.4, referenceImages: [second] };
+    await session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+    request.imageInputs.referenceImages = [];
+    await session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+    expect(observed).toEqual([9, 8, -1]); expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
+    expect(bitmap.close).toHaveBeenCalledTimes(3);
+    await session.close();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+it('settles cancellation during input decode without entering native generation or leaking the bitmap', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  const bitmap = { width: 2, height: 1, close: vi.fn() };
+  const decode = Promise.withResolvers<typeof bitmap>();
+  vi.stubGlobal('createImageBitmap', vi.fn(() => decode.promise));
+  const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
+  const request = requestFixture(); request.runId = 1;
+  request.imageInputs.initImage = new File(['one'], 'image.png', { type: 'image/png' });
+  try {
+    const run = session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+    await vi.waitFor(() => expect(createImageBitmap).toHaveBeenCalledOnce());
+    expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } })).toBe(true);
+    decode.resolve(bitmap);
+    await expect(run).resolves.toEqual({ cancelled: true, modelResident: true });
+    expect(h.api.generate_image).not.toHaveBeenCalled(); expect(bitmap.close).toHaveBeenCalledOnce();
+    expect(h.core.free).toHaveBeenCalledWith(h.recordPointers.get('sd_img_gen_params_t'));
+    await session.close();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

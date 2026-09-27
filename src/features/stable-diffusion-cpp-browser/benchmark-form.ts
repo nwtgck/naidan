@@ -1,6 +1,6 @@
 import { ref, shallowRef } from 'vue';
 import { createImageForm } from './form';
-import type { ModelSlot, Parameters, Progress } from './types';
+import type { ModelSlot, Parameters, Progress, ImageInputs } from './types';
 import type { BenchmarkProtocol, BenchmarkRun, BenchmarkPlan, ParameterChange } from './benchmark/types';
 import type { ImageLoraSelection } from './lora-form';
 
@@ -13,15 +13,17 @@ export function createBenchmarkForm() {
   const protocol = ref<BenchmarkProtocol>({ mode: 'fresh-each', repeats: 2, order: 'listed', cooldownSeconds: 2, timeoutSeconds: 0, keepImages: true });
   const strategy = ref<'shared' | 'model-defaults'>('model-defaults');
   const includePrompts = ref(false), notes = ref(''), selected = ref<string[]>([]);
+  const includeInputImages = ref<'omit' | 'include'>('omit');
   const overrides = ref<Record<string, Partial<Parameters>>>({});
   const componentSelections = ref<Record<string, Partial<Record<ModelSlot, string>>>>({});
   const loras = shallowRef<Record<string, ImageLoraSelection[]>>({});
+  const imageInputs = shallowRef<Record<string, ImageInputs>>({});
   const state = ref<'idle' | 'running' | 'finished' | 'cancelled'>('idle'), exporting = ref(false), error = ref(''), feedback = ref('');
   const runs = shallowRef<BenchmarkRun[]>([]), plan = shallowRef<BenchmarkPlan>(), current = ref<string>(), progress = shallowRef<Progress>();
   function setCommon({ change }: { change: ParameterChange }): void {
     common.value = { ...common.value, [change.key]: change.value };
   }
-  return { common, preview, protocol, strategy, includePrompts, notes, selected, overrides, componentSelections, loras, state, exporting, error, feedback, runs, plan, current, progress, setCommon };
+  return { common, preview, protocol, strategy, includePrompts, includeInputImages, notes, selected, overrides, componentSelections, loras, imageInputs, state, exporting, error, feedback, runs, plan, current, progress, setCommon };
 }
 export const TEST_ONLY = {
 };

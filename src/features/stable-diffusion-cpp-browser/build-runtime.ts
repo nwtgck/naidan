@@ -110,6 +110,7 @@ const standaloneUiFiles = new Set([
   'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
   'components/ImageModelCatalog.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts',
   'components/ImageLoraControls.vue',
+  'components/ImageInputControls.vue', 'image-input-form.ts',
   'form.ts',
   'form-options.ts',
   'component-label.ts',

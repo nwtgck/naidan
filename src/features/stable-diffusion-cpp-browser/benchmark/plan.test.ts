@@ -5,7 +5,7 @@ import { planFixture, targetFixture } from './test-fixtures';
 import { parametersFixture, artifactFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
 const input = () => ({ id: 'batch', createdAt: 'now', appVersion: 'test', notes: '', protocol: { mode: 'cold-warm', repeats: 3, cooldownSeconds: 0, timeoutSeconds: 0, keepImages: false, order: 'listed' },
-  targets: [targetFixture({ id: 'a' })], common: parametersFixture(), overrides: {}, loras: {}, strategy: 'shared' as const, artifact: artifactFixture(), baseUrl: 'https://app.test/',
+  targets: [targetFixture({ id: 'a' })], common: parametersFixture(), overrides: {}, loras: {}, imageInputs: {}, strategy: 'shared' as const, artifact: artifactFixture(), baseUrl: 'https://app.test/',
   preview: { enabled: false, mode: 'vae' as const, interval: 2, startStep: 1, maxEdge: 256 }, weightResidency: 'auto' as const, gpuBudgetMiB: undefined });
 it('freezes effective values before work; shared form edits do not alter a captured plan', () => {
   const options = input(); const plan = createBenchmarkPlan(options);
@@ -63,4 +63,14 @@ it('snapshots LoRA requests per target and preserves disabled adapters as zero s
 it('rejects invalid active LoRA strengths before creating any benchmark worker', () => {
   const file = new File(['adapter fixture'], 'style.gguf');
   expect(() => createBenchmarkPlan({ ...input(), loras: { a: [{ file, strength: NaN, enabled: true }] } })).toThrow();
+});
+
+it('snapshots input files, strength and reference order per target without broadcasting them', () => {
+  const file = new File(['initial image'], 'initial.png', { type: 'image/png' });
+  const reference = new File(['reference image'], 'reference.png', { type: 'image/png' });
+  const inputs = { initImage: file, strength: 0.4, referenceImages: [reference] };
+  const plan = createBenchmarkPlan({ ...input(), targets: [targetFixture({ id: 'a' }), targetFixture({ id: 'b' })], imageInputs: { a: inputs } });
+  inputs.referenceImages.length = 0; inputs.strength = 0.9;
+  expect(plan.models[0]!.request.imageInputs).toEqual({ initImage: file, strength: 0.4, referenceImages: [reference] });
+  expect(plan.models[1]!.request.imageInputs).toEqual({ strength: 0.75, referenceImages: [] });
 });

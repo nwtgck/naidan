@@ -5,6 +5,7 @@ import ImageRepositoryImport from './ImageRepositoryImport.vue';
 import ImageModelCatalog from './ImageModelCatalog.vue';
 import ImageBenchmark from './ImageBenchmark.vue';
 import ImageLoraControls from './ImageLoraControls.vue';
+import ImageInputControls from './ImageInputControls.vue';
 import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-image-benchmark';
 import { computed, ref, useId, watch } from 'vue';
 import { ImageIcon } from 'lucide-vue-next';
@@ -36,7 +37,7 @@ function tabKey({ event }: { event: KeyboardEvent }): void {
   const tab = event.key === 'Home' ? 'generate' : event.key === 'End' ? 'measure' : other;
   openTab({ tab }); document.getElementById(id + '-tab-' + tab)?.focus();
 }
-const { retainModel, modelResident, maxResults, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, loras, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results, recommendation, manualInspectionState,
+const { retainModel, modelResident, maxResults, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results, recommendation, manualInspectionState,
   library, busy, supported, formDisabled, unavailable, chooseFile, resetFiles, removeResult, generate, cancel, forceCancel, releaseModel, clearResults, copyDiagnostics, saveDiagnostics, applyRecommendedSettings } = view;
 const slots = computed(() => {
   switch (layout.value) {
@@ -75,7 +76,7 @@ const phaseLabel = computed(() => {
   default: { const exhaustive: never = progress.value.phase; throw new Error(String(exhaustive)); }
   }
 });
-defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTab, files, loras, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } }) || {}) });
+defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTab, files, loras, imageInputs, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } }) || {}) });
 </script>
 
 <template>
@@ -123,6 +124,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
             </details>
           </fieldset>
           <ImageLoraControls v-model="loras" :disabled="formDisabled || !supported || library.importing.value || library.downloading.value" />
+          <ImageInputControls v-model="imageInputs" :disabled="formDisabled || !supported || library.importing.value || library.downloading.value" />
           <section v-if="recommendation" tw-class="rounded-2xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/60 dark:bg-purple-950/20 p-4 space-y-2" data-testid="image-recommendation">
             <div tw-class="flex flex-wrap items-center justify-between gap-3">
               <div tw-class="space-y-1">

@@ -56,7 +56,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     const chosen = targets.value.filter(t => form.selected.value.includes(t.id));
     if (chosen.length !== form.selected.value.length) throw new Error('Selected model inventory changed');
     return createBenchmarkPlan({ id: '', createdAt: '', appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown',
-      notes: form.notes.value, protocol: form.protocol.value, targets: chosen, common: form.common.value, overrides: form.overrides.value, loras: form.loras.value,
+      notes: form.notes.value, protocol: form.protocol.value, targets: chosen, common: form.common.value, overrides: form.overrides.value, loras: form.loras.value, imageInputs: form.imageInputs.value,
       strategy: form.strategy.value, artifact, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
       preview: form.preview.value, weightResidency: generation.weightResidency.value, gpuBudgetMiB: generation.gpuBudgetMiB.value === '' ? undefined : generation.gpuBudgetMiB.value,
     });
@@ -96,7 +96,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     const snapshot = runner.snapshot(); if (!snapshot) return;
     form.exporting.value = true; form.feedback.value = ''; const control = new AbortController(); exportControl = control;
     try {
-      const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: form.includePrompts.value, exportedAt: new Date().toISOString(), signal: control.signal });
+      const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: form.includePrompts.value, includeInputImages: form.includeInputImages.value, exportedAt: new Date().toISOString(), signal: control.signal });
       control.signal.throwIfAborted();
       const url = URL.createObjectURL(blob);
       try {
@@ -144,6 +144,10 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     chooseLoras({ targetId, selections }) {
       if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value || !generation.supported.value || !targets.value.some(target => target.id === targetId)) return;
       form.loras.value = { ...form.loras.value, [targetId]: selections };
+    },
+    chooseImageInputs({ targetId, inputs }) {
+      if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value || !generation.supported.value || !targets.value.some(target => target.id === targetId)) return;
+      form.imageInputs.value = { ...form.imageInputs.value, [targetId]: inputs };
     },
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {

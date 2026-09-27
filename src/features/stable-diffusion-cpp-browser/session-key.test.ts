@@ -84,3 +84,15 @@ it('invalidates on manual companion identity or path but does not depend on mode
   request.models.push({ slot: 'vae', file: request.models[0]!.file });
   const reordered = keys.key({ request }); request.models.reverse(); expect(keys.key({ request })).toBe(reordered);
 });
+
+it('retains the model context for new input images, changed strength and removal', () => {
+  const keys = createImageSessionKeys(), request = requestFixture();
+  const before = keys.key({ request });
+  const first = new File(['first'], 'same.png', { type: 'image/png' });
+  request.imageInputs = { initImage: first, strength: 0.3, referenceImages: [first] };
+  expect(keys.key({ request })).toBe(before);
+  request.imageInputs = { initImage: undefined, strength: 0.8, referenceImages: [new File(['other'], 'same.png', { type: 'image/png' })] };
+  expect(keys.key({ request })).toBe(before);
+  request.imageInputs.referenceImages = [];
+  expect(keys.key({ request })).toBe(before);
+});

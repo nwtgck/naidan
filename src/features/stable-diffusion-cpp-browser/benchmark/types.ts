@@ -37,6 +37,7 @@ export type BenchmarkRun = { record: BenchmarkRunRecord, diagnostics: string, pn
 export type BenchmarkSnapshot = { plan: BenchmarkPlan, runs: BenchmarkRun[], state: 'running' | 'finished' | 'cancelled' };
 
 const fileMetadataSchema = z.object({ path: z.string(), bytes: nonnegative, lastModified: nonnegative }).strict();
+const inputImageMetadataSchema = fileMetadataSchema.extend({ mime: z.string(), archivePath: z.string().optional() });
 export const exportedModelSchema = z.object({
   index: nonnegative, id: z.string(), label: z.string(), detail: z.string(), family: z.string(), variant: z.string(),
   evidence: z.array(z.string()), composition: z.enum(['selected', 'automatic']), preset: z.string().optional(), overrideKeys: z.array(z.string()),
@@ -46,6 +47,9 @@ export const exportedModelSchema = z.object({
     debug: z.literal('on'), models: z.array(z.object({ slot: modelSlotSchema, localCandidateId: z.string(), files: z.array(fileMetadataSchema) }).strict()),
     // Requested adapters, not evidence that the native runtime applied them.
     loras: z.array(z.object({ file: fileMetadataSchema, strength: z.number().finite() }).strict()).optional(),
+    imageInputs: z.object({ initImage: inputImageMetadataSchema.optional(), strength: z.number().optional(), referenceImages: z.array(inputImageMetadataSchema),
+      preprocessing: z.literal('native-resize-white-alpha'), bytesIncluded: z.boolean(),
+    }).strict().optional(),
   }).strict(),
 }).strict();
 export const aggregateSchema = z.array(z.object({
@@ -58,6 +62,7 @@ export const manifestSchema = z.object({
   state: z.enum(['running', 'finished', 'cancelled']), notes: z.string().max(2048), protocol: protocolSchema,
   models: z.array(exportedModelSchema), runs: z.array(runRecordSchema).max(MAX_BENCHMARK_RUNS),
   limitations: z.array(z.string()),
+  inputImages: z.enum(['omit', 'include']).optional(),
 }).strict();
 export const TEST_ONLY = {
 };

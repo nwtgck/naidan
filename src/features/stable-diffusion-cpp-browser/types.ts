@@ -123,6 +123,15 @@ export const loraFileSchema = z.object({
   strength: z.number().finite().min(-10).max(10),
 });
 export type ImageLora = z.infer<typeof loraFileSchema>;
+const inputImageFileSchema = z.custom<File>(value => typeof File !== 'undefined' && value instanceof File
+  && Number.isSafeInteger(value.size) && value.size > 0 && ['image/png', 'image/jpeg', 'image/webp'].includes(value.type), 'Choose a PNG, JPEG or WebP image');
+/** Initial latents and reference conditioning are independent, run-local inputs. */
+export const imageInputsSchema = z.object({
+  initImage: inputImageFileSchema.optional(),
+  strength: z.number().finite().min(0).max(1),
+  referenceImages: z.array(inputImageFileSchema).max(2147483647),
+});
+export type ImageInputs = z.infer<typeof imageInputsSchema>;
 export const requestSchema = z.object({
   debug: z.enum(['off', 'on']).optional(),
   runId: z.number().int().nonnegative().default(0),
@@ -139,6 +148,7 @@ export const requestSchema = z.object({
     }
   }),
   loras: z.array(loraFileSchema).max(16).default([]),
+  imageInputs: imageInputsSchema.default({ strength: 0.75, referenceImages: [] }),
   parameters: parametersSchema,
   weightResidency: weightResidencySchema.default('auto'),
   // A GPU budget is not a Wasm heap limit. Bound only exact byte accounting;

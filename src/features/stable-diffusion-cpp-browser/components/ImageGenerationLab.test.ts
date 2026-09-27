@@ -411,7 +411,7 @@ it('keeps diagnostics LoRA selections independent per model and records the froz
   await bench.start(); await flushPromises();
   expect(mocks.generate.mock.calls.map(([{ request }]) => request.loras.map((lora: { strength: number }) => lora.strength))).toEqual([[0.5], []]);
   bench.loras.value = {};
-  const manifest = benchmarkManifest({ snapshot: { plan: bench.plan.value!, runs: bench.runs.value, state: 'finished' }, includePrompts: false, exportedAt: 'now' });
+  const manifest = benchmarkManifest({ snapshot: { plan: bench.plan.value!, runs: bench.runs.value, state: 'finished' }, includePrompts: false, includeInputImages: 'omit', exportedAt: 'now' });
   expect(manifest.models[0]!.request.loras).toEqual([{ file: { path: file.name, bytes: file.size, lastModified: file.lastModified }, strength: 0.5 }]);
   expect(manifest.models[1]!.request).not.toHaveProperty('loras');
 });
@@ -440,7 +440,7 @@ it('shows editable companion selections per target and snapshots their exact ide
   expect(mocks.generate.mock.calls[0]![0].request.models.find((model: { slot: string }) => model.slot === 'vae').file).toBe(expected);
   const plan = bench.plan.value!;
   bench.componentSelections.value = { 'user/one': { vae: 'user/vae-a' } };
-  const manifest = benchmarkManifest({ snapshot: { plan, runs: bench.runs.value, state: 'finished' }, includePrompts: false, exportedAt: 'now' });
+  const manifest = benchmarkManifest({ snapshot: { plan, runs: bench.runs.value, state: 'finished' }, includePrompts: false, includeInputImages: 'omit', exportedAt: 'now' });
   expect(manifest.models[0]!.request.models.find(model => model.slot === 'vae')!.localCandidateId).toBe('user/vae-b');
   expect(manifest.models[1]!.request.models.find(model => model.slot === 'vae')!.localCandidateId).toBe('user/vae-a');
 });
@@ -579,4 +579,47 @@ it('loads the Japanese benchmark interface using the registered message catalog'
   expect(wrapper.get('[data-testid="benchmark-start"]').text()).toContain('計測');
   expect(wrapper.get('[data-testid="benchmark-download"]').text()).toContain('ZIP');
   expect(wrapper.get('[data-testid="image-benchmark"]').text()).not.toContain('undefined');
+});
+
+it('snapshots image conditioning, accepts changed images on the next run and clears on base model changes', async () => {
+  const pending = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
+  mocks.generate.mockReturnValueOnce(pending.promise);
+  mocks.generate.mockResolvedValue({ png: new Blob(['PNG']), width: 256, height: 256, modelVersion: 'fixture' });
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const view = wrapper.vm.TEST_ONLY;
+  view.files.value = { model: ggufFile() }; view.parameters.value.prompt = 'change the background';
+  const first = new File(['one'], 'same.png', { type: 'image/png' }), second = new File(['two'], 'same.png', { type: 'image/png' });
+  view.imageInputs.value = { initImage: first, strength: 0.4, referenceImages: [first] };
+  const task = view.generate(); await flushPromises();
+  expect(wrapper.get('[data-testid="image-input-initial"]').element.matches(':disabled')).toBe(true);
+  view.imageInputs.value = { initImage: undefined, strength: 0.9, referenceImages: [second] };
+  expect(mocks.generate.mock.calls[0]![0].request.imageInputs).toEqual({ initImage: first, strength: 0.4, referenceImages: [first] });
+  pending.resolve({ png: new Blob(['PNG']), width: 256, height: 256, modelVersion: 'fixture' }); await task; await flushPromises();
+  await view.generate();
+  expect(mocks.generate.mock.calls[1]![0].request.imageInputs.referenceImages[0]).toBe(second);
+  view.files.value = { model: ggufFile() };
+  expect(view.imageInputs.value).toEqual({ initImage: undefined, strength: 0.75, referenceImages: [] });
+  await view.generate(); expect(mocks.generate.mock.calls[2]![0].request.imageInputs.referenceImages).toEqual([]);
+});
+
+it('keeps conditioning per target and lets completed measurements change image export inclusion without rerunning', async () => {
+  mocks.inspect.mockResolvedValue(benchmarkInventory());
+  mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['PNG']), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const file = new File(['reference'], 'image.png', { type: 'image/png' });
+  wrapper.vm.TEST_ONLY.imageInputs.value = { initImage: file, strength: 0.4, referenceImages: [] };
+  await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
+  const bench = wrapper.vm.TEST_ONLY.benchmark;
+  const row = wrapper.findAll('[data-testid="benchmark-target"]')[0]!;
+  const input = row.get<HTMLInputElement>('[data-testid="image-input-references"]');
+  Object.defineProperty(input.element, 'files', { configurable: true, value: [file] }); await input.trigger('change');
+  bench.protocol.value.cooldownSeconds = 0; bench.protocol.value.repeats = 1;
+  await bench.start(); await flushPromises();
+  expect(mocks.generate.mock.calls.map(([{ request }]) => request.imageInputs.referenceImages.length)).toEqual([1, 0]);
+  expect(wrapper.vm.TEST_ONLY.imageInputs.value.initImage).toBe(file);
+  const option = wrapper.get('[data-testid="benchmark-input-images"]');
+  expect(option.element.matches(':disabled')).toBe(false); expect(bench.includeInputImages.value).toBe('omit');
+  await option.setValue(true); expect(bench.includeInputImages.value).toBe('include');
+  await option.setValue(false); expect(bench.includeInputImages.value).toBe('omit');
+  expect(mocks.generate).toHaveBeenCalledTimes(2); expect(bench.plan.value!.models[0]!.request.imageInputs.referenceImages[0]).toBe(file);
 });

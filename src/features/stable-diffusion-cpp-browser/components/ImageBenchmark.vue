@@ -5,6 +5,8 @@ import ImageBenchmarkParameters from './ImageBenchmarkParameters.vue';
 import ImageBenchmarkResult from './ImageBenchmarkResult.vue';
 import ImageModelPicker from './ImageModelPicker.vue';
 import ImageLoraControls from './ImageLoraControls.vue';
+import ImageInputControls from './ImageInputControls.vue';
+import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
 import { componentLabel } from '@/features/stable-diffusion-cpp-browser/component-label';
 import { profileOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
 import type { ImageBenchmarkView } from '@/features/stable-diffusion-cpp-browser/benchmark-view';
@@ -12,7 +14,7 @@ import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browse
 import type { BenchmarkRunRecord } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
 const props = defineProps<{ bench: ImageBenchmarkView, generation: ImageGenerationView }>();
 // The view owns these refs; controls edit the handed-out form state, not a prop snapshot.
-const { strategy, protocol, preview, notes, includePrompts } = props.bench;
+const { strategy, protocol, preview, notes, includePrompts, includeInputImages } = props.bench;
 const { profile, weightResidency, gpuBudgetMiB } = props.generation;
 const locked = computed(() => props.bench.busy.value || props.bench.exporting.value || props.bench.runs.value.length > 0 || props.generation.busy.value || !props.bench.available.value);
 const weightOptions = computed(() => [
@@ -90,6 +92,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
           <p v-if="!target.models" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.imageBenchmark__unavailable_components() }}: {{ target.missing.join(', ') }} {{ target.issue }}</p>
           <ImageLoraControls :model-value="bench.loras.value[target.id] ?? []" :disabled="locked || !generation.supported.value" @update:model-value="bench.chooseLoras({ targetId: target.id, selections: $event })" />
+          <ImageInputControls :model-value="bench.imageInputs.value[target.id] ?? emptyImageInputs()" :disabled="locked || !generation.supported.value" @update:model-value="bench.chooseImageInputs({ targetId: target.id, inputs: $event })" />
           <details tw-class="space-y-3"><summary tw-class="text-xs cursor-pointer text-purple-600 dark:text-purple-400">{{ lazyStrings.imageBenchmark__overrides() }}</summary><ImageBenchmarkParameters :values="bench.effective({ target })" :overrides="bench.overrides.value[target.id] ?? {}" @change="bench.change({ id: target.id, change: $event })" @inherit="bench.inherit({ id: target.id, key: $event })" /></details>
           <details><summary tw-class="text-xs cursor-pointer text-gray-500">{{ lazyStrings.imageBenchmark__effective_request() }}</summary><pre tw-class="text-xs whitespace-pre-wrap break-all max-h-60 overflow-auto mt-2">{{ JSON.stringify({ parameters: bench.effective({ target }), components: target.models?.map(m => ({ slot: m.slot, path: m.path ?? m.file.name, bytes: m.file.size })), composition: target.composition, evidence: target.facts.evidence }, undefined, 2) }}</pre></details>
         </article>
@@ -112,6 +115,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
       <div tw-class="flex flex-wrap gap-3 items-center"><button type="button" :disabled="bench.busy.value || bench.exporting.value || !bench.runs.value.length" @click="bench.download()" data-testid="benchmark-download" tw-class="rounded-xl border border-purple-300 dark:border-purple-800 px-4 py-2 text-sm disabled:opacity-40">{{ bench.exporting.value ? lazyStrings.imageBenchmark__exporting() : lazyStrings.imageBenchmark__download_zip() }}</button><button type="button" :disabled="bench.busy.value || bench.exporting.value || !bench.runs.value.length" @click="bench.clear()" data-testid="benchmark-clear" tw-class="text-sm underline disabled:opacity-40">{{ lazyStrings.imageBenchmark__new_measurement() }}</button></div>
       <label tw-class="flex items-center gap-2 text-sm"><input v-model="includePrompts" :disabled="bench.busy.value || bench.exporting.value" type="checkbox" data-testid="benchmark-include-prompts" />{{ lazyStrings.imageBenchmark__include_prompts() }}</label>
+      <label tw-class="flex items-center gap-2 text-sm"><input v-model="includeInputImages" :disabled="bench.busy.value || bench.exporting.value" type="checkbox" true-value="include" false-value="omit" data-testid="benchmark-input-images" />{{ lazyStrings.imageBenchmark__include_input_images_in_zip() }}</label>
       <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageBenchmark__export_privacy() }}</p>
       <p role="status" tw-class="text-xs text-purple-600 dark:text-purple-400">{{ bench.feedback.value }}</p>
     </section>

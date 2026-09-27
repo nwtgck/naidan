@@ -1,0 +1,1 @@
+export const ImageInputControls__initial_image_help = (): string => "The initial image is resized to the output dimensions. Higher strength changes it more. Transparent pixels use a white background.";

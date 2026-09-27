@@ -6,6 +6,7 @@ import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES
 import { validateModelMounts } from './model-mounts';
 import { copyNativeImage, imagePixelStatistics, type ImagePixels } from './image-output';
 import { createNativePreviewControl } from './preview-control';
+import { writeImageInputs } from './image-input';
 
 const cancelledRun = Symbol('cancelled image run after safe native return');
 type Emit = ReturnType<typeof createImageTrace>['emit'];
@@ -51,7 +52,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
   let nativeCall: 'new_sd_ctx' | 'generate_image' | undefined;
   let nativePhase: 'model' | 'sampling' | 'decoding' = 'model';
   let previewDecoding = false;
-  let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number, cancelRequested: boolean }) | undefined;
+  let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number, samplingSteps: number, cancelRequested: boolean }) | undefined;
   const keep = ({ pointer }: { pointer: bigint }) => {
     allocations.push(pointer); return pointer;
   };
@@ -100,7 +101,10 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       if (previewDecoding) return;
       const step = Number(args[0]), steps = Number(args[1]);
       if (Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps >= 0) {
-        if (nativePhase === 'sampling' && steps === active?.request.parameters.steps) {
+        if (active && nativePhase === 'sampling' && steps > 0 && step <= steps
+          && (steps === active.request.parameters.steps || active.request.imageInputs.initImage && steps < active.request.parameters.steps)) {
+          // Img2img strength can shorten the native denoising schedule.
+          active.samplingSteps = steps;
           try {
             active.onPerformance?.({ signal: { kind: 'sampling-progress', step, steps } });
           } catch { /* measurement only */ }
@@ -115,11 +119,11 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       if (!operation || operation.cancelRequested || !snapshot?.settings.enabled || !operation.onPreview) return;
       const rawStep = Number(args[0]), step = Math.abs(rawStep), count = Number(args[1]), pointer = BigInt(args[2] ?? 0);
       // Negative intermediate evaluations are not completed user-visible steps.
-      if (!Number.isInteger(step) || step < snapshot.settings.startStep || step > operation.request.parameters.steps || (rawStep < 0 && step !== operation.request.parameters.steps) || step <= operation.capturedStep || count !== 1 || !pointer || Number(args[3]) !== 0) return;
+      if (!Number.isInteger(step) || step < snapshot.settings.startStep || step > operation.samplingSteps || (rawStep < 0 && step !== operation.samplingSteps) || step <= operation.capturedStep || count !== 1 || !pointer || Number(args[3]) !== 0) return;
       try {
         const image = copyNativeImage({ core, pointer });
         operation.capturedStep = step;
-        operation.onPreview({ capture: { image, step, steps: operation.request.parameters.steps, revision: snapshot.revision, maxEdge: snapshot.settings.maxEdge, mode: snapshot.settings.mode } });
+        operation.onPreview({ capture: { image, step, steps: operation.samplingSteps, revision: snapshot.revision, maxEdge: snapshot.settings.maxEdge, mode: snapshot.settings.mode } });
       } catch (error) {
         emit({ event: 'native', stage: 'generation', message: 'Preview frame could not be copied; final generation continues', fields: { ...imageErrorContext({ error }) } });
       }
@@ -266,7 +270,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     sessionId ??= run.request.sessionId;
     const { request } = run;
     previewDecoding = false;
-    active = { ...run, latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } }, capturedStep: 0, cancelRequested: false };
+    active = { ...run, latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } }, capturedStep: 0, samplingSteps: request.parameters.steps, cancelRequested: false };
     const runAllocations: bigint[] = [];
     const keep = ({ pointer }: { pointer: bigint }) => {
       runAllocations.push(pointer); return pointer;
@@ -286,6 +290,14 @@ export function createImageGenerationSession({ core, helpers, reader }: {
         distilledGuidance, vaeTiling, vaeTileSize, qwenVaePolicy, flashAttention } = request.parameters;
       const params = keep({ pointer: core.allocRecord('sd_img_gen_params_t') });
       await core.api.sd_img_gen_params_init(params);
+      await writeImageInputs({ core, params, inputs: request.imageInputs, keep,
+        checkCancelled() {
+          if (active?.cancelRequested) throw cancelledRun;
+        },
+        onDecoded({ metadata }) {
+          emit({ event: 'native', stage: 'generation', message: 'Decoded input image; native model preprocessing and conditioning follow', fields: { metric: 'input-image', ...metadata, strength: request.imageInputs.strength, alphaBackground: 'white', resize: 'native' } });
+        },
+      });
       core.setField('sd_img_gen_params_t', params, 'prompt', text({ value: prompt }));
       core.setField('sd_img_gen_params_t', params, 'negative_prompt', text({ value: negativePrompt }));
       core.setField('sd_img_gen_params_t', params, 'width', width);

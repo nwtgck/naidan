@@ -11,6 +11,7 @@ import { useImageLibrary } from './use-image-library';
 import { createImageGallery } from './image-gallery';
 import { createImageForm } from './form';
 import { imageLoraRequests } from './lora-form';
+import { emptyImageInputs } from './image-input-form';
 import { inspectImageInventory } from './inventory-worker/client';
 import type { ImageModelFacts } from './recommendations';
 import { recommendationForSelection } from './recommendations';
@@ -84,9 +85,11 @@ export function useImageGeneration(): ImageGenerationView {
     },
   });
   const recommendation = computed(() => recommendationForSelection({ model: library.main.value ? library.selectedFacts.value : manualFacts.value }));
-  // A LoRA is selected for one base model. Never carry it silently to another.
+  // Adapters and input images belong to the selected base model; do not carry
+  // them silently to another model with a different conditioning contract.
   watch([library.main, layout, () => files.value.model, () => files.value.diffusion], () => {
     form.loras.value = [];
+    form.imageInputs.value = emptyImageInputs();
   }, { flush: 'sync' });
   async function inspectManualFiles(): Promise<void> {
     if (formDisabled.value || disposed) return;
@@ -238,7 +241,7 @@ export function useImageGeneration(): ImageGenerationView {
     if (!models) {
       invalid.value = true; return;
     }
-    const parsed = requestSchema.safeParse({ debug: debug.value, artifact: artifact.value, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href, models, loras: imageLoraRequests({ selections: form.loras.value }), parameters: parameters.value, preview: preview.value, weightResidency: weightResidency.value, gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value });
+    const parsed = requestSchema.safeParse({ debug: debug.value, artifact: artifact.value, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href, models, loras: imageLoraRequests({ selections: form.loras.value }), imageInputs: form.imageInputs.value, parameters: parameters.value, preview: preview.value, weightResidency: weightResidency.value, gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value });
     if (!parsed.success) {
       invalid.value = true; return;
     }

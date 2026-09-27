@@ -36,7 +36,9 @@ it('keeps the entire image form visible and disabled in standalone', async () =>
   expect(wrapper.get('[data-testid="image-unavailable"]').text()).toContain('hosted');
   expect(wrapper.find('[data-testid="image-file-model"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="image-prompt"]').exists()).toBe(true);
-  expect(wrapper.findAll('fieldset')).toHaveLength(4);
+  expect(wrapper.findAll('fieldset')).toHaveLength(5);
+  expect(wrapper.get('[data-testid="image-input-initial"]').element.matches(':disabled')).toBe(true);
+  expect(wrapper.get('[data-testid="image-input-references"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.get('[data-testid="image-lora-files"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.find('[data-testid="image-model-library"]').exists()).toBe(true);
   for (const field of wrapper.findAll('input, select, textarea, button')) {
