@@ -11,7 +11,7 @@ The normal dependency installation now supplies the image runtime separately:
 
 ```text
 stable-diffusion-cpp-browser-core
-  -> github:nwtgck/llama-cpp-browser-core#cd726c3f08fa54563d4bad132d1bc488f1700046
+  -> github:nwtgck/browser-inference-core#cd726c3f08fa54563d4bad132d1bc488f1700046
 ```
 
 This is a dependency name for the existing **Browser Inference Core (bicore)**

@@ -17,7 +17,7 @@ it('connects the installed bicore image dependency without replacing the llama d
   })) }).parse(JSON.parse(readFileSync(path.join(rootDir, 'package-lock.json'), 'utf8')));
   const name = 'stable-diffusion-cpp-browser-core';
   const specifier = pkg.dependencies[name];
-  expect(specifier).toMatch(/^github:nwtgck\/llama-cpp-browser-core#[0-9a-f]{40}$/);
+  expect(specifier).toMatch(/^github:nwtgck\/browser-inference-core#[0-9a-f]{40}$/);
   expect(specifier).not.toBe(pkg.dependencies['llama-cpp-browser-core']);
   expect(lock.packages['']?.dependencies?.[name]).toBe(specifier);
   expect(lock.packages['node_modules/' + name]?.resolved?.split('#')[1]).toBe(specifier?.split('#')[1]);
