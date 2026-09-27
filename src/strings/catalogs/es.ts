@@ -2217,6 +2217,14 @@ import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/Ima
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/es';
 import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/es';
 
+import { ImageLoraControls__lora_adapters } from '@/strings/messages/ImageLoraControls__lora_adapters/es';
+import { ImageLoraControls__choose_files } from '@/strings/messages/ImageLoraControls__choose_files/es';
+import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/es';
+import { ImageLoraControls__enabled } from '@/strings/messages/ImageLoraControls__enabled/es';
+import { ImageLoraControls__remove } from '@/strings/messages/ImageLoraControls__remove/es';
+import { ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files } from '@/strings/messages/ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files/es';
+import { ImageLoraControls__choose_adapters_for_selected_model } from '@/strings/messages/ImageLoraControls__choose_adapters_for_selected_model/es';
+
 export const catalog = {
   stableDiffusionCppBrowser__preview_mode_locked,
   stableDiffusionCppBrowser__preset_unknown,
@@ -4383,4 +4391,11 @@ export const catalog = {
   imageBenchmark__check_plan,
   imageBenchmark__exporting,
   imageBenchmark__freshness_warning,
+  ImageLoraControls__lora_adapters,
+  ImageLoraControls__choose_files,
+  ImageLoraControls__strength,
+  ImageLoraControls__enabled,
+  ImageLoraControls__remove,
+  ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files,
+  ImageLoraControls__choose_adapters_for_selected_model,
 } satisfies Strings;

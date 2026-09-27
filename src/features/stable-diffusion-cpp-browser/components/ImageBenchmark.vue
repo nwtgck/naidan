@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import ImageBenchmarkParameters from './ImageBenchmarkParameters.vue';
 import ImageBenchmarkResult from './ImageBenchmarkResult.vue';
 import ImageModelPicker from './ImageModelPicker.vue';
+import ImageLoraControls from './ImageLoraControls.vue';
 import { componentLabel } from '@/features/stable-diffusion-cpp-browser/component-label';
 import { profileOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
 import type { ImageBenchmarkView } from '@/features/stable-diffusion-cpp-browser/benchmark-view';
@@ -88,6 +89,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <ImageModelPicker v-for="component in target.components" :key="component.slot" :model-value="component.selected" :choices="component.choices" :required="component.required" :label="componentLabel({ slot: component.slot })" :disabled="locked" @update:model-value="bench.chooseComponent({ targetId: target.id, slot: component.slot, id: $event })" :data-testid="'benchmark-component-' + component.slot" />
           </div>
           <p v-if="!target.models" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.imageBenchmark__unavailable_components() }}: {{ target.missing.join(', ') }} {{ target.issue }}</p>
+          <ImageLoraControls :model-value="bench.loras.value[target.id] ?? []" :disabled="locked || !generation.supported.value" @update:model-value="bench.chooseLoras({ targetId: target.id, selections: $event })" />
           <details tw-class="space-y-3"><summary tw-class="text-xs cursor-pointer text-purple-600 dark:text-purple-400">{{ lazyStrings.imageBenchmark__overrides() }}</summary><ImageBenchmarkParameters :values="bench.effective({ target })" :overrides="bench.overrides.value[target.id] ?? {}" @change="bench.change({ id: target.id, change: $event })" @inherit="bench.inherit({ id: target.id, key: $event })" /></details>
           <details><summary tw-class="text-xs cursor-pointer text-gray-500">{{ lazyStrings.imageBenchmark__effective_request() }}</summary><pre tw-class="text-xs whitespace-pre-wrap break-all max-h-60 overflow-auto mt-2">{{ JSON.stringify({ parameters: bench.effective({ target }), components: target.models?.map(m => ({ slot: m.slot, path: m.path ?? m.file.name, bytes: m.file.size })), composition: target.composition, evidence: target.facts.evidence }, undefined, 2) }}</pre></details>
         </article>

@@ -2,6 +2,7 @@ import { ref, shallowRef } from 'vue';
 import { createImageForm } from './form';
 import type { ModelSlot, Parameters, Progress } from './types';
 import type { BenchmarkProtocol, BenchmarkRun, BenchmarkPlan, ParameterChange } from './benchmark/types';
+import type { ImageLoraSelection } from './lora-form';
 
 /** Shared presentation state, also used by the unavailable standalone facade.
  * No schema/runtime imports, network access or model reads. */
@@ -14,12 +15,13 @@ export function createBenchmarkForm() {
   const includePrompts = ref(false), notes = ref(''), selected = ref<string[]>([]);
   const overrides = ref<Record<string, Partial<Parameters>>>({});
   const componentSelections = ref<Record<string, Partial<Record<ModelSlot, string>>>>({});
+  const loras = shallowRef<Record<string, ImageLoraSelection[]>>({});
   const state = ref<'idle' | 'running' | 'finished' | 'cancelled'>('idle'), exporting = ref(false), error = ref(''), feedback = ref('');
   const runs = shallowRef<BenchmarkRun[]>([]), plan = shallowRef<BenchmarkPlan>(), current = ref<string>(), progress = shallowRef<Progress>();
   function setCommon({ change }: { change: ParameterChange }): void {
     common.value = { ...common.value, [change.key]: change.value };
   }
-  return { common, preview, protocol, strategy, includePrompts, notes, selected, overrides, componentSelections, state, exporting, error, feedback, runs, plan, current, progress, setCommon };
+  return { common, preview, protocol, strategy, includePrompts, notes, selected, overrides, componentSelections, loras, state, exporting, error, feedback, runs, plan, current, progress, setCommon };
 }
 export const TEST_ONLY = {
 };

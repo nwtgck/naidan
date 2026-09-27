@@ -3,8 +3,9 @@ import { expect, it } from 'vitest';
 import { createBenchmarkPlan, benchmarkParameters } from './plan';
 import { planFixture, targetFixture } from './test-fixtures';
 import { parametersFixture, artifactFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
+import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
 const input = () => ({ id: 'batch', createdAt: 'now', appVersion: 'test', notes: '', protocol: { mode: 'cold-warm', repeats: 3, cooldownSeconds: 0, timeoutSeconds: 0, keepImages: false, order: 'listed' },
-  targets: [targetFixture({ id: 'a' })], common: parametersFixture(), overrides: {}, strategy: 'shared' as const, artifact: artifactFixture(), baseUrl: 'https://app.test/',
+  targets: [targetFixture({ id: 'a' })], common: parametersFixture(), overrides: {}, loras: {}, strategy: 'shared' as const, artifact: artifactFixture(), baseUrl: 'https://app.test/',
   preview: { enabled: false, mode: 'vae' as const, interval: 2, startStep: 1, maxEdge: 256 }, weightResidency: 'auto' as const, gpuBudgetMiB: undefined });
 it('freezes effective values before work; shared form edits do not alter a captured plan', () => {
   const options = input(); const plan = createBenchmarkPlan(options);
@@ -48,4 +49,18 @@ it('snapshots BF16 conversion independently for shared and overridden models', (
   options.common.bf16WeightType = 'f32'; override.bf16WeightType = 'f16';
   expect(plan.models.map(model => model.request.parameters.bf16WeightType)).toEqual(['f16', 'f32']);
   expect(plan.models[1]!.overrides).toEqual({ bf16WeightType: 'f32' });
+});
+it('snapshots LoRA requests per target and preserves disabled adapters as zero strength', () => {
+  const file = new File(['adapter fixture'], 'style.safetensors');
+  const selections: ImageLoraSelection[] = [{ file, strength: 0.75, enabled: true }, { file, strength: 1.5, enabled: false }];
+  const options = { ...input(), targets: [targetFixture({ id: 'a' }), targetFixture({ id: 'b' })], loras: { a: selections } };
+  const plan = createBenchmarkPlan(options);
+  selections[0]!.strength = 2; selections[0]!.file = new File(['replacement'], 'other.gguf'); selections.pop();
+  expect(plan.models[0]!.request.loras).toEqual([{ file, strength: 0.75 }, { file, strength: 0 }]);
+  expect(plan.models[0]!.request.loras[0]!.file).toBe(file);
+  expect(plan.models[1]!.request.loras).toEqual([]);
+});
+it('rejects invalid active LoRA strengths before creating any benchmark worker', () => {
+  const file = new File(['adapter fixture'], 'style.gguf');
+  expect(() => createBenchmarkPlan({ ...input(), loras: { a: [{ file, strength: NaN, enabled: true }] } })).toThrow();
 });

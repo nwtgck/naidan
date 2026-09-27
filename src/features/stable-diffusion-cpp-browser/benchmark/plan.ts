@@ -4,6 +4,7 @@ import { requestSchema } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Parameters, Artifact, PreviewSettings, WeightResidency } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageBenchmarkTarget } from '@/features/stable-diffusion-cpp-browser/library-view';
 import { recommendationForSelection } from '@/features/stable-diffusion-cpp-browser/recommendations';
+import { imageLoraRequests, type ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
 
 export function benchmarkParameters({ common, target, strategy, overrides }: {
   common: Parameters, target: ImageBenchmarkTarget, strategy: 'shared' | 'model-defaults', overrides: Partial<Parameters>,
@@ -25,9 +26,10 @@ export function benchmarkParameters({ common, target, strategy, overrides }: {
   }
   return { parameters: { ...common, ...modelValues, ...overrides }, preset };
 }
-export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol, targets, common, overrides, strategy, artifact, baseUrl, preview, weightResidency, gpuBudgetMiB }: {
+export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol, targets, common, overrides, loras, strategy, artifact, baseUrl, preview, weightResidency, gpuBudgetMiB }: {
   id: string, createdAt: string, appVersion: string, notes: string, protocol: unknown,
   targets: ImageBenchmarkTarget[], common: Parameters, overrides: Readonly<Record<string, Partial<Parameters>>>,
+  loras: Readonly<Record<string, readonly ImageLoraSelection[]>>,
   strategy: 'shared' | 'model-defaults', artifact: Artifact, baseUrl: string, preview: PreviewSettings,
   weightResidency: WeightResidency, gpuBudgetMiB: number | undefined,
 }): BenchmarkPlan {
@@ -46,7 +48,7 @@ export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol
     if (!target.models || target.issue || target.missing.length) throw new Error(`Incomplete model: ${target.label}`);
     const changes = { ...overrides[target.id] };
     const resolved = benchmarkParameters({ common, target, strategy, overrides: changes });
-    const request = requestSchema.parse({ artifact, baseUrl, models: target.models, parameters: resolved.parameters, debug: 'on', preview, weightResidency, gpuBudgetMiB });
+    const request = requestSchema.parse({ artifact, baseUrl, models: target.models, loras: imageLoraRequests({ selections: loras[target.id] ?? [] }), parameters: resolved.parameters, debug: 'on', preview, weightResidency, gpuBudgetMiB });
     // -1 would resolve to different random seeds; never silently substitute one.
     if (request.parameters.seed === '-1') throw new Error('Benchmark requires an explicit, non-random seed');
     return { target: { ...target, facts: { ...target.facts, evidence: [...target.facts.evidence] }, components: structuredClone(target.components), missing: [...target.missing], models: request.models }, request, overrides: changes, preset: resolved.preset };

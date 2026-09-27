@@ -11,7 +11,7 @@ export function targetFixture({ id }: { id: string }): ImageBenchmarkTarget {
 export function planFixture({ mode, repeats }: { mode: BenchmarkProtocol['mode'], repeats: number }) {
   return createBenchmarkPlan({ id: 'test-session', createdAt: '2026-09-27T00:00:00.000Z', appVersion: 'test', notes: '',
     protocol: { mode, repeats, cooldownSeconds: 0, timeoutSeconds: 0, order: 'listed', keepImages: false },
-    targets: [targetFixture({ id: 'a' }), targetFixture({ id: 'b' })], common: parametersFixture(), overrides: {}, strategy: 'shared',
+    targets: [targetFixture({ id: 'a' }), targetFixture({ id: 'b' })], common: parametersFixture(), overrides: {}, loras: {}, strategy: 'shared',
     artifact: artifactFixture(), baseUrl: 'https://test.invalid/app/', preview: { enabled: false, interval: 2, startStep: 1, mode: 'vae', maxEdge: 256 },
     weightResidency: 'auto', gpuBudgetMiB: undefined });
 }

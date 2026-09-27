@@ -56,7 +56,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     const chosen = targets.value.filter(t => form.selected.value.includes(t.id));
     if (chosen.length !== form.selected.value.length) throw new Error('Selected model inventory changed');
     return createBenchmarkPlan({ id: '', createdAt: '', appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown',
-      notes: form.notes.value, protocol: form.protocol.value, targets: chosen, common: form.common.value, overrides: form.overrides.value,
+      notes: form.notes.value, protocol: form.protocol.value, targets: chosen, common: form.common.value, overrides: form.overrides.value, loras: form.loras.value,
       strategy: form.strategy.value, artifact, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
       preview: form.preview.value, weightResidency: generation.weightResidency.value, gpuBudgetMiB: generation.gpuBudgetMiB.value === '' ? undefined : generation.gpuBudgetMiB.value,
     });
@@ -140,6 +140,10 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       const component = targets.value.find(target => target.id === targetId)?.components.find(component => component.slot === slot);
       if (!component || id && !component.choices.some(choice => choice.id === id && choice.status !== 'incompatible')) return;
       form.componentSelections.value = { ...form.componentSelections.value, [targetId]: { ...form.componentSelections.value[targetId], [slot]: id } };
+    },
+    chooseLoras({ targetId, selections }) {
+      if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value || !generation.supported.value || !targets.value.some(target => target.id === targetId)) return;
+      form.loras.value = { ...form.loras.value, [targetId]: selections };
     },
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {

@@ -109,6 +109,7 @@ const standaloneUiFiles = new Set([
   'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'benchmark-form.ts', 'use-image-benchmark-standalone.ts',
   'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
   'components/ImageModelCatalog.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts',
+  'components/ImageLoraControls.vue',
   'form.ts',
   'form-options.ts',
   'component-label.ts',

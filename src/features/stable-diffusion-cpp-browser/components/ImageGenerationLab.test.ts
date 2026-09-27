@@ -51,6 +51,49 @@ it('defaults to F32 and releases retained weights when BF16 conversion changes b
   await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
   expect(mocks.generate.mock.calls[1]?.[0].request.parameters.bf16WeightType).toBe('f16');
 });
+it('snapshots LoRA files and strength, sends disabled adapters as zero, and clears selections when the base model changes', async () => {
+  const first = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
+  mocks.generate.mockReturnValueOnce(first.promise);
+  mocks.generate.mockResolvedValue({ png: new Blob(['PNG']), width: 256, height: 256, modelVersion: 'fixture' });
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const view = wrapper.vm.TEST_ONLY;
+  view.files.value = { model: ggufFile() }; view.parameters.value.prompt = 'a small tree';
+  const file = new File(['adapter fixture'], 'style.safetensors');
+  view.loras.value = [{ file, strength: 0.75, enabled: true }];
+  const task = view.generate(); await flushPromises();
+  expect(wrapper.get('[data-testid="image-lora-files"]').element.matches(':disabled')).toBe(true);
+  const request = mocks.generate.mock.calls[0]![0].request;
+  view.loras.value[0]!.strength = 2;
+  expect(request.loras).toEqual([{ file, strength: 0.75 }]);
+  expect(request.loras[0].file).toBe(file);
+  first.resolve({ png: new Blob(['PNG']), width: 256, height: 256, modelVersion: 'fixture' });
+  await task; await flushPromises();
+  await wrapper.get('[data-testid="image-lora-enabled"]').setValue(false);
+  await view.generate();
+  expect(mocks.generate.mock.calls[1]![0].request.loras).toEqual([{ file, strength: 0 }]);
+  view.files.value = { model: ggufFile() };
+  expect(view.loras.value).toEqual([]);
+  await view.generate();
+  expect(mocks.generate.mock.calls[2]![0].request.loras).toEqual([]);
+});
+it('rejects an invalid active LoRA strength before creating a client', async () => {
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const view = wrapper.vm.TEST_ONLY;
+  view.files.value = { model: ggufFile() }; view.parameters.value.prompt = 'test';
+  view.loras.value = [{ file: new File(['adapter fixture'], 'style.gguf'), strength: NaN, enabled: true }];
+  await view.generate();
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+it('clears ordinary LoRA selections when choosing another model from the library', async () => {
+  mocks.inspect.mockResolvedValue(benchmarkInventory());
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const library = wrapper.getComponent(ImageModelLibrary).props('view');
+  const next = library.models.value.find(model => model.id !== library.main.value);
+  expect(next).toBeDefined();
+  wrapper.vm.TEST_ONLY.loras.value = [{ file: new File(['adapter fixture'], 'style.gguf'), strength: 1, enabled: true }];
+  library.chooseMain({ id: next!.id });
+  expect(wrapper.vm.TEST_ONLY.loras.value).toEqual([]);
+});
 it('shows unavailable controls rather than initializing another backend', async () => {
   Reflect.deleteProperty(navigator, 'gpu'); wrapper = mount(ImageGenerationLab); await flushPromises();
   expect(wrapper.get('[data-testid="image-generate"]').attributes('disabled')).toBeDefined();
@@ -348,6 +391,30 @@ function componentInventory(): ModelInventory {
   }
   return { candidates, issues: [] };
 }
+it('keeps diagnostics LoRA selections independent per model and records the frozen requested settings', async () => {
+  mocks.inspect.mockResolvedValue(benchmarkInventory());
+  mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['PNG']), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  const file = new File(['adapter fixture'], 'style.safetensors');
+  wrapper.vm.TEST_ONLY.loras.value = [{ file, strength: 1.5, enabled: true }];
+  await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
+  const bench = wrapper.vm.TEST_ONLY.benchmark;
+  expect(bench.loras.value).toEqual({});
+  const rows = wrapper.findAll('[data-testid="benchmark-target"]');
+  const input = rows[0]!.get<HTMLInputElement>('[data-testid="image-lora-files"]');
+  Object.defineProperty(input.element, 'files', { value: [file], configurable: true });
+  await input.trigger('change');
+  await rows[0]!.get('[data-testid="image-lora-strength"]').setValue('0.5');
+  expect(rows[1]!.findAll('[data-testid="image-lora-row"]')).toHaveLength(0);
+  expect(wrapper.vm.TEST_ONLY.loras.value[0]?.strength).toBe(1.5);
+  bench.protocol.value.cooldownSeconds = 0; bench.protocol.value.repeats = 1;
+  await bench.start(); await flushPromises();
+  expect(mocks.generate.mock.calls.map(([{ request }]) => request.loras.map((lora: { strength: number }) => lora.strength))).toEqual([[0.5], []]);
+  bench.loras.value = {};
+  const manifest = benchmarkManifest({ snapshot: { plan: bench.plan.value!, runs: bench.runs.value, state: 'finished' }, includePrompts: false, exportedAt: 'now' });
+  expect(manifest.models[0]!.request.loras).toEqual([{ file: { path: file.name, bytes: file.size, lastModified: file.lastModified }, strength: 0.5 }]);
+  expect(manifest.models[1]!.request).not.toHaveProperty('loras');
+});
 it('shows editable companion selections per target and snapshots their exact identities into requests and exports', async () => {
   mocks.inspect.mockResolvedValue(componentInventory());
   mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['PNG'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));

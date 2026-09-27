@@ -2217,6 +2217,14 @@ import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/Ima
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/zh-Hans';
 import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/zh-Hans';
 
+import { ImageLoraControls__lora_adapters } from '@/strings/messages/ImageLoraControls__lora_adapters/zh-Hans';
+import { ImageLoraControls__choose_files } from '@/strings/messages/ImageLoraControls__choose_files/zh-Hans';
+import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/zh-Hans';
+import { ImageLoraControls__enabled } from '@/strings/messages/ImageLoraControls__enabled/zh-Hans';
+import { ImageLoraControls__remove } from '@/strings/messages/ImageLoraControls__remove/zh-Hans';
+import { ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files } from '@/strings/messages/ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files/zh-Hans';
+import { ImageLoraControls__choose_adapters_for_selected_model } from '@/strings/messages/ImageLoraControls__choose_adapters_for_selected_model/zh-Hans';
+
 export const catalog = {
   stableDiffusionCppBrowser__preview_mode_locked,
   stableDiffusionCppBrowser__preset_unknown,
@@ -4383,4 +4391,11 @@ export const catalog = {
   imageBenchmark__check_plan,
   imageBenchmark__exporting,
   imageBenchmark__freshness_warning,
+  ImageLoraControls__lora_adapters,
+  ImageLoraControls__choose_files,
+  ImageLoraControls__strength,
+  ImageLoraControls__enabled,
+  ImageLoraControls__remove,
+  ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files,
+  ImageLoraControls__choose_adapters_for_selected_model,
 } satisfies Strings;
