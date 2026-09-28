@@ -81,7 +81,7 @@ function expectSameLogits({ actual, expected }: { actual: number[], expected: nu
 }
 
 beforeAll(async () => {
-  const folder = path.resolve('node_modules/llama-cpp-browser-core');
+  const folder = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core');
   core = await createCore({
     profile: 'cpu-wasm32',
     baseURL: pathToFileURL(folder + '/profiles/'),

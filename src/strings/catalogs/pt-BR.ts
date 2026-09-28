@@ -2328,6 +2328,7 @@ import { ImageGenerationLab__disabled_loras_not_restored } from '@/strings/messa
 import { ImageGenerationResults__return_to_opfs_to_retry } from '@/strings/messages/ImageGenerationResults__return_to_opfs_to_retry/pt-BR';
 import { ImageModelCatalog__download_queue } from '@/strings/messages/ImageModelCatalog__download_queue/pt-BR';
 import { ImageModelCatalog__queued } from '@/strings/messages/ImageModelCatalog__queued/pt-BR';
+import { ImageModelCatalog__recommended } from '@/strings/messages/ImageModelCatalog__recommended/pt-BR';
 import { ImageModelCatalog__optional_lora } from '@/strings/messages/ImageModelCatalog__optional_lora/pt-BR';
 import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/pt-BR';
 import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/pt-BR';
@@ -4624,6 +4625,7 @@ export const catalog = {
   ImageGenerationResults__return_to_opfs_to_retry,
   ImageModelCatalog__download_queue,
   ImageModelCatalog__queued,
+  ImageModelCatalog__recommended,
   ImageModelCatalog__optional_lora,
   ImageModelCatalog__reference_style_lora_help,
   ImageModelCatalog__saved_choose_in_lora_controls,

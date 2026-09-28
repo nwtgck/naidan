@@ -1,35 +1,18 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import path from 'node:path';
-import { z } from 'zod';
 import type { Plugin } from 'vite';
 import { profileSchema } from './types';
+import { readLlamaArtifactPackage } from './build-artifact-package';
 
-const manifestSchema = z.object({
-  formatVersion: z.literal(2),
-  files: z.array(z.object({ path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/) })),
-});
 /** Copy the installed artifact, never compile llama.cpp as part of Naidan's build. */
 export function createLlamaCppRuntimeAssetsPlugin({ rootDir }: { rootDir: string }): Plugin {
-  const artifact = path.join(rootDir, 'node_modules/llama-cpp-browser-core');
   const prefix = 'llama-cpp-browser-runtime/';
-  const manifest = (): z.infer<typeof manifestSchema> => manifestSchema.parse(JSON.parse(readFileSync(path.join(artifact, 'manifest.json'), 'utf8')));
-  const safePath = ({ relative }: { relative: string }): string => {
-    if (!/^profiles\/[a-z0-9-]+\/browser\/core\.wasm$/.test(relative)) throw new Error('Invalid core artifact path');
-    return path.join(artifact, relative);
-  };
   function assets(): Map<string, Uint8Array> {
     const result = new Map<string, Uint8Array>();
-    const files = manifest().files;
+    const { readArtifact } = readLlamaArtifactPackage({ rootDir });
     for (const profile of profileSchema.options) {
       const relative = `profiles/${profile}/browser/core.wasm`;
-      const matches = files.filter(file => file.path === relative);
-      const file = matches[0];
-      if (matches.length !== 1 || !file) throw new Error(`Missing or duplicate browser Wasm artifact: ${relative}`);
-      const bytes = readFileSync(safePath({ relative: file.path }));
-      if (bytes.length !== file.bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw new Error('Core artifact integrity mismatch');
-      result.set(`profiles/${profile}/core.wasm.gz`, gzipSync(bytes, { level: 9 }));
+      const { data } = readArtifact({ relative });
+      result.set(`profiles/${profile}/core.wasm.gz`, gzipSync(data, { level: 9 }));
     }
     return result;
   }

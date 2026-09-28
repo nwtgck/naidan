@@ -44,25 +44,38 @@ async function settled(): Promise<void> {
 }
 
 it('hydrates once before saving and stores only approved preferences after explicit edits', async () => {
-  const h = harness({ initialized: false, entries: [], saved: { width: 512, height: 768, seedMode: 'fixed', seed: '9007199254740993', imageDownload: { format: 'webp', metadata: 'include' }, preview: { enabled: 'enabled', interval: 5 }, maxResults: 31, bf16WeightType: 'f16' } });
+  const h = harness({ initialized: false, entries: [], saved: { width: 512, height: 768, seedMode: 'fixed', seed: '9007199254740993', debug: 'on', imageDownload: { format: 'webp', metadata: 'include' }, preview: { enabled: 'enabled', interval: 5 }, maxResults: 31, bf16WeightType: 'f16' } });
   await settled(); expect(h.updateExperimental).not.toHaveBeenCalled();
   h.ready.value = true; await settled();
   expect(h.form.parameters.value).toMatchObject({ width: 512, height: 768, seed: '9007199254740993', bf16WeightType: 'f16' });
+  expect(h.form.debug.value).toBe('on');
   expect(h.seedMode.value).toBe('fixed'); expect(h.form.imageDownloadPreferences.value).toEqual({ format: 'webp', metadata: 'include' });
   expect(h.form.preview.value).toMatchObject({ enabled: true, interval: 5 }); expect(h.form.maxResults.value).toBe(31);
   expect(h.updateExperimental).not.toHaveBeenCalled();
   h.form.parameters.value.prompt = 'private draft'; h.form.parameters.value.negativePrompt = 'private negative'; h.form.parameters.value.steps = 49; h.form.parameters.value.guidance = 6;
   await settled(); expect(h.updateExperimental).not.toHaveBeenCalled();
   h.settings.value.experimental = { ...h.settings.value.experimental, locale: 'ja', hostModelDirectories: [{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'models' }] };
-  h.form.parameters.value.width = 1024; h.form.preview.value.mode = 'projection'; h.form.maxPreviews.value = 9; h.form.keepPreviews.value = false;
+  h.form.parameters.value.width = 1024; h.form.preview.value.mode = 'projection'; h.form.maxPreviews.value = 9; h.form.keepPreviews.value = false; h.form.debug.value = 'off';
   h.form.setImageDownloadPreferences({ preferences: { format: 'jpeg', metadata: 'omit' } });
   await settled();
-  expect(h.settings.value.experimental).toMatchObject({ locale: 'ja', hostModelDirectories: [{ name: 'models' }], browserImageGeneration: { width: 1024, preview: { mode: 'projection', interval: 5 }, keepPreviews: 'disabled', maxPreviews: 9, imageDownload: { format: 'jpeg', metadata: 'omit' } } });
+  expect(h.settings.value.experimental).toMatchObject({ locale: 'ja', hostModelDirectories: [{ name: 'models' }], browserImageGeneration: { width: 1024, debug: 'off', preview: { mode: 'projection', interval: 5 }, keepPreviews: 'disabled', maxPreviews: 9, imageDownload: { format: 'jpeg', metadata: 'omit' } } });
   expect(JSON.stringify(h.settings.value.experimental?.browserImageGeneration)).not.toContain('private');
   const reopened = harness({ initialized: true, entries: [], saved: h.settings.value.experimental?.browserImageGeneration }); await settled();
   expect(reopened.form.parameters.value.width).toBe(1024); expect(reopened.form.parameters.value.prompt).toBe('');
+  expect(reopened.form.debug.value).toBe('off');
   expect(reopened.form.imageDownloadPreferences.value).toEqual({ format: 'jpeg', metadata: 'omit' });
   expect(reopened.updateExperimental).not.toHaveBeenCalled();
+});
+
+it('defaults an older saved group without debug to off without saving on hydration', async () => {
+  const h = harness({ initialized: true, entries: [], saved: { width: 512 } }); await settled();
+  expect(h.form.debug.value).toBe('off');
+  expect(h.form.parameters.value.width).toBe(512);
+  expect(h.updateExperimental).not.toHaveBeenCalled();
+  h.form.debug.value = 'on'; await settled();
+  expect(h.settings.value.experimental?.browserImageGeneration?.debug).toBe('on');
+  h.form.debug.value = 'off'; await settled();
+  expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({ width: 512, debug: 'off' });
 });
 
 it('preserves the last valid numeric value while other fields are edited', async () => {

@@ -16,6 +16,7 @@ export interface NativeApi {
   str_to_sample_method(name: bigint): Promise<number>;
   str_to_scheduler(name: bigint): Promise<number>;
   sd_set_log_callback(callback: bigint, data: bigint): Promise<void>;
+  sd_set_graph_diagnostics(enabled: number): Promise<void>;
   sd_set_progress_callback(callback: bigint, data: bigint): Promise<void>;
   sd_set_preview_callback(callback: bigint, mode: number, interval: number, denoised: number, noisy: number, data: bigint): Promise<void>;
   sd_list_devices(buffer: bigint, bytes: bigint): Promise<bigint>;

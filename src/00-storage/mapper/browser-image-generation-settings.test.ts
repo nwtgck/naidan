@@ -13,7 +13,7 @@ describe('browser image generation settings', () => {
     expect(read.experimental?.browserImageGeneration).toBeUndefined();
     expect(JSON.stringify(saved)).not.toContain('browserImageGeneration');
     expect(DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS).toMatchObject({
-      width: 256, height: 256, seedMode: 'random', seed: '42', historyPersistence: 'enabled',
+      width: 256, height: 256, seedMode: 'random', seed: '42', debug: 'off', historyPersistence: 'enabled',
       modelDownloadDestination: { kind: 'opfs' }, imageDownload: { format: 'png', metadata: 'omit' },
       preview: { enabled: 'disabled', mode: 'vae', interval: 2, startStep: 1, maxEdge: 256 },
       keepPreviews: 'enabled', maxPreviews: 16, maxResults: 20, bf16WeightType: 'f32',
@@ -23,7 +23,7 @@ describe('browser image generation settings', () => {
   it('roundtrips independent model locations, slots, output preferences, and host IDs', () => {
     const directoryId = toHostModelDirectoryId({ raw: 'linked-models' });
     const preferences: BrowserImageGenerationSettings = {
-      width: 512, height: 768, seedMode: 'fixed', seed: '9223372036854775807', historyPersistence: 'disabled',
+      width: 512, height: 768, seedMode: 'fixed', seed: '9223372036854775807', debug: 'on', historyPersistence: 'disabled',
       modelDownloadDestination: { kind: 'host', directoryId },
       imageDownload: { format: 'webp', metadata: 'include' },
       modelSelection: {
@@ -44,6 +44,7 @@ describe('browser image generation settings', () => {
       hostModelDirectories: [{ id: directoryId, name: 'models' }] } } });
     const raw = JSON.parse(JSON.stringify(saved));
     expect(raw.experimental.browserImageGeneration.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'linked-models' });
+    expect(raw.experimental.browserImageGeneration.debug).toBe('on');
     expect(raw.experimental.browserImageGeneration.modelSelection.components[0].choice.location).toEqual({
       kind: 'host', directoryId: 'linked-models', path: 'other-owner/decoder/vae/model.safetensors',
     });
@@ -60,6 +61,7 @@ describe('browser image generation settings', () => {
     { seed: 'abc' },
     { seed: '' },
     { seed: '1e3' },
+    { debug: 'verbose' },
     { imageDownload: { format: 'gif', metadata: 'omit' } },
     { modelDownloadDestination: { kind: 'host' } },
     { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/../escape.gguf' } }, components: [], loras: [] } },
@@ -81,7 +83,7 @@ describe('browser image generation settings', () => {
     } });
     const read = settingsToDomain({ dto });
     expect(read.experimental?.browserImageGeneration).toMatchObject({
-      width: 256, height: undefined, modelSelection: undefined,
+      width: 256, height: undefined, debug: undefined, modelSelection: undefined,
       preview: { enabled: undefined, mode: undefined, interval: 2, startStep: undefined, maxEdge: undefined },
       imageDownload: { format: 'jpeg', metadata: undefined },
     });

@@ -2169,7 +2169,7 @@ const browserImageModelSelectionToDto = ({ domain }: { domain: BrowserImageModel
 
 const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDto | undefined }): BrowserImageGenerationSettings | undefined => {
   if (dto === undefined) return undefined;
-  const { width, height, seedMode, seed, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
     preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
   const destination: BrowserImageGenerationSettings['modelDownloadDestination'] = (() => {
@@ -2200,14 +2200,14 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
     unhandledPreview satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationSettings['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
   })();
-  return exactObject<BrowserImageGenerationSettings>()({ width, height, seedMode, seed, historyPersistence, modelDownloadDestination: destination,
+  return exactObject<BrowserImageGenerationSettings>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
     imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), preview: mappedPreview,
     keepPreviews, maxPreviews, maxResults, bf16WeightType });
 };
 
 const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGenerationSettings | undefined }): BrowserImageGenerationDto | undefined => {
   if (domain === undefined) return undefined;
-  const { width, height, seedMode, seed, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
     preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = domain;
   unhandled satisfies Record<PropertyKey, never>;
   const destination: BrowserImageGenerationDto['modelDownloadDestination'] = (() => {
@@ -2238,7 +2238,7 @@ const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGeneratio
     unhandledPreview satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationDto['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
   })();
-  return exactObject<BrowserImageGenerationDto>()({ width, height, seedMode, seed, historyPersistence, modelDownloadDestination: destination,
+  return exactObject<BrowserImageGenerationDto>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
     imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }), preview: mappedPreview,
     keepPreviews, maxPreviews, maxResults, bf16WeightType });
 };

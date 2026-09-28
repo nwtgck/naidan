@@ -99,7 +99,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <p>{{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ livePreview.step }} / {{ livePreview.steps }} · {{ livePreview.width }} × {{ livePreview.height }} · {{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ formatElapsed({ elapsedMs: livePreview.elapsedMs }) }}</p>
         </figcaption>
       </figure>
-      <div v-if="previewSnapshots.length" tw-class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div v-if="previewSnapshots.length" tw-class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
         <article v-for="(frame, index) in previewSnapshots" :key="frame.id" tw-class="min-w-0 space-y-1" data-testid="image-preview-snapshot">
           <button type="button" @click="viewerIndex = index" :aria-label="lazyStrings.ImageGenerationViewer__image_preview()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 block w-full">
             <img :src="frame.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" v-bind="previewDisplaySize({ frame, maxEdge: preview.maxEdge })" :style="{ maxWidth: `min(100%, ${frame.width}px)` }" loading="lazy" tw-class="h-auto rounded-lg border border-gray-200 dark:border-gray-800" />

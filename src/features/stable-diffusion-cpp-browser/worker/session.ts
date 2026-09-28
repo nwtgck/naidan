@@ -302,6 +302,13 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     let failure: { error: unknown } | undefined;
     try {
       await installCallbacks();
+      // Start a fresh bounded observation window even when reusing the context.
+      // This setter is idle-only; callbacks must never toggle diagnostics.
+      switch (request.debug) {
+      case 'on': await core.api.sd_set_graph_diagnostics(1); break;
+      case 'off': case undefined: await core.api.sd_set_graph_diagnostics(0); break;
+      default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
+      }
       active.preview = createNativePreviewControl({ core, callback: callbacks[2]!, runId: request.runId, initial: request.preview });
       if (active.latest.revision) active.preview.update({ control: active.latest });
       if (!context) await initialize({ request });
@@ -412,6 +419,18 @@ export function createImageGenerationSession({ core, helpers, reader }: {
         const details = imageErrorContext({ error });
         poisoned ||= nativeCall !== undefined || details.errorType === 'wasm-trap';
         if (poisoned) emit({ event: 'failed', stage: failureStage(), message: error instanceof Error ? error.message : String(error), fields: { ...details, nativeCall: nativeCall ?? 'native-boundary', wasmBytes: core.module.HEAPU8?.byteLength ?? 0, workerTerminationRequired: true } });
+      }
+    } finally {
+      // A trap/uncertain native return forbids reentry. Worker termination then
+      // discards the module-global diagnostic flag along with the native state.
+      if (!poisoned) {
+        try {
+          await core.api.sd_set_graph_diagnostics(0);
+        } catch (error) {
+          poisoned = true; failed = true;
+          emit({ event: 'failed', stage: 'cleanup', message: 'Graph diagnostic cleanup failed; Worker termination required', fields: imageErrorContext({ error }) });
+          failure ??= { error };
+        }
       }
     }
     active.preview?.close();

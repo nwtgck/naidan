@@ -40,6 +40,12 @@ export function imageErrorContext({ error }: { error: unknown }): { errorType: '
   return { errorType, wasmFrames: frames.slice(0, 8).join(' <- ').slice(0, 512) };
 }
 
+// The pinned runtime emits these debug boundaries once per runner/observation
+// window. Keep them out of the general verbose budget: a dropped begin would
+// falsely locate a stall in the preceding stage. Sanitization and export caps
+// still apply, and similar text inside an arbitrary native log is not exempt.
+const graphStageMessage = /^util\.h:\d+[ \t]+- graph-stage-v1 runner=[^\r\n]+ stage=[a-z]+(?:-[a-z]+)* event=(?:begin|end|failed)\r?\n?$/;
+
 /** Synchronous delivery matters: the next Wasm call may occupy the Worker
  * indefinitely. No promise/Comlink acknowledgement is queued for native logs. */
 export function createImageTrace({ debug, secrets, listener, now }: {
@@ -63,6 +69,9 @@ export function createImageTrace({ debug, secrets, listener, now }: {
     case 'off': return;
     case 'on': break;
     default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
+    }
+    if (level === 0 && graphStageMessage.test(message)) {
+      emit({ event: 'native', stage, message, fields: { level } }); return;
     }
     const time = now();
     if (time - nativeWindow >= 1000) {

@@ -15,14 +15,18 @@ export type ImageRecipeFile = {
 export type ImageModelRecipe = {
   id: 'z-image-turbo' | 'qwen-image-2.1' | 'z-image-base' | 'sdxl-base-1.0' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
   title: string;
+  recommendation?: 'maintainer-tested';
   files: readonly ImageRecipeFile[];
   components: readonly ImageRecipeComponent[];
   source: string;
 };
 
 const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
+  // Recommended marks model families the maintainer has run and found to give
+  // good results; it is curated UI copy, not a benchmark or auto-selection.
   {
     id: 'z-image-turbo', title: 'Z-Image-Turbo',
+    recommendation: 'maintainer-tested',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/z_image.md',
     files: [
       { role: 'diffusion', repository: 'leejet/Z-Image-Turbo-GGUF', revision: 'a90f482a21813cdaf21422c4031628658680b5fd', path: 'z_image_turbo-Q4_K.gguf', directory: 'Z-Image-Turbo-GGUF', approximateBytes: 3860000000 },
@@ -33,6 +37,7 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
   },
   {
     id: 'qwen-image-2.1', title: 'Qwen Image 2.1',
+    recommendation: 'maintainer-tested',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/qwen_image_2.1.md',
     files: [
       { role: 'diffusion', repository: 'leejet/Qwen-Image-2.1-GGUF', revision: '9db551d8368b5d1aa0b93cfe46cd54bb4750eae1', path: 'qwen_image_2.1-Q4_K.gguf', directory: 'Qwen-Image-2.1-GGUF', approximateBytes: 4200000000 },
@@ -79,6 +84,7 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
   },
   {
     id: 'krea2-turbo', title: 'Krea 2 Turbo',
+    recommendation: 'maintainer-tested',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/krea2.md',
     files: [
       { role: 'diffusion', repository: 'realrebelai/KREA-2_GGUFs', revision: '400cf1ca6790b96621e448b40c50650c76078e9e', path: 'TURBO/Krea-2-Turbo-Q4_K_M.gguf', directory: 'KREA-2_GGUFs', approximateBytes: 7216993376 },

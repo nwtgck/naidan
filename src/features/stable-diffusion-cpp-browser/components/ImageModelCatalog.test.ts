@@ -51,6 +51,10 @@ it('shows all static recipes without networking or remote resources when opened'
   expect(wrapper.text()).toContain('Z-Image Base'); expect(wrapper.text()).toContain('SDXL Base 1.0');
   expect(wrapper.text()).toContain('FLUX.2 [klein] 4B Distilled'); expect(wrapper.text()).toContain('Anima Turbo 1.1');
   expect(wrapper.text()).toContain('Krea 2 Turbo'); expect(wrapper.text()).toContain('ERNIE-Image-Turbo');
+  expect(wrapper.findAll('[data-testid^="recipe-recommended-"]').map(mark => mark.attributes('data-testid'))).toEqual([
+    'recipe-recommended-z-image-turbo', 'recipe-recommended-qwen-image-2.1', 'recipe-recommended-krea2-turbo',
+  ]);
+  for (const mark of wrapper.findAll('[data-testid^="recipe-recommended-"]')) expect(mark.text()).toBe('Recommended');
   expect(wrapper.text()).toContain('split_files/vae/ae.safetensors');
   expect(wrapper.text()).toContain('Qwen3VL-8B-Instruct-Q4_K_M.gguf');
   expect(wrapper.get('[data-testid="image-recipe-z-image-turbo"]').text()).not.toContain('optional');

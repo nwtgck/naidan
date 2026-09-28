@@ -34,6 +34,7 @@ export function useImagePreferences({ settings, initialized, updateExperimental,
     return {
       ...(width.success ? { width: width.data } : {}), ...(height.success ? { height: height.data } : {}),
       seedMode: seedMode.value, ...(seed.success && seed.data !== '-1' ? { seed: seed.data } : {}),
+      debug: form.debug.value,
       historyPersistence: historyEnabled.value ? 'enabled' : 'disabled',
       modelDownloadDestination: destination === 'opfs' ? { kind: 'opfs' } : { kind: 'host', directoryId: toHostModelDirectoryId({ raw: destination }) },
       imageDownload: { ...form.imageDownloadPreferences.value },
@@ -89,11 +90,12 @@ export function useImagePreferences({ settings, initialized, updateExperimental,
     restoring.value = true;
     try {
       const saved = settings.value.experimental?.browserImageGeneration;
-      const { width, height, seedMode: savedSeedMode, seed, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = saved ?? {};
+      const { width, height, seedMode: savedSeedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = saved ?? {};
       unhandled satisfies Record<PropertyKey, never>;
       form.parameters.value = { ...form.parameters.value, width: width ?? defaults.width, height: height ?? defaults.height,
         seed: seed ?? defaults.seed, bf16WeightType: bf16WeightType ?? defaults.bf16WeightType };
       seedMode.value = savedSeedMode ?? defaults.seedMode;
+      form.debug.value = debug ?? defaults.debug;
       historyEnabled.value = (historyPersistence ?? defaults.historyPersistence) === 'enabled';
       form.imageDownloadPreferences.value = { format: imageDownload?.format ?? defaults.imageDownload.format, metadata: imageDownload?.metadata ?? defaults.imageDownload.metadata };
       form.preview.value = { enabled: (preview?.enabled ?? defaults.preview.enabled) === 'enabled', mode: preview?.mode ?? defaults.preview.mode,

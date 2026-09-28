@@ -162,6 +162,7 @@ const BrowserImageGenerationSchemaDto = resolveMissingAsUndefined(z.object({
   height: missingAsUndefined(z.number().int().min(128).max(2048).multipleOf(64)),
   seedMode: missingAsUndefined(z.enum(['random', 'fixed'])),
   seed: missingAsUndefined(z.string().max(20).regex(/^-?(0|[1-9][0-9]*)$/).pipe(z.string().refine(value => BigInt(value) >= -1n && BigInt(value) <= 9223372036854775807n))),
+  debug: missingAsUndefined(z.enum(['off', 'on'])),
   historyPersistence: missingAsUndefined(z.enum(['enabled', 'disabled'])),
   modelDownloadDestination: missingAsUndefined(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('opfs') }),
