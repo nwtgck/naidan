@@ -11,8 +11,8 @@ export function useImageGeneration(): ImageGenerationView {
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
     ...form,
     seedMode: ref('random'), randomizeSeed() {},
-    history: { available: ref(false), items: shallowRef([]), total: ref(0), loading: ref(false), error: ref(''), warnings: shallowRef([]), warningCount: ref(0), selected: shallowRef(), detailLoading: ref(false), detailError: ref(''), imageInvalidation: shallowRef(),
-      setQuery() {}, async reload() {}, async loadMore() {}, async select() {}, async remove() {}, async removeImage() {}, async getImage() {
+    history: { available: ref(false), items: shallowRef([]), total: ref(0), currentPage: ref(1), pageCount: ref(1), loading: ref(false), error: ref(''), warnings: shallowRef([]), warningCount: ref(0), selected: shallowRef(), detailLoading: ref(false), detailError: ref(''), imageInvalidation: shallowRef(),
+      setQuery() {}, async reload() {}, async goToPage() {}, async select() {}, async remove() {}, async removeImage() {}, async getImage() {
         return undefined;
       }, clearSelection() {}, dispose() {} },
     historySaving: { enabled: ref(true), supported: computed(() => false), status: ref('idle'), error: ref(''), pendingCount: ref(0), async retry() {} },

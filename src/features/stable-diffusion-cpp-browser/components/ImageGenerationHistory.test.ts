@@ -29,9 +29,9 @@ function fixture(): { view: ImageGenerationHistoryView, record: ImageGenerationR
     previews: [{ binaryObjectId: toBinaryObjectId({ raw: 'preview' }), step: 2, steps: 8, mode: 'projection', width: 128, height: 128 }],
   };
   const view: ImageGenerationHistoryView = {
-    warnings: ref([]), warningCount: ref(0),
+    warnings: ref([]), warningCount: ref(0), currentPage: ref(1), pageCount: ref(1),
     available: ref(true), items: shallowRef([{ id: record.id, createdAt: record.createdAt, prompt: record.request.parameters.prompt, modelName: 'fixture', binaryObjectId: record.result.binaryObjectId, width: 256, height: 256, previewCount: 1 }]), total: ref(2), loading: ref(false), error: ref(''), selected: shallowRef(), detailLoading: ref(false), detailError: ref(''), imageInvalidation: ref(),
-    setQuery: vi.fn(), reload: vi.fn(async () => {}), loadMore: vi.fn(async () => {}), select: vi.fn(async () => {
+    setQuery: vi.fn(), reload: vi.fn(async () => {}), goToPage: vi.fn(async () => {}), select: vi.fn(async () => {
       view.selected.value = record;
     }), remove: vi.fn(async () => {}), removeImage: vi.fn(async () => {}), getImage: vi.fn(async () => new Blob(['PNG'], { type: 'image/png' })), clearSelection: vi.fn(), dispose: vi.fn(),
   };
@@ -39,7 +39,7 @@ function fixture(): { view: ImageGenerationHistoryView, record: ImageGenerationR
 }
 it('selects locally without altering the form and emits reuse or image actions only after an explicit click', async () => {
   const { view, record } = fixture();
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   expect(wrapper.find('h2').exists()).toBe(false);
   await wrapper.get('[data-testid="image-history-item"]').trigger('click'); await flushPromises();
   expect(wrapper.emitted('reuse')).toBeUndefined(); expect(wrapper.emitted('useImage')).toBeUndefined();
@@ -68,7 +68,7 @@ second line${'  '}
   view.selected.value = record;
   const writeText = vi.fn(async (_text: string) => {});
   vi.stubGlobal('navigator', { clipboard: { writeText } });
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   const card = wrapper.get('[data-testid="image-history-prompt"]');
   const button = card.get('[data-testid="image-history-copy-prompt"]');
   expect(card.get('[data-testid="image-history-full-prompt"]').element.textContent).toBe(prompt);
@@ -84,7 +84,7 @@ second line${'  '}
 });
 it('defaults exports to plain PNG and keeps deletion available beside independent scope details', async () => {
   const { view, record } = fixture(); view.selected.value = record;
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } }); await flushPromises();
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } }); await flushPromises();
   await wrapper.get('[data-testid="image-history-download"] [data-testid="image-download-default"]').trigger('click');
   expect(onDownload).toHaveBeenLastCalledWith({ binaryObjectId: record.result.binaryObjectId, record, format: 'png', includeMetadata: false });
   await flushPromises();
@@ -118,7 +118,7 @@ it('confirms deletion of only the selected final image and keeps its history rec
   view.removeImage = vi.fn(async ({ binaryObjectId }) => {
     view.imageInvalidation.value = { binaryObjectId, revision: 1 };
   });
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   const helpButton = wrapper.get('[data-testid="image-history-image-delete-help-toggle"]');
   expect(wrapper.get('[data-testid="image-history-delete-image"]').isVisible()).toBe(true);
   expect(wrapper.find('[data-testid="image-history-image-delete-help"]').exists()).toBe(false);
@@ -140,7 +140,7 @@ it('discards a confirmed final-image deletion if selection or storage changed du
   const first = Promise.withResolvers<boolean>();
   const second = Promise.withResolvers<boolean>();
   confirm.show.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   await wrapper.get('[data-testid="image-history-delete-image"]').trigger('click'); await flushPromises();
   view.selected.value = { ...record };
   first.resolve(true); await flushPromises();
@@ -158,7 +158,7 @@ it('shows final-image deletion errors even while its details remain closed', asy
   view.removeImage = vi.fn(async () => {
     throw new Error('Could not delete image file');
   });
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   await wrapper.get('[data-testid="image-history-delete-image"]').trigger('click'); await flushPromises();
   expect(wrapper.get('[data-testid="image-history-image-delete-error"]').text()).toContain('Could not delete image file');
   expect(wrapper.get('[data-testid="image-history-image-delete-error"]').isVisible()).toBe(true);
@@ -167,10 +167,11 @@ it('shows final-image deletion errors even while its details remain closed', asy
 });
 it('passes search and pagination to the owner, keeps unavailable actions disabled, and shows missing images without losing record details', async () => {
   const { view, record } = fixture(); view.selected.value = record; view.getImage = vi.fn(async () => undefined);
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } }); await flushPromises();
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } }); await flushPromises();
   expect(wrapper.text()).toContain('This image file is unavailable.'); expect(wrapper.text()).toContain('A quiet garden');
   await wrapper.get('[data-testid="image-history-search"]').setValue('garden'); expect(view.setQuery).toHaveBeenCalledWith({ text: 'garden' });
-  await wrapper.get('[data-testid="image-history-more"]').trigger('click'); expect(view.loadMore).toHaveBeenCalledTimes(1);
+  view.pageCount.value = 2; await flushPromises();
+  await wrapper.get('[data-testid="image-history-next-page"]').trigger('click'); expect(view.goToPage).toHaveBeenCalledExactlyOnceWith({ page: 2 });
   view.available.value = false; await flushPromises(); expect(wrapper.get('[data-testid="image-history-search"]').element.matches(':disabled')).toBe(true);
 });
 it('keeps displayed thumbnails and selected actions stable while search status changes', async () => {
@@ -179,7 +180,7 @@ it('keeps displayed thumbnails and selected actions stable while search status c
   view.setQuery = vi.fn(() => {
     view.loading.value = true;
   });
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   await flushPromises();
   const item = wrapper.get('[data-testid="image-history-item"]').element;
   const image = wrapper.get('[data-testid="image-history-item"] img').element;
@@ -194,7 +195,7 @@ it('keeps displayed thumbnails and selected actions stable while search status c
     expect(wrapper.get('[data-testid="image-history-item"]').element).toBe(item);
     expect(wrapper.get('[data-testid="image-history-item"] img').element).toBe(image);
     expect(wrapper.find('[data-testid="image-history-empty"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="image-history-more"]').element.matches(':disabled')).toBe(true);
+    expect(wrapper.get('[data-testid="image-history-next-page"]').element.matches(':disabled')).toBe(true);
   }
   await wrapper.get('[data-testid="image-history-reuse"]').trigger('click');
   expect(wrapper.emitted('reuse')).toEqual([[{ record }]]);
@@ -205,8 +206,45 @@ it('keeps displayed thumbnails and selected actions stable while search status c
   expect(wrapper.get('[data-testid="image-history-search-status"]').text()).toBe('');
   expect(wrapper.get('[data-testid="image-history-results"]').attributes('aria-busy')).toBe('false');
   expect(wrapper.get('[data-testid="image-history-item"]').element).toBe(item);
-  expect(wrapper.get('[data-testid="image-history-more"]').element.matches(':disabled')).toBe(true);
+  expect(wrapper.get('[data-testid="image-history-next-page"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.text()).toContain('Could not read the requested search');
+});
+it('replaces a bounded page of cards and exposes first, previous, next and last page controls', async () => {
+  const { view } = fixture();
+  const source = view.items.value[0]!;
+  const records = Array.from({ length: 1005 }, (_, index) => ({
+    ...source, id: toImageGenerationId({ raw: `generation-${index}` }), binaryObjectId: toBinaryObjectId({ raw: `image-${index}` }), prompt: `Image ${index}`,
+  }));
+  view.items.value = records.slice(0, 40);
+  view.total.value = records.length;
+  view.pageCount.value = 26;
+  view.goToPage = vi.fn(async ({ page }: { page: number }) => {
+    view.items.value = records.slice((page - 1) * 40, page * 40);
+    view.currentPage.value = page;
+  });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
+  await flushPromises();
+  expect(wrapper.findAll('[data-testid="image-history-item"]')).toHaveLength(40);
+  expect(wrapper.get('[data-testid="image-history-page-number"]').text()).toBe('1 / 26');
+  expect(wrapper.get('[data-testid="image-history-previous-page"]').element.matches(':disabled')).toBe(true);
+  await wrapper.get('[data-testid="image-history-next-page"]').trigger('click'); await flushPromises();
+  expect(view.goToPage).toHaveBeenLastCalledWith({ page: 2 });
+  expect(wrapper.findAll('[data-testid="image-history-item"]')).toHaveLength(40);
+  expect(wrapper.get('[data-testid="image-history-item"]').text()).toContain('Image 40');
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(40);
+  await wrapper.get('[data-testid="image-history-last-page"]').trigger('click'); await flushPromises();
+  expect(view.goToPage).toHaveBeenLastCalledWith({ page: 26 });
+  expect(wrapper.findAll('[data-testid="image-history-item"]')).toHaveLength(5);
+  expect(wrapper.get('[data-testid="image-history-page-number"]').text()).toBe('26 / 26');
+  expect(wrapper.get('[data-testid="image-history-next-page"]').element.matches(':disabled')).toBe(true);
+  await wrapper.get('[data-testid="image-history-previous-page"]').trigger('click'); await flushPromises();
+  expect(view.goToPage).toHaveBeenLastCalledWith({ page: 25 });
+  await wrapper.get('[data-testid="image-history-first-page"]').trigger('click'); await flushPromises();
+  expect(view.goToPage).toHaveBeenLastCalledWith({ page: 1 });
+  expect(wrapper.findAll('[data-testid="image-history-item"]')).toHaveLength(40);
+  view.available.value = false; await flushPromises();
+  expect(wrapper.find('[data-testid="image-history-pagination"]').exists()).toBe(true);
+  for (const button of wrapper.findAll('[data-testid="image-history-pagination"] button')) expect(button.element.matches(':disabled')).toBe(true);
 });
 it('releases image URLs and discards a stale async image load when its record changes', async () => {
   const pending = Promise.withResolvers<Blob | undefined>(); const getImage = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue(new Blob(['new']));
@@ -270,7 +308,7 @@ it('reserves detail image dimensions while loading and after releasing an offscr
 it('keeps the displayed image and settings together while another record is loading and blocks its actions', async () => {
   const { view, record } = fixture();
   view.selected.value = record;
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   await flushPromises();
   const detail = wrapper.get('[data-testid="image-history-detail"]').element;
   const image = wrapper.get('[data-testid="image-history-open-viewer"] img').element;
@@ -298,7 +336,7 @@ it('keeps the displayed image and settings together while another record is load
 
 it('closes the teleported viewer when reuse leaves the pane or storage becomes unavailable, without destroying history state', async () => {
   const { view, record } = fixture(); view.selected.value = record;
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true, onReuse: () => wrapper?.setProps({ active: false }) }, global: { stubs: { Teleport: true } } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true, onReuse: () => wrapper?.setProps({ active: false }) }, global: { stubs: { Teleport: true } } });
   await wrapper.get('[data-testid="image-history-open-viewer"]').trigger('click'); await flushPromises();
   expect(wrapper.find('[data-testid="image-viewer"]').exists()).toBe(true);
   await wrapper.get('[data-testid="image-history-reuse"]').trigger('click'); await flushPromises();
@@ -317,7 +355,7 @@ it('reports a rejected deletion beside the action and keeps the selected record 
   view.remove = vi.fn(async () => {
     throw new Error('Could not update history index');
   });
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   await wrapper.get('[data-testid="image-history-delete"]').trigger('click'); await flushPromises();
   expect(wrapper.get('[data-testid="image-history-delete-error"]').text()).toContain('Could not update history index');
   expect(wrapper.get('[data-testid="image-history-delete-error"]').isVisible()).toBe(true);
@@ -330,7 +368,7 @@ it('keeps readable records usable and labels partial counts without treating rea
   const { view, record } = fixture();
   view.warningCount.value = 2;
   view.warnings.value = [{ path: 'index.json', message: 'Unexpected end of JSON input' }];
-  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, active: true } });
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, view, disabled: false, editorDisabled: false, active: true } });
   expect(wrapper.get('[data-testid="image-history-partial"]').text()).toContain('Some history files could not be read');
   expect(wrapper.get('[data-testid="image-history-readable-count"]').text()).toBe('Readable matches: 1 of 2');
   expect(wrapper.get('[data-testid="image-history-partial"] summary').text()).toBe('Read warnings (1 of 2)');

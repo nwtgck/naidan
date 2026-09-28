@@ -43,6 +43,10 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
   const animaInput = find({ suffix: 'x_embedder.proj.1.weight' });
   const kreaText = find({ suffix: 'txtfusion.projector.weight' }) ?? find({ suffix: 'text_fusion.projector.weight' });
   const kreaInput = find({ suffix: 'first.weight' });
+  // Some Krea2 GGUF exports flatten the singleton projector dimension.
+  // Require architecture evidence for that less distinctive representation.
+  const kreaProjection = (kreaText?.shape.length === 2 && kreaText.shape[0] === 1 && kreaText.shape[1] === 12)
+    || (metadata.get('general.architecture') === 'krea2' && kreaText?.shape.length === 1 && kreaText.shape[0] === 12);
   const ernieNorm = find({ suffix: 'layers.0.adaLN_sa_ln.weight' });
   const ernieInput = find({ suffix: 'x_embedder.proj.weight' });
   if (cap?.shape[0] === 2560 && capProjection?.shape.at(-1) === 2560 && zInput?.shape.at(-1) === 64) {
@@ -57,7 +61,7 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
     family = 'flux2-klein-4b'; roles.push('diffusion'); evidence.push('FLUX.2 shared modulation; hidden 3072, image 128, text 7680');
   } else if (animaAdapter?.shape[0] === 1024 && animaAdapter.shape[1] === 1024 && animaInput?.shape[0] === 2048 && animaInput.shape[1] === 68) {
     family = 'anima'; roles.push('diffusion'); evidence.push('Anima LM adapter: 1024; hidden 2048, image patch input 68');
-  } else if (kreaText?.shape.length === 2 && kreaText.shape[0] === 1 && kreaText.shape[1] === 12 && kreaInput?.shape[0] === 6144 && kreaInput.shape[1] === 64) {
+  } else if (kreaProjection && kreaInput?.shape.length === 2 && kreaInput.shape[0] === 6144 && kreaInput.shape[1] === 64) {
     family = 'krea2'; roles.push('diffusion'); evidence.push('Krea2 text-layer fusion: 12; hidden 6144, image patch input 64');
   } else if (ernieNorm?.shape[0] === 4096 && ernieInput?.shape.length === 4 && ernieInput.shape[0] === 4096 && ernieInput.shape[1] === 128 && find({ suffix: 'text_proj.weight' })?.shape[1] === 3072) {
     family = 'ernie-image'; roles.push('diffusion'); evidence.push('ERNIE image adaLN; hidden 4096, latent 128, text 3072');

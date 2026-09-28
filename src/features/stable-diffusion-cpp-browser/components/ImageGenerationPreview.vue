@@ -8,6 +8,22 @@ import { previewDisplaySize } from '@/features/stable-diffusion-cpp-browser/prev
 import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
 const props = defineProps<{ view: ImageGenerationView, active: boolean, livePlacement: 'result' | 'panel' }>();
 const { preview, keepPreviews, maxPreviews, previewError, livePreview, previewSnapshots, busy, supported } = props.view;
+// Commit only once editing ends; intermediate digits must not release frames.
+// The draft also survives renders while new preview frames arrive.
+const previewLimitDraft = ref(String(maxPreviews.value));
+watch(maxPreviews, value => {
+  previewLimitDraft.value = String(value);
+});
+function editPreviewLimit({ event }: { event: Event }): void {
+  if (event.target instanceof HTMLInputElement) previewLimitDraft.value = event.target.value;
+}
+function commitPreviewLimit({ event }: { event: Event }): void {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  if (Number.isFinite(input.valueAsNumber)) maxPreviews.value = Math.min(100, Math.max(1, Math.trunc(input.valueAsNumber)));
+  previewLimitDraft.value = String(maxPreviews.value);
+  input.value = previewLimitDraft.value;
+}
 const viewerIndex = ref<number>();
 const previewSettingsOpen = ref(false);
 const previewSettingsId = useId();
@@ -68,7 +84,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
         <div tw-class="flex flex-wrap items-center gap-3">
           <label tw-class="min-h-10 cursor-pointer inline-flex gap-2 items-center"><input v-model="keepPreviews" type="checkbox" role="switch" :disabled="!supported" data-testid="image-keep-previews" tw-class="sr-only peer" /><span aria-hidden="true" tw-class="relative h-6 w-10 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 motion-reduce:transition-none motion-reduce:after:transition-none" />{{ lazyStrings.stableDiffusionCppBrowser__keep_previews() }}</label>
-          <label tw-class="inline-flex gap-2 items-center text-xs"><span>{{ lazyStrings.stableDiffusionCppBrowser__preview_limit() }}</span><input v-model.number="maxPreviews" type="number" min="1" max="100" step="1" :disabled="!supported" tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 w-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-gray-800 dark:text-gray-100 shadow-sm" /></label>
+          <label tw-class="inline-flex gap-2 items-center text-xs"><span>{{ lazyStrings.stableDiffusionCppBrowser__preview_limit() }}</span><input :value="previewLimitDraft" @input="editPreviewLimit({ event: $event })" @change="commitPreviewLimit({ event: $event })" data-testid="image-preview-limit" type="number" min="1" max="100" step="1" :disabled="!supported" tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 w-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-gray-800 dark:text-gray-100 shadow-sm" /></label>
         </div>
         <p v-if="busy" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preview_mode_locked() }}</p>
         <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preview_help() }}</p>
@@ -86,14 +102,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </button>
           <p tw-class="text-xs text-gray-500 dark:text-gray-400">#{{ frame.runId }} · {{ frame.step }} / {{ frame.steps }} · {{ formatElapsed({ elapsedMs: frame.elapsedMs }) }}</p>
           <div tw-class="flex flex-wrap gap-3 text-xs">
-            <ImageDownloadMenu :active="active" :disabled="!supported" :on-download="options => view.downloadPreview({ previewId: frame.id, ...options })" />
+            <!-- Exporting retained pixels does not depend on the selected inference profile. -->
+            <ImageDownloadMenu :active="active" :disabled="false" :on-download="options => view.downloadPreview({ previewId: frame.id, ...options })" />
             <button type="button" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 text-red-600 dark:text-red-400 font-bold rounded-xl border border-red-100 dark:border-red-900/30 bg-red-50/40 dark:bg-red-900/10 px-3 py-2 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-10" @click="view.removePreview({ previewId: frame.id })">{{ lazyStrings.stableDiffusionCppBrowser__remove() }}</button>
           </div>
         </article>
       </div>
     </div>
     <ImageGenerationViewer :download-enabled="true" v-if="viewerIndex !== undefined" v-model:index="viewerIndex" :count="previewSnapshots.length" @close="viewerIndex = undefined">
-      <template #download><ImageDownloadMenu v-if="previewSnapshots[viewerIndex]" :key="previewSnapshots[viewerIndex]!.id" :active="active" :disabled="!supported" :on-download="options => view.downloadPreview({ previewId: previewSnapshots[viewerIndex!]!.id, ...options })" /></template>
+      <template #download><ImageDownloadMenu v-if="previewSnapshots[viewerIndex]" :key="previewSnapshots[viewerIndex]!.id" :active="active" :disabled="false" :on-download="options => view.downloadPreview({ previewId: previewSnapshots[viewerIndex!]!.id, ...options })" /></template>
       <img v-if="previewSnapshots[viewerIndex]" :src="previewSnapshots[viewerIndex]!.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" tw-class="max-w-full max-h-[85vh] object-contain" />
     </ImageGenerationViewer>
   </section>

@@ -3,6 +3,8 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageInputControls from './ImageInputControls.vue';
 import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
+import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
+import { requestSchema } from '@/features/stable-diffusion-cpp-browser/types';
 
 let wrapper: VueWrapper<InstanceType<typeof ImageInputControls>> | undefined;
 let inputs = emptyImageInputs();
@@ -49,6 +51,33 @@ it('keeps unavailable inputs visible and rejects programmatic file changes', asy
   expect(wrapper!.get('[data-testid="image-input-references"]').element.matches(':disabled')).toBe(true);
   await choose({ selector: 'image-input-initial', files: [new File(['image'], 'image.png', { type: 'image/png' })] });
   expect(inputs.initImage).toBeUndefined();
+});
+it.each([
+  { label: 'empty', input: '', valid: false, expected: 0.75 },
+  { label: 'below minimum', input: '-0.1', valid: false, expected: 0.75 },
+  { label: 'above maximum', input: '1.1', valid: false, expected: 0.75 },
+  { label: 'minimum', input: '0', valid: true, expected: 0 },
+  { label: 'intermediate', input: '0.4', valid: true, expected: 0.4 },
+  { label: 'maximum', input: '1', valid: true, expected: 1 },
+])('removes the initial image without leaving a hidden invalid $label strength', async ({ input, valid, expected }) => {
+  const image = new File(['image'], 'initial.png', { type: 'image/png' });
+  const reference = new File(['reference'], 'reference.webp', { type: 'image/webp' });
+  await choose({ selector: 'image-input-initial', files: [image] });
+  await choose({ selector: 'image-input-references', files: [reference] });
+  await wrapper!.get('[data-testid="image-input-strength"]').setValue(input);
+  const request = requestFixture(); request.imageInputs = inputs;
+  expect(requestSchema.safeParse(request).success).toBe(valid);
+  await wrapper!.get('[data-testid="image-input-clear-initial"]').trigger('click');
+  expect(inputs).toEqual({ initImage: undefined, strength: expected, referenceImages: [reference] });
+  expect(inputs.referenceImages[0]).toBe(reference);
+  expect(wrapper!.find('[data-testid="image-input-strength"]').exists()).toBe(false);
+  request.imageInputs = inputs;
+  expect(requestSchema.safeParse(request).success).toBe(true);
+  await wrapper!.get('[data-testid="image-input-remove-reference"]').trigger('click');
+  request.imageInputs = inputs;
+  expect(requestSchema.safeParse(request).success).toBe(true);
+  await choose({ selector: 'image-input-initial', files: [image] });
+  expect(wrapper!.get<HTMLInputElement>('[data-testid="image-input-strength"]').element.valueAsNumber).toBe(expected);
 });
 it('rejects an invalid selection without losing existing files', async () => {
   const file = new File(['image'], 'image.png', { type: 'image/png' });

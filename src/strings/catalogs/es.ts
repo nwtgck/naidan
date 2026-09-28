@@ -2052,6 +2052,7 @@ import { stableDiffusionCppBrowser__catalog_file_notice } from '@/strings/messag
 import { stableDiffusionCppBrowser__catalog_drop_help } from '@/strings/messages/stableDiffusionCppBrowser__catalog_drop_help/es';
 import { ImageHostModelDirectories__download_to } from '@/strings/messages/ImageHostModelDirectories__download_to/es';
 import { ImageHostModelDirectories__browser_storage } from '@/strings/messages/ImageHostModelDirectories__browser_storage/es';
+import { ImageHostModelDirectories__browser_storage_unavailable } from '@/strings/messages/ImageHostModelDirectories__browser_storage_unavailable/es';
 import { ImageHostModelDirectories__linked_folder } from '@/strings/messages/ImageHostModelDirectories__linked_folder/es';
 import { ImageHostModelDirectories__link_folder } from '@/strings/messages/ImageHostModelDirectories__link_folder/es';
 import { ImageHostModelDirectories__reconnect } from '@/strings/messages/ImageHostModelDirectories__reconnect/es';
@@ -2253,6 +2254,11 @@ import { ImageGenerationHistory__backup_does_not_include_history } from '@/strin
 import { ImageGenerationHistory__opfs_required } from '@/strings/messages/ImageGenerationHistory__opfs_required/es';
 import { ImageGenerationHistory__search_history } from '@/strings/messages/ImageGenerationHistory__search_history/es';
 import { ImageGenerationHistory__refresh } from '@/strings/messages/ImageGenerationHistory__refresh/es';
+import { ImageGenerationHistory__first_page } from '@/strings/messages/ImageGenerationHistory__first_page/es';
+import { ImageGenerationHistory__previous_page } from '@/strings/messages/ImageGenerationHistory__previous_page/es';
+import { ImageGenerationHistory__next_page } from '@/strings/messages/ImageGenerationHistory__next_page/es';
+import { ImageGenerationHistory__last_page } from '@/strings/messages/ImageGenerationHistory__last_page/es';
+import { ImageGenerationHistory__page_of_total } from '@/strings/messages/ImageGenerationHistory__page_of_total/es';
 import { ImageGenerationHistory__loading_history } from '@/strings/messages/ImageGenerationHistory__loading_history/es';
 import { ImageGenerationHistory__no_history_found } from '@/strings/messages/ImageGenerationHistory__no_history_found/es';
 import { ImageGenerationHistory__load_more } from '@/strings/messages/ImageGenerationHistory__load_more/es';
@@ -2449,6 +2455,7 @@ export const catalog = {
   stableDiffusionCppBrowser__catalog_drop_help,
   ImageHostModelDirectories__download_to,
   ImageHostModelDirectories__browser_storage,
+  ImageHostModelDirectories__browser_storage_unavailable,
   ImageHostModelDirectories__linked_folder,
   ImageHostModelDirectories__link_folder,
   ImageHostModelDirectories__reconnect,
@@ -4535,6 +4542,11 @@ export const catalog = {
   ImageGenerationHistory__opfs_required,
   ImageGenerationHistory__search_history,
   ImageGenerationHistory__refresh,
+  ImageGenerationHistory__first_page,
+  ImageGenerationHistory__previous_page,
+  ImageGenerationHistory__next_page,
+  ImageGenerationHistory__last_page,
+  ImageGenerationHistory__page_of_total,
   ImageGenerationHistory__loading_history,
   ImageGenerationHistory__no_history_found,
   ImageGenerationHistory__load_more,

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { toImageGenerationId } from '@/01-models/ids';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { createImageGallery } from '@/features/stable-diffusion-cpp-browser/image-gallery';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation-standalone';
 import ImageGenerationResults from './ImageGenerationResults.vue';
@@ -11,7 +12,111 @@ beforeEach(async () => {
 });
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
+  vi.unstubAllGlobals();
 });
+it.each([
+  { draft: '101', expected: 100 },
+  { draft: '', expected: 20 },
+  { draft: '-2', expected: 1 },
+  { draft: '3.7', expected: 3 },
+  { draft: '12', expected: 12 },
+])('commits result retention $draft as $expected on change', async ({ draft, expected }) => {
+  const view = useImageGeneration();
+  view.supported = computed(() => true);
+  view.maxResults.value = 20;
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
+  const input = wrapper.get<HTMLInputElement>('[data-testid="image-result-limit"]');
+  input.element.value = draft;
+  await input.trigger('input');
+  expect(view.maxResults.value).toBe(20);
+  await input.trigger('change');
+  expect(view.maxResults.value).toBe(expected);
+  expect(input.element.value).toBe(String(expected));
+});
+
+it('keeps result images while typing a larger retention limit, including when another image arrives', async () => {
+  let sequence = 0;
+  vi.stubGlobal('URL', class extends URL {
+    static override createObjectURL = vi.fn(() => `blob:retained-result-${++sequence}`);
+    static override revokeObjectURL = vi.fn();
+  });
+  const view = useImageGeneration();
+  view.supported = computed(() => true);
+  view.maxResults.value = 20;
+  const gallery = createImageGallery<Omit<typeof view.results.value[number], 'id' | 'url'>>({ initialLimit: 20, maxBytes: 10000 });
+  const add = () => {
+    gallery.add({ blob: new Blob(['image']), width: 1, height: 1,
+      metadata: { parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 } });
+    view.results.value = gallery.entries();
+  };
+  // Connect the real gallery to the view using the hosted owner's limit contract.
+  const stop = watch(view.maxResults, value => {
+    gallery.setLimit({ value });
+    view.results.value = gallery.entries();
+  });
+  try {
+    for (let i = 0; i < 5; i++) add();
+    wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
+    const input = wrapper.get<HTMLInputElement>('[data-testid="image-result-limit"]');
+    for (const draft of ['1', '10', '100']) {
+      input.element.value = draft;
+      await input.trigger('input');
+      expect(view.maxResults.value).toBe(20);
+      add();
+      await flushPromises();
+      expect(input.element.value).toBe(draft);
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    }
+    expect(gallery.entries()).toHaveLength(8);
+    await input.trigger('change');
+    expect(view.maxResults.value).toBe(100);
+    for (let i = 0; i < 94; i++) add();
+    expect(gallery.entries()).toHaveLength(100);
+    await input.setValue('2');
+    expect(view.maxResults.value).toBe(2);
+    expect(view.results.value).toHaveLength(2);
+    expect(gallery.entries()).toHaveLength(2);
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(100);
+  } finally {
+    stop(); gallery.clear();
+  }
+});
+it.each(['card', 'viewer'])('keeps an existing result downloadable from its %s after selecting an unsupported profile', async location => {
+  const supported = ref(true);
+  const view = useImageGeneration();
+  view.supported = computed(() => supported.value);
+  view.results.value = [{ id: 1, url: 'blob:result', parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 }];
+  let finishDownload: (() => void) | undefined;
+  const pending = new Promise<void>(resolve => {
+    finishDownload = resolve;
+  });
+  view.downloadResult = vi.fn(async () => {
+    await pending;
+    return { status: 'downloaded' as const };
+  });
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true }, global: { stubs: { Teleport: true } } });
+  if (location === 'viewer') await wrapper.get('[data-testid="image-generated-result"] button').trigger('click');
+  const menu = () => wrapper!.get(location === 'viewer' ? '[data-testid="image-viewer"] [data-testid="image-download-menu"]' : '[data-testid="image-result-download"]');
+  const download = () => menu().get<HTMLButtonElement>('[data-testid="image-download-default"]');
+  expect(download().element.disabled).toBe(false);
+  supported.value = false;
+  await flushPromises();
+  expect(download().element.disabled).toBe(false);
+  await download().trigger('click');
+  expect(view.downloadResult).toHaveBeenCalledWith({ resultId: 1, format: 'png', includeMetadata: false });
+  expect(download().element.disabled).toBe(true);
+  await download().trigger('click');
+  expect(view.downloadResult).toHaveBeenCalledTimes(1);
+  finishDownload?.();
+  await flushPromises();
+  expect(download().element.disabled).toBe(false);
+  await menu().get('[data-testid="image-download-options"]').trigger('click');
+  await menu().get('[data-testid="image-download-format"]').setValue('webp');
+  await menu().get('[data-testid="image-download-metadata"]').setValue(true);
+  await menu().get('[data-testid="image-download-confirm"]').trigger('click');
+  expect(view.downloadResult).toHaveBeenLastCalledWith({ resultId: 1, format: 'webp', includeMetadata: true });
+});
+
 it('keeps the successful image downloadable when history saving fails and retries only the save', async () => {
   const view = useImageGeneration();
   view.supported = computed(() => true);
@@ -174,4 +279,18 @@ it('replaces the current result placeholder with its live image and final image 
   busy.value = true; await flushPromises();
   view.failure.value = 'generation failed'; busy.value = false; await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
+});
+
+it('locks the history policy during a run and restores editing afterward only in supported storage', async () => {
+  const view = useImageGeneration(), busy = ref(false), supported = ref(true);
+  view.busy = computed(() => busy.value); view.historySaving.supported = computed(() => supported.value);
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
+  const toggle = wrapper.get<HTMLInputElement>('[data-testid="image-save-history"]');
+  await toggle.setValue(false); expect(view.historySaving.enabled.value).toBe(false);
+  busy.value = true; await flushPromises();
+  expect(toggle.element.disabled).toBe(true); expect(toggle.element.checked).toBe(false);
+  busy.value = false; await flushPromises();
+  expect(toggle.element.disabled).toBe(false);
+  await toggle.setValue(true); expect(view.historySaving.enabled.value).toBe(true);
+  supported.value = false; await flushPromises(); expect(toggle.element.disabled).toBe(true);
 });

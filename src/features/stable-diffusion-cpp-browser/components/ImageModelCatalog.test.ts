@@ -2,13 +2,37 @@ import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-brow
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { computed, ref } from 'vue';
+import { computed, effectScope, ref } from 'vue';
 import type { HostModelDirectoryChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageModelCatalog from './ImageModelCatalog.vue';
 import { imageCatalogLoras } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
+import { useImageLibrary } from '@/features/stable-diffusion-cpp-browser/use-image-library';
+import { downloadImageRecipe, type ImageRecipeDownloadRequest } from '@/features/stable-diffusion-cpp-browser/logic/catalog-download';
 let wrapper: VueWrapper | undefined;
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
+  vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn() }, locks: { request: vi.fn() } });
+});
+it.each(['directory API', 'mutation lock'] as const)('disables OPFS acquisition before its owner is invoked without the %s', async missing => {
+  vi.stubGlobal('navigator', { storage: missing === 'directory API' ? {} : { getDirectory: vi.fn() }, locks: missing === 'mutation lock' ? undefined : { request: vi.fn() } });
+  const network = vi.fn(), download = vi.fn((args: ImageRecipeDownloadRequest) => downloadImageRecipe({ ...args, fetch: network }));
+  const scope = effectScope();
+  const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection() {}, dependencies: {
+    list: vi.fn(async () => []), scan: vi.fn(async () => ({ candidates: [], issues: [] })), import: vi.fn(), download,
+  } }))!;
+  try {
+    wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: library } });
+    const button = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
+    expect(button.element.disabled).toBe(true);
+    expect(wrapper.get<HTMLOptionElement>('option[value="opfs"]').element.disabled).toBe(true);
+    expect(wrapper.get('[data-testid="image-opfs-download-unavailable"]').text()).toContain('Browser storage (OPFS)');
+    await button.trigger('click');
+    expect(download).not.toHaveBeenCalled(); expect(network).not.toHaveBeenCalled();
+    expect(library.downloadState.value).toBe('idle');
+    expect(library.failure.value).toBe('');
+  } finally {
+    scope.stop();
+  }
 });
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();

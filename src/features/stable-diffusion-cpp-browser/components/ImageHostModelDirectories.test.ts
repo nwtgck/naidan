@@ -27,7 +27,7 @@ function createView({ supported, entries }: { supported: boolean, entries: HostM
 
 it('defaults to browser storage and keeps unsupported folder controls visible and disabled', () => {
   const view = createView({ supported: false, entries: [] });
-  wrapper = mount(ImageHostModelDirectories, { props: { view, disabled: false, downloading: false, layoutFile: undefined } });
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: false, layoutFile: undefined } });
   expect(wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]').element.value).toBe('opfs');
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
   expect(wrapper.get('[data-testid="image-host-folders-unavailable"]').text()).toContain('unavailable');
@@ -39,7 +39,7 @@ it('defaults to browser storage and keeps unsupported folder controls visible an
 it('selects a registered root and shows its real repository-relative nested layout', async () => {
   const view = createView({ supported: true, entries: [{ id: 'root-a', name: 'my-image-models', access: 'readwrite', error: undefined }] });
   wrapper = mount(ImageHostModelDirectories, { props: {
-    view, disabled: false, downloading: false,
+    view, opfsSupported: true, disabled: false, downloading: false,
     layoutFile: { repository: 'example-owner/image-model', path: 'split_files/vae/model.safetensors' },
   } });
   await wrapper.get('[data-testid="image-download-destination"]').setValue('root-a');
@@ -63,7 +63,7 @@ it('keeps missing registrations visible for reconnect and distinguishes them by 
     { id: 'missing-a', name: 'models', access: 'missing', error: undefined },
     { id: 'available-b', name: 'models', access: 'readwrite', error: undefined },
   ] });
-  wrapper = mount(ImageHostModelDirectories, { props: { view, disabled: false, downloading: false, layoutFile: undefined } });
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: false, layoutFile: undefined } });
   expect(wrapper.get<HTMLOptionElement>('option[value="missing-a"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLOptionElement>('option[value="available-b"]').element.disabled).toBe(false);
   expect(wrapper.get('[data-testid="image-model-directory-missing-a"]').text()).toContain('Select the folder again');
@@ -75,7 +75,7 @@ it('keeps missing registrations visible for reconnect and distinguishes them by 
 
 it('locks destination changes during download while allowing unregister to cancel its owned write', async () => {
   const view = createView({ supported: true, entries: [{ id: 'root-a', name: 'models', access: 'readwrite', error: undefined }] });
-  wrapper = mount(ImageHostModelDirectories, { props: { view, disabled: false, downloading: true, layoutFile: undefined } });
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: true, layoutFile: undefined } });
   expect(wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-reconnect-model-directory-root-a"]').element.disabled).toBe(true);

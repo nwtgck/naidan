@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { ArrowLeftIcon, ArrowRightIcon, ImagePlusIcon, ImageOffIcon, ReplaceIcon, Trash2Icon, ZoomInIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { ImageInputs } from '@/features/stable-diffusion-cpp-browser/types';
+import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageGenerationViewer from './ImageGenerationViewer.vue';
 const props = defineProps<{ modelValue: ImageInputs, disabled: boolean, active: boolean }>();
@@ -93,7 +94,13 @@ function remove({ role, index }: { role: Role, index: number }): void {
   if (props.disabled) return;
   invalid.value = undefined;
   switch (role) {
-  case 'initial': emit('update:modelValue', { ...props.modelValue, initImage: undefined }); break;
+  case 'initial': {
+    const strength = props.modelValue.strength;
+    // Removing the image hides its strength control. Preserve valid preferences,
+    // but do not let a hidden invalid draft prevent later text-only generation.
+    const retainedStrength = Number.isFinite(strength) && strength >= 0 && strength <= 1 ? strength : emptyImageInputs().strength;
+    emit('update:modelValue', { ...props.modelValue, initImage: undefined, strength: retainedStrength }); break;
+  }
   case 'reference': emit('update:modelValue', { ...props.modelValue, referenceImages: props.modelValue.referenceImages.filter((_file, position) => position !== index) }); break;
   default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
   }

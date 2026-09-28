@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createInventoryWorker } from './impl';
 const mocks = vi.hoisted(() => ({ list: vi.fn(), scan: vi.fn() }));
 vi.mock('../logic/repository-store', () => ({ listImageRepositories: mocks.list }));
@@ -6,7 +6,9 @@ vi.mock('../logic/model-candidates', () => ({ scanImageRepositories: mocks.scan 
 vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 beforeEach(() => {
   vi.resetAllMocks(); mocks.list.mockResolvedValue([]); mocks.scan.mockResolvedValue({ candidates: [], issues: [] });
+  vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn() } });
 });
+afterEach(() => vi.unstubAllGlobals());
 it('lists OPFS before inspecting headers and never reuses the parser realm', async () => {
   const worker = createInventoryWorker();
   await worker.inspect(undefined, vi.fn());

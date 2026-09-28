@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ImageGenerationHistoryPage, ImageGenerationRecord } from '@/01-models/image-generation-history';
+import type { ImageGenerationHistoryPage, ImageGenerationHistoryQuery, ImageGenerationRecord } from '@/01-models/image-generation-history';
 import type { ChangeListener } from '@/00-storage/service/synchronizer';
 import type { StorageType } from '@/01-models/types';
 import { toBinaryObjectId, toImageGenerationId } from '@/01-models/ids';
@@ -189,6 +189,111 @@ afterEach(() => {
 });
 
 describe('image history query ownership', () => {
+  it('bounds the visible collection to 40 records while navigating a large library', async () => {
+    const records = Array.from({ length: 10_005 }, (_, index) => page({ label: `image-${index}` }).items[0]!);
+    mocks.query.mockImplementation(async ({ query }: { query: ImageGenerationHistoryQuery }) => ({
+      items: records.slice(query.offset, query.offset + query.limit), total: records.length, warnings: [], warningCount: 0,
+    }));
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.reload();
+    expect(view.pageCount.value).toBe(251);
+    for (const target of [2, 200, 251, 1]) {
+      await view.goToPage({ page: target });
+      expect(view.currentPage.value).toBe(target);
+      expect(view.items.value).toEqual(records.slice((target - 1) * 40, target * 40));
+      expect(view.items.value.length).toBeLessThanOrEqual(40);
+      expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: (target - 1) * 40, limit: 40 } });
+    }
+    const calls = mocks.query.mock.calls.length;
+    for (const target of [0, -1, 252, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 1]) await view.goToPage({ page: target });
+    expect(mocks.query).toHaveBeenCalledTimes(calls);
+    await view.dispose();
+  });
+  it('keeps page, count and images together while a failed page is retried', async () => {
+    const first = { ...page({ label: 'first' }), total: 81 }, second = { ...page({ label: 'second' }), total: 80 };
+    const pending = deferred<ImageGenerationHistoryPage>();
+    mocks.query.mockResolvedValueOnce(first).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(second);
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.reload();
+    const moving = view.goToPage({ page: 2 });
+    expect(view.items.value).toBe(first.items);
+    expect(view.currentPage.value).toBe(1);
+    expect(view.total.value).toBe(81);
+    expect(view.pageCount.value).toBe(3);
+    pending.reject(new Error('Page could not be read'));
+    await moving;
+    expect(view.items.value).toBe(first.items);
+    expect(view.currentPage.value).toBe(1);
+    expect(view.error.value).toBe('Page could not be read');
+    await view.reload();
+    expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: 40, limit: 40 } });
+    expect(view.items.value).toBe(second.items);
+    expect(view.currentPage.value).toBe(2);
+    expect(view.pageCount.value).toBe(2);
+    expect(view.error.value).toBe('');
+    await view.dispose();
+  });
+  it('resets a changed search to page one and ignores an older in-flight page', async () => {
+    const first = { ...page({ label: 'first' }), total: 120 }, second = { ...page({ label: 'second' }), total: 120 };
+    const pending = deferred<ImageGenerationHistoryPage>();
+    mocks.query.mockResolvedValueOnce(first).mockResolvedValueOnce(second).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(page({ label: 'found' }));
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.reload(); await view.goToPage({ page: 2 });
+    const moving = view.goToPage({ page: 3 });
+    view.setQuery({ text: 'garden' });
+    pending.resolve({ ...page({ label: 'stale-third' }), total: 120 });
+    await moving;
+    expect(view.items.value).toBe(second.items);
+    expect(view.currentPage.value).toBe(2);
+    expect(view.loading.value).toBe(true);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: 'garden', offset: 0, limit: 40 } });
+    expect(view.currentPage.value).toBe(1);
+    expect(view.items.value[0]?.prompt).toBe('found');
+    await view.dispose();
+  });
+  it('stays on the current page when refreshed after new images are added', async () => {
+    const records = Array.from({ length: 85 }, (_, index) => page({ label: `image-${index}` }).items[0]!);
+    mocks.query.mockImplementation(async ({ query }: { query: ImageGenerationHistoryQuery }) => ({
+      items: records.slice(query.offset, query.offset + query.limit), total: records.length, warnings: [], warningCount: 0,
+    }));
+    const selected = record({ label: 'selected' });
+    mocks.load.mockResolvedValueOnce(selected);
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.reload(); await view.goToPage({ page: 2 }); await view.select({ id: selected.id });
+    records.unshift(page({ label: 'new-image' }).items[0]!);
+    await view.reload();
+    expect(view.currentPage.value).toBe(2);
+    expect(view.items.value).toEqual(records.slice(40, 80));
+    expect(view.total.value).toBe(86);
+    expect(view.selected.value).toBe(selected);
+    await view.dispose();
+  });
+  it('moves back to the last remaining page after a deletion without displaying an empty intermediate page', async () => {
+    const first = { ...page({ label: 'first' }), total: 81 }, last = { ...page({ label: 'last' }), total: 81 };
+    const previous = { ...page({ label: 'previous' }), total: 80 };
+    const pending = deferred<ImageGenerationHistoryPage>();
+    mocks.query.mockResolvedValueOnce(first).mockResolvedValueOnce(last).mockResolvedValueOnce({ items: [], total: 80, warnings: [], warningCount: 0 }).mockReturnValueOnce(pending.promise);
+    mocks.remove.mockResolvedValueOnce(undefined);
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.reload(); await view.goToPage({ page: 3 });
+    const removing = view.remove({ id: last.items[0]!.id });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: 40, limit: 40 } });
+    expect(view.currentPage.value).toBe(3);
+    expect(view.items.value).toBe(last.items);
+    expect(view.total.value).toBe(81);
+    pending.resolve(previous); await removing;
+    expect(view.currentPage.value).toBe(2);
+    expect(view.pageCount.value).toBe(2);
+    expect(view.items.value).toBe(previous.items);
+    mocks.query.mockResolvedValueOnce({ items: [], total: 0, warnings: [], warningCount: 0 });
+    await view.reload();
+    expect(view.currentPage.value).toBe(1);
+    expect(view.pageCount.value).toBe(1);
+    expect(view.items.value).toEqual([]);
+    await view.dispose();
+  });
   it('keeps the displayed results and ignores a previous response during the next debounce', async () => {
     const initial = page({ label: 'initial' });
     const old = deferred<ImageGenerationHistoryPage>();
@@ -248,6 +353,88 @@ describe('image history query ownership', () => {
     expect(mocks.query).not.toHaveBeenCalled();
     await view.dispose();
   });
+  it.each(['succeeds', 'fails'] as const)('keeps a newer selection pending when the previous record is deleted and its read %s', async outcome => {
+    const first = record({ label: 'first' }), second = record({ label: 'second' });
+    const deleting = deferred<void>(), selecting = deferred<ImageGenerationRecord>();
+    mocks.load.mockResolvedValueOnce(first).mockReturnValueOnce(selecting.promise);
+    mocks.remove.mockReturnValueOnce(deleting.promise);
+    mocks.query.mockResolvedValue(page({ label: 'second' }));
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.select({ id: first.id });
+    const deletion = view.remove({ id: first.id });
+    const selection = view.select({ id: second.id });
+    deleting.resolve(); await deletion;
+    expect(mocks.remove).toHaveBeenCalledWith({ id: first.id });
+    expect(view.selected.value).toBeUndefined();
+    expect(view.detailLoading.value).toBe(true);
+    switch (outcome) {
+    case 'succeeds':
+      selecting.resolve(second); await selection;
+      expect(view.selected.value).toEqual(second);
+      expect(view.detailError.value).toBe('');
+      break;
+    case 'fails':
+      selecting.reject(new Error('Second record is unreadable')); await selection;
+      expect(view.selected.value).toBeUndefined();
+      expect(view.detailError.value).toBe('Second record is unreadable');
+      break;
+    default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+    }
+    expect(view.detailLoading.value).toBe(false);
+    await view.dispose();
+  });
+  it('clears a deleted detail and keeps a completed newer selection when the list reload fails', async () => {
+    const first = record({ label: 'first' }), second = record({ label: 'second' });
+    mocks.load.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    mocks.remove.mockResolvedValue(undefined);
+    mocks.query.mockRejectedValue(new Error('List reload failed'));
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.select({ id: first.id });
+    await view.remove({ id: first.id });
+    expect(view.selected.value).toBeUndefined();
+    expect(view.detailLoading.value).toBe(false);
+    expect(view.error.value).toBe('List reload failed');
+    await view.select({ id: second.id });
+    await view.remove({ id: first.id });
+    expect(view.selected.value).toEqual(second);
+    expect(view.error.value).toBe('List reload failed');
+    await view.dispose();
+  });
+  it('preserves a newer pending selection if deleting the previous record fails', async () => {
+    const first = record({ label: 'first' }), second = record({ label: 'second' });
+    const deleting = deferred<void>(), selecting = deferred<ImageGenerationRecord>();
+    mocks.load.mockResolvedValueOnce(first).mockReturnValueOnce(selecting.promise);
+    mocks.remove.mockReturnValueOnce(deleting.promise);
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.select({ id: first.id });
+    const deletion = view.remove({ id: first.id });
+    const rejection = expect(deletion).rejects.toThrow('Cannot delete first');
+    const selection = view.select({ id: second.id });
+    deleting.reject(new Error('Cannot delete first')); await rejection;
+    expect(view.selected.value).toEqual(first);
+    expect(view.detailLoading.value).toBe(true);
+    selecting.resolve(second); await selection;
+    expect(view.selected.value).toEqual(second);
+    expect(mocks.query).not.toHaveBeenCalled();
+    await view.dispose();
+  });
+  it('rejects a late read of the deleted record without clearing another displayed record', async () => {
+    const first = record({ label: 'first' }), second = record({ label: 'second' });
+    const deleting = deferred<void>(), selecting = deferred<ImageGenerationRecord>();
+    mocks.load.mockResolvedValueOnce(first).mockResolvedValueOnce(second).mockReturnValueOnce(selecting.promise);
+    mocks.remove.mockReturnValueOnce(deleting.promise);
+    mocks.query.mockResolvedValue(page({ label: 'second' }));
+    const view = useImageGenerationHistory({ getStorageType: () => storageType });
+    await view.select({ id: first.id });
+    const deletion = view.remove({ id: first.id });
+    await view.select({ id: second.id });
+    const selection = view.select({ id: first.id });
+    deleting.resolve(); await deletion;
+    selecting.resolve(first); await selection;
+    expect(view.selected.value).toEqual(second);
+    expect(view.detailLoading.value).toBe(false);
+    await view.dispose();
+  });
   it('does not issue a delayed query after disposal', async () => {
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
     view.setQuery({ text: 'cat' }); await view.dispose(); await vi.advanceTimersByTimeAsync(500);
@@ -276,24 +463,24 @@ describe('image history query ownership', () => {
     await view.dispose();
   });
   it('blocks pagination during a replacement and after failure, then retries the query from the beginning', async () => {
-    const initial = { ...page({ label: 'initial' }), total: 5 };
+    const initial = { ...page({ label: 'initial' }), total: 85 };
     const pending = deferred<ImageGenerationHistoryPage>();
     mocks.query.mockResolvedValueOnce(initial).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(page({ label: 'retry' }));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
     await view.reload();
     view.setQuery({ text: 'garden' });
-    await view.loadMore();
+    await view.goToPage({ page: 2 });
     expect(mocks.query).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(250);
-    await view.loadMore();
+    await view.goToPage({ page: 2 });
     expect(mocks.query).toHaveBeenCalledTimes(2);
     pending.reject(new Error('Cannot read index'));
     await vi.advanceTimersByTimeAsync(0);
     expect(view.items.value).toBe(initial.items);
-    expect(view.total.value).toBe(5);
+    expect(view.total.value).toBe(85);
     expect(view.error.value).toBe('Cannot read index');
     expect(view.loading.value).toBe(false);
-    await view.loadMore();
+    await view.goToPage({ page: 2 });
     expect(mocks.query).toHaveBeenCalledTimes(2);
     await view.reload();
     expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: 'garden', offset: 0, limit: 40 } });

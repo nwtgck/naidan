@@ -68,7 +68,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       return false;
     }
   });
-  const canStart = computed(() => !disposed && !busy.value && !form.exporting.value && !form.runs.value.length && generation.supported.value && !generation.busy.value && !generation.library.importing.value && !generation.library.downloading.value && generation.library.scanState.value === 'idle' && valid.value);
+  const canStart = computed(() => !disposed && !busy.value && !form.exporting.value && !form.runs.value.length && generation.supported.value && !generation.formDisabled.value && !generation.busy.value && !generation.library.importing.value && !generation.library.downloading.value && generation.library.scanState.value === 'idle' && valid.value);
   async function start(): Promise<void> {
     if (!canStart.value) return;
     const plan = candidatePlan(); plan.id = nanoid(); plan.createdAt = new Date().toISOString();
@@ -94,7 +94,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     // Export outside timed runs, so ZIP work cannot contaminate step measurements.
     if (busy.value || form.exporting.value || !form.runs.value.length || disposed) return;
     const snapshot = runner.snapshot(); if (!snapshot) return;
-    form.exporting.value = true; form.feedback.value = ''; const control = new AbortController(); exportControl = control;
+    form.exporting.value = true; form.error.value = ''; form.feedback.value = ''; const control = new AbortController(); exportControl = control;
     try {
       const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: form.includePrompts.value, includeInputImages: form.includeInputImages.value, exportedAt: new Date().toISOString(), signal: control.signal });
       control.signal.throwIfAborted();

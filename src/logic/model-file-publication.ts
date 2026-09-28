@@ -34,12 +34,28 @@ export async function readModelMarkerJson({ handle }: { handle: FileSystemFileHa
   return JSON.parse(await file.text());
 }
 export async function writeModelMarkerJson({ directory, name, value }: { directory: FileSystemDirectoryHandle, name: string, value: unknown }): Promise<FileSystemFileHandle> {
-  const handle = await directory.getFileHandle(name, { create: true });
-  const writer = await handle.createWritable();
+  const existing = await optionalModelFile({ directory, name });
+  const handle = existing ?? await directory.getFileHandle(name, { create: true });
+  const created = existing ? undefined : await handle.getFile();
+  let writer: FileSystemWritableFileStream | undefined;
   try {
+    writer = await handle.createWritable();
     await writer.write(JSON.stringify(value)); await writer.close(); return handle;
   } catch (error) {
-    await writer.abort().catch(() => undefined); throw error;
+    await writer?.abort().catch(() => undefined);
+    // Callers hold the model mutation lock. A failed first write must not leave
+    // our empty marker blocking all later retries. Never repair an existing
+    // marker or remove one another filesystem user has changed or replaced.
+    if (created?.size === 0) {
+      try {
+        const current = await optionalModelFile({ directory, name });
+        if (current && await current.isSameEntry(handle)) {
+          const file = await current.getFile();
+          if (file.size === 0 && file.lastModified === created.lastModified) await directory.removeEntry(name);
+        }
+      } catch { /* Uncertain ownership or failed cleanup preserves the original error. */ }
+    }
+    throw error;
   }
 }
 export async function readModelFileReceipt({ directory, name, file }: { directory: FileSystemDirectoryHandle, name: string, file: File }): Promise<ModelFileReceipt | undefined> {

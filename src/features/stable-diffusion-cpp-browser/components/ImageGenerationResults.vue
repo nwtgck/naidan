@@ -15,6 +15,22 @@ const saveHistory = props.view.historySaving.enabled;
 const historyHelpOpen = ref(false);
 const historyHelpId = useId();
 const { maxResults, results, supported, clearResults, diagnosticStatus, diagnosticText, diagnosticFeedback, copyDiagnostics, saveDiagnostics, failure } = props.view;
+// Typing a larger limit must not release images at an intermediate digit.
+// Keep the draft across renders when another generated image arrives.
+const resultLimitDraft = ref(String(maxResults.value));
+watch(maxResults, value => {
+  resultLimitDraft.value = String(value);
+});
+function editResultLimit({ event }: { event: Event }): void {
+  if (event.target instanceof HTMLInputElement) resultLimitDraft.value = event.target.value;
+}
+function commitResultLimit({ event }: { event: Event }): void {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  if (Number.isFinite(input.valueAsNumber)) maxResults.value = Math.min(100, Math.max(1, Math.trunc(input.valueAsNumber)));
+  resultLimitDraft.value = String(maxResults.value);
+  input.value = resultLimitDraft.value;
+}
 // Snapshot the run boundary so retained images never replace a new run's placeholder.
 const run = ref<{ resultArrived: boolean, resultIds: number[], previewId: number | undefined, width: number, height: number }>();
 watch(props.view.busy, busy => {
@@ -69,7 +85,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p tw-class="text-sm line-clamp-2 break-words">{{ result.parameters.prompt }}</p>
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ result.modelVersion }} · {{ result.parameters.width }} × {{ result.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__seed() }}: {{ result.parameters.seed }} · {{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ formatElapsed({ elapsedMs: result.elapsedMs }) }}</p>
             <div tw-class="flex flex-wrap items-center gap-3 text-sm">
-              <ImageDownloadMenu :active="active" :disabled="!supported" :on-download="options => view.downloadResult({ resultId: result.id, ...options })" data-testid="image-result-download" />
+              <!-- Exporting retained pixels does not depend on the selected inference profile. -->
+              <ImageDownloadMenu :active="active" :disabled="false" :on-download="options => view.downloadResult({ resultId: result.id, ...options })" data-testid="image-result-download" />
               <button v-if="view.savedHistoryId({ resultId: result.id })" type="button" :disabled="!view.history.available.value" @click="emit('openHistory', { id: view.savedHistoryId({ resultId: result.id }) })" data-testid="image-result-view-saved" tw-class="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 min-h-10 text-xs font-bold text-blue-600 dark:text-blue-400 shadow-sm transition-colors hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"><ImagesIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.ImageGenerationResults__view_in_my_images() }}</button>
             </div>
           </div>
@@ -80,7 +97,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 px-3" data-testid="image-history-saving">
       <div tw-class="flex min-h-10 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1.5">
         <label tw-class="inline-flex min-h-10 cursor-pointer items-center gap-2 text-xs font-medium leading-tight">
-          <input v-model="saveHistory" :disabled="!view.historySaving.supported.value" type="checkbox" role="switch" data-testid="image-save-history" tw-class="sr-only peer" /><span aria-hidden="true" tw-class="relative h-6 w-10 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 motion-reduce:transition-none motion-reduce:after:transition-none" /><span>{{ lazyStrings.ImageGenerationResults__save_generation_history() }}</span></label>
+          <input v-model="saveHistory" :disabled="view.busy.value || !view.historySaving.supported.value" type="checkbox" role="switch" data-testid="image-save-history" tw-class="sr-only peer" /><span aria-hidden="true" tw-class="relative h-6 w-10 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 motion-reduce:transition-none motion-reduce:after:transition-none" /><span>{{ lazyStrings.ImageGenerationResults__save_generation_history() }}</span></label>
         <button type="button" :aria-expanded="historyHelpOpen" :aria-controls="historyHelpId" data-testid="image-history-help-toggle" @click="historyHelpOpen = !historyHelpOpen" tw-class="inline-flex min-h-10 items-center self-center gap-1.5 rounded-lg px-2 text-xs font-medium leading-tight text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
           {{ lazyStrings.ImageGenerationResults__about_saved_history() }}
           <ChevronDownIcon aria-hidden="true" :tw-class="['h-4 w-4 transition-transform motion-reduce:transition-none', historyHelpOpen ? 'rotate-180' : '']" />
@@ -110,7 +127,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div tw-class="flex flex-wrap items-center gap-3 text-xs">
         <label tw-class="inline-flex gap-2 items-center">
           <span>{{ lazyStrings.ImageGenerationResults__images_kept_on_screen() }}</span>
-          <input v-model.number="maxResults" :disabled="!supported" type="number" min="1" max="100" step="1" data-testid="image-result-limit" tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 w-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-gray-800 dark:text-gray-100 shadow-sm" />
+          <input :value="resultLimitDraft" @input="editResultLimit({ event: $event })" @change="commitResultLimit({ event: $event })" :disabled="!supported" type="number" min="1" max="100" step="1" data-testid="image-result-limit" tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 w-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-gray-800 dark:text-gray-100 shadow-sm" />
         </label>
         <button v-if="results.length" type="button" @click="clearResults" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 text-red-600 dark:text-red-400 font-bold rounded-xl border border-red-100 dark:border-red-900/30 bg-red-50/40 dark:bg-red-900/10 px-3 py-2 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-10">{{ lazyStrings.stableDiffusionCppBrowser__clear_results() }}</button>
       </div>
@@ -133,7 +150,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <pre role="alert" tw-class="text-xs whitespace-pre-wrap break-words mt-3 max-h-72 overflow-auto">{{ failure }}</pre>
     </details>
     <ImageGenerationViewer :download-enabled="true" v-if="viewerIndex !== undefined" v-model:index="viewerIndex" :count="results.length" @close="viewerIndex = undefined">
-      <template #download><ImageDownloadMenu v-if="results[viewerIndex]" :key="results[viewerIndex]!.id" :active="active" :disabled="!supported" :on-download="options => view.downloadResult({ resultId: results[viewerIndex!]!.id, ...options })" /></template>
+      <template #download><ImageDownloadMenu v-if="results[viewerIndex]" :key="results[viewerIndex]!.id" :active="active" :disabled="false" :on-download="options => view.downloadResult({ resultId: results[viewerIndex!]!.id, ...options })" /></template>
       <img v-if="results[viewerIndex]" :src="results[viewerIndex]!.url" :alt="results[viewerIndex]!.parameters.prompt" tw-class="max-w-full max-h-[85vh] object-contain" />
     </ImageGenerationViewer>
   </div>

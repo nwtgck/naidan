@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { computed, defineComponent, h, nextTick } from 'vue';
+import { computed, defineComponent, h, nextTick, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import type { Request } from './types';
 import type { ImageGenerationView } from './use-image-generation-types';
 import { artifactFixture, ggufFile, parametersFixture, requestFixture } from './test-fixtures';
 import { snapshotImageGeneration, finishImageGenerationSnapshot } from './history/snapshot';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
+import ImageGenerationResults from './components/ImageGenerationResults.vue';
 const mocks = vi.hoisted(() => {
   const models: Request['models'] = [];
   let selection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void = () => {};
-  return { generate: vi.fn(), release: vi.fn(), dispose: vi.fn(), save: vi.fn(), getFile: vi.fn(), query: vi.fn(), prepareFiles: vi.fn(), downloadBlob: vi.fn(), download: vi.fn(), models,
+  return { generate: vi.fn(), cancel: vi.fn(), release: vi.fn(), dispose: vi.fn(), save: vi.fn(), remove: vi.fn(), removeBinary: vi.fn(), getFile: vi.fn(), query: vi.fn(), prepareFiles: vi.fn(), downloadBlob: vi.fn(), download: vi.fn(), setTransfer: vi.fn(), models,
     storageType: 'opfs', listeners: new Set<({ event }: { event: { type: 'migration', timestamp: number } }) => void>(),
     select(value: { family: 'z-image', turbo: boolean }) {
       selection(value);
@@ -27,12 +29,14 @@ vi.mock('@/00-storage/service', () => ({ storageService: {
     };
   },
   saveImageGeneration: (...args: unknown[]) => mocks.save(...args),
+  deleteImageGeneration: (...args: unknown[]) => mocks.remove(...args),
+  deleteBinaryObject: (...args: unknown[]) => mocks.removeBinary(...args),
   getFile: (...args: unknown[]) => mocks.getFile(...args),
 } }));
 vi.mock('./history/worker/client-hosted', () => ({ createImageHistoryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 vi.mock('./capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
 vi.mock('./inventory-worker/client', () => ({ inspectImageInventory: vi.fn() }));
-vi.mock('./worker/client', () => ({ createImageClient: () => ({ generate: mocks.generate, release: mocks.release, dispose: mocks.dispose, cancel() {}, updatePreview() {} }) }));
+vi.mock('./worker/client', () => ({ createImageClient: () => ({ generate: mocks.generate, release: mocks.release, dispose: mocks.dispose, cancel: mocks.cancel, updatePreview() {} }) }));
 vi.mock('./history/download', () => ({ imageGenerationDownloadBlob: (...args: unknown[]) => mocks.downloadBlob(...args), downloadImageBlob: (...args: unknown[]) => mocks.download(...args) }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', async () => {
   const { artifactFixture } = await import('./test-fixtures');
@@ -43,7 +47,11 @@ vi.mock('./use-image-library', async () => {
   return { useImageLibrary: ({ onSelection }: { onSelection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void }) => {
     mocks.selection(onSelection);
     const library = createDisabledImageLibrary(); library.main.value = 'selected';
-    return { ...library, ready: computed(() => true), selectedModels: () => mocks.models,
+    const transfers = { importing: ref(false), downloading: ref(false) };
+    mocks.setTransfer.mockImplementation(({ operation, active }: { operation: keyof typeof transfers, active: boolean }) => {
+      transfers[operation].value = active;
+    });
+    return { ...library, ...transfers, ready: computed(() => true), selectedModels: () => mocks.models,
       selectedFacts: computed(() => ({ family: 'z-image', variant: 'turbo', evidence: [] })),
       prepareHistoryFiles: () => mocks.prepareFiles(),
       useManualFiles() {
@@ -60,6 +68,8 @@ vi.mock('./use-image-library', async () => {
 });
 import { useImageGeneration } from './use-image-generation-hosted';
 let wrapper: VueWrapper | undefined;
+let editor: VueWrapper | undefined;
+let resultsPanel: VueWrapper | undefined;
 let active: ImageGenerationView | undefined;
 function open(): ImageGenerationView {
   wrapper = mount(defineComponent({ setup() {
@@ -76,6 +86,7 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.clearAllMocks(); mocks.listeners.clear(); mocks.storageType = 'opfs'; mocks.models = [{ slot: 'model', file: ggufFile() }];
   mocks.query.mockResolvedValue({ items: [], total: 0, warnings: [], warningCount: 0 }); mocks.save.mockResolvedValue(undefined); mocks.generate.mockResolvedValue(result());
+  mocks.remove.mockReset().mockResolvedValue(undefined);
   mocks.prepareFiles.mockResolvedValue(undefined);
   mocks.downloadBlob.mockResolvedValue(new Blob(['download copy'], { type: 'image/png' }));
   vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
@@ -85,10 +96,146 @@ beforeEach(async () => {
   });
 });
 afterEach(() => {
+  editor?.unmount(); editor = undefined;
+  resultsPanel?.unmount(); resultsPanel = undefined;
   wrapper?.unmount(); wrapper = undefined; active = undefined; vi.unstubAllGlobals();
 });
 
 describe('hosted image history integration with a synthetic inference client', () => {
+  it('does not acquire diagnostics ownership while a history image is being prepared', async () => {
+    const view = open();
+    await view.generate();
+    const record = mocks.save.mock.calls[0]![0].record;
+    const pending = Promise.withResolvers<Blob>();
+    mocks.getFile.mockReturnValueOnce(pending.promise);
+    const preparing = view.useHistoryImage({ binaryObjectId: record.result.binaryObjectId, role: 'initial' });
+    expect(view.historyActions.busy.value).toBe(true);
+    expect(view.acquireBenchmark()).toBe(false);
+    pending.resolve(new Blob(['input'], { type: 'image/png' }));
+    await preparing;
+    expect(view.imageInputs.value.initImage).toBeDefined();
+    expect(view.acquireBenchmark()).toBe(true);
+    expect(view.acquireBenchmark()).toBe(false);
+    view.releaseBenchmark();
+    expect(view.formDisabled.value).toBe(false);
+  });
+
+  it.each(['importing', 'downloading'] as const)('does not read a history image while model files are %s', async operation => {
+    const view = open();
+    await view.generate();
+    const record = mocks.save.mock.calls[0]![0].record;
+    mocks.setTransfer({ operation, active: true });
+    await view.useHistoryImage({ binaryObjectId: record.result.binaryObjectId, role: 'reference' });
+    expect(mocks.getFile).not.toHaveBeenCalled();
+    expect(view.historyActions.busy.value).toBe(false);
+    expect(view.imageInputs.value.referenceImages).toEqual([]);
+    mocks.setTransfer({ operation, active: false });
+    mocks.getFile.mockResolvedValueOnce(new Blob(['reference'], { type: 'image/png' }));
+    await view.useHistoryImage({ binaryObjectId: record.result.binaryObjectId, role: 'reference' });
+    expect(mocks.getFile).toHaveBeenCalledOnce();
+    expect(view.imageInputs.value.referenceImages).toHaveLength(1);
+  });
+
+  it('clears an earlier generation save error when its explicit retry succeeds without regenerating either image', async () => {
+    mocks.save.mockRejectedValueOnce(new Error('First save failed')).mockRejectedValueOnce(new Error('Earlier save is still unavailable'));
+    const view = open();
+    await view.generate();
+    await view.generate();
+    const results = [...view.results.value];
+    expect(view.historySaving.status.value).toBe('saved');
+    expect(view.historySaving.pendingCount.value).toBe(1);
+    expect(view.historyActions.error.value).toBe('Earlier save is still unavailable');
+    await view.historySaving.retry();
+    expect(view.historySaving.pendingCount.value).toBe(0);
+    expect(view.historyActions.error.value).toBe('');
+    expect(view.historySaving.status.value).toBe('saved');
+    expect(view.results.value).toEqual(results);
+    expect(mocks.generate).toHaveBeenCalledTimes(2);
+    for (const result of results) expect(view.savedHistoryId({ resultId: result.id })).toBeDefined();
+  });
+
+  it('clears save retry feedback only when a retry starts and preserves a newer action error received while saving', async () => {
+    const view = open();
+    view.historyActions.error.value = 'Unrelated action failure';
+    await view.historySaving.retry();
+    expect(view.historyActions.error.value).toBe('Unrelated action failure');
+    mocks.save.mockRejectedValueOnce(new Error('First save failed')).mockRejectedValueOnce(new Error('Earlier save failed'));
+    await view.generate(); await view.generate();
+    const pending = Promise.withResolvers<void>();
+    mocks.save.mockReturnValueOnce(pending.promise);
+    const saving = view.historySaving.retry();
+    expect(view.historyActions.error.value).toBe('');
+    view.historyActions.error.value = 'A newer action failed';
+    pending.resolve(); await saving;
+    expect(view.historyActions.error.value).toBe('A newer action failed');
+    expect(view.historySaving.pendingCount.value).toBe(0);
+  });
+
+  it('removes only the deleted history link while preserving both generated results and a newer detail selection', async () => {
+    const view = open();
+    await view.generate();
+    const first = view.results.value[0]!;
+    const firstId = view.savedHistoryId({ resultId: first.id });
+    if (!firstId) throw new Error('Expected the first saved history record');
+    await view.generate();
+    const second = view.results.value[0]!;
+    const secondId = view.savedHistoryId({ resultId: second.id });
+    if (!secondId) throw new Error('Expected the second saved history record');
+    const results = [...view.results.value];
+    resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
+    expect(resultsPanel.findAll('[data-testid="image-result-view-saved"]')).toHaveLength(2);
+    const pending = Promise.withResolvers<void>();
+    mocks.remove.mockReturnValueOnce(pending.promise);
+    const deleting = view.history.remove({ id: firstId });
+    expect(view.savedHistoryId({ resultId: first.id })).toBe(firstId);
+    view.history.selected.value = mocks.save.mock.calls[1]![0].record;
+    pending.resolve(); await deleting; await flushPromises();
+    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith({ id: firstId });
+    expect(view.savedHistoryId({ resultId: first.id })).toBeUndefined();
+    expect(view.savedHistoryId({ resultId: second.id })).toBe(secondId);
+    expect(view.history.selected.value?.id).toBe(secondId);
+    expect(view.historySaving.status.value).toBe('saved');
+    expect(view.results.value).toEqual(results);
+    expect(mocks.removeBinary).not.toHaveBeenCalled();
+    expect(resultsPanel.findAll('[data-testid="image-result-view-saved"]')).toHaveLength(1);
+  });
+
+  it('keeps a saved result link after deletion rejection and across an OPFS storage round trip', async () => {
+    const view = open(); await view.generate();
+    const resultId = view.results.value[0]!.id;
+    const historyId = view.savedHistoryId({ resultId });
+    if (!historyId) throw new Error('Expected saved history');
+    resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
+    mocks.remove.mockRejectedValueOnce(new Error('Deletion denied'));
+    await expect(view.history.remove({ id: historyId })).rejects.toThrow('Deletion denied');
+    expect(view.savedHistoryId({ resultId })).toBe(historyId);
+    expect(resultsPanel.find('[data-testid="image-result-view-saved"]').exists()).toBe(true);
+    expect(view.historySaving.status.value).toBe('saved');
+    mocks.storageType = 'memory'; for (const listener of mocks.listeners) listener({ event: { type: 'migration', timestamp: 1 } });
+    await expect(view.history.remove({ id: historyId })).rejects.toThrow('requires OPFS');
+    expect(mocks.remove).toHaveBeenCalledTimes(1);
+    mocks.storageType = 'opfs'; for (const listener of mocks.listeners) listener({ event: { type: 'migration', timestamp: 2 } });
+    expect(view.savedHistoryId({ resultId })).toBe(historyId);
+    expect(mocks.removeBinary).not.toHaveBeenCalled();
+  });
+
+  it('removes a successfully deleted record link even if refreshing history fails, without discarding the result image', async () => {
+    const view = open(); await view.generate(); await flushPromises();
+    const savedResult = view.results.value[0]!;
+    const historyId = view.savedHistoryId({ resultId: savedResult.id });
+    if (!historyId) throw new Error('Expected saved history');
+    resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
+    mocks.query.mockRejectedValueOnce(new Error('History refresh failed'));
+    await view.history.remove({ id: historyId }); await flushPromises();
+    expect(view.history.error.value).toBe('History refresh failed');
+    expect(view.savedHistoryId({ resultId: savedResult.id })).toBeUndefined();
+    expect(view.historySaving.status.value).toBe('idle');
+    expect(view.results.value).toEqual([savedResult]);
+    expect(resultsPanel.find('[data-testid="image-result-view-saved"]').exists()).toBe(false);
+    expect(resultsPanel.find('[data-testid="image-generated-result"]').exists()).toBe(true);
+    expect(mocks.removeBinary).not.toHaveBeenCalled();
+  });
+
   it('exposes gallery navigation only after saving and removes runtime links with their results', async () => {
     mocks.save.mockRejectedValueOnce(new Error('quota'));
     const view = open();
@@ -178,6 +325,138 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(first.record.request.parameters.seed).toBe(acceptedSeed); expect(view.parameters.value.seed).toBe('0');
     expect(view.historySaving.status.value).toBe('saved'); expect(view.failure.value).toBe('');
   });
+  it('waits for saving but allows the next generation while history refresh is still pending', async () => {
+    const saving = Promise.withResolvers<void>();
+    const querying = Promise.withResolvers<{ items: [], total: number, warnings: [], warningCount: number }>();
+    mocks.save.mockReturnValueOnce(saving.promise);
+    mocks.query.mockReturnValueOnce(querying.promise);
+    const view = open();
+    let finished = false;
+    const generation = view.generate().finally(() => {
+      finished = true;
+    });
+    await flushPromises();
+    expect(finished).toBe(false);
+    expect(view.busy.value).toBe(true);
+    expect(view.historySaving.status.value).toBe('saving');
+    expect(mocks.query).not.toHaveBeenCalled();
+
+    saving.resolve(); await flushPromises();
+    expect(finished).toBe(true);
+    await generation;
+    expect(view.busy.value).toBe(false);
+    expect(view.historySaving.status.value).toBe('saved');
+    expect(view.history.loading.value).toBe(true);
+    expect(view.savedHistoryId({ resultId: view.results.value[0]!.id })).toBeDefined();
+
+    view.historySaving.enabled.value = false;
+    await view.generate();
+    expect(view.results.value).toHaveLength(2);
+    querying.reject(new Error('History Worker unavailable')); await flushPromises();
+    expect(view.history.error.value).toBe('History Worker unavailable');
+    expect(view.failure.value).toBe('');
+    expect(view.historySaving.status.value).toBe('idle');
+    expect(view.historySaving.error.value).toBe('');
+    await view.history.reload();
+    expect(view.history.error.value).toBe('');
+  });
+  it.each(['saved', 'failed'] as const)('disables inference stop while saving and restores controls after a %s save', async outcome => {
+    const saving = Promise.withResolvers<void>();
+    mocks.save.mockReturnValueOnce(saving.promise);
+    const view = open();
+    editor = mount(ImageGenerationEditor, { props: { view, active: true } });
+    const generation = view.generate();
+    await flushPromises();
+    const signal: AbortSignal = mocks.generate.mock.calls[0]![0].signal;
+    expect(view.results.value).toHaveLength(1);
+    expect(view.busy.value).toBe(true);
+    expect(view.historySaving.status.value).toBe('saving');
+    expect(view.progress.value).toBeUndefined();
+    expect(editor.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(true);
+    expect(editor.get('[data-testid="image-cancel"]').element.matches(':disabled')).toBe(true);
+    expect(editor.find('[data-testid="image-force-cancel"]').exists()).toBe(false);
+    await editor.get('[data-testid="image-cancel"]').trigger('click');
+    view.cancel(); view.forceCancel();
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    expect(signal.aborted).toBe(false);
+    expect(view.stopping.value).toBe(false);
+    await view.generate();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+
+    if (outcome === 'saved') saving.resolve();
+    else saving.reject(new Error('OPFS quota exceeded'));
+    await generation; await flushPromises();
+    expect(view.historySaving.status.value).toBe(outcome);
+    expect(view.busy.value).toBe(false);
+    expect(view.cancelled.value).toBe(false);
+    expect(view.failure.value).toBe('');
+    expect(view.results.value).toHaveLength(1);
+    expect(editor.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(false);
+    expect(editor.get('[data-testid="image-cancel"]').element.matches(':disabled')).toBe(true);
+  });
+  it('allows cooperative and forced stop from inference startup before its first progress callback', async () => {
+    const inference = Promise.withResolvers<{ cancelled: true, modelResident: boolean }>();
+    mocks.generate.mockReturnValueOnce(inference.promise);
+    const view = open();
+    editor = mount(ImageGenerationEditor, { props: { view, active: true } });
+    const generation = view.generate();
+    await flushPromises();
+    const signal: AbortSignal = mocks.generate.mock.calls[0]![0].signal;
+    expect(view.progress.value).toEqual({ phase: 'runtime', step: 0, steps: 0 });
+    expect(editor.get('[data-testid="image-cancel"]').element.matches(':disabled')).toBe(false);
+    await editor.get('[data-testid="image-cancel"]').trigger('click');
+    expect(mocks.cancel).toHaveBeenCalledOnce();
+    expect(view.stopping.value).toBe(true);
+    expect(signal.aborted).toBe(false);
+    expect(editor.get('[data-testid="image-force-cancel"]').element.matches(':disabled')).toBe(false);
+    await editor.get('[data-testid="image-force-cancel"]').trigger('click');
+    expect(signal.aborted).toBe(true);
+    inference.reject(new DOMException('Image generation cancelled', 'AbortError'));
+    await generation; await flushPromises();
+    expect(view.busy.value).toBe(false);
+    expect(view.stopping.value).toBe(false);
+    expect(view.cancelled.value).toBe(true);
+    expect(editor.find('[data-testid="image-force-cancel"]').exists()).toBe(false);
+    expect(editor.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(false);
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+  it('keeps a newer save failure retryable when an older history refresh finishes', async () => {
+    const querying = Promise.withResolvers<{ items: [], total: number, warnings: [], warningCount: number }>();
+    mocks.query.mockReturnValueOnce(querying.promise);
+    const view = open();
+    await view.generate();
+    mocks.save.mockRejectedValueOnce(new Error('Quota exceeded'));
+    await view.generate();
+    const failedSnapshot = mocks.save.mock.calls[1]![0];
+    expect(view.historySaving.status.value).toBe('failed');
+    expect(view.historySaving.pendingCount.value).toBe(1);
+
+    querying.reject(new Error('Old history query failed')); await flushPromises();
+    expect(view.history.error.value).toBe('');
+    expect(view.historySaving.status.value).toBe('failed');
+    expect(view.historySaving.error.value).toBe('Quota exceeded');
+    expect(view.historySaving.pendingCount.value).toBe(1);
+    await view.historySaving.retry();
+    expect(mocks.save.mock.calls[2]![0]).toBe(failedSnapshot);
+    expect(view.historySaving.status.value).toBe('saved');
+    expect(view.historySaving.pendingCount.value).toBe(0);
+  });
+  it('does not publish a delayed refresh failure or start a refresh after disposal during saving', async () => {
+    const querying = Promise.withResolvers<{ items: [], total: number, warnings: [], warningCount: number }>();
+    mocks.query.mockReturnValueOnce(querying.promise);
+    const view = open();
+    await view.generate();
+    const saving = Promise.withResolvers<void>();
+    mocks.save.mockReturnValueOnce(saving.promise);
+    const generation = view.generate();
+    await flushPromises();
+    wrapper?.unmount(); wrapper = undefined;
+    saving.resolve(); querying.reject(new Error('Detached history query failed'));
+    await generation; await flushPromises();
+    expect(mocks.query).toHaveBeenCalledOnce();
+    expect(view.history.error.value).toBe('');
+    expect(view.history.loading.value).toBe(false);
+  });
   it('does not begin an OPFS save after storage changes to memory during generation', async () => {
     const pending = Promise.withResolvers<ReturnType<typeof result>>(); mocks.generate.mockReturnValueOnce(pending.promise);
     const view = open(); const generation = view.generate();
@@ -225,6 +504,73 @@ describe('hosted image history integration with a synthetic inference client', (
     mocks.generate.mockRejectedValueOnce(new Error('Native failure')); await view.generate();
     expect(mocks.save).not.toHaveBeenCalled(); expect(view.failure.value).toBe('Native failure');
   });
+
+  it('preserves unchanged split models when replacing or clearing one component after history reuse', async () => {
+    const base = ggufFile(), companion = new File(['companion'], 'part-two.gguf');
+    const vae = new File(['original-vae'], 'original-vae.gguf');
+    const replacement = new File(['replacement-vae'], 'replacement-vae.gguf');
+    mocks.models = [{ slot: 'diffusion', file: base, path: 'split/base.gguf', companions: [{ path: 'split/part-two.gguf', file: companion }] },
+      { slot: 'vae', file: vae, path: 'original/vae.gguf' }];
+    const request = requestFixture(); request.models = mocks.models; request.parameters.seed = '42';
+    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
+      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
+    const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
+    const original = structuredClone(saved.record);
+    const view = open();
+    view.library.findHistoryFile = ({ location }) => [base, companion, vae].find(file => file.name === location.name);
+    await view.reuseHistory({ record: saved.record });
+    const input = document.createElement('input'); input.type = 'file';
+    Object.defineProperty(input, 'files', { value: [replacement], configurable: true });
+    view.chooseFile({ slot: 'vae', event: { target: input } as unknown as Event });
+    await view.generate();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+    const models = mocks.generate.mock.calls[0]![0].request.models;
+    expect(models.find((model: Request['models'][number]) => model.slot === 'diffusion')).toMatchObject({
+      file: base, path: 'split/base.gguf', companions: [{ path: 'split/part-two.gguf', file: companion }],
+    });
+    expect(models.find((model: Request['models'][number]) => model.slot === 'vae')).toMatchObject({ file: replacement });
+    expect(models.find((model: Request['models'][number]) => model.slot === 'vae').path).toBeUndefined();
+    Object.defineProperty(input, 'files', { value: [], configurable: true });
+    view.chooseFile({ slot: 'vae', event: { target: input } as unknown as Event });
+    await view.generate();
+    const cleared = mocks.generate.mock.calls[1]![0].request.models;
+    expect(cleared).toHaveLength(1);
+    expect(cleared[0].companions[0].file).toBe(companion);
+    // Replacing the base model still clears its previous split-file association.
+    Object.defineProperty(input, 'files', { value: [replacement] });
+    view.chooseFile({ slot: 'diffusion', event: { target: input } as unknown as Event });
+    await view.generate();
+    expect(mocks.generate.mock.calls[2]![0].request.models[0].companions).toBeUndefined();
+    expect(saved.record).toEqual(original);
+  });
+  it.each(['model', 'diffusion'] as const)('retains untouched auxiliary split files when replacing the restored %s', async mainSlot => {
+    const base = ggufFile(), oldPart = new File(['old-part'], 'base-part.gguf'), replacement = new File(['replacement'], 'replacement.gguf');
+    const vae = new File(['vae-data'], 'vae.gguf'), vaePart = new File(['vae-part'], 'vae-part.gguf');
+    const lm = new File(['lm-model'], 'lm.gguf'), lmPart = new File(['lm-part-data'], 'lm-part.gguf');
+    const request = requestFixture();
+    request.models = [{ slot: mainSlot, file: base, path: 'base/model.gguf', companions: [{ path: 'base/part.gguf', file: oldPart }] },
+      { slot: 'vae', file: vae, path: 'vae/model.gguf', companions: [{ path: 'vae/part.gguf', file: vaePart }] },
+      { slot: 'lm', file: lm, path: 'text/model.gguf', companions: [{ path: 'text/part.gguf', file: lmPart }] }];
+    request.loras = [{ file: base, strength: 0.7 }];
+    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
+      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
+    const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
+    const original = structuredClone(saved.record), view = open();
+    view.library.findHistoryFile = ({ location }) => [base, oldPart, vae, vaePart, lm, lmPart].find(file => file.name === location.name);
+    await view.reuseHistory({ record: saved.record });
+    expect(view.historyActions.error.value).toBe('');
+    view.imageInputs.value.referenceImages = [new File(['reference'], 'reference.png', { type: 'image/png' })];
+    const input = document.createElement('input'); input.type = 'file';
+    Object.defineProperty(input, 'files', { value: [replacement] });
+    view.chooseFile({ slot: mainSlot, event: { target: input } as unknown as Event });
+    await nextTick(); await view.generate();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+    const generated = mocks.generate.mock.calls[0]![0].request as Request;
+    expect(generated.models.find(model => model.slot === mainSlot)).toEqual({ slot: mainSlot, file: replacement });
+    expect(generated.models.filter(model => model.slot !== mainSlot)).toEqual(request.models.slice(1));
+    expect(generated.loras).toEqual([]); expect(generated.imageInputs.referenceImages).toEqual([]);
+    expect(saved.record).toEqual(original);
+  });
   it('keeps the editor unchanged while local reuse preparation is pending or fails', async () => {
     const request = requestFixture(); request.models = mocks.models; request.parameters.prompt = 'Saved prompt';
     const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
@@ -238,6 +584,32 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.historyActions.missingFiles.value).toEqual([]); expect(view.historyActions.error.value).toBe('Local scan failed');
     await view.reuseHistory({ record: saved.record });
     expect(view.parameters.value.prompt).toBe('Saved prompt'); expect(view.historyActions.missingFiles.value).toEqual([]);
+  });
+  it.each(['settings', 'image'] as const)('ignores a delayed %s reuse error from before storage changed', async action => {
+    const request = requestFixture(); request.models = mocks.models;
+    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
+      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
+    const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
+    const pending = Promise.withResolvers<never>();
+    const view = open();
+    const operation = (() => {
+      switch (action) {
+      case 'settings':
+        mocks.prepareFiles.mockReturnValueOnce(pending.promise);
+        return view.reuseHistory({ record: saved.record });
+      case 'image':
+        mocks.getFile.mockReturnValueOnce(pending.promise);
+        return view.useHistoryImage({ binaryObjectId: saved.record.result.binaryObjectId, role: 'reference' });
+      default: { const exhaustive: never = action; throw new Error(String(exhaustive)); }
+      }
+    })();
+    mocks.storageType = 'memory';
+    for (const listener of mocks.listeners) listener({ event: { type: 'migration', timestamp: 1 } });
+    pending.reject(new Error('Old OPFS read failed')); await operation;
+    expect(view.historyActions.busy.value).toBe(false);
+    expect(view.historyActions.error.value).toBe('');
+    expect(view.parameters.value.prompt).toBe('a small tree');
+    expect(view.imageInputs.value.referenceImages).toEqual([]);
   });
   it.each([0, 0.7])('keeps the base model and only requires acknowledgement for an enabled missing adapter (strength %s)', async strength => {
     const request = requestFixture(); request.models = mocks.models;

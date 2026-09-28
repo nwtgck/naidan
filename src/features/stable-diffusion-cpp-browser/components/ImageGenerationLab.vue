@@ -20,14 +20,16 @@ const benchmark = useImageBenchmark({ generation: view });
 const activeTab = defineModel<'generate' | 'models' | 'history' | 'measure'>('tab', { default: 'generate' });
 const benchmarkVisited = ref(false);
 const historyVisited = ref(false);
-watch(activeTab, tab => {
+watch([activeTab, view.history.available], ([tab, historyAvailable]) => {
   switch (tab) {
   case 'measure':
     benchmarkVisited.value = true;
     break;
   case 'history':
     historyVisited.value = true;
-    void view.history.reload();
+    // Returning to OPFS clears the old snapshot even if the tab did not change.
+    // Only the visible history pane should start its replacement query.
+    if (historyAvailable) void view.history.reload();
     break;
   case 'generate': case 'models': break;
   default: {
@@ -143,7 +145,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
             </div>
           </div>
           <div v-show="activeTab === 'history'" role="tabpanel" :id="id + '-panel-history'" :aria-labelledby="id + '-tab-history'" data-testid="image-history-workspace">
-            <ImageGenerationHistory v-if="historyVisited" :view="view.history" :active="activeTab === 'history'" :disabled="formDisabled || view.historyActions.busy.value" @reuse="reuseHistory" @use-image="useHistoryImage" :on-download="view.downloadHistory" />
+            <!-- Model transfers lock editor changes, while history browsing, deletion, and image downloads remain available. -->
+            <ImageGenerationHistory v-if="historyVisited" :view="view.history" :active="activeTab === 'history'" :disabled="formDisabled || view.historyActions.busy.value" :editor-disabled="library.importing.value || library.downloading.value" @reuse="reuseHistory" @use-image="useHistoryImage" :on-download="view.downloadHistory" />
           </div>
           <div v-show="activeTab === 'measure'" role="tabpanel" :id="id + '-panel-measure'" :aria-labelledby="id + '-tab-measure'">
             <ImageBenchmark :active="activeTab === 'measure'" v-if="benchmarkVisited" :bench="benchmark" :generation="view" />

@@ -22,7 +22,10 @@ export function createInventoryWorker(): WorkerServerApi<InventoryWorker> {
         } catch { /* caller gone */ }
       }
       try {
-        const repositories = input ?? await listImageRepositories({ signal: undefined, onProgress: publish });
+        // Linked folders are independent of OPFS support. Skip only an absent
+        // API; failures from an available OPFS must still reach the caller.
+        const repositories = input ?? (typeof navigator.storage?.getDirectory === 'function'
+          ? await listImageRepositories({ signal: undefined, onProgress: publish }) : []);
         if (hostDirectories?.length) repositories.push(...await listHostImageRepositories({ directories: hostDirectories, signal: undefined, onProgress: publish }));
         return await scanImageRepositories({ repositories, signal: undefined, onProgress: publish });
       } finally {

@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createBenchmarkRunner } from './runner';
 import { planFixture, metricFixture } from './test-fixtures';
+import { benchmarkManifest } from './archive';
 import type { ImageClient } from '@/features/stable-diffusion-cpp-browser/worker/types';
 import type { Request, WorkerResult } from '@/features/stable-diffusion-cpp-browser/types';
 const runners: ReturnType<typeof createBenchmarkRunner>[] = [];
@@ -32,9 +33,30 @@ function harness({ behavior }: { behavior: (({ request, ordinal }: { request: Re
       },
     };
   });
-  const runner = createBenchmarkRunner({ createClient, now: () => performance.now(), date: () => new Date().toISOString(), observeVisibility: () => stopVisibility, publish }); runners.push(runner);
-  return { runner, clients, requests, callbacks, createClient, publish, stopVisibility, maxActive: () => maxActive, activeCount: () => activeCount };
+  const observeVisibility = vi.fn<Parameters<typeof createBenchmarkRunner>[0]['observeVisibility']>(({ changed }) => {
+    changed({ hidden: false }); return stopVisibility;
+  });
+  const runner = createBenchmarkRunner({ createClient, now: () => performance.now(), date: () => new Date().toISOString(), observeVisibility, publish }); runners.push(runner);
+  return { runner, clients, requests, callbacks, createClient, publish, observeVisibility, stopVisibility, maxActive: () => maxActive, activeCount: () => activeCount };
 }
+it.each([
+  { states: [false], hiddenObserved: false, visibilityChanges: 0 },
+  { states: [true], hiddenObserved: true, visibilityChanges: 0 },
+  { states: [false, true, false], hiddenObserved: true, visibilityChanges: 2 },
+  { states: [false, false, true, true, false], hiddenObserved: true, visibilityChanges: 2 },
+  { states: [true, false], hiddenObserved: true, visibilityChanges: 1 },
+])('records visibility transitions separately from the initial state: $states', async ({ states, hiddenObserved, visibilityChanges }) => {
+  const h = harness({ behavior: undefined });
+  h.observeVisibility.mockImplementation(({ changed }) => {
+    for (const hidden of states) changed({ hidden });
+    return h.stopVisibility;
+  });
+  await h.runner.start({ plan: planFixture({ mode: 'fresh-each', repeats: 1 }) });
+  const snapshot = h.runner.snapshot()!;
+  for (const run of snapshot.runs) expect(run.record).toMatchObject({ hiddenObserved, visibilityChanges });
+  const manifest = benchmarkManifest({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: new Date().toISOString() });
+  for (const run of manifest.runs) expect(run).toMatchObject({ hiddenObserved, visibilityChanges });
+});
 it('uses one fresh context then two warm runs per model; disposes before the next model', async () => {
   const h = harness({ behavior: undefined }); await h.runner.start({ plan: planFixture({ mode: 'cold-warm', repeats: 3 }) });
   expect(h.clients.map(c => c.calls)).toEqual([3,3]); expect(h.maxActive()).toBe(1); expect(h.activeCount()).toBe(0);

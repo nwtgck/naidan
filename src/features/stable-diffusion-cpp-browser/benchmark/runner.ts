@@ -78,8 +78,12 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
             run.record.status = 'running'; run.record.startedAt = date();
             const started = now();
             try {
+              let previousHidden: boolean | undefined;
               stopVisibility = observeVisibility({ changed({ hidden }) {
-                run.record.visibilityChanges++; run.record.hiddenObserved ||= hidden;
+                // The observer reports the initial state before subscribing.
+                // It matters for hiddenObserved, but is not a visibility change.
+                if (previousHidden !== undefined && previousHidden !== hidden) run.record.visibilityChanges++;
+                previousHidden = hidden; run.record.hiddenObserved ||= hidden;
               } });
               client ??= createClient();
               if (plan.protocol.timeoutSeconds) timer = setTimeout(() => {

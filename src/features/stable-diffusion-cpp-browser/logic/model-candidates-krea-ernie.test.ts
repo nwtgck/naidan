@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import { scanImageRepositories, componentMatch, componentRequirements } from './model-candidates';
-import { ggufFixture, krea2Tensors, ernieImageTensors, qwenTextTensors, ministralTextTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { ggufFixture, krea2Tensors, krea2GgufTensors, ernieImageTensors, qwenTextTensors, ministralTextTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
 import type { TensorInfo } from './model-metadata';
 
 async function candidate({ tensors, architecture }: { tensors: TensorInfo[], architecture: string | undefined }) {
@@ -13,6 +13,19 @@ it.each(['txtfusion', 'text_fusion'])('recognizes Krea2 %s with matching image d
   const tensors = krea2Tensors.map(tensor => ({ ...tensor, name: tensor.name.replace('txtfusion', name) }));
   expect(await candidate({ tensors, architecture: undefined })).toMatchObject({ family: 'krea2', roles: ['diffusion'], variant: 'unknown' });
   expect((await candidate({ tensors: tensors.slice(0, 1), architecture: undefined })).family).toBe('unknown');
+});
+it('recognizes the flattened Krea2 GGUF projector only with architecture and image dimensions', async () => {
+  expect(await candidate({ tensors: krea2GgufTensors, architecture: 'krea2' })).toMatchObject({ family: 'krea2', roles: ['diffusion'] });
+  for (const architecture of [undefined, 'flux']) {
+    expect((await candidate({ tensors: krea2GgufTensors, architecture })).family).toBe('unknown');
+  }
+  for (const tensors of [
+    [], krea2GgufTensors.slice(0, 1), krea2GgufTensors.slice(1),
+    krea2GgufTensors.map(tensor => tensor.name === 'first.weight' ? { ...tensor, shape: [3072, 64] } : tensor),
+    krea2GgufTensors.map(tensor => tensor.name === 'txtfusion.projector.weight' ? { ...tensor, shape: [13] } : tensor),
+  ]) {
+    expect((await candidate({ tensors, architecture: 'krea2' })).family).toBe('unknown');
+  }
 });
 it('recognizes ERNIE by its image, text and normalization structures together', async () => {
   expect(await candidate({ tensors: ernieImageTensors, architecture: undefined })).toMatchObject({ family: 'ernie-image', roles: ['diffusion'], variant: 'unknown' });

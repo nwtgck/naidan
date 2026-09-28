@@ -1,6 +1,8 @@
 // @vitest-environment node
-import { expect, it } from 'vitest';
-import { imageModelRecipes, imageRecipeLayout, imageRecipeLink } from './model-recipes';
+import { expect, it, vi } from 'vitest';
+import { imageModelRecipes, imageRecipeLayout, imageRecipeLink, selectedRecipeFiles } from './model-recipes';
+import { imageFileIdentity } from './logic/catalog-source';
+import type { CatalogFetch } from './download-worker/fetch-types';
 import { validModelPath } from './logic/model-path';
 import { scanImageRepositories } from './logic/model-candidates';
 import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, sdCheckpointTensors, sdVaeTensors, flux2KleinTensors, flux2VaeTensors, animaTensors, wanVaeTensors, krea2Tensors, ernieImageTensors, ministralTextTensors } from './test-utils/weights';
@@ -56,4 +58,24 @@ it('recognizes every catalog layout without flattening paths or merging reposito
     if (!sdxl) expect(inventory.candidates.find(candidate => candidate.roles.includes('lm'))?.classes).toContain(facts.lmClass);
     else expect(inventory.candidates.some(candidate => candidate.roles.includes('lm'))).toBe(false);
   }
+});
+
+it('discovers the ERNIE default using the case-sensitive path in its pinned repository tree', async () => {
+  // Minimal entry from the pinned HF tree, independent of recipe-generated fixtures.
+  const published = { type: 'file', path: 'ernie-image-turbo-Q4_K_M.gguf', size: 5019124416,
+    lfs: { size: 5019124416, oid: 'ed3e035b631da47b0469b314dcce0afc3618fc9386f1af3d3e28710181e21d93' } };
+  const recipe = imageModelRecipes.find(recipe => recipe.id === 'ernie-image-turbo')!;
+  const file = selectedRecipeFiles({ recipe, selections: {} }).find(file => file.role === 'diffusion')!;
+  const fetch = vi.fn<CatalogFetch>(async () => ({
+    url: '', status: 200, statusText: 'OK', ok: true, redirected: false, responseType: 'basic',
+    headers: new Headers(), policyName: 'huggingface_models',
+    body: new ReadableStream({ start(controller) {
+      controller.enqueue(new TextEncoder().encode(JSON.stringify([published]))); controller.close();
+    } }),
+  }));
+  const identity = await imageFileIdentity({ file, signal: new AbortController().signal, fetch });
+  expect(identity).toEqual({ repository: 'unsloth/ERNIE-Image-Turbo-GGUF', revision: 'f17197b39ee5f51fff1815a3d245a4b876106230',
+    path: published.path, size: published.size, sha256: published.lfs.oid });
+  expect(fetch.mock.calls[0]![0].request.url).toBe('https://huggingface.co/api/models/unsloth/ERNIE-Image-Turbo-GGUF/tree/f17197b39ee5f51fff1815a3d245a4b876106230?recursive=false&expand=false&limit=1000');
+  expect(imageRecipeLink({ file, action: 'download' })).toBe('https://huggingface.co/unsloth/ERNIE-Image-Turbo-GGUF/resolve/f17197b39ee5f51fff1815a3d245a4b876106230/ernie-image-turbo-Q4_K_M.gguf?download=true');
 });

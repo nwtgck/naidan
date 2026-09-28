@@ -1,19 +1,52 @@
-import { releaseWorkerRemote, wrapWorkerRemote } from '@/utils/worker-transport';
+import { releaseWorkerRemote, wrapWorkerRemote, type WorkerRemote } from '@/utils/worker-transport';
 import { historyPageSchema, type ImageHistoryClient, type ImageHistoryWorker } from './types';
 
 export function createImageHistoryClient(): ImageHistoryClient {
-  const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-image-history' });
-  const remote = wrapWorkerRemote<ImageHistoryWorker>({ endpoint: worker });
+  type State = { worker: Worker, remote: WorkerRemote<ImageHistoryWorker>, pending: Set<PromiseWithResolvers<never>['reject']>, failed: EventListener, closed: boolean };
+  let state: State | undefined;
+  let disposed = false;
+  function retire({ target, cause }: { target: State, cause: Error }): void {
+    if (target.closed) return;
+    target.closed = true;
+    target.worker.removeEventListener('error', target.failed);
+    target.worker.removeEventListener('messageerror', target.failed);
+    for (const reject of target.pending) reject(cause);
+    target.pending.clear();
+    // A failed Worker cannot acknowledge Comlink release. Never wait for it.
+    try {
+      Promise.resolve(releaseWorkerRemote({ remote: target.remote })).catch(() => undefined);
+    } catch { /* The endpoint may already be gone. */ }
+    target.worker.terminate();
+    if (state === target) state = undefined;
+  }
+  function create(): State {
+    const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-image-history' });
+    const remote = wrapWorkerRemote<ImageHistoryWorker>({ endpoint: worker });
+    const target: State = { worker, remote, pending: new Set(), closed: false, failed: event => {
+      const message = event instanceof ErrorEvent && event.message ? event.message : 'Image history Worker communication failed';
+      retire({ target, cause: new Error(message) });
+    } };
+    worker.addEventListener('error', target.failed);
+    worker.addEventListener('messageerror', target.failed);
+    return target;
+  }
   return {
     async query({ query }) {
-      return historyPageSchema.parse(await remote.query({ request: { storageType: 'opfs', query } }));
+      if (disposed) throw new Error('Image history client is disposed');
+      const target = state ??= create();
+      const stopped = Promise.withResolvers<never>();
+      target.pending.add(stopped.reject);
+      try {
+        return historyPageSchema.parse(await Promise.race([
+          target.remote.query({ request: { storageType: 'opfs', query } }), stopped.promise,
+        ]));
+      } finally {
+        target.pending.delete(stopped.reject);
+      }
     },
     async dispose() {
-      try {
-        await releaseWorkerRemote({ remote });
-      } finally {
-        worker.terminate();
-      }
+      disposed = true;
+      if (state) retire({ target: state, cause: new DOMException('Image history client disposed', 'AbortError') });
     },
   };
 }

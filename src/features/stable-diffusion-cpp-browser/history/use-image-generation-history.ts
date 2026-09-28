@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { storageService } from '@/00-storage/service';
 import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationHistoryPage, ImageGenerationRecord, ImageGenerationSummary } from '@/01-models/image-generation-history';
@@ -8,8 +8,11 @@ import type { ImageHistoryClient } from './worker/types';
 
 /** Hosted-only owner; opening history performs only local OPFS operations. */
 export function useImageGenerationHistory({ getStorageType }: { getStorageType: () => StorageType }) {
+  const pageSize = 40;
   const items = shallowRef<ImageGenerationSummary[]>([]);
   const total = ref(0);
+  const currentPage = ref(1);
+  const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
   const loading = ref(false);
   const error = ref('');
   const warnings = shallowRef<ImageGenerationHistoryPage['warnings']>([]);
@@ -21,6 +24,7 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
   const available = ref(getStorageType() === 'opfs');
   let client: ImageHistoryClient | undefined;
   let queryText = '';
+  let requestedPage = 1;
   let queryGeneration = 0;
   let detailGeneration = 0;
   let pendingSelection: { id: ImageGenerationId, operation: Promise<void> } | undefined;
@@ -29,7 +33,7 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
   let storageGeneration = 0;
   let imageRevision = 0;
   let runningQuery: Promise<void> | undefined;
-  let queuedQuery: { append: boolean, generation: number, resolve: () => void } | undefined;
+  let queuedQuery: { page: number, generation: number, resolve: () => void } | undefined;
 
   function invalidateQuery(): number {
     clearTimeout(timer);
@@ -42,10 +46,11 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     available.value = !disposed && getStorageType() === 'opfs';
     return available.value;
   }
-  async function executeQuery({ append, generation }: { append: boolean, generation: number }): Promise<void> {
+  async function executeQuery({ page, generation }: { page: number, generation: number }): Promise<void> {
     if (generation !== queryGeneration || disposed) return;
     if (!refreshAvailability()) {
       items.value = []; total.value = 0; loading.value = false;
+      currentPage.value = 1; requestedPage = 1;
       warnings.value = []; warningCount.value = 0;
       return;
     }
@@ -53,12 +58,26 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     error.value = '';
     try {
       client ??= createImageHistoryClient();
-      const page = await client.query({ query: { text: queryText, offset: append ? items.value.length : 0, limit: 40 } });
-      if (generation !== queryGeneration || !refreshAvailability()) return;
-      items.value = append ? [...items.value, ...page.items] : page.items;
-      total.value = page.total;
-      warnings.value = page.warnings;
-      warningCount.value = page.warningCount;
+      let targetPage = page;
+      for (;;) {
+        const result = await client.query({ query: { text: queryText, offset: (targetPage - 1) * pageSize, limit: pageSize } });
+        if (generation !== queryGeneration || !refreshAvailability()) return;
+        const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+        if (targetPage > lastPage && result.total > 0) {
+          // A deletion can remove the last page. Move only toward an existing
+          // page and retain the displayed snapshot until that page is ready.
+          targetPage = lastPage;
+          requestedPage = targetPage;
+          continue;
+        }
+        items.value = result.items;
+        total.value = result.total;
+        currentPage.value = result.total === 0 ? 1 : targetPage;
+        requestedPage = currentPage.value;
+        warnings.value = result.warnings;
+        warningCount.value = result.warningCount;
+        return;
+      }
     } catch (cause) {
       if (generation === queryGeneration && !disposed) error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
@@ -81,24 +100,26 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
       if (queuedQuery) drainQueries();
     });
   }
-  function runQuery({ append, generation }: { append: boolean, generation: number }): Promise<void> {
+  function runQuery({ page, generation }: { page: number, generation: number }): Promise<void> {
     if (generation === queryGeneration) loading.value = refreshAvailability();
     return new Promise<void>(resolve => {
       queuedQuery?.resolve();
-      queuedQuery = { append, generation, resolve };
+      queuedQuery = { page, generation, resolve };
       drainQueries();
     });
   }
   async function reload(): Promise<void> {
-    await runQuery({ append: false, generation: invalidateQuery() });
+    await runQuery({ page: requestedPage, generation: invalidateQuery() });
   }
   function setQuery({ text }: { text: string }): void {
     queryText = text;
+    requestedPage = 1;
     const generation = invalidateQuery();
     error.value = '';
     loading.value = refreshAvailability();
     if (!available.value) {
       items.value = []; total.value = 0;
+      currentPage.value = 1;
       warnings.value = []; warningCount.value = 0;
       return;
     }
@@ -106,14 +127,15 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     // read. Its records, count and warnings are replaced together on success.
     timer = setTimeout(() => {
       timer = undefined;
-      void runQuery({ append: false, generation });
+      void runQuery({ page: 1, generation });
     }, 250);
   }
-  async function loadMore(): Promise<void> {
-    // After a failed replacement, the retained page belongs to the old query.
-    // Retry that query from the beginning rather than appending at its old offset.
-    if (loading.value || error.value || !refreshAvailability() || items.value.length >= total.value) return;
-    await runQuery({ append: true, generation: invalidateQuery() });
+  async function goToPage({ page }: { page: number }): Promise<void> {
+    // During a replacement or after failure, controls still describe the last
+    // completed query. Reload retries the pending target without mixing pages.
+    if (loading.value || error.value || !refreshAvailability() || !Number.isInteger(page) || page < 1 || page > pageCount.value || page === currentPage.value) return;
+    requestedPage = page;
+    await runQuery({ page, generation: invalidateQuery() });
   }
   function clearSelection(): void {
     detailGeneration++;
@@ -162,7 +184,18 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
   async function remove({ id }: { id: ImageGenerationId }): Promise<void> {
     if (!refreshAvailability()) throw new Error('Image generation history requires OPFS storage');
     await storageService.deleteImageGeneration({ id });
-    if (selected.value?.id === id) clearSelection();
+    if (selected.value?.id === id) {
+      // Deletion may finish while another detail is loading. Remove the deleted
+      // snapshot without invalidating the user's newer selection.
+      if (pendingSelection && pendingSelection.id !== id) selected.value = undefined;
+      else clearSelection();
+    } else if (pendingSelection?.id === id) {
+      // A late read must not redisplay the deleted record over another detail.
+      detailGeneration++;
+      pendingSelection = undefined;
+      detailLoading.value = false;
+      detailError.value = '';
+    }
     await reload();
   }
   async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {
@@ -194,6 +227,8 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     clearSelection();
     items.value = [];
     total.value = 0;
+    currentPage.value = 1;
+    requestedPage = 1;
     loading.value = false;
     error.value = '';
     warnings.value = [];
@@ -212,7 +247,7 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     await runningQuery;
     await ownedClient?.dispose();
   }
-  return { items, total, loading, error, warnings, warningCount, selected, detailLoading, detailError, imageInvalidation, available, setQuery, reload, loadMore, select, remove, removeImage, getImage, clearSelection, dispose,
+  return { items, total, currentPage, pageCount, loading, error, warnings, warningCount, selected, detailLoading, detailError, imageInvalidation, available, setQuery, reload, goToPage, select, remove, removeImage, getImage, clearSelection, dispose,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.

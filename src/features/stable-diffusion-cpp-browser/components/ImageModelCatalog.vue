@@ -25,10 +25,13 @@ const cards = computed(() => imageModelRecipes.map(recipe => {
   return { recipe, files, availability, selections, loras: imageCatalogLoras.filter(item => item.recipeId === recipe.id), bytes: files.reduce((sum, file) => sum + file.approximateBytes, 0) };
 }));
 const layoutFile = computed(() => imageCatalogLoras.find(item => item.id === downloadLoraId.value)?.source ?? cards.value.find(card => card.recipe.id === downloadRecipeId.value)?.files[0]);
+// Detect storage without opening it. Host folders and manual model files have
+// separate capabilities and must remain usable when OPFS is unavailable.
+const opfsSupported = typeof navigator !== 'undefined' && typeof navigator.storage?.getDirectory === 'function' && typeof navigator.locks?.request === 'function';
 const downloadDestinationUnavailable = computed(() => {
   const directories = props.view.hostDirectories;
   if (directories.busy.value) return true;
-  if (directories.destination.value === 'opfs') return false;
+  if (directories.destination.value === 'opfs') return !opfsSupported;
   const entry = directories.entries.value.find(item => item.id === directories.destination.value);
   // An explicit download can request read/write permission for a known handle.
   return !directories.supported.value || !entry || ['missing', 'error', 'unsupported'].includes(entry.access);
@@ -85,7 +88,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
     <div :id="id + '-content'" class="catalog-disclosure" :class="{ 'catalog-disclosure-open': open }" :inert="open ? undefined : true" :aria-hidden="!open">
       <div class="catalog-disclosure-inner">
         <div tw-class="px-4 pb-2">
-          <ImageHostModelDirectories :view="view.hostDirectories" :disabled="disabled || importing" :downloading="downloading" :layout-file="layoutFile" />
+          <ImageHostModelDirectories :view="view.hostDirectories" :opfs-supported="opfsSupported" :disabled="disabled || importing" :downloading="downloading" :layout-file="layoutFile" />
           <article v-for="card in cards" :key="card.recipe.id" :data-testid="'image-recipe-' + card.recipe.id" tw-class="min-w-0 border-t border-gray-100 dark:border-gray-800 py-3">
             <!-- Wrapping follows the available card width, NOT the viewport.
                  A desktop sidebar must not compress the model name into a sliver. -->

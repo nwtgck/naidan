@@ -6,7 +6,7 @@ import { downloadImageRecipeInWorker } from './download-worker/client';
 import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from './model-recipes';
 import { imageCatalogLoras } from './lora-catalog';
 import type { ImageDownloadSource } from './logic/catalog-source';
-import { computed, onScopeDispose, ref, shallowRef } from 'vue';
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { type listImageRepositories, importImageRepository } from './logic/repository-store';
 import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
 import { imageDirectoryFromFiles, imageDirectoriesFromDrop } from './logic/repository-input';
@@ -19,6 +19,7 @@ import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 
 type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader };
+type InventoryRefreshResult = 'scanned' | 'blocked' | 'failed';
 const defaultDependencies: Pick<Dependencies, 'import' | 'download'> = { import: importImageRepository, download: downloadImageRecipeInWorker };
 
 function primarySlot({ family }: { family: ModelCandidate['family'] }): ModelSlot | undefined {
@@ -75,6 +76,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   const downloadSelections = computed<ImageRecipeSelection>(() => downloadPresentation.value.selections);
   let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image', files: ImageRecipeFile[] } | undefined;
   const downloading = computed(() => activeDownload.value !== undefined);
+  let hostPublication: AbortController | undefined;
   const host = dependencies ? undefined : useHostModelDirectories({
     blocked: () => blocked() || importing.value,
     async stopDownload({ id }) {
@@ -84,7 +86,13 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
       await completed;
     },
     async changed() {
-      cancelScan(); await refreshInventory();
+      hostPublication?.abort(); cancelScan();
+      const controller = new AbortController(); hostPublication = controller;
+      try {
+        await refreshAfterMutation({ signal: controller.signal, completingImport: undefined });
+      } finally {
+        if (hostPublication === controller) hostPublication = undefined;
+      }
     },
     failed({ error }) {
       failure.value = error instanceof Error ? error.message : String(error);
@@ -101,14 +109,20 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     },
     selectDestination({ id }) {
       if (downloading.value || importing.value || blocked()) return;
-      hostView.selectDestination({ id }); resetDownloadIntent();
+      hostView.selectDestination({ id });
     },
   };
-  let activeScan: { controller: AbortController, promise: Promise<boolean> } | undefined;
+  let activeScan: { controller: AbortController, promise: Promise<InventoryRefreshResult> } | undefined;
   let preparingHistoryFiles = false;
   let origin: 'automatic' | 'manual' | 'files' = 'automatic';
   let disposed = false;
   const importing = computed(() => activeImport.value !== undefined);
+  watch(hostView.destination, () => {
+    // Unlinking the selected host root also changes the destination. Resuming
+    // its old transfer must never start a fresh download into OPFS instead.
+    // Invalidation is independent of an unrelated image-history save.
+    if (!downloading.value && !disposed) clearDownloadIntent();
+  }, { flush: 'sync' });
   const selected = computed(() => inventory.value.candidates.find(item => item.id === main.value));
   const selectedFacts = computed(() => selected.value && !selected.value.issue ? { family: selected.value.family, variant: selected.value.variant, evidence: selected.value.evidence } : undefined);
   const requirements = computed(() => componentRequirements({ family: selected.value?.family ?? 'unknown' }));
@@ -313,10 +327,11 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     }
   }
   async function downloadFiles({ target, files }: { target: DownloadTarget, files: readonly ImageDownloadSource[] }): Promise<void> {
+    const destinationId = hostDirectories.destination.value;
     const controller = new AbortController(); activeDownload.value = controller;
     const completion = Promise.withResolvers<void>();
     downloadCompletion = { promise: completion.promise,
-      directoryId: hostDirectories.destination.value === 'opfs' ? undefined : hostDirectories.destination.value };
+      directoryId: destinationId === 'opfs' ? undefined : destinationId };
     cancelScan(); failure.value = ''; downloadState.value = 'downloading'; downloadTarget.value = target;
     downloadProgress.value = undefined;
     let transferred = false;
@@ -337,10 +352,14 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
         const problem = failure.value;
         // Keep controls locked through inventory publication. Transfer completion
         // alone must never flash a successful, usable recipe before inspection.
-        const scanned = await refreshInventory();
+        const scanned = await refreshAfterMutation({ signal: controller.signal, completingImport: undefined });
         if (activeDownload.value === controller) activeDownload.value = undefined;
-        if (transferred && !disposed) {
-          const available = completeDownload({ target });
+        if (destinationId !== hostDirectories.destination.value) {
+          // A refresh may observe a registration removed in another view while
+          // this operation was active. Do not publish its intent in the new root.
+          clearDownloadIntent();
+        } else if (transferred && !disposed) {
+          const available = !controller.signal.aborted && completeDownload({ target });
           downloadState.value = controller.signal.aborted ? 'paused' : scanned && available ? 'complete' : 'incomplete';
         }
         if (problem) failure.value = [problem, failure.value].filter(Boolean).join('\n');
@@ -352,6 +371,9 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   }
   function resetDownloadIntent(): void {
     if (downloading.value || blocked() || disposed) return;
+    clearDownloadIntent();
+  }
+  function clearDownloadIntent(): void {
     downloadState.value = 'idle'; downloadTarget.value = undefined; downloadProgress.value = undefined;
   }
   async function resumeDownload(): Promise<void> {
@@ -366,9 +388,46 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   function cancelDownload(): void {
     activeDownload.value?.abort();
   }
+  async function waitForEditor({ signal }: { signal: AbortSignal }): Promise<void> {
+    if (!blocked() || signal.aborted || disposed) return;
+    await new Promise<void>(resolve => {
+      const finish = () => {
+        stop(); signal.removeEventListener('abort', finish); resolve();
+      };
+      const stop = watch(blocked, value => {
+        if (!value) finish();
+      }, { flush: 'sync' });
+      signal.addEventListener('abort', finish, { once: true });
+      if (signal.aborted || disposed || !blocked()) finish();
+    });
+  }
+  async function refreshAfterMutation({ signal, completingImport }: { signal: AbortSignal, completingImport: AbortController | undefined }): Promise<boolean> {
+    const abort = () => cancelScan();
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      // Saving existing images may temporarily own the editor. That is not an
+      // incomplete model: keep this preparation active until it can publish safely.
+      // Cancellation must also release host unlink/disposal waiters. Completed
+      // files stay on disk and the next refresh/resume can inspect them.
+      while (!disposed && !signal.aborted) {
+        await waitForEditor({ signal });
+        if (disposed || signal.aborted) return false;
+        const result = await refreshInventory({ completingImport });
+        switch (result) {
+        case 'scanned': return true;
+        case 'failed': return false;
+        case 'blocked': break;
+        default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+        }
+      }
+      return false;
+    } finally {
+      signal.removeEventListener('abort', abort);
+    }
+  }
   async function refresh(): Promise<void> {
     if (downloading.value) return;
-    await refreshInventory();
+    await refreshInventory({ completingImport: undefined });
   }
   async function prepareHistoryFiles(): Promise<void> {
     if (disposed || importing.value || downloading.value || preparingHistoryFiles) throw new Error('Local model files are busy');
@@ -377,7 +436,12 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     // applying its presets before the saved request has been resolved.
     preparingHistoryFiles = true;
     try {
-      if (!await refreshInventory()) throw new Error(failure.value || 'Local model files could not be inspected');
+      const result = await refreshInventory({ completingImport: undefined });
+      switch (result) {
+      case 'scanned': break;
+      case 'blocked': case 'failed': throw new Error(failure.value || 'Local model files could not be inspected');
+      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      }
     } finally {
       preparingHistoryFiles = false;
     }
@@ -386,17 +450,18 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const previous = activeScan; activeScan = undefined;
     previous?.controller.abort(); scanState.value = 'idle'; scanProgress.value = undefined;
   }
-  function refreshInventory(): Promise<boolean> {
-    if (disposed || importing.value || blocked() && !preparingHistoryFiles) return Promise.resolve(false);
+  function refreshInventory({ completingImport }: { completingImport: AbortController | undefined }): Promise<InventoryRefreshResult> {
+    if (disposed || activeImport.value !== completingImport) return Promise.resolve('failed');
+    if (blocked() && !preparingHistoryFiles) return Promise.resolve('blocked');
     // Repeated window focus/refresh must not cancel and restart a large scan.
     if (activeScan) return activeScan.promise;
     const scan = new AbortController();
-    const operation = { controller: scan, promise: Promise.resolve(false) };
+    const operation: { controller: AbortController, promise: Promise<InventoryRefreshResult> } = { controller: scan, promise: Promise.resolve('failed') };
     activeScan = operation; scanState.value = 'scanning'; failure.value = '';
     scanProgress.value = { phase: 'listing', completed: 0, total: 0, path: '' };
     operation.promise = (async () => {
       try {
-        await host?.refresh();
+        if (host) await awaitInspection({ task: host.refresh(), signal: scan.signal });
         const onProgress = ({ progress }: { progress: InspectionProgress }) => {
           if (activeScan === operation && !scan.signal.aborted) scanProgress.value = progress;
         };
@@ -406,9 +471,10 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
           scan.signal.throwIfAborted();
           return dependencies.scan({ repositories, signal: scan.signal, onProgress });
         })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations() }) });
-        if (disposed || blocked() && !preparingHistoryFiles || scan.signal.aborted || activeScan !== operation) return false;
+        if (disposed || scan.signal.aborted || activeScan !== operation || activeImport.value !== completingImport) return 'failed';
+        if (blocked() && !preparingHistoryFiles) return 'blocked';
         inventory.value = next;
-        if (preparingHistoryFiles) return true;
+        if (preparingHistoryFiles) return 'scanned';
         if (!next.candidates.some(candidate => candidate.id === main.value)) {
           main.value = ''; selections.value = {}; overrides.clear();
           if (automaticOrigin({ origin })) {
@@ -420,10 +486,10 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
             }
           }
         }
-        resolveRecipe(); resolve(); return true;
+        resolveRecipe(); resolve(); return 'scanned';
       } catch (error) {
         if (!disposed && activeScan === operation && !scan.signal.aborted) failure.value = error instanceof Error ? error.message : String(error);
-        return false;
+        return 'failed';
       } finally {
         if (activeScan === operation) {
           activeScan = undefined; scanState.value = 'idle'; scanProgress.value = undefined;
@@ -450,15 +516,18 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     } catch (error) {
       if (!disposed && !controller.signal.aborted) failure.value = error instanceof Error ? error.message : String(error);
     } finally {
-      if (activeImport.value === controller) {
-        activeImport.value = undefined; importProgress.value = undefined;
-      }
-      if (!disposed && changed) {
-        // A later folder can fail after an earlier import committed. Refresh the
-        // successful files without hiding the error (refresh clears failure).
-        const importFailure = failure.value;
-        await refresh();
-        if (!disposed && importFailure) failure.value = [importFailure, failure.value].filter(Boolean).join('\n');
+      try {
+        if (!disposed && changed) {
+          // Keep this import's ownership through publication; waiting for another
+          // save must not admit a second import or lose the completed files.
+          const importFailure = failure.value;
+          await refreshAfterMutation({ signal: controller.signal, completingImport: controller });
+          if (!disposed && activeImport.value === controller && importFailure) failure.value = [importFailure, failure.value].filter(Boolean).join('\n');
+        }
+      } finally {
+        if (activeImport.value === controller) {
+          activeImport.value = undefined; importProgress.value = undefined;
+        }
       }
     }
   }
@@ -564,7 +633,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     recipeIntent = undefined; origin = 'files'; main.value = ''; selections.value = {}; overrides.clear();
   }
   onScopeDispose(() => {
-    disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort();
+    disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort(); hostPublication?.abort();
   });
   return { hostDirectories, benchmarkTargets, selectedFacts, models, savedLoras, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadLoraId, downloadLora, loraAvailable, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
     chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels, historyFileLocation, findHistoryFile, prepareHistoryFiles,

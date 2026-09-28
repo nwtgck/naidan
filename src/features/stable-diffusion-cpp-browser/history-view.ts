@@ -7,6 +7,8 @@ export type ImageGenerationHistoryView = {
   available: Ref<boolean>;
   items: Ref<ImageGenerationSummary[]>;
   total: Ref<number>;
+  currentPage: Ref<number>;
+  pageCount: Ref<number>;
   loading: Ref<boolean>;
   error: Ref<string>;
   warnings: Ref<{ path: string, message: string }[]>;
@@ -17,7 +19,7 @@ export type ImageGenerationHistoryView = {
   imageInvalidation: Ref<{ binaryObjectId: BinaryObjectId, revision: number } | undefined>;
   setQuery({ text }: { text: string }): void;
   reload(): Promise<void>;
-  loadMore(): Promise<void>;
+  goToPage({ page }: { page: number }): Promise<void>;
   select({ id }: { id: ImageGenerationId }): Promise<void>;
   remove({ id }: { id: ImageGenerationId }): Promise<void>;
   removeImage({ id, binaryObjectId }: { id: ImageGenerationId, binaryObjectId: BinaryObjectId }): Promise<void>;

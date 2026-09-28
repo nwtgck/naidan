@@ -78,6 +78,8 @@ export const animaTensors: TensorInfo[] = [
   tensor({ name: 'x_embedder.proj.1.weight', shape: [2048, 68] }),
 ];
 export const krea2Tensors: TensorInfo[] = [tensor({ name: 'txtfusion.projector.weight', shape: [1, 12] }), tensor({ name: 'first.weight', shape: [6144, 64] })];
+// Logical shapes from the catalog Krea-2-Turbo GGUF header, without trained weights.
+export const krea2GgufTensors: TensorInfo[] = [tensor({ name: 'txtfusion.projector.weight', shape: [12] }), tensor({ name: 'first.weight', shape: [6144, 64] })];
 export const ernieImageTensors: TensorInfo[] = [tensor({ name: 'layers.0.adaLN_sa_ln.weight', shape: [4096] }), tensor({ name: 'x_embedder.proj.weight', shape: [4096, 128, 1, 1] }), tensor({ name: 'text_proj.weight', shape: [4096, 3072] })];
 export const flux2VaeTensors: TensorInfo[] = [tensor({ name: 'decoder.conv_in.weight', shape: [512, 32, 3, 3] }), tensor({ name: 'decoder.conv_out.weight', shape: [3, 128, 3, 3] }), tensor({ name: 'encoder.conv_out.weight', shape: [64, 512, 3, 3] })];
 export const wanVaeTensors: TensorInfo[] = [tensor({ name: 'conv2.weight', shape: [16, 16, 1, 1, 1] }), tensor({ name: 'decoder.conv1.weight', shape: [384, 16, 3, 3, 3] }), tensor({ name: 'decoder.head.2.weight', shape: [3, 96, 3, 3, 3] })];

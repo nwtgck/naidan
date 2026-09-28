@@ -25,6 +25,13 @@ export type ImportProgress = { completed: number, total: number, path: string };
 function missing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError';
 }
+function unreadableRepository({ error, signal }: { error: unknown, signal: AbortSignal | undefined }): Pick<LocalImageRepository, 'files' | 'issues'> {
+  signal?.throwIfAborted();
+  if ((error instanceof Error || error instanceof DOMException) && error.name === 'AbortError') throw error;
+  // A failed tree cannot expose its partial file list as a usable model, but
+  // independent repositories remain available and the failure stays visible.
+  return { files: [], issues: [{ path: '', message: error instanceof Error ? error.message : String(error) }] };
+}
 async function optionalDirectory({ parent, name }: { parent: FileSystemDirectoryHandle, name: string }): Promise<FileSystemDirectoryHandle | undefined> {
   try {
     return await parent.getDirectoryHandle(name);
@@ -100,22 +107,26 @@ export async function listImageRepositories({ signal, onProgress }: { signal: Ab
   async function append({ folder, id }: { folder: FileSystemDirectoryHandle, id: string }): Promise<void> {
     signal?.throwIfAborted();
     onProgress?.({ progress: { phase: 'listing', completed: result.length, total: 0, path: id.slice(0, 2048) } });
-    const hidden = new Set<string>();
-    if (await pending({ folder })) {
-      if (id.startsWith('user/')) return;
-      // Respect llama.cpp's existing download journal without hiding unrelated
-      // completed files in that same repository. Empty/unknown import markers
-      // remain a repository-wide publication barrier.
-      try {
-        const journal = await readJournal({ folder });
-        for (const [index, file] of journal.selection.files.entries()) if (!journal.reused?.[index]) hidden.add(file.path);
-      } catch (error) {
-        if (error instanceof SyntaxError || error instanceof z.ZodError) return;
-        throw error;
+    try {
+      const hidden = new Set<string>();
+      if (await pending({ folder })) {
+        if (id.startsWith('user/')) return;
+        // Respect llama.cpp's existing download journal without hiding unrelated
+        // completed files in that same repository. Empty/unknown import markers
+        // remain a repository-wide publication barrier.
+        try {
+          const journal = await readJournal({ folder });
+          for (const [index, file] of journal.selection.files.entries()) if (!journal.reused?.[index]) hidden.add(file.path);
+        } catch (error) {
+          if (error instanceof SyntaxError || error instanceof z.ZodError) return;
+          throw error;
+        }
       }
+      const content = await readTree({ folder, id, hidden, signal, onProgress, publication: id.startsWith('huggingface.co/') ? 'opfs-hugging-face' : 'opfs-user' });
+      if (content.files.length || content.issues?.length) result.push({ id, name: id, ...content });
+    } catch (error) {
+      result.push({ id, name: id, ...unreadableRepository({ error, signal }) });
     }
-    const content = await readTree({ folder, id, hidden, signal, onProgress, publication: id.startsWith('huggingface.co/') ? 'opfs-hugging-face' : 'opfs-user' });
-    if (content.files.length || content.issues?.length) result.push({ id, name: id, ...content });
   }
   const user = await optionalDirectory({ parent: root, name: 'user' });
   if (user) for await (const [name, entry] of user.entries()) {
@@ -173,16 +184,20 @@ export async function listHostImageRepositories({ directories, signal, onProgres
           const repository = `${owner}/${repo}`;
           if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository)) continue;
           const id = `${issueId}/${repository}`;
-          const content = await readTree({ folder, id, hidden: new Set(), signal, onProgress, publication: 'host' });
+          let content: Pick<LocalImageRepository, 'files' | 'issues'>;
+          try {
+            content = await readTree({ folder, id, hidden: new Set(), signal, onProgress, publication: 'host' });
+          } catch (error) {
+            content = unreadableRepository({ error, signal });
+          }
           if (content.files.length || content.issues?.length) result.push({ id, name: `${directory.name}/${repository}`, ...content,
             hostSource: { directoryId: directory.id, directoryName: directory.name, repository } });
         }
       }
     } catch (error) {
-      signal?.throwIfAborted();
       // A disconnected external root must not hide usable models in other roots
       // or OPFS. Preserve and display this failure; never erase its registration.
-      result.push({ id: issueId, name: directory.name, files: [], issues: [{ path: '', message: error instanceof Error ? error.message : String(error) }] });
+      result.push({ id: issueId, name: directory.name, ...unreadableRepository({ error, signal }) });
     }
   }
   return result;

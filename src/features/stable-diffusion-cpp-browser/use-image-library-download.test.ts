@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
-import { effectScope } from 'vue';
+import { effectScope, ref } from 'vue';
 import { useImageLibrary } from './use-image-library';
 import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile } from './model-recipes';
 import { scanImageRepositories } from './logic/model-candidates';
@@ -23,21 +23,108 @@ function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): L
   return { id, name: id, files: [{ path: file.path, file: blob }] };
 }
 function harness({ download, initial }: { download: ImageRecipeDownloader | undefined, initial: LocalImageRepository[] }) {
-  let entries = initial; let blocked = false;
+  let entries = initial; const blocked = ref(false);
   const downloader = vi.fn(download ?? (async () => undefined));
   const list = vi.fn(async () => entries), onSelection = vi.fn();
   const scope = effectScope(); scopes.push(scope);
-  const library = scope.run(() => useImageLibrary({ blocked: () => blocked, onSelection,
+  const library = scope.run(() => useImageLibrary({ blocked: () => blocked.value, onSelection,
     dependencies: { list, scan: scanImageRepositories, import: vi.fn(), download: downloader } }))!;
   return { library, downloader, list, onSelection, scope,
     update({ repositories }: { repositories: LocalImageRepository[] }) {
       entries = repositories;
     },
     block() {
-      blocked = true;
+      blocked.value = true;
+    },
+    unblock() {
+      blocked.value = false;
     },
   };
 }
+it('waits for an independent save before publishing the completed model download', async () => {
+  const wanted = selectedRecipeFiles({ recipe, selections: {} }).map(file => repository({ file, user: false }));
+  const h = harness({ initial: wanted, download: undefined });
+  h.downloader.mockImplementation(async () => h.block());
+  const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  await new Promise(resolve => setImmediate(resolve));
+  expect(h.library.downloading.value).toBe(true);
+  expect(h.library.downloadState.value).toBe('downloading');
+  expect(h.list).not.toHaveBeenCalled();
+  h.unblock(); await operation;
+  expect(h.list).toHaveBeenCalledOnce();
+  expect(h.library.downloadState.value).toBe('complete');
+  expect(h.library.ready.value).toBe(true);
+});
+
+it('retries publication when an independent save begins during the final inspection', async () => {
+  const wanted = selectedRecipeFiles({ recipe, selections: {} }).map(file => repository({ file, user: false }));
+  const h = harness({ initial: wanted, download: undefined });
+  const reading = Promise.withResolvers<LocalImageRepository[]>();
+  h.list.mockReturnValueOnce(reading.promise);
+  const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
+  h.block(); reading.resolve(wanted);
+  await new Promise(resolve => setImmediate(resolve));
+  expect(h.library.downloading.value).toBe(true);
+  expect(h.library.main.value).toBe('');
+  h.unblock(); await operation;
+  expect(h.list).toHaveBeenCalledTimes(2);
+  expect(h.library.downloadState.value).toBe('complete');
+});
+
+it.each(['cancel', 'dispose'] as const)('settles deferred publication on %s without waiting for the independent save', async action => {
+  const h = harness({ initial: [], download: undefined });
+  h.downloader.mockImplementation(async () => h.block());
+  const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  await new Promise(resolve => setImmediate(resolve));
+  expect(h.library.downloading.value).toBe(true);
+  if (action === 'cancel') h.library.cancelDownload(); else h.scope.stop();
+  await operation;
+  expect(h.library.downloading.value).toBe(false);
+  if (action === 'cancel') expect(h.library.downloadState.value).toBe('paused');
+  h.unblock(); await new Promise(resolve => setImmediate(resolve));
+  expect(h.list).not.toHaveBeenCalled();
+});
+
+it('cancels an unresponsive final inspection and ignores its late result', async () => {
+  const h = harness({ initial: [], download: undefined });
+  const reading = Promise.withResolvers<LocalImageRepository[]>();
+  h.list.mockReturnValueOnce(reading.promise);
+  const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
+  h.library.cancelDownload();
+  await operation;
+  expect(h.library.downloadState.value).toBe('paused');
+  expect(h.library.downloading.value).toBe(false);
+  reading.reject(new Error('Late platform read failure'));
+  await new Promise(resolve => setImmediate(resolve));
+  expect(h.library.failure.value).toBe('');
+});
+
+it('finds completed files on the next refresh after cancellation skips the final inspection', async () => {
+  const wanted = selectedRecipeFiles({ recipe, selections: {} }).map(file => repository({ file, user: false }));
+  const h = harness({ initial: wanted, download: undefined });
+  h.downloader.mockImplementation(async () => h.block());
+  const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  await new Promise(resolve => setImmediate(resolve));
+  h.library.cancelDownload(); await operation;
+  expect(h.list).not.toHaveBeenCalled();
+  h.unblock(); await h.library.refresh();
+  expect(h.list).toHaveBeenCalledOnce();
+  expect(h.downloader).toHaveBeenCalledOnce();
+  expect(h.library.ready.value).toBe(true);
+});
+
+it('does not retry a real inspection failure when the editor later becomes available', async () => {
+  const h = harness({ initial: [], download: undefined });
+  h.list.mockRejectedValueOnce(new DOMException('Repository unavailable', 'NotReadableError'));
+  await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  expect(h.library.downloadState.value).toBe('incomplete');
+  expect(h.library.failure.value).toBe('Repository unavailable');
+  h.block(); h.unblock(); await new Promise(resolve => setImmediate(resolve));
+  expect(h.list).toHaveBeenCalledOnce();
+});
+
 it('does not fetch on construction, refresh, or explicit selection from local files', async () => {
   const files = selectedRecipeFiles({ recipe, selections: {} });
   const h = harness({ initial: files.map(file => repository({ file, user: true })), download: undefined });

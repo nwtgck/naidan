@@ -92,7 +92,7 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     id: 'ernie-image-turbo', title: 'ERNIE-Image-Turbo',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/ernie_image.md',
     files: [
-      { role: 'diffusion', repository: 'unsloth/ERNIE-Image-Turbo-GGUF', revision: 'f17197b39ee5f51fff1815a3d245a4b876106230', path: 'ERNIE-Image-Turbo-Q4_K_M.gguf', directory: 'ERNIE-Image-Turbo-GGUF', approximateBytes: 5019124416 },
+      { role: 'diffusion', repository: 'unsloth/ERNIE-Image-Turbo-GGUF', revision: 'f17197b39ee5f51fff1815a3d245a4b876106230', path: 'ernie-image-turbo-Q4_K_M.gguf', directory: 'ERNIE-Image-Turbo-GGUF', approximateBytes: 5019124416 },
       { role: 'vae', repository: 'Comfy-Org/ERNIE-Image', revision: '82d237fcf02a10b75154717487d07a724a25dc5b', path: 'vae/flux2-vae.safetensors', directory: 'ERNIE-Image', approximateBytes: 336213556 },
       { role: 'lm', repository: 'unsloth/Ministral-3-3B-Instruct-2512-GGUF', revision: '7f116d3df13bc7d3820b2ff1d5c273133b5accaa', path: 'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf', directory: 'Ministral-3-3B-Instruct-2512-GGUF', approximateBytes: 2150000000 },
     ],

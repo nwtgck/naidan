@@ -41,7 +41,8 @@ export function useImageGeneration(): ImageGenerationView {
     }
   }
   const storageRevision = ref(0);
-  const history = useImageGenerationHistory({ getStorageType: currentStorageType });
+  const historyOwner = useImageGenerationHistory({ getStorageType: currentStorageType });
+  const history = { ...historyOwner, remove: removeHistoryRecord };
   const historyActions = { busy: ref(false), error: ref(''), missingFiles: ref<string[]>([]), missingInactiveFiles: ref<string[]>([]) };
   const historySaving: ImageGenerationView['historySaving'] = {
     enabled: ref(true),
@@ -206,10 +207,18 @@ export function useImageGeneration(): ImageGenerationView {
   function chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void {
     if (formDisabled.value || library.importing.value || library.downloading.value || !(event.target instanceof HTMLInputElement)) return;
     library.useManualFiles();
+    const previousModels = restoredModels;
     restoredModels = undefined;
     manualFacts.value = undefined;
     const file = event.target.files?.[0];
     files.value = { ...files.value, [slot]: file };
+    if (previousModels) {
+      // Keep metadata for every unchanged slot whose File remains selected, even
+      // when the base-model watcher resets adapters and input images. Only the
+      // replacement loses its old path and split-file association.
+      const retained = previousModels.filter(model => model.slot !== slot);
+      restoredModels = file ? [...retained, { slot, file }] : retained;
+    }
     void inspectManualFiles();
   }
   function resetFiles(): void {
@@ -224,7 +233,7 @@ export function useImageGeneration(): ImageGenerationView {
     client?.release({ reason }); modelResident.value = false;
   }
   function acquireBenchmark(): boolean {
-    if (disposed || benchmarkActive.value || busy.value || !supported.value || library.importing.value || library.downloading.value || library.scanState.value === 'scanning') return false;
+    if (disposed || benchmarkActive.value || busy.value || formDisabled.value || !supported.value || library.importing.value || library.downloading.value || library.scanState.value === 'scanning') return false;
     benchmarkActive.value = true;
     manualInspection?.abort(); manualInspection = undefined; manualInspectionState.value = 'idle';
     library.cancelScan();
@@ -263,6 +272,13 @@ export function useImageGeneration(): ImageGenerationView {
   }
   function savedHistoryId({ resultId }: { resultId: number }): ImageGenerationId | undefined {
     return historySaving.supported.value ? savedHistoryIds.value.get(resultId) : undefined;
+  }
+  async function removeHistoryRecord({ id }: { id: ImageGenerationId }): Promise<void> {
+    await historyOwner.remove({ id });
+    // Forget navigation only after deletion succeeds. Generated result images
+    // and shared binary objects remain independently available.
+    for (const [resultId, historyId] of savedHistoryIds.value) if (historyId === id) savedHistoryIds.value.delete(resultId);
+    clearDiscardedHistoryStatus();
   }
   function removePreview({ previewId }: { previewId: number }): void {
     snapshotGallery.remove({ id: previewId }); previewSnapshots.value = snapshotGallery.entries();
@@ -305,6 +321,7 @@ export function useImageGeneration(): ImageGenerationView {
   async function retryHistorySave(): Promise<void> {
     if (!pendingSaves.size || historySaveRunning || !historySaving.supported.value || disposed) return;
     historySaveRunning = true;
+    historyActions.error.value = '';
     const revision = storageRevision.value;
     let currentStatus = historySaving.status.value;
     let currentError = historySaving.error.value;
@@ -327,7 +344,12 @@ export function useImageGeneration(): ImageGenerationView {
           } else historyActions.error.value = message;
         }
       }
-      if (revision === storageRevision.value && currentStorageType() === 'opfs') await history.reload();
+      if (!disposed && revision === storageRevision.value && currentStorageType() === 'opfs') {
+        // Saving owns the completed record, not the time needed to search all
+        // history. The history owner tracks this refresh, including its errors
+        // and disposal, without keeping the next generation disabled.
+        void history.reload();
+      }
     } finally {
       historySaveRunning = false;
       historySaving.pendingCount.value = pendingSaves.size;
@@ -375,13 +397,13 @@ export function useImageGeneration(): ImageGenerationView {
       failure.value = '';
       manualFacts.value = undefined;
     } catch (cause) {
-      if (!disposed) historyActions.error.value = cause instanceof Error ? cause.message : String(cause);
+      if (!disposed && revision === storageRevision.value) historyActions.error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
       historyActions.busy.value = false;
     }
   }
   async function useHistoryImage({ binaryObjectId, role }: { binaryObjectId: BinaryObjectId, role: 'initial' | 'reference' }): Promise<void> {
-    if (formDisabled.value || disposed) return;
+    if (formDisabled.value || library.importing.value || library.downloading.value || disposed) return;
     historyActions.error.value = '';
     historyActions.busy.value = true;
     const revision = storageRevision.value;
@@ -396,7 +418,7 @@ export function useImageGeneration(): ImageGenerationView {
       default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
       }
     } catch (cause) {
-      if (!disposed) historyActions.error.value = cause instanceof Error ? cause.message : String(cause);
+      if (!disposed && revision === storageRevision.value) historyActions.error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
       historyActions.busy.value = false;
     }
@@ -538,6 +560,9 @@ export function useImageGeneration(): ImageGenerationView {
         }
       } });
       if (disposed || operation.signal.aborted) return;
+      // Inference stop controls cannot interrupt the subsequent OPFS save.
+      // Keep the operation busy until saving settles, but end its progress now.
+      progress.value = undefined; stopping.value = false;
       if ('cancelled' in result) {
         cancelled.value = true; modelResident.value = result.modelResident;
         if (!retainModel.value) releaseFor({ reason: 'retention-disabled' });
@@ -573,10 +598,11 @@ export function useImageGeneration(): ImageGenerationView {
     }
   }
   function cancel(): void {
-    if (!busy.value || stopping.value) return;
+    if (!busy.value || !progress.value || stopping.value) return;
     stopping.value = true; client?.cancel();
   }
   function forceCancel(): void {
+    if (!busy.value || !progress.value) return;
     controller.value?.abort();
   }
   const refreshLocalModels = (): void => {
