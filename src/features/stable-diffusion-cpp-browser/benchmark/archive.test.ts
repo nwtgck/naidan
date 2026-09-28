@@ -14,6 +14,8 @@ async function snapshotFixture(): Promise<BenchmarkSnapshot> {
         async generate({ request, onDiagnostic }) {
           onDiagnostic?.({ diagnostic: metricFixture({ metric: 'worker-selection', fields: { reusedWorker: count++ > 0, reason: 'fixture' } }) });
           return { png: new Blob(['PNG-test'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
+        }, async inspectEngine() {
+          return { status: 'unavailable', reason: 'unsupported' };
         }, dispose() {}, release() {}, cancel() {}, updatePreview() {},
       };
     },

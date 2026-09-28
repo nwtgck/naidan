@@ -10,6 +10,8 @@ export function useImageGeneration(): ImageGenerationView {
   return {
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
     ...form,
+    engineState: { opened: ref(false), status: ref('unavailable'), snapshot: shallowRef(), reason: ref('unsupported'), error: ref(''),
+      canRefresh: computed(() => false), setOpened() {}, async refresh() {} },
     seedMode: ref('random'), randomizeSeed() {},
     history: { available: ref(false), items: shallowRef([]), total: ref(0), currentPage: ref(1), pageCount: ref(1), loading: ref(false), error: ref(''), warnings: shallowRef([]), warningCount: ref(0), selected: shallowRef(), detailLoading: ref(false), detailError: ref(''), imageInvalidation: shallowRef(),
       setQuery() {}, async reload() {}, async goToPage() {}, async select() {}, async remove() {}, async removeImage() {}, async getImage() {

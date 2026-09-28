@@ -6,6 +6,8 @@ import type { Request } from './types';
 import type { ImageGenerationView } from './use-image-generation-types';
 import type { ImageClient } from './worker/types';
 import { artifactFixture, ggufFile, parametersFixture, requestFixture } from './test-fixtures';
+import { engineSnapshotFixture } from './test-utils/engine-state';
+import type { ImageEngineInspection } from './engine-state';
 import { snapshotImageGeneration, finishImageGenerationSnapshot } from './history/snapshot';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
@@ -13,7 +15,7 @@ import ImageGenerationResults from './components/ImageGenerationResults.vue';
 const mocks = vi.hoisted(() => {
   const models: Request['models'] = [];
   let selection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void = () => {};
-  return { generate: vi.fn(), cancel: vi.fn(), release: vi.fn(), dispose: vi.fn(), save: vi.fn(), remove: vi.fn(), removeBinary: vi.fn(), getFile: vi.fn(), query: vi.fn(), prepareFiles: vi.fn(), downloadBlob: vi.fn(), download: vi.fn(), setTransfer: vi.fn(), models,
+  return { generate: vi.fn(), inspectEngine: vi.fn(), cancel: vi.fn(), release: vi.fn(), dispose: vi.fn(), save: vi.fn(), remove: vi.fn(), removeBinary: vi.fn(), getFile: vi.fn(), query: vi.fn(), prepareFiles: vi.fn(), downloadBlob: vi.fn(), download: vi.fn(), setTransfer: vi.fn(), models,
     storageType: 'opfs', listeners: new Set<({ event }: { event: { type: 'migration', timestamp: number } }) => void>(),
     select(value: { family: 'z-image', turbo: boolean }) {
       selection(value);
@@ -41,7 +43,7 @@ vi.mock('@/00-storage/service', () => ({ storageService: {
 vi.mock('./history/worker/client-hosted', () => ({ createImageHistoryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 vi.mock('./capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
 vi.mock('./inventory-worker/client', () => ({ inspectImageInventory: vi.fn() }));
-vi.mock('./worker/client', () => ({ createImageClient: () => ({ generate: mocks.generate, release: mocks.release, dispose: mocks.dispose, cancel: mocks.cancel, updatePreview() {} }) }));
+vi.mock('./worker/client', () => ({ createImageClient: () => ({ generate: mocks.generate, inspectEngine: mocks.inspectEngine, release: mocks.release, dispose: mocks.dispose, cancel: mocks.cancel, updatePreview() {} }) }));
 vi.mock('./history/download', () => ({ imageGenerationDownloadBlob: (...args: unknown[]) => mocks.downloadBlob(...args), downloadImageBlob: (...args: unknown[]) => mocks.download(...args) }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', async () => {
   const { artifactFixture } = await import('./test-fixtures');
@@ -100,6 +102,7 @@ beforeEach(async () => {
   preferenceSettings.value = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } };
   vi.clearAllMocks(); mocks.listeners.clear(); mocks.storageType = 'opfs'; mocks.models = [{ slot: 'model', file: ggufFile() }];
   mocks.query.mockResolvedValue({ items: [], total: 0, warnings: [], warningCount: 0 }); mocks.save.mockResolvedValue(undefined); mocks.generate.mockResolvedValue(result());
+  mocks.inspectEngine.mockReset().mockResolvedValue({ status: 'ready', snapshot: engineSnapshotFixture() });
   mocks.remove.mockReset().mockResolvedValue(undefined);
   mocks.prepareFiles.mockResolvedValue(undefined);
   mocks.downloadBlob.mockResolvedValue(new Blob(['download copy'], { type: 'image/png' }));
@@ -116,6 +119,31 @@ afterEach(() => {
 });
 
 describe('hosted image history integration with a synthetic inference client', () => {
+  it('observes only an existing idle model and drops observations after explicit release', async () => {
+    const view = open(); view.retainModel.value = true;
+    view.engineState.setOpened({ opened: true });
+    expect(view.engineState.reason.value).toBe('not-loaded');
+    expect(mocks.inspectEngine).not.toHaveBeenCalled();
+    view.engineState.setOpened({ opened: false });
+    await view.generate();
+    expect(mocks.inspectEngine).not.toHaveBeenCalled();
+    view.engineState.setOpened({ opened: true }); await flushPromises();
+    expect(view.engineState.snapshot.value?.modelVersion).toBe(engineSnapshotFixture().modelVersion);
+    const pending = Promise.withResolvers<Awaited<ReturnType<ImageClient['generate']>>>();
+    mocks.generate.mockImplementationOnce(({ onProgress }: Parameters<ImageClient['generate']>[0]) => {
+      onProgress({ event: { phase: 'sampling', step: 1, steps: 8 } }); return pending.promise;
+    });
+    const generation = view.generate(); await flushPromises();
+    await view.engineState.refresh(); expect(mocks.inspectEngine).toHaveBeenCalledOnce();
+    expect(view.engineState.snapshot.value?.collectedAt).toBe(engineSnapshotFixture().collectedAt);
+    pending.resolve(result()); await generation; await flushPromises();
+    expect(mocks.inspectEngine).toHaveBeenCalledTimes(2);
+    const inspection = Promise.withResolvers<ImageEngineInspection>(); mocks.inspectEngine.mockReturnValueOnce(inspection.promise);
+    const reading = view.engineState.refresh(); view.releaseModel();
+    inspection.resolve({ status: 'ready', snapshot: engineSnapshotFixture() }); await reading;
+    expect(view.engineState.snapshot.value).toBeUndefined();
+    expect(view.modelResident.value).toBe(false);
+  });
   it.each(['cooperative', 'forced'] as const)('keeps prior results distinct after %s cancellation during decoding', async mode => {
     const view = open();
     await view.generate();

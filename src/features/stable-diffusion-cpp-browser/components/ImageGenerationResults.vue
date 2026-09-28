@@ -9,6 +9,7 @@ import { lazyStrings } from '@/strings';
 import type { ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
 import ImageGenerationPreview from './ImageGenerationPreview.vue';
+import ImageEngineState from './ImageEngineState.vue';
 const props = defineProps<{ view: ImageGenerationView, active: boolean }>();
 const emit = defineEmits<{ openHistory: [value: { id: ImageGenerationId | undefined }], prepare: [] }>();
 const saveHistory = props.view.historySaving.enabled;
@@ -152,6 +153,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <button v-if="results.length" type="button" @click="clearResults" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 text-red-600 dark:text-red-400 font-bold rounded-xl border border-red-100 dark:border-red-900/30 bg-red-50/40 dark:bg-red-900/10 px-3 py-2 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-10">{{ lazyStrings.stableDiffusionCppBrowser__clear_results() }}</button>
       </div>
     </ImageSettingsSection>
+    <ImageEngineState :view="view" :active="active" />
     <div ref="diagnosticsRegion" tabindex="-1" data-testid="image-diagnostics-region" tw-class="space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-2xl">
       <ImageSettingsSection v-model:open="diagnosticsOpen" :title="lazyStrings.stableDiffusionCppBrowser__diagnostics()" :summary="diagnosticStatus" data-testid="image-live-diagnostics">
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__debug_help() }}</p>

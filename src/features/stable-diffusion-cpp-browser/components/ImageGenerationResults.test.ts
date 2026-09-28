@@ -14,6 +14,16 @@ afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
   vi.unstubAllGlobals();
 });
+it('keeps engine state as a closed, unavailable detail in the standalone results workspace', () => {
+  const view = useImageGeneration();
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
+  const panel = wrapper.get<HTMLDetailsElement>('[data-testid="image-engine-state"]');
+  expect(panel.element.open).toBe(false);
+  expect(panel.text()).toContain('Engine state');
+  expect(panel.text()).toContain('unavailable');
+  expect(panel.get<HTMLButtonElement>('[data-testid="image-engine-refresh"]').element.disabled).toBe(true);
+  expect(view.engineState.snapshot.value).toBeUndefined();
+});
 it.each([
   { draft: '101', expected: 100 },
   { draft: '', expected: 20 },

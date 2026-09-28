@@ -3,6 +3,7 @@ import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, subscribeWorkerNoti
 import { progressSchema, requestSchema, workerResultSchema, cancelControlSchema, previewSettingsSchema, previewControlSchema, previewFrameSchema, type PreviewSettings } from '@/features/stable-diffusion-cpp-browser/types';
 import { createImageSessionKeys } from '@/features/stable-diffusion-cpp-browser/session-key';
 import type { ImageClient, ImageReleaseReason, ImageWorker } from './types';
+import { imageEngineInspectionSchema } from '@/features/stable-diffusion-cpp-browser/engine-state';
 
 type WorkerState = { worker: Worker, remote: WorkerRemote<ImageWorker>, key: string, id: string, closed: boolean, unsubscribe: (() => void)[] };
 type Active = { state: WorkerState, runId: number, revision: number, mode: PreviewSettings['mode'], enabled: boolean, cancelRequested: boolean,
@@ -67,6 +68,22 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
     retire({ target, reason });
   }
   return {
+    async inspectEngine() {
+      if (disposed) return { status: 'unavailable', reason: 'released' };
+      if (active) return { status: 'unavailable', reason: 'busy' };
+      const target = state;
+      if (!target || target.closed) return { status: 'unavailable', reason: 'not-loaded' };
+      try {
+        const result = imageEngineInspectionSchema.parse(await target.remote.inspectEngine());
+        if (disposed || target.closed || state !== target) return { status: 'unavailable', reason: 'released' };
+        if (active) return { status: 'unavailable', reason: 'busy' };
+        if (result.status === 'failed' && result.disposition === 'retire-worker') retire({ target });
+        return result;
+      } catch (error) {
+        if (disposed || target.closed || state !== target) return { status: 'unavailable', reason: 'released' };
+        return { status: 'failed', disposition: 'retryable', message: (error instanceof Error ? error.message : String(error)).slice(0, 1024) };
+      }
+    },
     async generate({ request: rawRequest, signal, onProgress, onPreview, onDiagnostic }) {
       if (disposed || active) throw new Error('Image client is disposed or busy');
       signal.throwIfAborted();

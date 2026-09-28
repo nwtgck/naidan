@@ -22,15 +22,17 @@ function harness({ behavior }: { behavior: (({ request, ordinal }: { request: Re
         disposed = true; activeCount--;
       }
     }); clients.push(client);
-    return { release: vi.fn(), dispose: client.dispose, cancel: vi.fn(), updatePreview: vi.fn(),
-      async generate(args) {
-        const reused = client.calls++ > 0; requests.push(args.request); callbacks.push(args);
-        args.onDiagnostic?.({ diagnostic: metricFixture({ metric: 'worker-selection', fields: { reusedWorker: reused, reason: reused ? 'compatible' : 'first-request' } }) });
-        args.onDiagnostic?.({ diagnostic: metricFixture({ metric: 'run-wall', fields: { milliseconds: 50, sampling: 40, 'model-load': reused ? 0 : 10 } }) });
-        args.onProgress({ event: { phase: 'sampling', step: 1, steps: args.request.parameters.steps } });
-        if (behavior) return behavior({ request: args.request, ordinal: requests.length });
-        return { png: new Blob(['png'], { type: 'image/png' }), width: args.request.parameters.width, height: args.request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
-      },
+    return { async inspectEngine() {
+      return { status: 'unavailable', reason: 'unsupported' };
+    }, release: vi.fn(), dispose: client.dispose, cancel: vi.fn(), updatePreview: vi.fn(),
+    async generate(args) {
+      const reused = client.calls++ > 0; requests.push(args.request); callbacks.push(args);
+      args.onDiagnostic?.({ diagnostic: metricFixture({ metric: 'worker-selection', fields: { reusedWorker: reused, reason: reused ? 'compatible' : 'first-request' } }) });
+      args.onDiagnostic?.({ diagnostic: metricFixture({ metric: 'run-wall', fields: { milliseconds: 50, sampling: 40, 'model-load': reused ? 0 : 10 } }) });
+      args.onProgress({ event: { phase: 'sampling', step: 1, steps: args.request.parameters.steps } });
+      if (behavior) return behavior({ request: args.request, ordinal: requests.length });
+      return { png: new Blob(['png'], { type: 'image/png' }), width: args.request.parameters.width, height: args.request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
+    },
     };
   });
   const observeVisibility = vi.fn<Parameters<typeof createBenchmarkRunner>[0]['observeVisibility']>(({ changed }) => {

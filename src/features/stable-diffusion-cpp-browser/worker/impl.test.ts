@@ -3,7 +3,7 @@ import { createImageWorker } from './impl';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import type { CoreFactory } from './core-types';
 import type { PreviewControl } from '@/features/stable-diffusion-cpp-browser/types';
-const mocks = vi.hoisted(() => ({ load: vi.fn(), generate: vi.fn(), createSession: vi.fn(), updatePreview: vi.fn(), close: vi.fn(), cancel: vi.fn(), encode: vi.fn() }));
+const mocks = vi.hoisted(() => ({ inspect: vi.fn(), load: vi.fn(), generate: vi.fn(), createSession: vi.fn(), updatePreview: vi.fn(), close: vi.fn(), cancel: vi.fn(), encode: vi.fn() }));
 vi.mock('./core-loader', () => ({ loadCoreFactory: mocks.load }));
 vi.mock('./session', () => ({ createImageGenerationSession: mocks.createSession }));
 vi.mock('./image-output', () => ({ encodeImagePixels: mocks.encode }));
@@ -11,7 +11,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal('FileReaderSync', class {});
   vi.stubGlobal('navigator', { gpu: { requestAdapter: vi.fn() } });
-  mocks.createSession.mockReturnValue({ generate: mocks.generate, updatePreview: mocks.updatePreview, close: mocks.close, cancel: mocks.cancel });
+  mocks.createSession.mockReturnValue({ inspectEngine: mocks.inspect, generate: mocks.generate, updatePreview: mocks.updatePreview, close: mocks.close, cancel: mocks.cancel });
   mocks.encode.mockImplementation(async ({ image }) => ({ width: image.width, height: image.height, png: new Blob(['png'], { type: 'image/png' }) }));
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -27,6 +27,16 @@ function loaded() {
 function pixels() {
   return { pixels: new Uint8ClampedArray(256 * 256 * 4), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false };
 }
+it('never initializes a runtime for inspection and keeps active or failed Workers out of the getter', async () => {
+  const worker = createImageWorker({ reportDiagnostic: undefined });
+  expect(await worker.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' });
+  expect(mocks.load).not.toHaveBeenCalled(); loaded();
+  const pending = Promise.withResolvers<ReturnType<typeof pixels>>(); mocks.generate.mockReturnValue(pending.promise);
+  const generation = worker.generate(requestFixture(), vi.fn());
+  expect(await worker.inspectEngine()).toEqual({ status: 'unavailable', reason: 'busy' });
+  pending.reject(new Error('Native failure')); await expect(generation).rejects.toThrow('Native failure');
+  expect(await worker.inspectEngine()).toEqual({ status: 'unavailable', reason: 'released' }); expect(mocks.inspect).not.toHaveBeenCalled();
+});
 it('keeps profile/source/runtime stage on artifact loading errors', async () => {
   mocks.load.mockRejectedValue(new Error('Image Wasm integrity mismatch'));
   const worker = createImageWorker({ reportDiagnostic: undefined });

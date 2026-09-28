@@ -42,7 +42,9 @@ beforeEach(async () => {
       return { png: new Blob(['PNG'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height,
         modelVersion: 'synthetic', uniformOutput: false };
     },
-    dispose() {}, release() {}, cancel() {}, updatePreview() {},
+    async inspectEngine() {
+      return { status: 'unavailable', reason: 'unsupported' };
+    }, dispose() {}, release() {}, cancel() {}, updatePreview() {},
   }));
 });
 afterEach(() => {
@@ -121,7 +123,9 @@ it('reports a new archive failure on retry and preserves failed generation recor
     async generate() {
       throw new Error('Synthetic inference failed');
     },
-    dispose() {}, release() {}, cancel() {}, updatePreview() {},
+    async inspectEngine() {
+      return { status: 'unavailable', reason: 'unsupported' };
+    }, dispose() {}, release() {}, cancel() {}, updatePreview() {},
   }));
   const { bench, stream } = setup();
   await bench.start();

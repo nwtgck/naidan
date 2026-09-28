@@ -4,6 +4,7 @@ import type { Core, CoreModule, HostHelpers, NativeApi } from './core-types';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { fixtureReader, ggufFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
 import { imageLoraRequests } from '@/features/stable-diffusion-cpp-browser/lora-form';
+import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
 
 /** This is a mocked native boundary, not a model or WebGPU inference test. */
 function harness({ pointerBytes, outcome, channels }: {
@@ -126,6 +127,58 @@ function harness({ pointerBytes, outcome, channels }: {
   }) };
   return { core, api, helpers, reader, fields, recordPointers, strings, events, callbacks, registrations, previewWrites };
 }
+
+function enableSnapshotGetters({ h }: { h: ReturnType<typeof harness> }) {
+  h.api.sd_ctx_get_runtime_info = vi.fn(async (_context: bigint, pointer: bigint) => {
+    h.fields.set(`sd_runtime_info_t:${pointer}:version`, 1); h.fields.set(`sd_runtime_info_t:${pointer}:struct_size`, 1024); return 1;
+  });
+  h.api.sd_ctx_get_memory_info = vi.fn(async (_context: bigint, pointer: bigint) => {
+    h.fields.set(`sd_memory_info_t:${pointer}:version`, 1); h.fields.set(`sd_memory_info_t:${pointer}:struct_size`, 1024); return 1;
+  });
+  h.api.sd_ctx_get_params = vi.fn(async () => 1);
+}
+
+it('observes only an idle loaded session, never native callbacks, closed sessions or an unobserved run', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }); enableSnapshotGetters({ h });
+  const session = createImageGenerationSession(h), callbacks: Promise<ImageEngineInspection>[] = [];
+  expect(await session.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' });
+  await session.generate({ request: requestFixture(), onProgress: vi.fn(), onLog() {
+    callbacks.push(session.inspectEngine());
+  } });
+  for (const pending of callbacks) expect(await pending).toEqual({ status: 'unavailable', reason: 'busy' });
+  expect(h.api.sd_ctx_get_runtime_info).not.toHaveBeenCalled(); expect(h.api.sd_ctx_get_memory_info).not.toHaveBeenCalled();
+  expect(await session.inspectEngine()).toMatchObject({ status: 'ready', snapshot: { modelVersion: 'mock model (no inference)' } });
+  await session.close(); expect(await session.inspectEngine()).toEqual({ status: 'unavailable', reason: 'released' });
+  expect(h.api.sd_ctx_get_runtime_info).toHaveBeenCalledOnce(); expect(h.api.sd_ctx_get_memory_info).toHaveBeenCalledOnce();
+});
+it('reserves the next run but waits for an in-flight idle observation before native generation', async () => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 }); enableSnapshotGetters({ h });
+  const session = createImageGenerationSession(h), run = { request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() };
+  await session.generate(run);
+  const waiting = Promise.withResolvers<void>();
+  const getter = vi.mocked(h.api.sd_ctx_get_runtime_info!), original = getter.getMockImplementation()!;
+  getter.mockImplementationOnce(async (...args) => {
+    await waiting.promise; return original(...args);
+  });
+  const observation = session.inspectEngine(), generation = session.generate(run);
+  expect(h.api.generate_image).toHaveBeenCalledOnce();
+  expect(await session.inspectEngine()).toEqual({ status: 'unavailable', reason: 'busy' });
+  waiting.resolve(); await observation; await generation;
+  expect(h.api.generate_image).toHaveBeenCalledTimes(2); await session.close();
+});
+it('keeps retryable observation failure separate from generation and forbids native cleanup after an observation trap', async () => {
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }); enableSnapshotGetters({ h });
+  const session = createImageGenerationSession(h), run = { request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() };
+  await session.generate(run);
+  vi.mocked(h.api.sd_ctx_get_memory_info!).mockRejectedValueOnce(new Error('Observation unavailable'));
+  expect(await session.inspectEngine()).toMatchObject({ status: 'failed', disposition: 'retryable' });
+  await session.generate(run); expect(h.api.generate_image).toHaveBeenCalledTimes(2);
+  vi.mocked(h.api.sd_ctx_get_memory_info!).mockRejectedValueOnce(new WebAssembly.RuntimeError('memory access out of bounds'));
+  const freed = vi.mocked(h.core.free).mock.calls.length;
+  expect(await session.inspectEngine()).toMatchObject({ status: 'failed', disposition: 'retire-worker' });
+  await expect(session.generate(run)).rejects.toThrow('failed'); await session.close();
+  expect(h.api.generate_image).toHaveBeenCalledTimes(2); expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.core.free).toHaveBeenCalledTimes(freed);
+});
 
 it.each(['on', 'off', undefined] as const)('sets graph diagnostics from debug=%s before native work and disables them after success', async debug => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });

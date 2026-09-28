@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import path from 'node:path';
 import os from 'node:os';
 import { gunzipSync } from 'node:zlib';
-import { readImageArtifacts } from './build-runtime';
+import { assertStandaloneImageModule, readImageArtifacts } from './build-runtime';
 const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -36,6 +36,14 @@ function fixture({ omitFunction }: { omitFunction?: string } = {}) {
   return { directory, sourceCommit };
 }
 describe('optional image build integration', () => {
+  it('allows the passive engine panel without admitting the hosted observer or native reader', () => {
+    const rootDir = '/fixture';
+    const id = ({ file }: { file: string }) => path.join(rootDir, 'src/features/stable-diffusion-cpp-browser', file);
+    expect(() => assertStandaloneImageModule({ rootDir, id: id({ file: 'components/ImageEngineState.vue' }) })).not.toThrow();
+    for (const file of ['engine-state.ts', 'use-image-engine-state.ts', 'worker/engine-state.ts', 'worker/client-hosted.ts', 'worker/impl.ts']) {
+      expect(() => assertStandaloneImageModule({ rootDir, id: id({ file }) })).toThrow('Hosted image implementation');
+    }
+  });
   it('does not require artifacts in standalone or when not installed', () => {
     expect(readImageArtifacts({ rootDir: '/missing', mode: 'standalone', artifactDir: '/invalid' }).configuration).toEqual({ kind: 'unavailable', reason: 'standalone' });
     expect(readImageArtifacts({ rootDir: '/missing', mode: 'hosted', artifactDir: undefined }).files.size).toBe(0);

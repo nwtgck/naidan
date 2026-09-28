@@ -114,6 +114,9 @@ const standaloneUiFiles = new Set([
   // This component only renders caller-owned progress and pixels; its runtime
   // type import is erased and it never starts inference or creates a Worker.
   'components/ImageGenerationProgress.vue',
+  // The engine panel only renders the supplied observer facade. Standalone's
+  // facade never loads a runtime or performs native observations.
+  'components/ImageEngineState.vue',
   'form.ts',
   'form-options.ts',
   'component-label.ts',

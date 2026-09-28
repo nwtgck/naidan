@@ -1,0 +1,1 @@
+export const ImageEngineState__runtime_buffer_reports_may_be_missing = (): string => "Os valores dos buffers de execução vêm dos relatórios disponíveis e podem estar desatualizados. 0 B também pode significar que não há relatório.";

@@ -7,6 +7,8 @@ import { validateModelMounts } from './model-mounts';
 import { copyNativeImage, imagePixelStatistics, type ImagePixels } from './image-output';
 import { createNativePreviewControl } from './preview-control';
 import { writeImageInputs } from './image-input';
+import { inspectImageEngine } from './engine-state';
+import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
 
 const cancelledRun = Symbol('cancelled image run after safe native return');
 type Emit = ReturnType<typeof createImageTrace>['emit'];
@@ -49,6 +51,8 @@ export function createImageGenerationSession({ core, helpers, reader }: {
   const loraPaths: string[] = [];
   let context = 0n, modelVersion = 'Unknown', sessionId: string | undefined;
   let poisoned = false, closed = false, failed = false;
+  let inspection: Promise<ImageEngineInspection> | undefined;
+  let artifact: Request['artifact'] | undefined;
   let nativeCall: 'new_sd_ctx' | 'generate_image' | undefined;
   let nativePhase: 'model' | 'sampling' | 'decoding' = 'model';
   let previewDecoding = false;
@@ -288,10 +292,17 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     if (sessionId !== undefined && sessionId !== run.request.sessionId) throw new Error('Model composition changed; replace the image worker');
     sessionId ??= run.request.sessionId;
     const { request } = run;
+    artifact ??= request.artifact;
     const hasInputImages = !!request.imageInputs.initImage || request.imageInputs.referenceImages.length > 0;
     previewDecoding = false;
     active = { ...run, latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } }, capturedStep: 0,
       samplingSteps: hasInputImages ? undefined : request.parameters.steps, samplingState: hasInputImages ? 'input-images' : 'denoising', cancelRequested: false };
+    // A requested observation may have started while idle. Reserve this run
+    // first, then let that read finish before entering native code.
+    if (inspection) await inspection;
+    if (poisoned || closed) {
+      active = undefined; throw new Error('Image session was released while inspecting its state');
+    }
     const runAllocations: bigint[] = [];
     const keep = ({ pointer }: { pointer: bigint }) => {
       runAllocations.push(pointer); return pointer;
@@ -479,10 +490,29 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     active.latest = control;
     return true;
   }
+  async function inspectEngine(): Promise<ImageEngineInspection> {
+    if (closed || poisoned || failed) return { status: 'unavailable', reason: 'released' };
+    if (active || nativeCall || core.busy) return { status: 'unavailable', reason: 'busy' };
+    if (!context || !artifact) return { status: 'unavailable', reason: 'not-loaded' };
+    if (inspection) return inspection;
+    const pending = inspectImageEngine({ core, context, profile: artifact.profile, source: artifact.modulePath.split('/')[1]!,
+      modelVersion, fileReadCacheBytes: fileReadCache.retainedBytes() });
+    inspection = pending;
+    try {
+      const result = await pending;
+      if (result.status === 'failed' && result.disposition === 'retire-worker') {
+        poisoned = true; failed = true;
+      }
+      return result;
+    } finally {
+      if (inspection === pending) inspection = undefined;
+    }
+  }
   async function close({ onDiagnostic, onLog }: { onDiagnostic?: Emit, onLog?: Run['onLog'] } = {}): Promise<void> {
     if (closed) return;
     if (active) throw new Error('Do not enter native cleanup during generation');
     closed = true;
+    if (inspection) await inspection;
     const report = ({ ...event }: ImageDiagnosticInput) => {
       try {
         onDiagnostic?.(event);
@@ -511,7 +541,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       fileReadCache.clear();
     }
   }
-  return { generate, cancel, updatePreview, close };
+  return { generate, cancel, updatePreview, inspectEngine, close };
 }
 
 /** One-shot convenience uses the same ownership implementation as retained runs. */

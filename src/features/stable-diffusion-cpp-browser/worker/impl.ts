@@ -12,6 +12,7 @@ import { createPreviewOutput } from './preview-output';
 import { encodeImagePixels } from './image-output';
 import { loadCoreFactory } from './core-loader';
 import type { SyncBlobReader } from './gguf-file';
+import { imageEngineInspectionSchema } from '@/features/stable-diffusion-cpp-browser/engine-state';
 declare const FileReaderSync: { new (): SyncBlobReader };
 
 /** Long-lived only after success. A failed instance is terminal; the window
@@ -42,6 +43,14 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
     }
   };
   const api: WorkerServerApi<ImageWorker> = {
+    async inspectEngine() {
+      if (failed) return { status: 'unavailable', reason: 'released' };
+      if (busy) return { status: 'unavailable', reason: 'busy' };
+      if (!session) return { status: 'unavailable', reason: 'not-loaded' };
+      const result = imageEngineInspectionSchema.parse(await session.inspectEngine());
+      if (result.status === 'failed' && result.disposition === 'retire-worker') failed = true;
+      return result;
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Top-level Comlink callback transfer.
     async generate(rawRequest, report) {
       if (busy || failed) throw new Error('Image worker is busy or failed; replace it before generating');

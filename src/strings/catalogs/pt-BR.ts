@@ -1,3 +1,22 @@
+import { ImageEngineState__engine_busy_until_idle } from '@/strings/messages/ImageEngineState__engine_busy_until_idle/pt-BR';
+import { ImageEngineState__runtime_buffer_reports_may_be_missing } from '@/strings/messages/ImageEngineState__runtime_buffer_reports_may_be_missing/pt-BR';
+import { ImageEngineState__engine_state } from '@/strings/messages/ImageEngineState__engine_state/pt-BR';
+import { ImageEngineState__refresh_state } from '@/strings/messages/ImageEngineState__refresh_state/pt-BR';
+import { ImageEngineState__refreshing } from '@/strings/messages/ImageEngineState__refreshing/pt-BR';
+import { ImageEngineState__unknown_model } from '@/strings/messages/ImageEngineState__unknown_model/pt-BR';
+import { ImageEngineState__unavailable } from '@/strings/messages/ImageEngineState__unavailable/pt-BR';
+import { ImageEngineState__released } from '@/strings/messages/ImageEngineState__released/pt-BR';
+import { ImageEngineState__no_model_loaded } from '@/strings/messages/ImageEngineState__no_model_loaded/pt-BR';
+import { ImageEngineState__not_observed_yet } from '@/strings/messages/ImageEngineState__not_observed_yet/pt-BR';
+import { ImageEngineState__could_not_read_state } from '@/strings/messages/ImageEngineState__could_not_read_state/pt-BR';
+import { ImageEngineState__runtime_and_model } from '@/strings/messages/ImageEngineState__runtime_and_model/pt-BR';
+import { ImageEngineState__memory_observations } from '@/strings/messages/ImageEngineState__memory_observations/pt-BR';
+import { ImageEngineState__memory_values_are_not_total_gpu_memory } from '@/strings/messages/ImageEngineState__memory_values_are_not_total_gpu_memory/pt-BR';
+import { ImageEngineState__some_counters_saturated } from '@/strings/messages/ImageEngineState__some_counters_saturated/pt-BR';
+import { ImageEngineState__observed_at } from '@/strings/messages/ImageEngineState__observed_at/pt-BR';
+import { ImageEngineState__busy_during_generation } from '@/strings/messages/ImageEngineState__busy_during_generation/pt-BR';
+import { ImageEngineState__detail_label } from '@/strings/messages/ImageEngineState__detail_label/pt-BR';
+import { ImageEngineState__memory_label } from '@/strings/messages/ImageEngineState__memory_label/pt-BR';
 import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/pt-BR';
 import { ImageModelPicker__search_choices } from '@/strings/messages/ImageModelPicker__search_choices/pt-BR';
 import { ImageGenerationResults__images_kept_on_screen } from '@/strings/messages/ImageGenerationResults__images_kept_on_screen/pt-BR';
@@ -2351,6 +2370,25 @@ import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/
 export const catalog = {
   ImageModelPicker__choose_a_model,
   ImageModelPicker__search_choices,
+  ImageEngineState__engine_busy_until_idle,
+  ImageEngineState__runtime_buffer_reports_may_be_missing,
+  ImageEngineState__engine_state,
+  ImageEngineState__refresh_state,
+  ImageEngineState__refreshing,
+  ImageEngineState__unknown_model,
+  ImageEngineState__unavailable,
+  ImageEngineState__released,
+  ImageEngineState__no_model_loaded,
+  ImageEngineState__not_observed_yet,
+  ImageEngineState__could_not_read_state,
+  ImageEngineState__runtime_and_model,
+  ImageEngineState__memory_observations,
+  ImageEngineState__memory_values_are_not_total_gpu_memory,
+  ImageEngineState__some_counters_saturated,
+  ImageEngineState__observed_at,
+  ImageEngineState__busy_during_generation,
+  ImageEngineState__detail_label,
+  ImageEngineState__memory_label,
   ImageGenerationResults__images_kept_on_screen,
   ImageGenerationResults__display_settings,
   ImageGenerationEditor__custom_size,

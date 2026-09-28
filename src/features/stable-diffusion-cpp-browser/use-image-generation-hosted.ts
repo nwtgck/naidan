@@ -11,6 +11,7 @@ import { useImageLibrary } from './use-image-library';
 import { createImageGallery } from './image-gallery';
 import { createImageForm } from './form';
 import { useImagePreferences } from './use-image-preferences';
+import { useImageEngineState } from './use-image-engine-state';
 import { useSettings } from '@/composables/useSettings';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { imageLoraRequests, imageLoraHistorySelections } from './lora-form';
@@ -210,6 +211,7 @@ export function useImageGeneration(): ImageGenerationView {
   });
   // Availability is not inferred from a lazily loaded translated string.
   const supported = computed(() => artifact.value !== undefined && globalThis.isSecureContext && 'gpu' in navigator && typeof DecompressionStream !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && (!profile.value.endsWith('jspi') || supportsJspi()) && (profile.value !== 'webgpu-wasm64-jspi' || supportsMemory64()));
+  const engineState = useImageEngineState({ client: () => client, supported, progress, modelResident });
   function chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void {
     if (formDisabled.value || library.importing.value || !(event.target instanceof HTMLInputElement)) return;
     library.useManualFiles();
@@ -236,7 +238,7 @@ export function useImageGeneration(): ImageGenerationView {
     files.value = {};
   }
   function releaseFor({ reason }: { reason: ImageReleaseReason }): void {
-    client?.release({ reason }); modelResident.value = false;
+    client?.release({ reason }); modelResident.value = false; engineState.invalidate();
   }
   function acquireBenchmark(): boolean {
     if (disposed || benchmarkActive.value || busy.value || formDisabled.value || !supported.value || library.importing.value || library.scanState.value === 'scanning') return false;
@@ -548,7 +550,7 @@ export function useImageGeneration(): ImageGenerationView {
     let finalImageReceived = false;
     try {
       client ??= createImageClient({ onReleased: () => {
-        modelResident.value = false;
+        modelResident.value = false; engineState.invalidate();
       } });
       const result = await client.generate({ request: parsed.data, signal: operation.signal, onDiagnostic: recordDiagnostic, onProgress({ event }) {
         if (!disposed && !operation.signal.aborted) {
@@ -620,6 +622,7 @@ export function useImageGeneration(): ImageGenerationView {
     } finally {
       if (!disposed) {
         controller.value = undefined; progress.value = undefined; stopping.value = false;
+        engineState.afterRun();
       }
     }
   }
@@ -653,14 +656,14 @@ export function useImageGeneration(): ImageGenerationView {
   });
   onUnmounted(() => {
     window.removeEventListener('focus', refreshLocalModels);
-    disposed = true; manualInspection?.abort(); controller.value?.abort(); client?.dispose();
+    disposed = true; engineState.dispose(); manualInspection?.abort(); controller.value?.abort(); client?.dispose();
     unsubscribeStorage();
     void history.dispose();
     pendingSaves.clear();
     savedHistoryIds.value.clear();
     modelResident.value = false; finalGallery.clear(); clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

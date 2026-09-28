@@ -6,6 +6,7 @@ import type { ImageGenerationRecommendation } from './recommendations';
 import type { ImageGenerationHistoryView } from './history-view';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
+import type { ImageEngineSnapshot } from './engine-state';
 
 export type ImageDownloadFormat = 'png' | 'webp' | 'jpeg';
 export type ImageDownloadPreferences = { format: ImageDownloadFormat, metadata: 'include' | 'omit' };
@@ -14,7 +15,19 @@ export type ImageDownloadResult =
   | { status: 'failed', message: string }
   | { status: 'cancelled' };
 
+export type ImageEngineStateView = {
+  opened: Ref<boolean>;
+  status: Ref<'idle' | 'refreshing' | 'unavailable' | 'failed'>;
+  snapshot: Ref<ImageEngineSnapshot | undefined>;
+  reason: Ref<'not-loaded' | 'busy' | 'unsupported' | 'released' | undefined>;
+  error: Ref<string>;
+  canRefresh: ComputedRef<boolean>;
+  setOpened({ opened }: { opened: boolean }): void;
+  refresh(): Promise<void>;
+};
+
 export type ImageGenerationView = ReturnType<typeof createImageForm> & {
+  engineState: ImageEngineStateView;
   seedMode: Ref<'random' | 'fixed'>;
   randomizeSeed(): void;
   library: ImageLibraryView;
