@@ -111,6 +111,9 @@ const standaloneUiFiles = new Set([
   'components/ImageModelCatalog.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts', 'lora-catalog.ts',
   'components/ImageLoraControls.vue', 'components/ImageDownloadMenu.vue', 'components/ImageSettingsSection.vue', 'components/ImageModelConfiguration.vue',
   'components/ImageInputControls.vue', 'image-input-form.ts',
+  // This component only renders caller-owned progress and pixels; its runtime
+  // type import is erased and it never starts inference or creates a Worker.
+  'components/ImageGenerationProgress.vue',
   'form.ts',
   'form-options.ts',
   'component-label.ts',

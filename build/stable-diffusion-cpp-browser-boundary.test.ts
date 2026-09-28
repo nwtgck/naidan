@@ -9,6 +9,7 @@ import { createStandaloneFacadeAliases } from './standalone-facades.js';
 import { createTwClassNodeTransform } from './static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './static-tailwind/tw-class-vite-plugin';
 import { assertStandaloneImageModule, createStableDiffusionCppBrowserBuild } from '../src/features/stable-diffusion-cpp-browser/build-runtime';
+import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
 
 const root = process.cwd();
 const feature = 'src/features/stable-diffusion-cpp-browser/';
@@ -25,9 +26,15 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
     },
     load(id) {
       if (id === '\0virtual:image-view') return entrySource ?? "export { default } from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationLab.vue';";
-      // Locale packaging is tested elsewhere. Keep this test focused on actual
-      // Vue, facade, runtime, Worker and Vite output dependencies.
-      if (id === '\0virtual:image-strings') return 'export const lazyStrings = new Proxy({}, { get(_target, key) { return () => String(key); } }); export const ensureStrings = lazyStrings;';
+      // The dedicated realStrings cases below cover locale packaging. This
+      // build-only fixture also supplies settings' locale lifecycle imports.
+      if (id === '\0virtual:image-strings') return `\
+export const lazyStrings = new Proxy({}, { get(_target, key) { return () => String(key); } });
+export const ensureStrings = lazyStrings;
+export async function prepareLocale() {}
+export async function setLocale() {}
+export const resolveBrowserLocale = () => 'en';
+`;
       return undefined;
     },
     buildStart() {
@@ -46,7 +53,8 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
       createTwClassVitePlugin({ projectRoot: root, sourceRoot: path.resolve(root, 'src'), entryModule: path.resolve(root, feature, 'components/ImageGenerationLab.vue'), tailwindCssPath: path.resolve(root, 'src/style.css'), debugOutputDirectory: undefined, outputMode: 'split', cssPlanning: 'disabled', maxSplitCssGroups: 256 }),
       vue({ template: { compilerOptions: { nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template', blockStart: undefined })] } } }),
     ],
-    worker: { format: 'es', plugins: () => [{ name: 'image-worker-boundary-trace', generateBundle(_options, bundle) {
+    // Match the native virtual-module resolver used by the application's Worker builds.
+    worker: { format: 'es', plugins: () => [createLlamaCppBrowserBuild({ rootDir: root, mode }).corePlugin, { name: 'image-worker-boundary-trace', generateBundle(_options, bundle) {
       for (const file of Object.values(bundle)) if (file.type === 'chunk') workerModules.push(...Object.keys(file.modules));
     } }] },
     build: { write: false, minify: false, emptyOutDir: false, reportCompressedSize: false,
@@ -66,14 +74,16 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     const local = [...new Set(modules.filter(id => id.includes('/' + feature)).map(id => id.slice(id.indexOf(feature) + feature.length).split('?')[0]))].sort();
-    expect(local).toEqual(['benchmark-form.ts', 'component-label.ts', 'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageDownloadMenu.vue', 'components/ImageGenerationEditor.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationViewer.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageInputControls.vue', 'components/ImageLoraControls.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelConfiguration.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'components/ImageSettingsSection.vue', 'form-options.ts', 'form.ts', 'image-input-form.ts', 'library-standalone.ts', 'lora-catalog.ts', 'model-recipes.ts', 'preview-presentation.ts', 'use-image-benchmark-standalone.ts', 'use-image-generation-standalone.ts']);
+    expect(local).toEqual(['benchmark-form.ts', 'component-label.ts', 'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageDownloadMenu.vue', 'components/ImageGenerationEditor.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageGenerationProgress.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationViewer.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageInputControls.vue', 'components/ImageLoraControls.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelConfiguration.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'components/ImageSettingsSection.vue', 'form-options.ts', 'form.ts', 'image-input-form.ts', 'library-standalone.ts', 'lora-catalog.ts', 'model-recipes.ts', 'preview-presentation.ts', 'use-image-benchmark-standalone.ts', 'use-image-generation-standalone.ts']);
     expect(workerModules).toEqual([]);
     expect(Object.keys(files).some(name => name.startsWith('stable-diffusion-cpp-runtime/') || /\.wasm(\.|$)/.test(name))).toBe(false);
     const code = Object.values(files).map(file => file.type === 'chunk' ? file.code : '').join('\n');
     expect(code).toContain('image-generation-lab');
     expect(code).toContain('hosted_build_required');
     expect(code).toContain('image-model-catalog');
-    expect(code).not.toContain('navigator.storage');
+    // Capability existence checks keep unavailable controls visible; opening
+    // OPFS remains forbidden, including optional method calls.
+    expect(code).not.toMatch(/\bgetDirectory\s*(?:\?\.)?\s*\(/);
     expect(code).not.toContain('FileReaderSync');
     expect(code).not.toContain('new Worker');
     expect(code).not.toContain('WebAssembly.validate');
@@ -113,7 +123,7 @@ describe('hosted-only bicore image boundary', () => {
     const chunks = Object.values(files).filter(file => file.type === 'chunk');
     const modules = chunks.flatMap(file => Object.keys(file.modules));
     for (const key of [
-      'imageBenchmark__speed_measurement',
+      'imageBenchmark__diagnostics',
       'imageBenchmark__start',
       'imageBenchmark__overrides',
       'imageBenchmark__download_zip',
@@ -157,7 +167,7 @@ describe('hosted-only bicore image boundary', () => {
   it('rejects accidentally emitted image binaries even with the correct facade', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: true })).rejects.toThrow('Image runtime asset');
   }, 60_000);
-  it.each(['components/ImageDownloadMenu.vue', 'components/ImageSettingsSection.vue', 'components/ImageModelConfiguration.vue', 'components/ImageGenerationEditor.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationViewer.vue', 'image-input-form.ts', 'lora-catalog.ts', 'component-label.ts', 'components/ImageBenchmarkResult.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageInputControls.vue', 'components/ImageLoraControls.vue'])('allows passive presentation module %s', relative => {
+  it.each(['components/ImageDownloadMenu.vue', 'components/ImageSettingsSection.vue', 'components/ImageModelConfiguration.vue', 'components/ImageGenerationEditor.vue', 'components/ImageGenerationProgress.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationViewer.vue', 'image-input-form.ts', 'lora-catalog.ts', 'component-label.ts', 'components/ImageBenchmarkResult.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageInputControls.vue', 'components/ImageLoraControls.vue'])('allows passive presentation module %s', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).not.toThrow();
   });
   it.each(['history/use-image-generation-history.ts', 'history/snapshot.ts', 'history/reuse.ts', 'history/download.ts', 'history/worker/client-hosted.ts', 'history/worker/entry.ts', 'history/worker/impl.ts', 'use-image-benchmark-hosted.ts', 'benchmark/types.ts', 'benchmark/plan.ts', 'benchmark/runner.ts', 'benchmark/archive.ts', 'benchmark/measurements.ts', 'worker/gpu-performance.ts', 'worker/performance-counters.ts', 'worker/run-performance.ts', 'inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'recommendations.ts', 'session-key.ts', 'image-gallery.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-input.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-generation-hosted.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {

@@ -13,6 +13,8 @@ const NAIDAN_ID_TYPES = new Set([
   'AttachmentId',
   'BinaryObjectId',
   'VolumeId',
+  'HostModelDirectoryId',
+  'ImageGenerationId',
   'ProviderProfileId',
   'ToolCallId',
   'GlobalEventId',

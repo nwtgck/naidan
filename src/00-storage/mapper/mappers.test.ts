@@ -724,6 +724,7 @@ describe('Settings Mapping', () => {
           previewContextSize: 'full',
         },
         unreadable: undefined,
+        hostModelDirectories: undefined,
       },
     };
 
