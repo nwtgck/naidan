@@ -3,6 +3,7 @@ import { computed, defineComponent, h, nextTick, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import type { Request } from './types';
 import type { ImageGenerationView } from './use-image-generation-types';
+import type { ImageClient } from './worker/types';
 import { artifactFixture, ggufFile, parametersFixture, requestFixture } from './test-fixtures';
 import { snapshotImageGeneration, finishImageGenerationSnapshot } from './history/snapshot';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -102,6 +103,173 @@ afterEach(() => {
 });
 
 describe('hosted image history integration with a synthetic inference client', () => {
+  it.each(['cooperative', 'forced'] as const)('keeps prior results distinct after %s cancellation during decoding', async mode => {
+    const view = open();
+    await view.generate();
+    const previous = view.results.value[0]!;
+    const pending = Promise.withResolvers<Awaited<ReturnType<ImageClient['generate']>>>();
+    mocks.generate.mockImplementationOnce(({ onProgress }: Parameters<ImageClient['generate']>[0]) => {
+      onProgress({ event: { phase: 'decoding', step: 8, steps: 8 } });
+      return pending.promise;
+    });
+    editor = mount(ImageGenerationEditor, { props: { view, active: true } });
+    resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
+    const generation = view.generate();
+    await flushPromises();
+    await editor.get('[data-testid="image-cancel"]').trigger('click');
+    expect(mocks.cancel).toHaveBeenCalledOnce();
+    if (mode === 'forced') {
+      await editor.get('[data-testid="image-force-cancel"]').trigger('click');
+      // A native completion racing with forced cancellation must not publish
+      // its image or replace the cancellation presentation.
+      pending.resolve(result());
+    } else pending.resolve({ cancelled: true, modelResident: true });
+    await generation;
+    await flushPromises();
+    expect(view.results.value.map(result => result.id)).toEqual([previous.id]);
+    expect(resultsPanel.get('[data-testid="image-cancelled-result"]').text()).toContain('Generation cancelled.');
+    expect(resultsPanel.get('[data-testid="image-previous-results"]').text()).toBe('Previous results');
+    expect(resultsPanel.find('[data-testid="image-failure-diagnostics"]').exists()).toBe(false);
+    expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(false);
+    expect(resultsPanel.find('[data-testid="image-pending-result"]').exists()).toBe(false);
+    await resultsPanel.setProps({ active: false });
+    await resultsPanel.setProps({ active: true });
+    expect(resultsPanel.find('[data-testid="image-cancelled-result"]').exists()).toBe(true);
+    await view.generate();
+    await flushPromises();
+    expect(view.results.value).toHaveLength(2);
+    expect(view.results.value[1]?.id).toBe(previous.id);
+    expect(resultsPanel.find('[data-testid="image-cancelled-result"]').exists()).toBe(false);
+    expect(resultsPanel.find('[data-testid="image-previous-results"]').exists()).toBe(false);
+  });
+  it('keeps the failed run visible above prior images across pane remounts and replaces it on the next run', async () => {
+    const view = open();
+    await view.generate();
+    const previous = view.results.value[0]!;
+    resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
+    const file = ggufFile();
+    mocks.models = [{ slot: 'model', file }];
+    view.parameters.value.prompt = 'Another model and prompt';
+    view.preview.value.enabled = true;
+    mocks.generate.mockImplementationOnce(async ({ onPreview }) => {
+      onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 2, revision: 0, step: 2, steps: 8, width: 128, height: 128,
+        mode: 'vae', png: new Blob(['partial image'], { type: 'image/png' }) } });
+      throw new Error('VAE decoding failed');
+    });
+    await view.generate();
+    await flushPromises();
+    expect(mocks.generate.mock.calls[1]?.[0].request.models[0].file).toBe(file);
+    expect(resultsPanel.get('[data-testid="image-failed-result"]').text()).toContain('Image generation failed');
+    expect(resultsPanel.get('[data-testid="image-previous-results"]').text()).toBe('Previous results');
+    expect(resultsPanel.find('[data-testid="image-pending-result"]').exists()).toBe(false);
+    expect(view.results.value.map(result => result.id)).toEqual([previous.id]);
+    expect(resultsPanel.get('[data-testid="image-live-preview"]').text()).toContain('unfinished');
+    view.parameters.value.steps = NaN;
+    await view.generate();
+    expect(view.invalid.value).toBe(true);
+    expect(mocks.generate).toHaveBeenCalledTimes(2);
+    view.parameters.value.prompt = 'Editing must not relabel the failed run';
+    await resultsPanel.setProps({ active: false });
+    await resultsPanel.setProps({ active: true });
+    resultsPanel.unmount();
+    resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
+    expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(true);
+    const diagnostics = resultsPanel.get('[data-testid="image-diagnostics-region"]');
+    const scroll = vi.fn();
+    Object.defineProperty(diagnostics.element, 'scrollIntoView', { value: scroll });
+    await resultsPanel.get('[data-testid="image-failure-diagnostics"]').trigger('click');
+    await flushPromises();
+    expect(resultsPanel.get('[data-testid="image-live-diagnostics"]').attributes()).toHaveProperty('open');
+    expect(diagnostics.text()).toContain('VAE decoding failed');
+    expect(scroll).toHaveBeenCalledOnce();
+    view.parameters.value.steps = 8;
+    const next = Promise.withResolvers<ReturnType<typeof result>>();
+    mocks.generate.mockReturnValueOnce(next.promise);
+    const generation = view.generate();
+    await flushPromises();
+    expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(false);
+    expect(resultsPanel.find('[data-testid="image-pending-result"]').exists()).toBe(true);
+    next.resolve(result());
+    await generation;
+    await flushPromises();
+    expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(false);
+    expect(resultsPanel.find('[data-testid="image-previous-results"]').exists()).toBe(false);
+    expect(view.results.value).toHaveLength(2);
+  });
+  it('distinguishes invalid inputs, cancellation and save failure from inference failure', async () => {
+    const view = open();
+    resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
+    view.parameters.value.steps = NaN;
+    await view.generate();
+    await flushPromises();
+    expect(view.invalid.value).toBe(true);
+    expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(false);
+    view.parameters.value.steps = 8;
+    view.preview.value.enabled = true;
+    mocks.generate.mockImplementationOnce(async ({ onPreview }) => {
+      onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 1, steps: 8, width: 128, height: 128,
+        mode: 'vae', png: new Blob(['partial image'], { type: 'image/png' }) } });
+      return { cancelled: true, modelResident: true };
+    });
+    await view.generate();
+    await flushPromises();
+    expect(view.cancelled.value).toBe(true);
+    expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(false);
+    expect(resultsPanel.get('[data-testid="image-live-preview"]').text()).toContain('cancelled generation');
+    mocks.save.mockRejectedValueOnce(new Error('No space left'));
+    await view.generate();
+    await flushPromises();
+    expect(view.historySaving.status.value).toBe('failed');
+    expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(false);
+    expect(resultsPanel.find('[data-testid="image-generated-result"]').exists()).toBe(true);
+  });
+  it('keeps disabled LoRA choices in the editor and history while excluding them from inference', async () => {
+    const view = open();
+    const file = mocks.models[0]!.file;
+    const unavailable = new File(['unreadable adapter fixture'], 'unavailable.gguf');
+    const read = vi.spyOn(unavailable, 'slice').mockImplementation(() => {
+      throw new Error('The adapter is unreadable');
+    });
+    view.loras.value = [
+      { file, path: 'first.gguf', strength: 0.5, enabled: true },
+      { file: unavailable, strength: -0.75, enabled: true },
+      { file, path: 'zero.gguf', strength: 0, enabled: true },
+    ];
+    editor = mount(ImageGenerationEditor, { props: { view, active: true } });
+    await editor.findAll('[data-testid="image-lora-enabled"]')[1]!.setValue(false);
+    await view.generate();
+    expect(view.invalid.value).toBe(false);
+    expect(mocks.generate.mock.calls[0]?.[0].request.loras).toEqual([
+      { file, path: 'first.gguf', strength: 0.5 }, { file, path: 'zero.gguf', strength: 0 },
+    ]);
+    expect(mocks.save.mock.calls[0]?.[0].record.request.loras.map((lora: { path: string, strength: number }) => [lora.path, lora.strength])).toEqual([
+      ['first.gguf', 0.5], ['unavailable.gguf', 0], ['zero.gguf', 0],
+    ]);
+    expect(view.loras.value[1]).toEqual({ file: unavailable, strength: -0.75, enabled: false });
+    expect(read).not.toHaveBeenCalled();
+    await editor.findAll('[data-testid="image-lora-enabled"]')[1]!.setValue(true);
+    await view.generate();
+    expect(mocks.generate.mock.calls[1]?.[0].request.loras).toEqual([
+      { file, path: 'first.gguf', strength: 0.5 }, { file: unavailable, strength: -0.75 }, { file, path: 'zero.gguf', strength: 0 },
+    ]);
+    expect(mocks.save.mock.calls[1]?.[0].record.request.loras[1].strength).toBe(-0.75);
+  });
+  it('does not reject generation or history capture for an invalid disabled adapter selection', async () => {
+    const view = open();
+    const file = new File([], 'empty.gguf');
+    view.loras.value = [{ file, strength: NaN, enabled: false }];
+    await view.generate();
+    expect(view.invalid.value).toBe(false);
+    expect(mocks.generate.mock.calls[0]?.[0].request.loras).toEqual([]);
+    expect(mocks.save.mock.calls[0]?.[0].record.request.loras).toEqual([
+      { path: file.name, strength: 0, file: { type: 'opfs', name: file.name, size: 0, lastModified: file.lastModified, path: `models/user/example/${file.name}` } },
+    ]);
+    expect(view.loras.value[0]).toEqual({ file, strength: NaN, enabled: false });
+    view.loras.value = [{ file, strength: NaN, enabled: true }];
+    await view.generate();
+    expect(view.invalid.value).toBe(true);
+    expect(mocks.generate).toHaveBeenCalledOnce();
+  });
   it('does not acquire diagnostics ownership while a history image is being prepared', async () => {
     const view = open();
     await view.generate();

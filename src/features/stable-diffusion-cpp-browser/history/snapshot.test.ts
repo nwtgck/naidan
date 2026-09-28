@@ -100,6 +100,17 @@ describe('image history request snapshots', () => {
     expect(restored.missing).toEqual([]);
     expect(restored.missingInactive).toEqual([disabledAdapter.name]);
   });
+  it('restores an invalid disabled adapter as an editable selection without requiring it for generation', async () => {
+    const { record, files, request } = completed();
+    const file = new File([], 'empty.gguf');
+    const location = locateFile({ file });
+    record.request.loras = [{ path: file.name, file: location, strength: 0 }];
+    const restored = await prepareImageHistoryReuse({ record,
+      findFile: ({ location: candidate }) => candidate === location ? file : request.models[0]!.file,
+      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob });
+    expect(restored.loras).toEqual([{ file, path: file.name, strength: 0, enabled: false, sourceLabel: file.name }]);
+    expect(restored.missing).toEqual([]);
+  });
   it('rejects a missing input instead of silently changing the generation request', async () => {
     const { record } = completed();
     await expect(prepareImageHistoryReuse({ record, findFile: () => ggufFile(), getImage: async () => undefined })).rejects.toThrow('input is missing');

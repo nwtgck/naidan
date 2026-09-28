@@ -3,6 +3,7 @@ import { runImageGeneration, createImageGenerationSession, effectiveVaeTile } fr
 import type { Core, CoreModule, HostHelpers, NativeApi } from './core-types';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { fixtureReader, ggufFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { imageLoraRequests } from '@/features/stable-diffusion-cpp-browser/lora-form';
 
 /** This is a mocked native boundary, not a model or WebGPU inference test. */
 function harness({ pointerBytes, outcome, channels }: {
@@ -170,6 +171,33 @@ it.each([4, 8] as const)('keeps LoRA sources mounted while changing strengths an
   expect(h.events.indexOf('free-context')).toBeLessThan(h.events.indexOf('unmount'));
   expect(h.events.filter(event => event === 'unmount')).toHaveLength(3);
 });
+it('never inspects or mounts disabled unreadable adapters but still checks an enabled zero-strength adapter', async () => {
+  const unavailable = new File([new Uint8Array(24)], 'unavailable.gguf');
+  const read = vi.spyOn(unavailable, 'slice').mockImplementation(() => {
+    throw new DOMException('Permission was revoked', 'NotReadableError');
+  });
+  const request = requestFixture();
+  const selections = [
+    { file: request.models[0]!.file, path: 'first.gguf', strength: 0.5, enabled: true },
+    { file: unavailable, strength: -0.75, enabled: false },
+    { file: request.models[0]!.file, path: 'last.gguf', strength: 1, enabled: true },
+  ];
+  const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  request.loras = imageLoraRequests({ selections });
+  await runImageGeneration({ core: h.core, helpers: h.helpers, reader: h.reader, request, onProgress: vi.fn(), onLog: vi.fn() });
+  expect(read).not.toHaveBeenCalled();
+  expect(h.events.filter(event => event.startsWith('mount:'))).toEqual([
+    '/models/model/model.gguf', '/models/lora-0/first.gguf', '/models/lora-1/last.gguf',
+  ].map(path => 'mount:' + path));
+  selections[1]!.enabled = true;
+  selections[1]!.strength = 0;
+  request.loras = imageLoraRequests({ selections });
+  const retry = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
+  await expect(runImageGeneration({ core: retry.core, helpers: retry.helpers, reader: retry.reader, request, onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow('Permission was revoked');
+  expect(read).toHaveBeenCalled();
+  expect(retry.api.new_sd_ctx).not.toHaveBeenCalled();
+});
+
 it('rejects an older artifact before mounting weights rather than ignoring BF16 conversion', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
   const original = h.core.fieldAddress;

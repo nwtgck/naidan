@@ -238,7 +238,13 @@ it('replaces the current result placeholder with its live image and final image 
   const oldPreview = { type: 'naidan-image-preview-v1' as const, runId: 1, revision: 0, step: 2, steps: 8, mode: 'projection' as const, width: 32, height: 16, url: 'blob:old-preview', id: 1, elapsedMs: 100 };
   view.livePreview.value = oldPreview;
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
-  busy.value = true; await flushPromises();
+  const start = () => {
+    // The hosted owner clears live pixels and captures dimensions at run start.
+    view.livePreview.value = undefined;
+    view.latestRun.value = { status: 'running', width: 768, height: 512 };
+    busy.value = true;
+  };
+  start(); await flushPromises();
   const grid = wrapper.get('[data-testid="image-result-grid"]');
   expect(grid.element.firstElementChild?.getAttribute('data-testid')).toBe('image-pending-result');
   expect(wrapper.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
@@ -253,6 +259,7 @@ it('replaces the current result placeholder with its live image and final image 
   expect(wrapper.get('[data-testid="image-generation-progress"]').attributes('data-running')).toBe('false');
   // Final pixels arrive before asynchronous history saving releases busy.
   view.results.value = [{ ...oldResult, id: 2, url: 'blob:final' }, oldResult];
+  view.latestRun.value = { status: 'succeeded', width: 768, height: 512 };
   await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
   expect(wrapper.get('[data-testid="image-generated-result"] img').attributes('src')).toBe('blob:final');
@@ -262,7 +269,7 @@ it('replaces the current result placeholder with its live image and final image 
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
   view.results.value = [{ ...oldResult, id: 2, url: 'blob:final' }, oldResult]; await flushPromises();
   busy.value = false; await flushPromises();
-  busy.value = true; await flushPromises();
+  start(); await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
   // Removing an older completed image must not look like completion of this run.
@@ -273,12 +280,21 @@ it('replaces the current result placeholder with its live image and final image 
   await wrapper.setProps({ active: true });
   view.stopping.value = true; await flushPromises();
   expect(wrapper.get('[data-testid="image-generation-progress"]').attributes('data-running')).toBe('false');
-  busy.value = false; view.stopping.value = false; view.cancelled.value = true; await flushPromises();
+  busy.value = false; view.stopping.value = false; view.cancelled.value = true;
+  view.latestRun.value = { status: 'cancelled', width: 768, height: 512 }; await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
   expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
-  busy.value = true; await flushPromises();
-  view.failure.value = 'generation failed'; busy.value = false; await flushPromises();
+  expect(grid.element.firstElementChild?.getAttribute('data-testid')).toBe('image-cancelled-result');
+  expect(wrapper.get('[data-testid="image-cancelled-result"]').attributes('role')).toBe('status');
+  expect(wrapper.find('[data-testid="image-failure-diagnostics"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="image-previous-results"]').exists()).toBe(true);
+  expect(wrapper.get('[data-testid="image-generated-result"] img').attributes('src')).toBe('blob:old');
+  start(); await flushPromises();
+  expect(wrapper.find('[data-testid="image-cancelled-result"]').exists()).toBe(false);
+  view.failure.value = 'generation failed'; busy.value = false;
+  view.latestRun.value = { status: 'failed', failure: 'generation failed', width: 768, height: 512 }; await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="image-failed-result"]').exists()).toBe(true);
 });
 
 it('locks the history policy during a run and restores editing afterward only in supported storage', async () => {

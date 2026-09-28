@@ -30,12 +30,17 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   // An empty number input leaves the optional native memory budget unset.
   const gpuBudgetMiB = ref<number | ''>('');
   const progress = shallowRef<Progress>();
+  // Presentation belongs to the workspace, not a mounted result component.
+  // A final image can succeed before its independent history save fails.
+  const latestRun = shallowRef<{ width: number, height: number } & (
+    { status: 'running' | 'succeeded' | 'cancelled' } | { status: 'failed', failure: string }
+  )>();
   const failure = ref('');
   const invalid = ref(false);
   const cancelled = ref(false);
   const stopping = ref(false);
   const results = shallowRef<{ url: string, parameters: Parameters, modelVersion: string, uniformOutput: boolean, elapsedMs: number, id: number }[]>([]);
-  return { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results };
+  return { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, progress, latestRun, failure, invalid, cancelled, stopping, results };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

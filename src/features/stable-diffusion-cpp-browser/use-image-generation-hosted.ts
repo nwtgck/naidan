@@ -10,7 +10,7 @@ import { initialProfile, supportsJspi, supportsMemory64 } from './capabilities';
 import { useImageLibrary } from './use-image-library';
 import { createImageGallery } from './image-gallery';
 import { createImageForm } from './form';
-import { imageLoraRequests } from './lora-form';
+import { imageLoraRequests, imageLoraHistorySelections } from './lora-form';
 import { emptyImageInputs } from './image-input-form';
 import { inspectImageInventory } from './inventory-worker/client';
 import type { ImageModelFacts } from './recommendations';
@@ -523,7 +523,9 @@ export function useImageGeneration(): ImageGenerationView {
       default: { const exhaustive: never = configuration; throw new Error(String(exhaustive)); }
       }
     })();
-    const snapshot = snapshotImageGeneration({ request: parsed.data, sourceCommit, locateFile: library.historyFileLocation, createdAt: Date.now() });
+    // Preserve disabled selections in history without making their files part
+    // of request validation, Worker transport or native model loading.
+    const snapshot = snapshotImageGeneration({ request: { ...parsed.data, loras: imageLoraHistorySelections({ selections: form.loras.value }) }, sourceCommit, locateFile: library.historyFileLocation, createdAt: Date.now() });
     activeHistoryId = snapshot.id;
     const saveThisGeneration = historySaving.enabled.value && historySaving.supported.value;
     const runPreviewIds = new Set<number>();
@@ -531,8 +533,11 @@ export function useImageGeneration(): ImageGenerationView {
     liveGallery.clear(); livePreview.value = undefined;
     manualInspection?.abort(); manualInspection = undefined; manualInspectionState.value = 'idle';
     generateStartedAt = now();
+    const runDimensions = { width: parsed.data.parameters.width, height: parsed.data.parameters.height };
+    form.latestRun.value = { ...runDimensions, status: 'running' };
     const operation = new AbortController(); controller.value = operation;
     progress.value = { phase: 'runtime', step: 0, steps: 0 };
+    let finalImageReceived = false;
     try {
       client ??= createImageClient({ onReleased: () => {
         modelResident.value = false;
@@ -559,15 +564,23 @@ export function useImageGeneration(): ImageGenerationView {
           previewSnapshots.value = snapshotGallery.entries();
         }
       } });
-      if (disposed || operation.signal.aborted) return;
+      if (disposed) return;
+      if (operation.signal.aborted) {
+        cancelled.value = true;
+        form.latestRun.value = { ...runDimensions, status: 'cancelled' };
+        return;
+      }
       // Inference stop controls cannot interrupt the subsequent OPFS save.
       // Keep the operation busy until saving settles, but end its progress now.
       progress.value = undefined; stopping.value = false;
       if ('cancelled' in result) {
+        form.latestRun.value = { ...runDimensions, status: 'cancelled' };
         cancelled.value = true; modelResident.value = result.modelResident;
         if (!retainModel.value) releaseFor({ reason: 'retention-disabled' });
         return;
       }
+      finalImageReceived = true;
+      form.latestRun.value = { ...runDimensions, status: 'succeeded' };
       const finalEntry = finalGallery.add({ blob: result.png, width: result.width, height: result.height,
         metadata: { parameters: parametersSchema.parse(parsed.data.parameters), modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs: Math.max(0, now() - generateStartedAt), request: snapshot.request, image: { kind: 'final', width: result.width, height: result.height } } });
       results.value = finalGallery.entries();
@@ -588,8 +601,13 @@ export function useImageGeneration(): ImageGenerationView {
     } catch (error) {
       releaseFor({ reason: 'failed' });
       if (!disposed) {
-        if (operation.signal.aborted) cancelled.value = true;
-        else failure.value = (error instanceof Error ? error.message : String(error)).slice(-32768);
+        if (operation.signal.aborted) {
+          cancelled.value = true;
+          if (!finalImageReceived) form.latestRun.value = { ...runDimensions, status: 'cancelled' };
+        } else {
+          failure.value = (error instanceof Error ? error.message : String(error)).slice(-32768);
+          if (!finalImageReceived) form.latestRun.value = { ...runDimensions, status: 'failed', failure: failure.value };
+        }
       }
     } finally {
       if (!disposed) {

@@ -50,15 +50,21 @@ it('snapshots BF16 conversion independently for shared and overridden models', (
   expect(plan.models.map(model => model.request.parameters.bf16WeightType)).toEqual(['f16', 'f32']);
   expect(plan.models[1]!.overrides).toEqual({ bf16WeightType: 'f32' });
 });
-it('snapshots LoRA requests per target and preserves disabled adapters as zero strength', () => {
+it('snapshots enabled LoRA requests per target without mutating disabled UI selections', () => {
   const file = new File(['adapter fixture'], 'style.safetensors');
   const selections: ImageLoraSelection[] = [{ file, strength: 0.75, enabled: true }, { file, strength: 1.5, enabled: false }];
   const options = { ...input(), targets: [targetFixture({ id: 'a' }), targetFixture({ id: 'b' })], loras: { a: selections } };
   const plan = createBenchmarkPlan(options);
   selections[0]!.strength = 2; selections[0]!.file = new File(['replacement'], 'other.gguf'); selections.pop();
-  expect(plan.models[0]!.request.loras).toEqual([{ file, strength: 0.75 }, { file, strength: 0 }]);
+  expect(plan.models[0]!.request.loras).toEqual([{ file, strength: 0.75 }]);
   expect(plan.models[0]!.request.loras[0]!.file).toBe(file);
   expect(plan.models[1]!.request.loras).toEqual([]);
+});
+it('does not validate a disabled adapter when capturing a diagnostics plan', () => {
+  const disabled: ImageLoraSelection = { file: new File([], 'unavailable.gguf'), strength: NaN, enabled: false };
+  const plan = createBenchmarkPlan({ ...input(), loras: { a: [disabled] } });
+  expect(plan.models[0]!.request.loras).toEqual([]);
+  expect(disabled).toMatchObject({ enabled: false, strength: NaN });
 });
 it('rejects invalid active LoRA strengths before creating any benchmark worker', () => {
   const file = new File(['adapter fixture'], 'style.gguf');

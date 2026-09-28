@@ -37,7 +37,11 @@ export async function prepareImageHistoryReuse({ record, findFile, getImage }: {
       else missing.push(lora.file.name);
       continue;
     }
-    loras.push({ ...loraFileSchema.parse({ file, path: lora.path, strength: lora.strength }), enabled: lora.strength !== 0, sourceLabel: lora.file.name });
+    // History represents disabled selections as zero strength. Restore the
+    // choice even if its file is now invalid; only enabling it requires a
+    // usable adapter. The persisted shape does not retain its former strength.
+    const selection = { file, path: lora.path, strength: lora.strength };
+    loras.push({ ...(lora.strength === 0 ? selection : loraFileSchema.parse(selection)), enabled: lora.strength !== 0, sourceLabel: lora.file.name });
   }
   async function input({ image }: { image: { binaryObjectId: BinaryObjectId, name: string } }): Promise<File> {
     const blob = await getImage({ binaryObjectId: image.binaryObjectId });

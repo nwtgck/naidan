@@ -93,7 +93,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p v-if="preview.enabled && busy && !livePreview" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preview_empty() }}</p>
       <figure v-if="livePreview && livePlacement === 'panel'" tw-class="space-y-2" data-testid="image-live-preview">
         <img :src="livePreview.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" v-bind="previewDisplaySize({ frame: livePreview, maxEdge: preview.maxEdge })" tw-class="max-w-full h-auto rounded-xl border border-gray-200 dark:border-gray-800" />
-        <figcaption tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ livePreview.step }} / {{ livePreview.steps }} · {{ livePreview.width }} × {{ livePreview.height }} · {{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ formatElapsed({ elapsedMs: livePreview.elapsedMs }) }}</figcaption>
+        <figcaption tw-class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
+          <p v-if="view.latestRun.value?.status === 'failed'">{{ lazyStrings.ImageGenerationPreview__preview_from_failed_generation() }}</p>
+          <p v-else-if="view.latestRun.value?.status === 'cancelled'">{{ lazyStrings.ImageGenerationPreview__preview_from_cancelled_generation() }}</p>
+          <p>{{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ livePreview.step }} / {{ livePreview.steps }} · {{ livePreview.width }} × {{ livePreview.height }} · {{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ formatElapsed({ elapsedMs: livePreview.elapsedMs }) }}</p>
+        </figcaption>
       </figure>
       <div v-if="previewSnapshots.length" tw-class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <article v-for="(frame, index) in previewSnapshots" :key="frame.id" tw-class="min-w-0 space-y-1" data-testid="image-preview-snapshot">

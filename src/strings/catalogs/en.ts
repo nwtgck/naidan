@@ -2295,6 +2295,12 @@ import { ImageGenerationResults__retry_saving } from '@/strings/messages/ImageGe
 import { ImageGenerationResults__about_saved_history } from '@/strings/messages/ImageGenerationResults__about_saved_history/en';
 import { ImageGenerationResults__current_images_are_temporary } from '@/strings/messages/ImageGenerationResults__current_images_are_temporary/en';
 import { ImageGenerationResults__latest_generation } from '@/strings/messages/ImageGenerationResults__latest_generation/en';
+import { ImageGenerationResults__image_generation_failed } from '@/strings/messages/ImageGenerationResults__image_generation_failed/en';
+import { ImageGenerationResults__no_final_image_was_created } from '@/strings/messages/ImageGenerationResults__no_final_image_was_created/en';
+import { ImageGenerationResults__view_diagnostics } from '@/strings/messages/ImageGenerationResults__view_diagnostics/en';
+import { ImageGenerationResults__previous_results } from '@/strings/messages/ImageGenerationResults__previous_results/en';
+import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/en';
+import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/en';
 import { ImageGenerationResults__unsaved_generations } from '@/strings/messages/ImageGenerationResults__unsaved_generations/en';
 import { ImageGenerationResults__view_in_my_images } from '@/strings/messages/ImageGenerationResults__view_in_my_images/en';
 import { ImageGenerationEditor__model_configuration } from '@/strings/messages/ImageGenerationEditor__model_configuration/en';
@@ -4583,6 +4589,12 @@ export const catalog = {
   ImageGenerationResults__about_saved_history,
   ImageGenerationResults__current_images_are_temporary,
   ImageGenerationResults__latest_generation,
+  ImageGenerationResults__image_generation_failed,
+  ImageGenerationResults__no_final_image_was_created,
+  ImageGenerationResults__view_diagnostics,
+  ImageGenerationResults__previous_results,
+  ImageGenerationPreview__preview_from_failed_generation,
+  ImageGenerationPreview__preview_from_cancelled_generation,
   ImageGenerationResults__unsaved_generations,
   ImageGenerationResults__view_in_my_images,
   ImageGenerationEditor__model_configuration,

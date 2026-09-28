@@ -53,7 +53,7 @@ it('defaults to F32 and releases retained weights when BF16 conversion changes b
   await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
   expect(mocks.generate.mock.calls[1]?.[0].request.parameters.bf16WeightType).toBe('f16');
 });
-it('snapshots LoRA files and strength, sends disabled adapters as zero, and clears selections when the base model changes', async () => {
+it('snapshots LoRA files and strength, excludes disabled adapters, and clears selections when the base model changes', async () => {
   const first = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
   mocks.generate.mockReturnValueOnce(first.promise);
   mocks.generate.mockResolvedValue({ png: new Blob(['PNG']), width: 256, height: 256, modelVersion: 'fixture' });
@@ -72,7 +72,7 @@ it('snapshots LoRA files and strength, sends disabled adapters as zero, and clea
   await task; await flushPromises();
   await wrapper.get('[data-testid="image-lora-enabled"]').setValue(false);
   await view.generate();
-  expect(mocks.generate.mock.calls[1]![0].request.loras).toEqual([{ file, strength: 0 }]);
+  expect(mocks.generate.mock.calls[1]![0].request.loras).toEqual([]);
   view.files.value = { model: ggufFile() };
   expect(view.loras.value).toEqual([]);
   await view.generate();
