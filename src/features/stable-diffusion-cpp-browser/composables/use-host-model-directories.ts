@@ -21,7 +21,7 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
   view: HostModelDirectoriesView,
   registrations: () => HostImageDirectory[],
   refresh: () => Promise<void>,
-  downloadDestination: () => Promise<ImageDownloadDestination>,
+  downloadDestination: ({ id }: { id: string }) => Promise<ImageDownloadDestination>,
 } {
   const { settings, updateExperimental } = useSettings();
   const supported = computed(() => typeof window !== 'undefined' && pickerSchema.safeParse(Reflect.get(window, 'showDirectoryPicker')).success
@@ -58,7 +58,8 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
     if (version !== refreshVersion) return;
     handles.clear(); for (const [id, handle] of nextHandles) handles.set(id, handle);
     observed.value = next;
-    if (destination.value !== 'opfs' && !registrations().some(entry => entry.id === destination.value)) destination.value = 'opfs';
+    // A saved but currently unavailable root remains explicit. Refresh cannot
+    // silently change where the next download will write.
   }
   async function perform({ operation }: { operation: () => Promise<void> }): Promise<void> {
     if (!supported.value || blocked() || busy.value) return;
@@ -128,9 +129,8 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
       } });
     } });
   }
-  async function downloadDestination(): Promise<ImageDownloadDestination> {
-    if (destination.value === 'opfs') return { kind: 'opfs' };
-    const id = destination.value;
+  async function downloadDestination({ id }: { id: string }): Promise<ImageDownloadDestination> {
+    if (id === 'opfs') return { kind: 'opfs' };
     if (!supported.value || !registrations().some(entry => entry.id === id)) throw new Error('Linked model directory is unavailable');
     // Use the cached handle so a permission request stays inside the user gesture.
     const handle = handles.get(id);
@@ -145,7 +145,7 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
     },
     reconnect, remove,
     selectDestination({ id }) {
-      if (blocked() || busy.value) return;
+      if (busy.value) return;
       if (id === 'opfs' || supported.value && registrations().some(entry => entry.id === id)) destination.value = id;
     },
   },

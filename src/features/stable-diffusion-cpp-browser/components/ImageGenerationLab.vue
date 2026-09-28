@@ -137,16 +137,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
               <p v-if="library.scanProgress.value?.path" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.path }}</p>
             </div>
             <ImageSettingsSection :title="lazyStrings.ImageGenerationLab__saved_models()" :summary="library.models.value.length.toString()" :open="true">
-              <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.main.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.downloading.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ id: $event })" data-testid="image-saved-main-model" />
+              <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.main.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ id: $event })" data-testid="image-saved-main-model" />
             </ImageSettingsSection>
             <div tw-class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
-              <ImageModelCatalog :disabled="formDisabled" :view="library" @selected="openTab({ tab: 'generate' })" />
+              <ImageModelCatalog :download-disabled="library.downloadsDisabled.value" :disabled="formDisabled" :view="library" @selected="openTab({ tab: 'generate' })" />
               <ImageRepositoryImport :disabled="formDisabled" :view="library" />
             </div>
           </div>
           <div v-show="activeTab === 'history'" role="tabpanel" :id="id + '-panel-history'" :aria-labelledby="id + '-tab-history'" data-testid="image-history-workspace">
-            <!-- Model transfers lock editor changes, while history browsing, deletion, and image downloads remain available. -->
-            <ImageGenerationHistory v-if="historyVisited" :view="view.history" :active="activeTab === 'history'" :disabled="formDisabled || view.historyActions.busy.value" :editor-disabled="library.importing.value || library.downloading.value" @reuse="reuseHistory" @use-image="useHistoryImage" :on-download="view.downloadHistory" />
+            <!-- Import publication locks editor changes; downloads do not lock history reuse or browsing. -->
+            <ImageGenerationHistory v-if="historyVisited" :view="view.history" :active="activeTab === 'history'" :disabled="formDisabled || view.historyActions.busy.value" :editor-disabled="library.importing.value" @reuse="reuseHistory" @use-image="useHistoryImage" :on-download="view.downloadHistory" :download-preferences="view.imageDownloadPreferences" :on-download-preferences-change="view.setImageDownloadPreferences" />
           </div>
           <div v-show="activeTab === 'measure'" role="tabpanel" :id="id + '-panel-measure'" :aria-labelledby="id + '-tab-measure'">
             <ImageBenchmark :active="activeTab === 'measure'" v-if="benchmarkVisited" :bench="benchmark" :generation="view" />

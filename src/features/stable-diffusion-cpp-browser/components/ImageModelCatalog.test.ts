@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { computed, effectScope, ref } from 'vue';
-import type { HostModelDirectoryChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
+import type { HostModelDirectoryChoice, ImageDownloadQueueEntry } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageModelCatalog from './ImageModelCatalog.vue';
 import { imageCatalogLoras } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
 import { useImageLibrary } from '@/features/stable-diffusion-cpp-browser/use-image-library';
@@ -17,11 +17,11 @@ it.each(['directory API', 'mutation lock'] as const)('disables OPFS acquisition 
   vi.stubGlobal('navigator', { storage: missing === 'directory API' ? {} : { getDirectory: vi.fn() }, locks: missing === 'mutation lock' ? undefined : { request: vi.fn() } });
   const network = vi.fn(), download = vi.fn((args: ImageRecipeDownloadRequest) => downloadImageRecipe({ ...args, fetch: network }));
   const scope = effectScope();
-  const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection() {}, dependencies: {
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
     list: vi.fn(async () => []), scan: vi.fn(async () => ({ candidates: [], issues: [] })), import: vi.fn(), download,
   } }))!;
   try {
-    wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: library } });
+    wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
     const button = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
     expect(button.element.disabled).toBe(true);
     expect(wrapper.get<HTMLOptionElement>('option[value="opfs"]').element.disabled).toBe(true);
@@ -40,7 +40,7 @@ afterEach(() => {
 it('shows all static recipes without networking or remote resources when opened', async () => {
   const fetch = vi.fn(), xhr = vi.fn(), worker = vi.fn();
   vi.stubGlobal('fetch', fetch); vi.stubGlobal('XMLHttpRequest', xhr); vi.stubGlobal('Worker', worker);
-  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: createDisabledImageLibrary() } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: createDisabledImageLibrary() } });
   expect(wrapper.get('[data-testid="image-catalog-toggle"]').attributes('aria-expanded')).toBe('true');
   for (const detail of wrapper.findAll('[data-testid="image-recipe-details"]')) expect(detail.attributes('inert')).toBeDefined();
   for (const toggle of wrapper.findAll('[data-testid^="recipe-details-toggle-"]')) await toggle.trigger('click');
@@ -58,7 +58,7 @@ it('shows all static recipes without networking or remote resources when opened'
   expect(fetch).not.toHaveBeenCalled(); expect(xhr).not.toHaveBeenCalled(); expect(worker).not.toHaveBeenCalled();
 });
 it('uses only explicit, referrer-free browser links to immutable file revisions', () => {
-  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: createDisabledImageLibrary() } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: createDisabledImageLibrary() } });
   const downloads = wrapper.findAll('[data-testid^="recipe-download-selected-"]');
   expect(downloads).toHaveLength(8);
   for (const link of wrapper.findAll('a')) {
@@ -71,7 +71,7 @@ it('uses only explicit, referrer-free browser links to immutable file revisions'
   for (const button of downloads) expect(button.element.tagName).toBe('BUTTON');
 });
 it('labels the SDXL primary as a checkpoint and shows its explicit external VAE', async () => {
-  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: createDisabledImageLibrary() } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: createDisabledImageLibrary() } });
   const card = wrapper.get('[data-testid="image-recipe-sdxl-base-1.0"]');
   expect(card.get('[data-testid="recipe-option-sdxl-base-1.0-model"]').attributes('aria-label')).toBe('Checkpoint file');
   expect(card.find('[data-testid="recipe-option-sdxl-base-1.0-diffusion"]').exists()).toBe(false);
@@ -80,22 +80,25 @@ it('labels the SDXL primary as a checkpoint and shows its explicit external VAE'
   expect(card.text()).toContain('sdxl_vae.safetensors');
   expect(card.text()).toContain('madebyollin/sdxl-vae-fp16-fix');
 });
-it('keeps catalog content visible but navigation inert when the feature is disabled', async () => {
-  wrapper = mount(ImageModelCatalog, { props: { disabled: true, view: createDisabledImageLibrary() } });
+it('keeps external catalog links unavailable in standalone mode', async () => {
+  wrapper = mount(ImageModelCatalog, { props: { disabled: true, downloadDisabled: true, view: createDisabledImageLibrary() } });
   expect(wrapper.text()).toContain('Qwen Image 2.1');
   for (const link of wrapper.findAll('a')) {
-    expect(link.attributes('href')).toBeUndefined(); expect(link.attributes('aria-disabled')).toBe('true');
-    expect(link.attributes('tabindex')).toBe('-1');
-    const event = new MouseEvent('click', { bubbles: true, cancelable: true }); link.element.dispatchEvent(event); expect(event.defaultPrevented).toBe(true);
+    expect(link.attributes('href')).toBeUndefined();
+    expect(link.attributes('aria-disabled')).toBe('true');
   }
-  await wrapper.setProps({ disabled: false, view: createDisabledImageLibrary() });
-  expect(wrapper.get('a').attributes('href')).toMatch(/^https:/);
+  expect(wrapper.get('[data-testid="recipe-option-z-image-turbo-diffusion"]').element.matches(':disabled')).toBe(true);
+});
+it('keeps external links available while generation locks model selection', () => {
+  wrapper = mount(ImageModelCatalog, { props: { disabled: true, downloadDisabled: false, view: createDisabledImageLibrary() } });
+  for (const link of wrapper.findAll('a')) expect(link.attributes('href')).toMatch(/^https:\/\/huggingface\.co\//);
+  expect(wrapper.get('[data-testid="recipe-option-z-image-turbo-diffusion"]').element.matches(':disabled')).toBe(false);
 });
 it('offers a separate explicit reference-LoRA download without changing the base recipe selection', async () => {
   const view = createDisabledImageLibrary(), entry = imageCatalogLoras[0]!;
   const available = ref(false); view.loraAvailable = () => available.value;
   view.downloadLora = vi.fn(); view.downloadRecipe = vi.fn(); view.chooseRecipe = vi.fn();
-  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
   const optional = wrapper.get('[data-testid="catalog-lora-krea2-style-reference"]');
   expect(optional.text()).toContain('Optional LoRA'); expect(optional.text()).toContain('Requires a reference image');
   expect(view.downloadLora).not.toHaveBeenCalled();
@@ -109,7 +112,7 @@ it('offers a separate explicit reference-LoRA download without changing the base
 });
 it('keeps the optional LoRA visible but disabled in an unavailable build', async () => {
   const view = createDisabledImageLibrary(); view.downloadLora = vi.fn();
-  wrapper = mount(ImageModelCatalog, { props: { disabled: true, view } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: true, downloadDisabled: true, view } });
   const button = wrapper.get('[data-testid="catalog-lora-download-krea2-style-reference"]');
   expect(button.element.matches(':disabled')).toBe(true); await button.trigger('click');
   expect(view.downloadLora).not.toHaveBeenCalled();
@@ -122,7 +125,7 @@ it('keeps option changes offline and sends a frozen choice only on the explicit 
   }), chooseRecipe: vi.fn(),
   ready: computed(() => available.value === 3),
   recipeAvailability: () => ({ available: available.value, total: 3, selected: false, bytes: 32 }) };
-  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
   await wrapper.get('[data-testid="recipe-option-z-image-turbo-diffusion"]').setValue('q8-0');
   expect(view.downloadRecipe).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
   await wrapper.get('[data-testid="recipe-download-selected-z-image-turbo"]').trigger('click');
@@ -143,7 +146,7 @@ it('allows permission requests on explicit downloads but blocks unavailable regi
     destination: ref('root-a'),
   };
   view.downloadRecipe = vi.fn(async () => {});
-  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
   const button = () => wrapper!.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
   expect(wrapper.get<HTMLOptionElement>('option[value="root-a"]').element.disabled).toBe(false);
   expect(button().element.disabled).toBe(false);
@@ -164,15 +167,45 @@ it('allows permission requests on explicit downloads but blocks unavailable regi
   expect(button().element.disabled).toBe(false);
 });
 
-it('explains a local scan next to disabled download actions without queuing a hidden request', async () => {
+it('keeps explicit downloads available while a local scan is running', async () => {
   const view = createDisabledImageLibrary(); view.downloadRecipe = vi.fn(); view.scanState.value = 'scanning';
-  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
   const card = wrapper.get('[data-testid="image-recipe-z-image-turbo"]');
   expect(card.get('[data-testid="image-catalog-scan-status"]').text()).toContain('Checking saved models');
-  expect(card.get('[data-testid="recipe-download-selected-z-image-turbo"]').element.matches(':disabled')).toBe(true);
-  view.scanState.value = 'idle'; await flushPromises();
-  expect(card.find('[data-testid="image-catalog-scan-status"]').exists()).toBe(false);
-  expect(view.downloadRecipe).not.toHaveBeenCalled();
+  expect(card.get('[data-testid="recipe-download-selected-z-image-turbo"]').element.matches(':disabled')).toBe(false);
   await card.get('[data-testid="recipe-download-selected-z-image-turbo"]').trigger('click');
   expect(view.downloadRecipe).toHaveBeenCalledTimes(1);
+  view.scanState.value = 'idle'; await flushPromises();
+  expect(card.find('[data-testid="image-catalog-scan-status"]').exists()).toBe(false);
+});
+
+it('shows queued and failed snapshots while allowing a new variant to be enqueued during a download', async () => {
+  const view = createDisabledImageLibrary();
+  const queue = ref<ImageDownloadQueueEntry[]>([
+    { id: 'active', label: 'Z-Image-Turbo', destination: 'OPFS', state: 'downloading', error: '' },
+    { id: 'next', label: 'Krea 2 Turbo', destination: 'models', state: 'queued', error: '' },
+    { id: 'failed', label: 'SDXL Base 1.0', destination: 'OPFS', state: 'failed', error: 'Connection lost' },
+  ]);
+  view.downloadQueue = computed(() => queue.value);
+  view.downloadState.value = 'downloading';
+  view.downloading = computed(() => view.downloadState.value === 'downloading');
+  view.downloadRecipeId = computed(() => 'z-image-turbo');
+  view.downloadRecipe = vi.fn();
+  view.retryQueuedDownload = vi.fn();
+  view.removeQueuedDownload = vi.fn();
+  wrapper = mount(ImageModelCatalog, { props: { disabled: true, downloadDisabled: false, view } });
+  const list = wrapper.get('[data-testid="image-download-queue"]');
+  expect(list.text()).toContain('Download queue');
+  expect(list.text()).toContain('Krea 2 Turbo · models');
+  expect(list.text()).toContain('SDXL Base 1.0 · OPFS');
+  expect(list.text()).toContain('Connection lost');
+  expect(list.text()).not.toContain('Z-Image-Turbo');
+  expect(wrapper.get('[data-testid="image-download-job"]').text()).toContain('Downloading');
+  await wrapper.get('[data-testid="recipe-option-z-image-turbo-diffusion"]').setValue('q8-0');
+  await wrapper.get('[data-testid="recipe-download-selected-z-image-turbo"]').trigger('click');
+  expect(view.downloadRecipe).toHaveBeenCalledWith({ recipeId: 'z-image-turbo', selections: { diffusion: 'q8-0' } });
+  await list.get('[data-testid="image-download-queue-retry-failed"]').trigger('click');
+  expect(view.retryQueuedDownload).toHaveBeenCalledWith({ id: 'failed' });
+  await list.get('[data-testid="image-download-queue-remove-next"]').trigger('click');
+  expect(view.removeQueuedDownload).toHaveBeenCalledWith({ id: 'next' });
 });

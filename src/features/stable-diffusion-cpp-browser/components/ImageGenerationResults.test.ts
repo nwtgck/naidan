@@ -117,6 +117,26 @@ it.each(['card', 'viewer'])('keeps an existing result downloadable from its %s a
   expect(view.downloadResult).toHaveBeenLastCalledWith({ resultId: 1, format: 'webp', includeMetadata: true });
 });
 
+it('shares a changed download preference between result and preview menus before any download', async () => {
+  const view = useImageGeneration();
+  view.results.value = [{ id: 1, url: 'blob:result', parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 }];
+  view.previewSnapshots.value = [{ id: 2, url: 'blob:preview', type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 2, steps: 8, mode: 'vae', width: 16, height: 16, elapsedMs: 2500 }];
+  view.downloadResult = vi.fn(async () => ({ status: 'downloaded' as const }));
+  view.downloadPreview = vi.fn(async () => ({ status: 'downloaded' as const }));
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true }, global: { stubs: { Teleport: true } } });
+  const result = wrapper.get('[data-testid="image-result-download"]');
+  const preview = wrapper.get('[data-testid="image-preview-snapshot"]');
+  expect(preview.get('[data-testid="image-download-default"]').text()).toContain('PNG');
+  await result.get('[data-testid="image-download-options"]').trigger('click');
+  await result.get('[data-testid="image-download-format"]').setValue('webp');
+  await result.get('[data-testid="image-download-metadata"]').setValue(true);
+  expect(view.imageDownloadPreferences.value).toEqual({ format: 'webp', metadata: 'include' });
+  expect(view.downloadResult).not.toHaveBeenCalled();
+  expect(preview.get('[data-testid="image-download-default"]').text()).toContain('WebP');
+  await preview.get('[data-testid="image-download-default"]').trigger('click');
+  expect(view.downloadPreview).toHaveBeenCalledWith({ previewId: 2, format: 'webp', includeMetadata: true });
+});
+
 it('keeps the successful image downloadable when history saving fails and retries only the save', async () => {
   const view = useImageGeneration();
   view.supported = computed(() => true);
@@ -227,7 +247,7 @@ it('links only a result with a successful saved record without a redundant works
   expect(wrapper.emitted('openHistory')?.at(-1)).toEqual([{ id }]);
 });
 
-it('replaces the current result placeholder with its live image and final image in the same reserved canvas', async () => {
+it('keeps the animation canvas through live preview and caps the final image at native width', async () => {
   const busy = ref(false);
   const view = useImageGeneration();
   view.busy = computed(() => busy.value);
@@ -252,9 +272,12 @@ it('replaces the current result placeholder with its live image and final image 
   expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
   const canvasStyle = wrapper.get('[data-testid="image-generation-canvas"]').attributes('style');
   expect(canvasStyle).toContain('aspect-ratio: 768 / 512');
+  expect(canvasStyle).toContain('max-width: 97.5vh');
   view.livePreview.value = { ...oldPreview, id: 2, runId: 2, url: 'blob:current-preview' };
   await flushPromises();
   expect(wrapper.get('[data-testid="image-generation-current-preview"]').attributes('src')).toBe('blob:current-preview');
+  expect(wrapper.get('[data-testid="image-generation-current-preview"]').attributes('width')).toBe('32');
+  expect(wrapper.get('[data-testid="image-generation-current-preview"]').attributes('style')).toContain('max-width: min(100%, 32px)');
   expect(wrapper.get('[data-testid="image-generation-canvas"]').attributes('style')).toBe(canvasStyle);
   expect(wrapper.get('[data-testid="image-generation-progress"]').attributes('data-running')).toBe('false');
   // Final pixels arrive before asynchronous history saving releases busy.
@@ -263,7 +286,7 @@ it('replaces the current result placeholder with its live image and final image 
   await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
   expect(wrapper.get('[data-testid="image-generated-result"] img').attributes('src')).toBe('blob:final');
-  expect(wrapper.get('[data-testid="image-result-canvas"]').attributes('style')).toBe(canvasStyle);
+  expect(wrapper.get('[data-testid="image-result-canvas"]').attributes('style')).toContain('max-width: min(768px, 97.5vh)');
   expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(2);
   view.results.value = [oldResult]; await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
@@ -295,6 +318,17 @@ it('replaces the current result placeholder with its live image and final image 
   view.latestRun.value = { status: 'failed', failure: 'generation failed', width: 768, height: 512 }; await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="image-failed-result"]').exists()).toBe(true);
+});
+
+it('caps a small final image at its generated dimensions while preserving viewer zoom', async () => {
+  const view = useImageGeneration();
+  view.results.value = [{ id: 1, url: 'blob:small-result', parameters: { ...view.parameters.value, width: 256, height: 256 }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 }];
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true }, global: { stubs: { Teleport: true } } });
+  const canvas = wrapper.get('[data-testid="image-result-canvas"]');
+  expect(canvas.attributes('style')).toContain('max-width: min(256px, 65vh)');
+  expect(canvas.get('img').attributes('width')).toBe('256');
+  await wrapper.get('[data-testid="image-generated-result"] button').trigger('click');
+  expect(wrapper.find('[data-testid="image-viewer"] [data-testid="image-viewer-zoom-in"]').exists()).toBe(true);
 });
 
 it('locks the history policy during a run and restores editing afterward only in supported storage', async () => {

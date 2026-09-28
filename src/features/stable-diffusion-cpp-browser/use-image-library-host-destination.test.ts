@@ -53,7 +53,7 @@ afterEach(() => {
 it('allows the catalog to download into a linked folder without OPFS', async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   const { library } = await harness();
-  wrapper = mount(ImageModelCatalog, { props: { disabled: false, view: library } });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
   expect(wrapper.get<HTMLOptionElement>('option[value="opfs"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLOptionElement>('option[value="selected"]').element.disabled).toBe(false);
   const download = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
@@ -65,7 +65,7 @@ it('allows the catalog to download into a linked folder without OPFS', async () 
 
 async function harness() {
   const blocked = ref(false), scope = effectScope(); scopes.push(scope);
-  const library = scope.run(() => useImageLibrary({ blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
   await library.refresh();
   library.hostDirectories.selectDestination({ id: 'selected' });
   return { library, blocked };
@@ -175,4 +175,47 @@ it('keeps a failed transfer resumable when unlinking its registration fails', as
   await library.resumeDownload();
   expect(mocks.download).toHaveBeenCalledTimes(2);
   expect(mocks.download.mock.calls[1]?.[0].destination).toEqual({ kind: 'host', directoryId: 'selected' });
+});
+
+it('keeps each queued destination fixed while the user selects another linked folder', async () => {
+  const { library } = await harness();
+  const pending = Promise.withResolvers<void>();
+  mocks.download.mockReturnValueOnce(pending.promise);
+  const first = library.downloadRecipe({ recipeId, selections: {} });
+  await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledOnce());
+  library.hostDirectories.selectDestination({ id: 'other' });
+  const second = library.downloadRecipe({ recipeId, selections: {} });
+  library.hostDirectories.selectDestination({ id: 'opfs' });
+  expect(library.downloadQueue.value.map(job => job.destination)).toEqual(['models', 'other models']);
+  pending.resolve(); await Promise.all([first, second]);
+  expect(mocks.download.mock.calls.map(call => call[0].destination)).toEqual([
+    { kind: 'host', directoryId: 'selected' }, { kind: 'host', directoryId: 'other' },
+  ]);
+});
+
+it('drops only jobs for a successfully unlinked root and keeps other queued downloads', async () => {
+  const { library } = await harness();
+  mocks.download.mockImplementationOnce(waitForAbort);
+  const first = library.downloadRecipe({ recipeId, selections: {} });
+  await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledOnce());
+  const sameRoot = library.downloadRecipe({ recipeId, selections: { diffusion: 'q8-0' } });
+  library.hostDirectories.selectDestination({ id: 'other' });
+  const otherRoot = library.downloadRecipe({ recipeId, selections: {} });
+  await library.hostDirectories.remove({ id: 'selected' });
+  await Promise.all([first, sameRoot, otherRoot]);
+  expect(mocks.download.mock.calls.map(call => call[0].destination)).toEqual([
+    { kind: 'host', directoryId: 'selected' }, { kind: 'host', directoryId: 'other' },
+  ]);
+});
+
+it('keeps an unavailable restored root through scans and rejects downloads rather than writing to OPFS', async () => {
+  const { library } = await harness();
+  library.hostDirectories.destination.value = 'not-registered';
+  await library.refresh();
+  settings.value = { ...settings.value, experimental: { ...settings.value.experimental, locale: 'ja' } };
+  await flushPromises();
+  expect(library.hostDirectories.destination.value).toBe('not-registered');
+  await library.downloadRecipe({ recipeId, selections: {} });
+  expect(mocks.download).not.toHaveBeenCalled(); expect(library.downloadState.value).toBe('failed');
+  expect(library.hostDirectories.destination.value).toBe('not-registered');
 });

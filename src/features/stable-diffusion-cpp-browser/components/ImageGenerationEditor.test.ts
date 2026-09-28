@@ -14,7 +14,7 @@ afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
 
-it.each(['import', 'download'])('locks model layout and preset actions during %s without blocking prompt editing', async transfer => {
+it.each(['import', 'download'])('only locks conflicting model layout and preset actions during %s', async transfer => {
   const pending = ref(true);
   const view = useImageGeneration();
   view.formDisabled = computed(() => false);
@@ -27,10 +27,10 @@ it.each(['import', 'download'])('locks model layout and preset actions during %s
   wrapper = mount(ImageGenerationEditor, { props: { view, active: true } });
   const layout = wrapper.get('[data-testid="image-model-options"] select');
   const preset = wrapper.get('[data-testid="image-apply-recommendation"]');
-  expect(layout.element.matches(':disabled')).toBe(true);
-  expect(preset.element.matches(':disabled')).toBe(true);
+  expect(layout.element.matches(':disabled')).toBe(transfer === 'import');
+  expect(preset.element.matches(':disabled')).toBe(transfer === 'import');
   await preset.trigger('click');
-  expect(view.applyRecommendedSettings).not.toHaveBeenCalled();
+  expect(view.applyRecommendedSettings).toHaveBeenCalledTimes(transfer === 'import' ? 0 : 1);
   expect(view.resetFiles).not.toHaveBeenCalled();
   const prompt = wrapper.get('[data-testid="image-prompt"]');
   expect(prompt.element.matches(':disabled')).toBe(false);
@@ -45,5 +45,5 @@ it.each(['import', 'download'])('locks model layout and preset actions during %s
   expect(view.layout.value).toBe('components');
   expect(view.resetFiles).toHaveBeenCalledOnce();
   await preset.trigger('click');
-  expect(view.applyRecommendedSettings).toHaveBeenCalledOnce();
+  expect(view.applyRecommendedSettings).toHaveBeenCalledTimes(transfer === 'import' ? 1 : 2);
 });

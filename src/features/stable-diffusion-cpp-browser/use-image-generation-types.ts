@@ -8,6 +8,7 @@ import type { ImageGenerationRecord } from '@/01-models/image-generation-history
 import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
 
 export type ImageDownloadFormat = 'png' | 'webp' | 'jpeg';
+export type ImageDownloadPreferences = { format: ImageDownloadFormat, metadata: 'include' | 'omit' };
 export type ImageDownloadResult =
   | { status: 'downloaded' }
   | { status: 'failed', message: string }

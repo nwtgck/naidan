@@ -109,7 +109,7 @@ describe('linked model directory registration', () => {
     expect(state.view.entries.value[0]?.access).toBe('read');
     expect(root.requestPermission).not.toHaveBeenCalled();
     state.view.selectDestination({ id: 'existing' });
-    expect(await state.downloadDestination()).toEqual({ kind: 'host', directoryId: 'existing' });
+    expect(await state.downloadDestination({ id: state.view.destination.value })).toEqual({ kind: 'host', directoryId: 'existing' });
     expect(root.requestPermission).toHaveBeenCalledWith({ mode: 'readwrite' });
     expect(update).not.toHaveBeenCalled();
   });
@@ -125,7 +125,7 @@ describe('linked model directory registration', () => {
     const root = handles.get('existing')!;
     vi.mocked(root.requestPermission).mockResolvedValue('denied');
     const state = create(); await state.refresh(); state.view.selectDestination({ id: 'existing' });
-    await expect(state.downloadDestination()).rejects.toThrow('read and write permission');
+    await expect(state.downloadDestination({ id: state.view.destination.value })).rejects.toThrow('read and write permission');
     expect(state.view.destination.value).toBe('existing');
     expect(update).not.toHaveBeenCalled();
   });

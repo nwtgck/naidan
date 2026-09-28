@@ -132,6 +132,59 @@ export const ExperimentalMigrationStateSchemaDto = EmptyExperimentalSchemaDto;
 
 export const ExperimentalSettingsLocaleSchemaDto = z.enum(UI_LOCALES);
 
+const ImageGenerationPathSchemaDto = z.string().min(1).refine(value =>
+  !value.includes('\\') && !value.includes('\0')
+  && value.split('/').every(part => part !== '' && part !== '.' && part !== '..'));
+const BrowserImageModelLocationSchemaDto = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('opfs'), path: ImageGenerationPathSchemaDto.refine(path => path.startsWith('models/')) }),
+  z.object({ kind: z.literal('host'), directoryId: z.string().min(1), path: ImageGenerationPathSchemaDto }),
+]);
+const BrowserImageModelSelectionSchemaDto = z.object({
+  primary: z.object({
+    slot: z.enum(['model', 'diffusion']),
+    location: BrowserImageModelLocationSchemaDto,
+  }),
+  components: z.array(z.object({
+    slot: z.enum(['vae', 'clipL', 'clipG', 't5', 'lm']),
+    choice: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('file'), location: BrowserImageModelLocationSchemaDto }),
+      z.object({ kind: z.literal('none') }),
+    ]),
+  })).max(5).refine(components => new Set(components.map(component => component.slot)).size === components.length),
+  loras: z.array(z.object({
+    location: BrowserImageModelLocationSchemaDto,
+    enabled: z.enum(['enabled', 'disabled']),
+    strength: z.number().finite().min(-10).max(10),
+  })).max(16),
+});
+const BrowserImageGenerationSchemaDto = resolveMissingAsUndefined(z.object({
+  width: missingAsUndefined(z.number().int().min(128).max(2048).multipleOf(64)),
+  height: missingAsUndefined(z.number().int().min(128).max(2048).multipleOf(64)),
+  seedMode: missingAsUndefined(z.enum(['random', 'fixed'])),
+  seed: missingAsUndefined(z.string().max(20).regex(/^-?(0|[1-9][0-9]*)$/).pipe(z.string().refine(value => BigInt(value) >= -1n && BigInt(value) <= 9223372036854775807n))),
+  historyPersistence: missingAsUndefined(z.enum(['enabled', 'disabled'])),
+  modelDownloadDestination: missingAsUndefined(z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('opfs') }),
+    z.object({ kind: z.literal('host'), directoryId: z.string().min(1) }),
+  ])),
+  imageDownload: missingAsUndefined(resolveMissingAsUndefined(z.object({
+    format: missingAsUndefined(z.enum(['png', 'webp', 'jpeg'])),
+    metadata: missingAsUndefined(z.enum(['include', 'omit'])),
+  }))),
+  modelSelection: missingAsUndefined(BrowserImageModelSelectionSchemaDto),
+  preview: missingAsUndefined(resolveMissingAsUndefined(z.object({
+    enabled: missingAsUndefined(z.enum(['enabled', 'disabled'])),
+    mode: missingAsUndefined(z.enum(['projection', 'vae'])),
+    interval: missingAsUndefined(z.number().int().min(1).max(100)),
+    startStep: missingAsUndefined(z.number().int().min(1).max(100)),
+    maxEdge: missingAsUndefined(z.union([z.literal(0), z.number().int().min(64).max(2048)])),
+  }))),
+  keepPreviews: missingAsUndefined(z.enum(['enabled', 'disabled'])),
+  maxPreviews: missingAsUndefined(z.number().int().min(1).max(100)),
+  maxResults: missingAsUndefined(z.number().int().min(1).max(100)),
+  bf16WeightType: missingAsUndefined(z.enum(['f32', 'f16'])),
+}));
+
 export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object({
   locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),
   markdownRendering: missingAsUndefined(z.union([
@@ -154,6 +207,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
       z.literal('full'),
     ])),
   }))),
+  browserImageGeneration: missingAsUndefined(BrowserImageGenerationSchemaDto),
   hostModelDirectories: missingAsUndefined(z.array(z.object({
     id: z.string(),
     name: z.string(),
@@ -242,9 +296,6 @@ export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>(
 // transport defaults. Stored requests describe what was requested, not a
 // guarantee that a future runtime can reproduce the same image.
 const ImageHistoryRawIdSchemaDto = z.string().regex(/^[a-zA-Z0-9_-]{2,128}$/);
-const ImageGenerationPathSchemaDto = z.string().min(1).refine(value =>
-  !value.includes('\\') && !value.includes('\0')
-  && value.split('/').every(part => part !== '' && part !== '.' && part !== '..'));
 const ImageGenerationFileMetadataSchemaDto = {
   name: z.string().min(1),
   size: z.number().int().nonnegative(),

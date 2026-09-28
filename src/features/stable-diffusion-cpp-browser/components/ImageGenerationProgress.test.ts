@@ -12,7 +12,7 @@ afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.useRealTimers();
 });
 function openProgress() {
-  wrapper = mount(ImageGenerationProgress, { props: { busy: true, supported: true, active: true, stopping: false, progress: undefined, width: 512, height: 512, imageUrl: undefined } });
+  wrapper = mount(ImageGenerationProgress, { props: { busy: true, supported: true, active: true, stopping: false, progress: undefined, width: 512, height: 512, image: undefined } });
   return wrapper;
 }
 
@@ -72,17 +72,35 @@ it('distinguishes the inferred active step from completed progress, including th
   expect(view.get('[data-testid="image-generation-heading"]').text()).toBe('Processing step 1 / 1');
   await view.setProps({ progress: { phase: 'sampling', step: 1, steps: 1 } });
   expect(view.get('[data-testid="image-generation-heading"]').text()).toBe('1 / 1 step completed');
-  await view.setProps({ progress: { phase: 'sampling', step: 3, steps: 8 }, imageUrl: 'blob:live' });
+  await view.setProps({ progress: { phase: 'sampling', step: 3, steps: 8 }, image: { url: 'blob:live', width: 32, height: 16 } });
   expect(view.get('[data-testid="image-generation-phase"]').text()).toBe('Processing step 4 / 8');
+  expect(view.get('[data-testid="image-generation-current-preview"]').attributes('width')).toBe('32');
+  expect(view.get('[data-testid="image-generation-current-preview"]').attributes('height')).toBe('16');
+  expect(view.get('[data-testid="image-generation-current-preview"]').attributes('style')).toContain('max-width: min(100%, 32px)');
   await view.setProps({ active: false });
   expect(view.get('[data-testid="image-generation-phase"]').text()).toBe('Processing step 4 / 8');
-  await view.setProps({ stopping: true, imageUrl: undefined });
+  await view.setProps({ stopping: true, image: undefined });
   expect(view.get('[data-testid="image-generation-phase"]').text()).toContain('3 / 8 steps completed');
   expect(view.text()).not.toContain('Processing step');
   expect(view.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('3');
   await view.setProps({ stopping: false, progress: { phase: 'decoding', step: 0, steps: 0 } });
   expect(view.text()).not.toContain('Processing step');
   expect(view.get('[data-testid="image-generation-heading"]').text()).toBe('Decoding image…');
+});
+
+it('keeps the animation canvas large while a small preview stays at native size inside it', async () => {
+  const view = openProgress();
+  await view.setProps({ width: 256, height: 256, progress: { phase: 'model', step: 0, steps: 0 } });
+  const canvas = view.get('[data-testid="image-generation-canvas"]');
+  expect(canvas.attributes('style')).toContain('max-width: 65vh');
+  expect(view.get('[data-testid="image-generation-heading"]').text()).toBe('Loading model…');
+
+  await view.setProps({ image: { url: 'blob:preview', width: 32, height: 32 } });
+  expect(canvas.attributes('style')).toContain('max-width: 65vh');
+  const image = view.get('[data-testid="image-generation-current-preview"]');
+  expect(image.attributes('width')).toBe('32');
+  expect(image.attributes('height')).toBe('32');
+  expect(image.attributes('style')).toContain('max-width: min(100%, 32px)');
 });
 
 it('suspends hidden work while retaining the run clock, and resets the next run', async () => {

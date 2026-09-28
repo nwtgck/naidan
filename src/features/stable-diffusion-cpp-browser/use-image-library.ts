@@ -1,7 +1,7 @@
 import { awaitInspection } from './logic/inspection-abort';
 import { inspectImageInventory } from './inventory-worker/client';
 import type { InspectionProgress } from './inventory-worker/types';
-import type { ImageRecipeDownloader, CatalogDownloadProgress } from './logic/catalog-download';
+import type { ImageRecipeDownloader, ImageDownloadDestination, CatalogDownloadProgress } from './logic/catalog-download';
 import { downloadImageRecipeInWorker } from './download-worker/client';
 import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from './model-recipes';
 import { imageCatalogLoras } from './lora-catalog';
@@ -17,6 +17,8 @@ import { createDisabledImageLibrary } from './library-standalone';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
+import type { BrowserImageModelLocation, BrowserImageModelSelection } from '@/01-models/types';
+import type { ImageLoraSelection } from './lora-form';
 
 type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader };
 type InventoryRefreshResult = 'scanned' | 'blocked' | 'failed';
@@ -40,14 +42,18 @@ function automaticOrigin({ origin }: { origin: 'automatic' | 'manual' | 'files' 
 
 /** Application-owned local inventory and composition. File metadata is advisory:
  * a structural match is not a claim of identical training weights or quality. */
-export function useImageLibrary({ blocked, onSelection, dependencies }: {
+export function useImageLibrary({ blocked, downloadsBlocked, onSelection, dependencies }: {
   blocked: () => boolean,
+  downloadsBlocked: () => boolean,
   onSelection: ({ family, turbo }: { family: ModelCandidate['family'], turbo: boolean }) => void,
   dependencies: Dependencies | undefined,
 }): ImageLibraryView {
   const deps = dependencies ?? defaultDependencies;
   const inventory = shallowRef<ModelInventory>({ candidates: [], issues: [] });
   const main = ref('');
+  // Track only Files issued by the inspected local inventory. A later scan
+  // creates fresh File objects without changing a selected adapter's origin.
+  const knownLocations = new WeakMap<File, BrowserImageModelLocation>();
   const showAll = ref(false);
   const selections = shallowRef<Partial<Record<ModelSlot, string>>>({});
   const overrides = new Set<ModelSlot>();
@@ -62,6 +68,31 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   const downloadState = ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>('idle');
   type DownloadTarget = { kind: 'recipe', id: string, selections: ImageRecipeSelection } | { kind: 'lora', id: string };
   const downloadTarget = shallowRef<DownloadTarget>();
+  type DownloadJob = {
+    id: string, key: string, target: DownloadTarget, files: readonly ImageDownloadSource[],
+    destinationId: string, destinationName: string, label: string,
+    authorization: Promise<{ destination: ImageDownloadDestination | undefined, error: unknown }>,
+    state: 'queued' | 'downloading' | 'paused' | 'failed' | 'incomplete' | 'complete', error: string,
+    completion: ReturnType<typeof Promise.withResolvers<void>>, selectionVersion: number, selectWhenComplete: boolean,
+  };
+  const jobs = shallowRef<DownloadJob[]>([]);
+  const downloadQueue = computed(() => jobs.value.flatMap(job => {
+    switch (job.state) {
+    case 'complete': return [];
+    case 'queued': case 'downloading': case 'paused': case 'failed': case 'incomplete':
+      return [{ id: job.id, label: job.label, destination: job.destinationName, state: job.state, error: job.error }];
+    default: { const exhaustive: never = job.state; throw new Error(String(exhaustive)); }
+    }
+  }));
+  let currentJob: DownloadJob | undefined, processing = false, queuePaused = false, jobSequence = 0, selectionVersion = 0;
+  function publishJobs(): void {
+    jobs.value = [...jobs.value];
+  }
+  // An independent editor operation must not have its settings replaced when
+  // a previously requested download finishes later.
+  watch(blocked, value => {
+    if (value) selectionVersion++;
+  }, { flush: 'sync' });
   const downloadPresentation = computed(() => {
     const target = downloadTarget.value;
     switch (target?.kind) {
@@ -74,7 +105,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   const downloadRecipeId = computed(() => downloadPresentation.value.recipeId);
   const downloadLoraId = computed(() => downloadPresentation.value.loraId);
   const downloadSelections = computed<ImageRecipeSelection>(() => downloadPresentation.value.selections);
-  let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image', files: ImageRecipeFile[] } | undefined;
+  let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image', files: ImageRecipeFile[], destinationId: string } | undefined;
   const downloading = computed(() => activeDownload.value !== undefined);
   let hostPublication: AbortController | undefined;
   const host = dependencies ? undefined : useHostModelDirectories({
@@ -108,7 +139,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
       if (!downloading.value) await hostView.reconnect({ id });
     },
     selectDestination({ id }) {
-      if (downloading.value || importing.value || blocked()) return;
+      if (importing.value || downloadsBlocked()) return;
       hostView.selectDestination({ id });
     },
   };
@@ -117,12 +148,16 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   let origin: 'automatic' | 'manual' | 'files' = 'automatic';
   let disposed = false;
   const importing = computed(() => activeImport.value !== undefined);
-  watch(hostView.destination, () => {
-    // Unlinking the selected host root also changes the destination. Resuming
-    // its old transfer must never start a fresh download into OPFS instead.
-    // Invalidation is independent of an unrelated image-history save.
-    if (!downloading.value && !disposed) clearDownloadIntent();
+  const downloadsDisabled = computed(() => downloadsBlocked());
+  if (host) watch(() => hostDirectories.entries.value.map(entry => entry.id), (ids, previousIds) => {
+    if (hostView.destination.value !== 'opfs' && previousIds.includes(hostView.destination.value) && !ids.includes(hostView.destination.value)) hostView.destination.value = 'opfs';
+    // Only a committed unlink removes queued work. Failed settings writes keep
+    // the original root and its paused/retryable transfer intact.
+    for (const job of [...jobs.value]) if (job.destinationId !== 'opfs' && !ids.includes(job.destinationId)) removeQueuedDownload({ id: job.id });
   }, { flush: 'sync' });
+  watch([hostDirectories.busy, downloadsDisabled, importing], () => {
+    void processDownloads();
+  });
   const selected = computed(() => inventory.value.candidates.find(item => item.id === main.value));
   const selectedFacts = computed(() => selected.value && !selected.value.issue ? { family: selected.value.family, variant: selected.value.variant, evidence: selected.value.evidence } : undefined);
   const requirements = computed(() => componentRequirements({ family: selected.value?.family ?? 'unknown' }));
@@ -154,7 +189,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   })));
   const issues = computed(() => inventory.value.issues.map(issue => `${issue.repositoryId}/${issue.path}: ${issue.message}`));
   const ready = computed(() => {
-    if (!selected.value || selected.value.issue || scanState.value === 'scanning' || importing.value || downloading.value || origin === 'files') return false;
+    if (!selected.value || selected.value.issue || scanState.value === 'scanning' || importing.value || origin === 'files') return false;
     // Unknown model families remain inspectable in Advanced. Their execution is
     // deliberate via the manual component controls, not a guessed checkpoint.
     if (primarySlot({ family: selected.value.family }) === undefined) return false;
@@ -182,35 +217,35 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
       const requested = recipeIntent?.files.find(file => file.role === requirement.slot);
       // A complete checkpoint already contains its VAE. Use an external one only
       // when the user selects it or explicitly chooses a recipe that names it.
-      next[requirement.slot] = requested ? findRecipeFile({ file: requested, match: ({ candidate }) => componentMatch({ candidate, requirement }) === 'matching' })?.id ?? ''
+      next[requirement.slot] = requested ? findRecipeFile({ file: requested, destinationId: recipeIntent!.destinationId, match: ({ candidate }) => componentMatch({ candidate, requirement }) === 'matching' })?.id ?? ''
         : requirement.required ? defaultCompanion({ main: selected.value, candidates: inventory.value.candidates, requirement }) ?? '' : '';
     }
     selections.value = next;
   }
   function chooseMain({ id }: { id: string }): void {
-    if (blocked() || importing.value || downloading.value || disposed) return;
+    if (blocked() || importing.value || scanState.value === 'scanning' || disposed) return;
     const candidate = inventory.value.candidates.find(item => item.id === id);
     if (id && !candidate || candidate?.issue || candidate && candidate.family === 'unknown' && candidate.roles.length) return;
-    recipeIntent = undefined;
+    selectionVersion++; unavailableLoras = []; recipeIntent = undefined;
     if (id === main.value) return;
     main.value = id; origin = 'manual'; overrides.clear(); selections.value = {}; resolve();
     if (candidate) onSelection({ family: candidate.family, turbo: candidate.turboHint });
   }
   function chooseComponent({ slot, id }: { slot: ModelSlot, id: string }): void {
-    if (blocked() || importing.value || downloading.value || disposed) return;
+    if (blocked() || importing.value || scanState.value === 'scanning' || disposed) return;
     const requirement = requirements.value.find(item => item.slot === slot);
     const candidate = inventory.value.candidates.find(item => item.id === id);
     if (!requirement || candidate && componentMatch({ candidate, requirement }) === 'incompatible' || id && !candidate) return;
-    overrides.add(slot); selections.value = { ...selections.value, [slot]: id };
+    selectionVersion++; overrides.add(slot); selections.value = { ...selections.value, [slot]: id };
   }
-  function findRecipeFile({ file, match }: { file: ImageRecipeFile, match: ({ candidate }: { candidate: ModelCandidate }) => boolean }): ModelCandidate | undefined {
+  function findRecipeFile({ file, match, destinationId }: { file: ImageRecipeFile, destinationId: string, match: ({ candidate }: { candidate: ModelCandidate }) => boolean }): ModelCandidate | undefined {
     const target = `huggingface.co/${file.repository}/resolve/main`;
     const matches = inventory.value.candidates.filter(candidate => {
       if (candidate.issue || candidate.path !== file.path || !match({ candidate })) return false;
       // Catalog availability belongs to the explicitly selected destination.
       // A copy in another root must not suppress Download for this root.
-      if (hostDirectories.destination.value === 'opfs' ? candidate.hostSource !== undefined
-        : candidate.hostSource?.directoryId !== hostDirectories.destination.value) return false;
+      if (destinationId === 'opfs' ? candidate.hostSource !== undefined
+        : candidate.hostSource?.directoryId !== destinationId) return false;
       if (candidate.hostSource) {
         if (candidate.hostSource.repository !== file.repository) return false;
       } else if (!candidate.repositoryId.startsWith('user/') && candidate.repositoryId !== target && candidate.repositoryId !== `huggingface.co/${file.repository}/resolve/${file.revision}`) return false;
@@ -218,12 +253,15 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
       if (receipt?.source.kind === 'hugging-face' && receipt.source.revision !== file.revision) return false;
       return true;
     });
-    const preferred = ({ candidate }: { candidate: ModelCandidate }) => hostDirectories.destination.value === 'opfs'
-      ? candidate.repositoryId === target : candidate.hostSource?.directoryId === hostDirectories.destination.value;
+    const preferred = ({ candidate }: { candidate: ModelCandidate }) => destinationId === 'opfs'
+      ? candidate.repositoryId === target : candidate.hostSource?.directoryId === destinationId;
     matches.sort((a, b) => Number(preferred({ candidate: b })) - Number(preferred({ candidate: a })) || a.id.localeCompare(b.id));
     return matches[0];
   }
-  function recipeAvailability({ recipeId, selections: requested }: { recipeId: string, selections: ImageRecipeSelection }): ImageRecipeAvailability {
+  function recipeAvailability({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): ImageRecipeAvailability {
+    return recipeAvailabilityAt({ recipeId, selections, destinationId: hostDirectories.destination.value });
+  }
+  function recipeAvailabilityAt({ recipeId, selections: requested, destinationId }: { recipeId: string, selections: ImageRecipeSelection, destinationId: string }): ImageRecipeAvailability {
     const recipe = imageModelRecipes.find(item => item.id === recipeId);
     if (!recipe) return { available: 0, total: 0, selected: false, bytes: 0 };
     const family = (() => {
@@ -240,7 +278,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     })();
     const requirements = componentRequirements({ family });
     const files = selectedRecipeFiles({ recipe, selections: requested });
-    const candidates = files.map(file => findRecipeFile({ file, match: ({ candidate }) => {
+    const candidates = files.map(file => findRecipeFile({ file, destinationId, match: ({ candidate }) => {
       switch (file.role) {
       case 'model': case 'diffusion': return candidate.family === family;
       case 'vae': case 'lm': {
@@ -267,19 +305,22 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   function resolveRecipe(): void {
     if (!recipeIntent) return;
     const file = recipeIntent.files.find(file => file.role === 'model' || file.role === 'diffusion');
-    const candidate = file && findRecipeFile({ file, match: ({ candidate: item }) => item.family === recipeIntent?.family });
+    const candidate = file && findRecipeFile({ file, destinationId: recipeIntent.destinationId, match: ({ candidate: item }) => item.family === recipeIntent?.family });
     if (candidate && candidate.id !== main.value) {
       main.value = candidate.id; onSelection({ family: candidate.family, turbo: candidate.turboHint });
     }
   }
   function loraAvailable({ id }: { id: string }): boolean {
+    return loraAvailableAt({ id, destinationId: hostDirectories.destination.value });
+  }
+  function loraAvailableAt({ id, destinationId }: { id: string, destinationId: string }): boolean {
     const entry = imageCatalogLoras.find(item => item.id === id);
     if (!entry) return false;
     const expected = entry.source;
     return inventory.value.candidates.some(candidate => {
       if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || candidate.path !== expected.path) return false;
-      if (hostDirectories.destination.value === 'opfs' ? candidate.hostSource !== undefined
-        : candidate.hostSource?.directoryId !== hostDirectories.destination.value) return false;
+      if (destinationId === 'opfs' ? candidate.hostSource !== undefined
+        : candidate.hostSource?.directoryId !== destinationId) return false;
       const receipt = candidate.files[0]?.receipt, source = receipt?.source;
       // A selectable, markerless host adapter is not proof this catalog artifact
       // was acquired. Completion requires the exact published source and bytes.
@@ -288,105 +329,177 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     });
   }
   function chooseRecipe({ recipeId, selections: requested }: { recipeId: string, selections: ImageRecipeSelection }): void {
-    if (blocked() || importing.value || downloading.value || disposed) return;
+    if (blocked() || importing.value || scanState.value === 'scanning' || disposed) return;
     const recipe = imageModelRecipes.find(recipe => recipe.id === recipeId); if (!recipe) return;
     const files = selectedRecipeFiles({ recipe, selections: requested });
+    const destinationId = hostDirectories.destination.value; selectionVersion++; unavailableLoras = [];
     switch (recipe.id) {
-    case 'z-image-turbo': case 'z-image-base': recipeIntent = { family: 'z-image', files }; break;
-    case 'qwen-image-2.1': recipeIntent = { family: 'qwen-image-2.1', files }; break;
-    case 'sdxl-base-1.0': recipeIntent = { family: 'sd-checkpoint', files }; break;
-    case 'flux2-klein-4b': recipeIntent = { family: 'flux2-klein-4b', files }; break;
-    case 'anima-turbo-1.1': recipeIntent = { family: 'anima', files }; break;
-    case 'krea2-turbo': recipeIntent = { family: 'krea2', files }; break;
-    case 'ernie-image-turbo': recipeIntent = { family: 'ernie-image', files }; break;
+    case 'z-image-turbo': case 'z-image-base': recipeIntent = { family: 'z-image', files, destinationId }; break;
+    case 'qwen-image-2.1': recipeIntent = { family: 'qwen-image-2.1', files, destinationId }; break;
+    case 'sdxl-base-1.0': recipeIntent = { family: 'sd-checkpoint', files, destinationId }; break;
+    case 'flux2-klein-4b': recipeIntent = { family: 'flux2-klein-4b', files, destinationId }; break;
+    case 'anima-turbo-1.1': recipeIntent = { family: 'anima', files, destinationId }; break;
+    case 'krea2-turbo': recipeIntent = { family: 'krea2', files, destinationId }; break;
+    case 'ernie-image-turbo': recipeIntent = { family: 'ernie-image', files, destinationId }; break;
     default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
     }
     origin = 'manual'; main.value = ''; selections.value = {}; overrides.clear();
     resolveRecipe(); resolve();
   }
   async function downloadRecipe({ recipeId, selections: requested }: { recipeId: string, selections: ImageRecipeSelection }): Promise<void> {
-    if (blocked() || importing.value || downloading.value || disposed) return;
+    if (downloadsBlocked() || importing.value || disposed) return;
     const recipe = imageModelRecipes.find(recipe => recipe.id === recipeId); if (!recipe) return;
-    const choices = { ...requested }; const files = selectedRecipeFiles({ recipe, selections: choices });
-    await downloadFiles({ target: { kind: 'recipe', id: recipeId, selections: choices }, files });
+    const choices = { ...requested }, files = selectedRecipeFiles({ recipe, selections: choices });
+    await enqueueDownload({ target: { kind: 'recipe', id: recipeId, selections: choices }, files, label: recipe.title });
   }
   async function downloadLora({ id }: { id: string }): Promise<void> {
-    if (blocked() || importing.value || downloading.value || disposed) return;
+    if (downloadsBlocked() || importing.value || disposed) return;
     const entry = imageCatalogLoras.find(entry => entry.id === id); if (!entry) return;
-    await downloadFiles({ target: { kind: 'lora', id }, files: [entry.source] });
+    await enqueueDownload({ target: { kind: 'lora', id }, files: [entry.source], label: entry.title });
   }
-  function completeDownload({ target }: { target: DownloadTarget }): boolean {
+  function authorizeDownload({ destinationId }: { destinationId: string }): DownloadJob['authorization'] {
+    // Request host permission in the explicit click, not when the FIFO eventually
+    // reaches this entry. The destination is immutable even if the select changes.
+    const permission = host ? host.downloadDestination({ id: destinationId }) : Promise.resolve<ImageDownloadDestination>({ kind: 'opfs' });
+    return permission.then(destination => ({ destination, error: undefined }), error => ({ destination: undefined, error }));
+  }
+  async function enqueueDownload({ target, files, label }: { target: DownloadTarget, files: readonly ImageDownloadSource[], label: string }): Promise<void> {
+    const destinationId = hostDirectories.destination.value;
+    const key = JSON.stringify([destinationId, files.map(file => [file.repository, file.revision, file.path]).sort()]);
+    if (jobs.value.some(job => job.key === key)) return;
+    const job: DownloadJob = {
+      id: String(++jobSequence), key, target, files: files.map(file => ({ ...file })), destinationId,
+      destinationName: destinationId === 'opfs' ? 'OPFS' : hostDirectories.entries.value.find(entry => entry.id === destinationId)?.name ?? destinationId,
+      label, authorization: authorizeDownload({ destinationId }), state: 'queued', error: '', completion: Promise.withResolvers<void>(),
+      selectionVersion, selectWhenComplete: !main.value && origin !== 'files',
+    };
+    jobs.value = [...jobs.value, job]; void processDownloads();
+    await job.completion.promise;
+  }
+  async function processDownloads(): Promise<void> {
+    if (processing || queuePaused || disposed || downloadsBlocked() || hostDirectories.busy.value || importing.value) return;
+    processing = true;
+    try {
+      while (!queuePaused && !disposed && !downloadsBlocked() && !hostDirectories.busy.value && !importing.value) {
+        const job = jobs.value.find(job => job.state === 'queued'); if (!job) break;
+        currentJob = job;
+        await downloadFiles({ job });
+        job.completion.resolve();
+        if (!jobs.value.includes(job)) {
+          currentJob = undefined; clearDownloadIntent();
+        }
+        switch (job.state) {
+        case 'complete': jobs.value = jobs.value.filter(entry => entry !== job); break;
+        case 'queued': case 'downloading': case 'paused': case 'failed': case 'incomplete': break;
+        default: { const exhaustive: never = job.state; throw new Error(String(exhaustive)); }
+        }
+      }
+    } finally {
+      processing = false;
+    }
+  }
+  function completeDownload({ job }: { job: DownloadJob }): boolean {
+    const { target, destinationId } = job;
     switch (target.kind) {
     case 'recipe': {
-      chooseRecipe({ recipeId: target.id, selections: target.selections });
-      const availability = recipeAvailability({ recipeId: target.id, selections: target.selections });
-      return availability.available === availability.total && ready.value;
+      const availability = recipeAvailabilityAt({ recipeId: target.id, selections: target.selections, destinationId });
+      const available = availability.available === availability.total;
+      if (job.selectWhenComplete && job.selectionVersion === selectionVersion && !blocked() && destinationId === hostDirectories.destination.value) {
+        chooseRecipe({ recipeId: target.id, selections: target.selections });
+      }
+      return available;
     }
-    case 'lora': return loraAvailable({ id: target.id });
+    case 'lora': return loraAvailableAt({ id: target.id, destinationId });
     default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
     }
   }
-  async function downloadFiles({ target, files }: { target: DownloadTarget, files: readonly ImageDownloadSource[] }): Promise<void> {
-    const destinationId = hostDirectories.destination.value;
+  async function downloadFiles({ job }: { job: DownloadJob }): Promise<void> {
+    const { target, files, destinationId } = job;
     const controller = new AbortController(); activeDownload.value = controller;
     const completion = Promise.withResolvers<void>();
-    downloadCompletion = { promise: completion.promise,
-      directoryId: destinationId === 'opfs' ? undefined : destinationId };
-    cancelScan(); failure.value = ''; downloadState.value = 'downloading'; downloadTarget.value = target;
-    downloadProgress.value = undefined;
+    downloadCompletion = { promise: completion.promise, directoryId: destinationId === 'opfs' ? undefined : destinationId };
+    if (!preparingHistoryFiles) cancelScan();
+    failure.value = ''; downloadState.value = 'downloading'; downloadTarget.value = target;
+    downloadProgress.value = undefined; job.state = 'downloading'; job.error = ''; publishJobs();
     let transferred = false;
     try {
-      const destination = host ? await host.downloadDestination() : { kind: 'opfs' as const };
+      const authorization = await job.authorization;
       controller.signal.throwIfAborted();
-      await deps.download({ files, destination, signal: controller.signal, onProgress: ({ progress }) => {
+      if (!authorization.destination) throw authorization.error;
+      if (host && destinationId !== 'opfs' && !host.registrations().some(entry => entry.id === destinationId)) throw new Error('Linked model directory is unavailable');
+      await deps.download({ files, destination: authorization.destination, signal: controller.signal, onProgress: ({ progress }) => {
         if (!disposed && !controller.signal.aborted) downloadProgress.value = progress;
       } });
       controller.signal.throwIfAborted(); transferred = true;
     } catch (error) {
       if (!disposed) {
         downloadState.value = controller.signal.aborted ? 'paused' : 'failed';
-        if (!controller.signal.aborted) failure.value = error instanceof Error ? error.message : String(error);
+        job.state = downloadState.value;
+        if (!controller.signal.aborted) job.error = failure.value = error instanceof Error ? error.message : String(error);
       }
     } finally {
-      if (!disposed) {
-        const problem = failure.value;
-        // Keep controls locked through inventory publication. Transfer completion
-        // alone must never flash a successful, usable recipe before inspection.
-        const scanned = await refreshAfterMutation({ signal: controller.signal, completingImport: undefined });
-        if (activeDownload.value === controller) activeDownload.value = undefined;
-        if (destinationId !== hostDirectories.destination.value) {
-          // A refresh may observe a registration removed in another view while
-          // this operation was active. Do not publish its intent in the new root.
-          clearDownloadIntent();
-        } else if (transferred && !disposed) {
-          const available = !controller.signal.aborted && completeDownload({ target });
-          downloadState.value = controller.signal.aborted ? 'paused' : scanned && available ? 'complete' : 'incomplete';
-        }
-        if (problem) failure.value = [problem, failure.value].filter(Boolean).join('\n');
+      if (!disposed && !controller.signal.aborted && preparingHistoryFiles && activeScan) {
+        // A history restore owns this existing read. Do not cancel it or mistake
+        // its older listing for publication of the just-completed download.
+        await awaitInspection({ task: activeScan.promise, signal: controller.signal }).catch(() => undefined);
       }
+      if (!disposed && !controller.signal.aborted) {
+        // Publish only inventory while generation or editing proceeds. Existing
+        // selections, request snapshots and user parameters retain their owners.
+        const abort = () => cancelScan();
+        controller.signal.addEventListener('abort', abort, { once: true });
+        let scanned: InventoryRefreshResult;
+        try {
+          scanned = await refreshInventory({ completingImport: undefined, preserveSelection: true });
+        } finally {
+          controller.signal.removeEventListener('abort', abort);
+        }
+        if (transferred) {
+          const available = scanned === 'scanned' && completeDownload({ job });
+          job.state = controller.signal.aborted ? 'paused' : available ? 'complete' : 'incomplete';
+          downloadState.value = job.state;
+        }
+        if (!job.error) job.error = failure.value;
+        else failure.value = job.error;
+      }
+      if (controller.signal.aborted && jobs.value.includes(job)) job.state = downloadState.value = 'paused';
       if (activeDownload.value === controller) activeDownload.value = undefined;
-      completion.resolve();
+      publishJobs(); completion.resolve();
       if (downloadCompletion?.promise === completion.promise) downloadCompletion = undefined;
     }
   }
   function resetDownloadIntent(): void {
-    if (downloading.value || blocked() || disposed) return;
-    clearDownloadIntent();
+    // Pending jobs own their selections independently of the catalog form.
+    if (!downloading.value && (!currentJob || !jobs.value.includes(currentJob))) clearDownloadIntent();
   }
   function clearDownloadIntent(): void {
     downloadState.value = 'idle'; downloadTarget.value = undefined; downloadProgress.value = undefined;
   }
+  async function retryQueuedDownload({ id }: { id: string }): Promise<void> {
+    const job = jobs.value.find(job => job.id === id);
+    if (!job || downloadsBlocked() || disposed || importing.value || job.state === 'queued' || job.state === 'downloading') return;
+    job.authorization = authorizeDownload({ destinationId: job.destinationId });
+    job.state = 'queued'; job.error = ''; job.completion = Promise.withResolvers<void>();
+    queuePaused = false; publishJobs(); void processDownloads();
+    await job.completion.promise;
+  }
   async function resumeDownload(): Promise<void> {
-    const target = downloadTarget.value;
-    switch (target?.kind) {
-    case 'recipe': await downloadRecipe({ recipeId: target.id, selections: { ...target.selections } }); break;
-    case 'lora': await downloadLora({ id: target.id }); break;
-    case undefined: break;
-    default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+    if (currentJob) await retryQueuedDownload({ id: currentJob.id });
+  }
+  function removeQueuedDownload({ id }: { id: string }): void {
+    const job = jobs.value.find(job => job.id === id); if (!job) return;
+    jobs.value = jobs.value.filter(entry => entry !== job); job.completion.resolve();
+    if (currentJob === job) {
+      queuePaused = false;
+      if (activeDownload.value) activeDownload.value.abort();
+      else {
+        currentJob = undefined; clearDownloadIntent();
+      }
     }
+    void processDownloads();
   }
   function cancelDownload(): void {
-    activeDownload.value?.abort();
+    queuePaused = true; activeDownload.value?.abort();
   }
   async function waitForEditor({ signal }: { signal: AbortSignal }): Promise<void> {
     if (!blocked() || signal.aborted || disposed) return;
@@ -412,7 +525,7 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
       while (!disposed && !signal.aborted) {
         await waitForEditor({ signal });
         if (disposed || signal.aborted) return false;
-        const result = await refreshInventory({ completingImport });
+        const result = await refreshInventory({ completingImport, preserveSelection: false });
         switch (result) {
         case 'scanned': return true;
         case 'failed': return false;
@@ -427,16 +540,16 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
   }
   async function refresh(): Promise<void> {
     if (downloading.value) return;
-    await refreshInventory({ completingImport: undefined });
+    await refreshInventory({ completingImport: undefined, preserveSelection: false });
   }
   async function prepareHistoryFiles(): Promise<void> {
-    if (disposed || importing.value || downloading.value || preparingHistoryFiles) throw new Error('Local model files are busy');
+    if (disposed || importing.value || preparingHistoryFiles) throw new Error('Local model files are busy');
     // Explicit history reuse owns this read while the editor is disabled. Share
     // an initial scan already in flight, without selecting a different model or
     // applying its presets before the saved request has been resolved.
     preparingHistoryFiles = true;
     try {
-      const result = await refreshInventory({ completingImport: undefined });
+      const result = await refreshInventory({ completingImport: undefined, preserveSelection: false });
       switch (result) {
       case 'scanned': break;
       case 'blocked': case 'failed': throw new Error(failure.value || 'Local model files could not be inspected');
@@ -450,9 +563,9 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     const previous = activeScan; activeScan = undefined;
     previous?.controller.abort(); scanState.value = 'idle'; scanProgress.value = undefined;
   }
-  function refreshInventory({ completingImport }: { completingImport: AbortController | undefined }): Promise<InventoryRefreshResult> {
+  function refreshInventory({ completingImport, preserveSelection }: { completingImport: AbortController | undefined, preserveSelection: boolean }): Promise<InventoryRefreshResult> {
     if (disposed || activeImport.value !== completingImport) return Promise.resolve('failed');
-    if (blocked() && !preparingHistoryFiles) return Promise.resolve('blocked');
+    if (blocked() && !preparingHistoryFiles && !preserveSelection) return Promise.resolve('blocked');
     // Repeated window focus/refresh must not cancel and restart a large scan.
     if (activeScan) return activeScan.promise;
     const scan = new AbortController();
@@ -472,9 +585,19 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
           return dependencies.scan({ repositories, signal: scan.signal, onProgress });
         })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations() }) });
         if (disposed || scan.signal.aborted || activeScan !== operation || activeImport.value !== completingImport) return 'failed';
-        if (blocked() && !preparingHistoryFiles) return 'blocked';
+        if (blocked() && !preparingHistoryFiles && !preserveSelection) return 'blocked';
         inventory.value = next;
+        for (const candidate of next.candidates) {
+          const file = candidate.files.find(entry => entry.path === candidate.path)?.file;
+          if (file && !candidate.issue) knownLocations.set(file, modelLocation({ candidate }));
+        }
         if (preparingHistoryFiles) return 'scanned';
+        if (preserveSelection) {
+          // Complete missing companions for an already chosen model, without
+          // choosing a new primary or applying its generation presets.
+          if (!blocked()) resolve();
+          return 'scanned';
+        }
         if (!next.candidates.some(candidate => candidate.id === main.value)) {
           main.value = ''; selections.value = {}; overrides.clear();
           if (automaticOrigin({ origin })) {
@@ -584,6 +707,93 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     }
     return undefined;
   }
+  function modelLocation({ candidate }: { candidate: ModelCandidate }): BrowserImageModelLocation {
+    if (candidate.hostSource) return { kind: 'host', directoryId: toHostModelDirectoryId({ raw: candidate.hostSource.directoryId }), path: `${candidate.hostSource.repository}/${candidate.path}` };
+    return { kind: 'opfs', path: `${OPFS_MODELS_DIR}/${candidate.repositoryId}/${candidate.path}` };
+  }
+  function candidateAt({ location }: { location: BrowserImageModelLocation }): ModelCandidate | undefined {
+    return inventory.value.candidates.find(candidate => {
+      if (candidate.issue) return false;
+      const actual = modelLocation({ candidate });
+      switch (location.kind) {
+      case 'opfs': return actual.kind === 'opfs' && actual.path === location.path;
+      case 'host': return actual.kind === 'host' && actual.directoryId === location.directoryId && actual.path === location.path;
+      default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
+      }
+    });
+  }
+  let unavailableLoras: { index: number, selection: BrowserImageModelSelection['loras'][number] }[] = [];
+  function restoreModelSelection({ selection }: { selection: BrowserImageModelSelection }) {
+    // Restoration only consults the inspected local inventory. It neither asks
+    // for host permission nor substitutes a same-named file from another root.
+    const { primary, components: savedComponents, loras, ...unhandled } = selection;
+    unhandled satisfies Record<PropertyKey, never>;
+    const candidate = candidateAt({ location: primary.location });
+    const missing: string[] = [], missingInactive: string[] = [];
+    origin = 'manual'; recipeIntent = undefined; overrides.clear(); selections.value = {};
+    main.value = candidate && primarySlot({ family: candidate.family }) === primary.slot ? candidate.id : `unavailable:${JSON.stringify(primary.location)}`;
+    if (main.value !== candidate?.id) missing.push(primary.location.path);
+    for (const { slot, choice } of savedComponents) {
+      overrides.add(slot);
+      const requirement = requirements.value.find(item => item.slot === slot);
+      switch (choice.kind) {
+      case 'none': selections.value = { ...selections.value, [slot]: '' }; break;
+      case 'file': {
+        const component = candidateAt({ location: choice.location });
+        const usable = component && requirement && componentMatch({ candidate: component, requirement }) !== 'incompatible';
+        selections.value = { ...selections.value, [slot]: usable ? component.id : `unavailable:${JSON.stringify(choice.location)}` };
+        if (!usable) missing.push(choice.location.path);
+        break;
+      }
+      default: { const exhaustive: never = choice; throw new Error(String(exhaustive)); }
+      }
+    }
+    resolve();
+    unavailableLoras = [];
+    const restoredLoras: ImageLoraSelection[] = [];
+    loras.forEach((selection, index) => {
+      const { location, enabled, strength, ...unhandled } = selection;
+      unhandled satisfies Record<PropertyKey, never>;
+      const candidate = candidateAt({ location });
+      const file = candidate?.files.find(entry => entry.path === candidate.path)?.file;
+      if (!file) {
+        unavailableLoras.push({ index, selection });
+        switch (enabled) {
+        case 'enabled': missing.push(location.path); break;
+        case 'disabled': missingInactive.push(location.path); break;
+        default: { const exhaustive: never = enabled; throw new Error(String(exhaustive)); }
+        }
+      } else restoredLoras.push({ file, path: candidate!.path, sourceLabel: location.path, enabled: enabled === 'enabled', strength });
+    });
+    return { loras: restoredLoras, missing, missingInactive };
+  }
+  function captureModelSelection({ loras }: { loras: readonly ImageLoraSelection[] }): BrowserImageModelSelection | undefined {
+    if (origin === 'files' || !selected.value) return undefined;
+    const slot = primarySlot({ family: selected.value.family });
+    if (slot !== 'model' && slot !== 'diffusion') return undefined;
+    const savedComponents: BrowserImageModelSelection['components'] = [];
+    for (const requirement of requirements.value) {
+      // Omitted components remain automatic. A catalog recipe explicitly names
+      // its component files, just as an individual picker override does.
+      if (!overrides.has(requirement.slot) && !recipeIntent?.files.some(file => file.role === requirement.slot)) continue;
+      const id = selections.value[requirement.slot];
+      const candidate = inventory.value.candidates.find(item => item.id === id);
+      if (!candidate && id) return undefined;
+      const slot = requirement.slot;
+      if (slot === 'model' || slot === 'diffusion') continue;
+      savedComponents.push({ slot, choice: candidate ? { kind: 'file', location: modelLocation({ candidate }) } : { kind: 'none' } });
+    }
+    const savedLoras: BrowserImageModelSelection['loras'] = [];
+    for (const lora of loras) {
+      const location = knownLocations.get(lora.file);
+      // A temporary File must not erase a previous restorable model selection.
+      if (!location || !Number.isFinite(lora.strength) || lora.strength < -10 || lora.strength > 10) return undefined;
+      savedLoras.push({ location, enabled: lora.enabled ? 'enabled' : 'disabled', strength: lora.strength });
+    }
+    for (const pending of unavailableLoras) savedLoras.splice(Math.min(pending.index, savedLoras.length), 0, pending.selection);
+    if (savedLoras.length > 16) return undefined;
+    return { primary: { slot, location: modelLocation({ candidate: selected.value }) }, components: savedComponents, loras: savedLoras };
+  }
   function modelForCandidate({ slot, candidate }: { slot: ModelSlot, candidate: ModelCandidate }): Request['models'][number] {
     const file = candidate.files.find(entry => entry.path === candidate.path);
     if (!file) throw new Error('Selected model file disappeared from the inventory');
@@ -630,12 +840,12 @@ export function useImageLibrary({ blocked, onSelection, dependencies }: {
     activeImport.value?.abort();
   }
   function useManualFiles(): void {
-    recipeIntent = undefined; origin = 'files'; main.value = ''; selections.value = {}; overrides.clear();
+    selectionVersion++; unavailableLoras = []; recipeIntent = undefined; origin = 'files'; main.value = ''; selections.value = {}; overrides.clear();
   }
   onScopeDispose(() => {
-    disposed = true; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort(); hostPublication?.abort();
+    disposed = true; for (const job of jobs.value) if (job !== currentJob) job.completion.resolve(); jobs.value = []; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort(); hostPublication?.abort();
   });
-  return { hostDirectories, benchmarkTargets, selectedFacts, models, savedLoras, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadLoraId, downloadLora, loraAvailable, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
+  return { captureModelSelection, restoreModelSelection, downloadsDisabled, downloadQueue, retryQueuedDownload, removeQueuedDownload, hostDirectories, benchmarkTargets, selectedFacts, models, savedLoras, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, downloading, downloadProgress, downloadState, downloadRecipeId, downloadLoraId, downloadLora, loraAvailable, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
     chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels, historyFileLocation, findHistoryFile, prepareHistoryFiles,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }

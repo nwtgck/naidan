@@ -35,7 +35,7 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps original %s files
   const entries = repositories({ id });
   const scope = effectScope(); scopes.push(scope);
   const download = vi.fn();
-  const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection() {}, dependencies: {
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
     list: async () => entries, scan: scanImageRepositories, import: vi.fn(), download,
   } }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
@@ -64,7 +64,7 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable un
   const download = vi.fn(async () => {
     available = entries;
   });
-  const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection() {}, dependencies: {
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
     list: async () => available, scan: scanImageRepositories, import: vi.fn(), download,
   } }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
@@ -82,7 +82,7 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable un
 it('rejects cross-family companion overrides in main and diagnostics', async () => {
   const entries = [...repositories({ id: 'flux2-klein-4b' }), ...repositories({ id: 'anima-turbo-1.1' })];
   const scope = effectScope(); scopes.push(scope);
-  const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection() {}, dependencies: {
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
     list: async () => entries, scan: scanImageRepositories, import: vi.fn(), download: vi.fn(),
   } }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: 'flux2-klein-4b', selections: {} });

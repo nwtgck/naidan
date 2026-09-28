@@ -10,6 +10,9 @@ import { initialProfile, supportsJspi, supportsMemory64 } from './capabilities';
 import { useImageLibrary } from './use-image-library';
 import { createImageGallery } from './image-gallery';
 import { createImageForm } from './form';
+import { useImagePreferences } from './use-image-preferences';
+import { useSettings } from '@/composables/useSettings';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { imageLoraRequests, imageLoraHistorySelections } from './lora-form';
 import { emptyImageInputs } from './image-input-form';
 import { inspectImageInventory } from './inventory-worker/client';
@@ -33,6 +36,7 @@ export function useImageGeneration(): ImageGenerationView {
   const controller = shallowRef<AbortController>();
   const seedMode = ref<'random' | 'fixed'>('random');
   const benchmarkActive = ref(false);
+  const preferenceRestoring = ref(false);
   function currentStorageType(): StorageType {
     try {
       return storageService.getCurrentType();
@@ -67,6 +71,7 @@ export function useImageGeneration(): ImageGenerationView {
   let activeHistoryId: ImageGenerationId | undefined;
   let historySaveRunning = false;
   let restoredModels: Request['models'] | undefined;
+  let preferenceFilesMissing = false;
   const diagnosticBuffer = createImageDiagnosticBuffer();
   const manualFacts = shallowRef<ImageModelFacts>();
   const manualInspectionState = ref<'idle' | 'scanning' | 'failed'>('idle');
@@ -106,8 +111,8 @@ export function useImageGeneration(): ImageGenerationView {
   let generateStartedAt = 0;
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const busy = computed(() => controller.value !== undefined);
-  const formDisabled = computed(() => busy.value || benchmarkActive.value || historyActions.busy.value || historySaving.status.value === 'saving' || configuration.kind === 'unavailable');
-  const library = useImageLibrary({ blocked: () => formDisabled.value, dependencies: undefined,
+  const formDisabled = computed(() => preferenceRestoring.value || busy.value || benchmarkActive.value || historyActions.busy.value || historySaving.status.value === 'saving' || configuration.kind === 'unavailable');
+  const library = useImageLibrary({ downloadsBlocked: () => configuration.kind === 'unavailable', blocked: () => formDisabled.value, dependencies: undefined,
     onSelection({ family, turbo }) {
       // Preserve established selection-time helpers for recognized models. The
       // Turbo bit now requires header metadata or reviewed receipt evidence.
@@ -132,6 +137,7 @@ export function useImageGeneration(): ImageGenerationView {
   // them silently to another model with a different conditioning contract.
   watch([library.main, layout, () => files.value.model, () => files.value.diffusion], () => {
     restoredModels = undefined;
+    if (preferenceFilesMissing && !preferenceRestoring.value && (library.selectedFacts.value || files.value.model || files.value.diffusion)) clearHistoryMissingFiles();
     form.loras.value = [];
     form.imageInputs.value = emptyImageInputs();
   }, { flush: 'sync' });
@@ -163,7 +169,7 @@ export function useImageGeneration(): ImageGenerationView {
   }
   function applyRecommendedSettings(): void {
     const preset = recommendation.value;
-    if (!preset || formDisabled.value || library.importing.value || library.downloading.value) return;
+    if (!preset || formDisabled.value || library.importing.value) return;
     // Resolution belongs to the composition the user chose. Applying a model
     // preset changes sampling settings without resizing that composition.
     const { width: _width, height: _height, ...settings } = preset.parameters;
@@ -205,7 +211,7 @@ export function useImageGeneration(): ImageGenerationView {
   // Availability is not inferred from a lazily loaded translated string.
   const supported = computed(() => artifact.value !== undefined && globalThis.isSecureContext && 'gpu' in navigator && typeof DecompressionStream !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && (!profile.value.endsWith('jspi') || supportsJspi()) && (profile.value !== 'webgpu-wasm64-jspi' || supportsMemory64()));
   function chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void {
-    if (formDisabled.value || library.importing.value || library.downloading.value || !(event.target instanceof HTMLInputElement)) return;
+    if (formDisabled.value || library.importing.value || !(event.target instanceof HTMLInputElement)) return;
     library.useManualFiles();
     const previousModels = restoredModels;
     restoredModels = undefined;
@@ -222,7 +228,7 @@ export function useImageGeneration(): ImageGenerationView {
     void inspectManualFiles();
   }
   function resetFiles(): void {
-    if (formDisabled.value || library.importing.value || library.downloading.value || disposed) return;
+    if (formDisabled.value || library.importing.value || disposed) return;
     library.useManualFiles();
     restoredModels = undefined;
     manualFacts.value = undefined;
@@ -233,7 +239,7 @@ export function useImageGeneration(): ImageGenerationView {
     client?.release({ reason }); modelResident.value = false;
   }
   function acquireBenchmark(): boolean {
-    if (disposed || benchmarkActive.value || busy.value || formDisabled.value || !supported.value || library.importing.value || library.downloading.value || library.scanState.value === 'scanning') return false;
+    if (disposed || benchmarkActive.value || busy.value || formDisabled.value || !supported.value || library.importing.value || library.scanState.value === 'scanning') return false;
     benchmarkActive.value = true;
     manualInspection?.abort(); manualInspection = undefined; manualInspectionState.value = 'idle';
     library.cancelScan();
@@ -363,11 +369,12 @@ export function useImageGeneration(): ImageGenerationView {
     }
   }
   function clearHistoryMissingFiles(): void {
+    preferenceFilesMissing = false;
     historyActions.missingFiles.value = [];
     historyActions.missingInactiveFiles.value = [];
   }
   async function reuseHistory({ record }: { record: ImageGenerationRecord }): Promise<void> {
-    if (formDisabled.value || library.importing.value || library.downloading.value || disposed) return;
+    if (formDisabled.value || library.importing.value || disposed) return;
     historyActions.busy.value = true;
     historyActions.error.value = '';
     const revision = storageRevision.value;
@@ -391,6 +398,7 @@ export function useImageGeneration(): ImageGenerationView {
       form.loras.value = restored.loras;
       form.imageInputs.value = restored.imageInputs;
       restoredModels = restored.models.length ? restored.models : undefined;
+      preferenceFilesMissing = false;
       historyActions.missingFiles.value = restored.missing;
       historyActions.missingInactiveFiles.value = restored.missingInactive;
       invalid.value = false;
@@ -403,7 +411,7 @@ export function useImageGeneration(): ImageGenerationView {
     }
   }
   async function useHistoryImage({ binaryObjectId, role }: { binaryObjectId: BinaryObjectId, role: 'initial' | 'reference' }): Promise<void> {
-    if (formDisabled.value || library.importing.value || library.downloading.value || disposed) return;
+    if (formDisabled.value || library.importing.value || disposed) return;
     historyActions.error.value = '';
     historyActions.busy.value = true;
     const revision = storageRevision.value;
@@ -479,7 +487,7 @@ export function useImageGeneration(): ImageGenerationView {
     return { status: 'failed', message };
   }
   async function generate(): Promise<void> {
-    if (!supported.value || !artifact.value || formDisabled.value || historyActions.missingFiles.value.length || library.importing.value || library.downloading.value || disposed) return;
+    if (!supported.value || !artifact.value || formDisabled.value || historyActions.missingFiles.value.length || library.importing.value || disposed) return;
     historySaving.status.value = 'idle';
     historySaving.error.value = '';
     activeHistoryId = undefined;
@@ -623,8 +631,22 @@ export function useImageGeneration(): ImageGenerationView {
     if (!busy.value || !progress.value) return;
     controller.value?.abort();
   }
+  const { settings, initialized, updateExperimental } = useSettings();
+  const { addErrorEvent } = useGlobalEvents();
+  useImagePreferences({ settings, initialized, updateExperimental, form, seedMode, historyEnabled: historySaving.enabled, library, restoring: preferenceRestoring,
+    restored({ missing, missingInactive }) {
+      preferenceFilesMissing = missing.length > 0 || missingInactive.length > 0;
+      historyActions.missingFiles.value = missing; historyActions.missingInactiveFiles.value = missingInactive;
+    },
+    failed({ error }) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Settings failures use the shared error event surface; they must not
+      // leave an unrelated history action in an error state after retry.
+      addErrorEvent({ source: 'browser-image-generation-settings', message });
+    },
+  });
   const refreshLocalModels = (): void => {
-    void library.refresh();
+    if (!preferenceRestoring.value) void library.refresh();
   };
   onMounted(() => {
     refreshLocalModels(); window.addEventListener('focus', refreshLocalModels);

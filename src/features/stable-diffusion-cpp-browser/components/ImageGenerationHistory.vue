@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
+import { computed, ref, useId, watch, type Ref } from 'vue';
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronsLeftIcon, ChevronsRightIcon, CopyIcon, LoaderCircleIcon } from 'lucide-vue-next';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { useConfirm } from '@/composables/useConfirm';
@@ -8,13 +8,18 @@ import { jsonToHighlightedHtml } from '@/logic/security/allowedHtml';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
-import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
+import type { ImageDownloadPreferences, ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
 import type { ImageGenerationHistoryView } from '@/features/stable-diffusion-cpp-browser/history-view';
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageGenerationViewer from './ImageGenerationViewer.vue';
 import ImageDownloadMenu from './ImageDownloadMenu.vue';
 import ImageHistoryImage from './ImageHistoryImage.vue';
-const props = defineProps<{ view: ImageGenerationHistoryView, disabled: boolean, editorDisabled: boolean, active: boolean, onDownload: ImageGenerationView['downloadHistory'] }>();
+const props = defineProps<{
+  view: ImageGenerationHistoryView, disabled: boolean, editorDisabled: boolean, active: boolean,
+  downloadPreferences: Ref<ImageDownloadPreferences>,
+  onDownloadPreferencesChange: ({ preferences }: { preferences: ImageDownloadPreferences }) => void,
+  onDownload: ImageGenerationView['downloadHistory'],
+}>();
 const emit = defineEmits<{
   reuse: [value: { record: ImageGenerationRecord }];
   useImage: [value: { binaryObjectId: BinaryObjectId, role: 'initial' | 'reference' }];
@@ -176,7 +181,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <button type="button" @click="emit('useImage', { binaryObjectId: selected.result.binaryObjectId, role: 'initial' })" :disabled="disabled || editorDisabled || detailLoading" data-testid="image-history-use-initial" tw-class="min-h-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageGenerationHistory__use_as_initial_image() }}</button>
             <button type="button" @click="emit('useImage', { binaryObjectId: selected.result.binaryObjectId, role: 'reference' })" :disabled="disabled || editorDisabled || detailLoading" data-testid="image-history-use-reference" tw-class="min-h-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageGenerationHistory__use_as_reference_image() }}</button>
           </div>
-          <ImageDownloadMenu :key="idToRaw({ id: selected.id })" :active="active" :disabled="!available || detailLoading" :on-download="options => onDownload({ binaryObjectId: selected!.result.binaryObjectId, record: selected!, ...options })" data-testid="image-history-download" />
+          <ImageDownloadMenu :preferences="props.downloadPreferences" :on-preferences-change="onDownloadPreferencesChange" :key="idToRaw({ id: selected.id })" :active="active" :disabled="!available || detailLoading" :on-download="options => onDownload({ binaryObjectId: selected!.result.binaryObjectId, record: selected!, ...options })" data-testid="image-history-download" />
           <section tw-class="min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 shadow-sm" data-testid="image-history-prompt">
             <div tw-class="flex min-w-0 items-start gap-2">
               <p tw-class="min-w-0 flex-1 text-sm leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words [overflow-wrap:anywhere]" data-testid="image-history-full-prompt">{{ selected.request.parameters.prompt }}</p>
@@ -228,7 +233,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                   <ImageHistoryImage :binary-object-id="frame.binaryObjectId" :width="frame.width" :height="frame.height" :alt="selected.request.parameters.prompt" :get-image="view.getImage" :invalidation="view.imageInvalidation.value" />
                 </button>
                 <figcaption tw-class="text-xs">{{ frame.step }} / {{ frame.steps }} · {{ frame.mode }} · {{ frame.width }} × {{ frame.height }}</figcaption>
-                <ImageDownloadMenu :active="active" :disabled="!available || detailLoading" :on-download="options => onDownload({ binaryObjectId: frame.binaryObjectId, record: selected!, ...options })" />
+                <ImageDownloadMenu :preferences="props.downloadPreferences" :on-preferences-change="onDownloadPreferencesChange" :active="active" :disabled="!available || detailLoading" :on-download="options => onDownload({ binaryObjectId: frame.binaryObjectId, record: selected!, ...options })" />
               </figure>
             </div>
           </ImageSettingsSection>
@@ -266,7 +271,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationHistory__backup_does_not_include_history() }}</p>
     </ImageSettingsSection>
     <ImageGenerationViewer :download-enabled="true" v-if="viewerIndex !== undefined && selected" v-model:index="viewerIndex" :count="viewerFrames.length" @close="viewerIndex = undefined">
-      <template #download><ImageDownloadMenu v-if="viewerFrames[viewerIndex]" :key="idToRaw({ id: viewerFrames[viewerIndex]!.binaryObjectId })" :active="active" :disabled="!available || detailLoading" :on-download="options => onDownload({ binaryObjectId: viewerFrames[viewerIndex!]!.binaryObjectId, record: selected!, ...options })" /></template>
+      <template #download><ImageDownloadMenu :preferences="props.downloadPreferences" :on-preferences-change="onDownloadPreferencesChange" v-if="viewerFrames[viewerIndex]" :key="idToRaw({ id: viewerFrames[viewerIndex]!.binaryObjectId })" :active="active" :disabled="!available || detailLoading" :on-download="options => onDownload({ binaryObjectId: viewerFrames[viewerIndex!]!.binaryObjectId, record: selected!, ...options })" /></template>
       <ImageHistoryImage v-if="viewerFrames[viewerIndex]" :binary-object-id="viewerFrames[viewerIndex]!.binaryObjectId" :width="viewerFrames[viewerIndex]!.width" :height="viewerFrames[viewerIndex]!.height" :alt="selected.request.parameters.prompt" :get-image="view.getImage" :invalidation="view.imageInvalidation.value" eager />
     </ImageGenerationViewer>
   </section>

@@ -5,7 +5,7 @@ import type { Progress } from '@/features/stable-diffusion-cpp-browser/types';
 
 const props = defineProps<{
   busy: boolean, supported: boolean, active: boolean, stopping: boolean, progress: Progress | undefined,
-  width: number, height: number, imageUrl: string | undefined,
+  width: number, height: number, image: { url: string, width: number, height: number } | undefined,
 }>();
 const visible = computed(() => props.supported && props.busy);
 const running = computed(() => visible.value && props.active && !props.stopping);
@@ -64,9 +64,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div v-if="visible" data-testid="image-generation-progress" :data-running="running && !imageUrl" class="generation-progress" tw-class="w-full">
+  <div v-if="visible" data-testid="image-generation-progress" :data-running="running && !image" class="generation-progress" tw-class="w-full">
     <div :style="{ aspectRatio: `${width} / ${height}`, maxWidth: `${65 * width / height}vh` }" data-testid="image-generation-canvas" tw-class="relative w-full mx-auto overflow-hidden rounded-2xl flex items-center justify-center bg-gray-50/50 dark:bg-gray-900/30">
-      <img v-if="imageUrl" :src="imageUrl" :width="width" :height="height" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" data-testid="image-generation-current-preview" tw-class="absolute inset-0 w-full h-full object-contain" />
+      <img v-if="image" :src="image.url" :width="image.width" :height="image.height" :style="{ maxWidth: `min(100%, ${image.width}px)` }" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" data-testid="image-generation-current-preview" tw-class="max-h-full object-contain" />
       <template v-else>
         <div aria-hidden="true" tw-class="absolute inset-0 pointer-events-none">
           <div tw-class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.15)_0%,transparent_70%)]"></div>
@@ -96,7 +96,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </template>
     </div>
     <div tw-class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-      <p role="status" aria-live="polite" data-testid="image-generation-phase">{{ phaseLabel }}<template v-if="sampling && stopping && units"> · {{ samplingStatus }}</template><template v-else-if="imageUrl && units && !sampling"> · {{ phasePercent }}%</template></p>
+      <p role="status" aria-live="polite" data-testid="image-generation-phase">{{ phaseLabel }}<template v-if="sampling && stopping && units"> · {{ samplingStatus }}</template><template v-else-if="image && units && !sampling"> · {{ phasePercent }}%</template></p>
       <span data-testid="image-generation-elapsed" tw-class="tabular-nums">{{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ elapsedSeconds }} s</span>
     </div>
   </div>

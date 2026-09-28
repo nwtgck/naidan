@@ -25,7 +25,7 @@ function harness({ entries, scan }: { entries: LocalImageRepository[], scan: typ
   const list = vi.fn(async () => current);
   const onSelection = vi.fn();
   const scope = effectScope(); scopes.push(scope);
-  const library = scope.run(() => useImageLibrary({ blocked: () => blocked, onSelection, dependencies: { list, scan: scan ?? scanImageRepositories, import: vi.fn(async () => 'user/imported'), download: vi.fn() } }))!;
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked, onSelection, dependencies: { list, scan: scan ?? scanImageRepositories, import: vi.fn(async () => 'user/imported'), download: vi.fn() } }))!;
   return { library, list, onSelection, scope, block() {
     blocked = true;
   }, entries({ next }: { next: LocalImageRepository[] }) {

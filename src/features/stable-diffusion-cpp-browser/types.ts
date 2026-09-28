@@ -116,7 +116,7 @@ export const modelFileSchema = z.object({
     }
   }
 });
-/** Run-local adapters; neither files nor strengths are settings persistence. */
+/** Run-local adapters. Preference persistence stores only local locators and controls. */
 export const loraFileSchema = z.object({
   file: localFileSchema,
   path: relativePathSchema.optional(),

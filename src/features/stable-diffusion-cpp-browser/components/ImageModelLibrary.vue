@@ -5,14 +5,14 @@ import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/l
 import ImageModelPicker from './ImageModelPicker.vue';
 const props = defineProps<{ view: ImageLibraryView, disabled: boolean, active: boolean, manualName?: string }>();
 const emit = defineEmits<{ prepare: [] }>();
-const { models, main, scanState, scanProgress, importing, downloading, failure, ready } = props.view;
+const { models, main, scanState, scanProgress, importing, failure, ready } = props.view;
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <section tw-class="space-y-2" data-testid="image-model-library">
     <div tw-class="flex items-end gap-2">
-      <ImageModelPicker :active="active" :empty-label="manualName || lazyStrings.ImageModelPicker__choose_a_model()" :model-value="main" :choices="models" :disabled="disabled || importing || downloading || scanState === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" compact @update:model-value="view.chooseMain({ id: $event })" data-testid="image-main-model" tw-class="flex-1 min-w-0" />
-      <button type="button" @click="emit('prepare')" :disabled="disabled" data-testid="image-manage-models" :tw-class="['shrink-0 min-h-11 inline-flex items-center justify-center gap-2 rounded-xl md:rounded-2xl px-4 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed motion-reduce:transition-none motion-reduce:transform-none', main && ready ? 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-700' : 'bg-blue-600 text-white font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95']"><FolderOpenIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.ImageGenerationEditor__prepare_model() }}</button>
+      <ImageModelPicker :active="active" :empty-label="manualName || lazyStrings.ImageModelPicker__choose_a_model()" :model-value="main" :choices="models" :disabled="disabled || importing || scanState === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" compact @update:model-value="view.chooseMain({ id: $event })" data-testid="image-main-model" tw-class="flex-1 min-w-0" />
+      <button type="button" @click="emit('prepare')" :disabled="view.downloadsDisabled.value" data-testid="image-manage-models" :tw-class="['shrink-0 min-h-11 inline-flex items-center justify-center gap-2 rounded-xl md:rounded-2xl px-4 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed motion-reduce:transition-none motion-reduce:transform-none', main && ready ? 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-700' : 'bg-blue-600 text-white font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95']"><FolderOpenIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.ImageGenerationEditor__prepare_model() }}</button>
     </div>
     <p v-if="failure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ failure }}</p>
     <div v-if="scanState === 'scanning'" tw-class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400" data-testid="image-inventory-progress">

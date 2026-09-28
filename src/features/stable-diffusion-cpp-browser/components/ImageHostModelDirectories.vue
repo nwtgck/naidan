@@ -16,6 +16,7 @@ const props = defineProps<{
 const id = useId();
 const { supported, entries, busy, destination } = props.view;
 const selected = computed(() => entries.value.find(entry => entry.id === destination.value));
+const missingDestination = computed(() => destination.value !== 'opfs' && selected.value === undefined);
 const layout = computed(() => {
   const root = selected.value;
   if (!root) return undefined;
@@ -26,7 +27,7 @@ const layout = computed(() => {
 });
 
 function selectDestination({ event }: { event: Event }): void {
-  if (props.disabled || busy.value || props.downloading || !(event.target instanceof HTMLSelectElement)) return;
+  if (props.disabled || busy.value || !(event.target instanceof HTMLSelectElement)) return;
   if (event.target.value === 'opfs' && !props.opfsSupported) return;
   props.view.selectDestination({ id: event.target.value });
 }
@@ -37,7 +38,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div data-testid="image-host-model-directories" tw-class="border-t border-gray-100 dark:border-gray-800 py-3 space-y-2">
     <div tw-class="flex flex-wrap items-center gap-2">
       <label :for="id + '-destination'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.ImageHostModelDirectories__download_to() }}</label>
-      <select :id="id + '-destination'" :value="destination" :disabled="disabled || busy || downloading" @change="selectDestination({ event: $event })" data-testid="image-download-destination" tw-class="min-w-0 max-w-full flex-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-xs text-gray-700 dark:text-gray-200 shadow-sm transition-colors hover:border-gray-300 dark:hover:border-gray-600 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed">
+      <select :id="id + '-destination'" :value="destination" :disabled="disabled || busy" @change="selectDestination({ event: $event })" data-testid="image-download-destination" tw-class="min-w-0 max-w-full flex-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-xs text-gray-700 dark:text-gray-200 shadow-sm transition-colors hover:border-gray-300 dark:hover:border-gray-600 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed">
+        <option v-if="missingDestination" :value="destination" disabled data-testid="image-missing-download-destination">{{ lazyStrings.ImageHostModelDirectories__linked_folder() }} ({{ destination }}) · {{ lazyStrings.ImageHostModelDirectories__folder_access({ access: 'error' }) }}</option>
         <option value="opfs" :disabled="!opfsSupported">{{ lazyStrings.ImageHostModelDirectories__browser_storage() }}</option>
         <option v-if="!entries.length" value="" disabled>{{ lazyStrings.ImageHostModelDirectories__linked_folder() }}</option>
         <option v-for="entry in entries" :key="entry.id" :value="entry.id" :disabled="!supported || ['missing', 'error', 'unsupported'].includes(entry.access)">{{ entry.name }}</option>

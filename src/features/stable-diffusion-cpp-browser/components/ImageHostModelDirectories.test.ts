@@ -73,10 +73,33 @@ it('keeps missing registrations visible for reconnect and distinguishes them by 
   expect(wrapper.get('[data-testid="image-host-folder-layout"]').text()).toContain('Example folder and file names');
 });
 
-it('locks destination changes during download while allowing unregister to cancel its owned write', async () => {
+it('shows an unregistered restored destination instead of silently selecting OPFS', async () => {
+  const view = createView({ supported: true, entries: [{ id: 'available-b', name: 'other-models', access: 'readwrite', error: undefined }] });
+  view.destination.value = 'removed-a';
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: false, layoutFile: undefined } });
+  const select = wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]');
+  expect(select.element.value).toBe('removed-a');
+  const missing = wrapper.get<HTMLOptionElement>('[data-testid="image-missing-download-destination"]');
+  expect(missing.element.disabled).toBe(true);
+  expect(missing.text()).toContain('removed-a');
+  expect(missing.text()).toContain('Folder unavailable');
+  expect(wrapper.find('[data-testid="image-host-folder-layout"]').exists()).toBe(false);
+  expect(view.selectDestination).not.toHaveBeenCalled();
+  await select.setValue('opfs');
+  expect(view.selectDestination).toHaveBeenLastCalledWith({ id: 'opfs' });
+  expect(wrapper.find('[data-testid="image-missing-download-destination"]').exists()).toBe(false);
+  view.destination.value = 'removed-a';
+  await wrapper.vm.$nextTick();
+  expect(select.element.value).toBe('removed-a');
+  await select.setValue('available-b');
+  expect(view.selectDestination).toHaveBeenLastCalledWith({ id: 'available-b' });
+  expect(select.element.value).toBe('available-b');
+});
+
+it('allows the next download destination to change while unregister can cancel its owned write', async () => {
   const view = createView({ supported: true, entries: [{ id: 'root-a', name: 'models', access: 'readwrite', error: undefined }] });
   wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: true, layoutFile: undefined } });
-  expect(wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]').element.disabled).toBe(true);
+  expect(wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]').element.disabled).toBe(false);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-reconnect-model-directory-root-a"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-unregister-model-directory-root-a"]').element.disabled).toBe(false);

@@ -34,7 +34,7 @@ it.each([
     const download = vi.fn(async () => {
       available = entries;
     });
-    const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection() {}, dependencies: {
+    const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
       list: async () => available, scan: scanImageRepositories, import: vi.fn(), download,
     } }))!;
     library.hostDirectories.destination.value = destination;

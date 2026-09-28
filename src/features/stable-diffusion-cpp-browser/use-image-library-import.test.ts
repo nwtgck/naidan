@@ -23,7 +23,7 @@ it.each(['before inspection', 'during inspection'] as const)('publishes an impor
   });
   if (timing === 'during inspection') list.mockReturnValueOnce(pending.promise);
   const scope = effectScope();
-  const library = scope.run(() => useImageLibrary({ blocked: () => blocked.value, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importing, download: vi.fn() } }))!;
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importing, download: vi.fn() } }))!;
   try {
     const operation = library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
     if (timing === 'during inspection') {
@@ -48,7 +48,7 @@ it('settles a cancelled import publication and permits a later import without st
     blocked.value = true; return 'user/imported';
   });
   const scope = effectScope();
-  const library = scope.run(() => useImageLibrary({ blocked: () => blocked.value, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importing, download: vi.fn() } }))!;
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importing, download: vi.fn() } }))!;
   try {
     const first = library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
     await new Promise(resolve => setImmediate(resolve));
@@ -68,11 +68,34 @@ it('refreshes successfully imported folders while preserving a later import erro
   const list = vi.fn(async () => []);
   const importRepo = vi.fn().mockResolvedValueOnce('user/first').mockRejectedValueOnce(new Error('second folder already exists'));
   const scope = effectScope();
-  const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importRepo, download: vi.fn() } }))!;
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importRepo, download: vi.fn() } }))!;
   try {
     await library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
     expect(importRepo).toHaveBeenCalledTimes(2); expect(list).toHaveBeenCalledOnce();
     expect(library.failure.value).toBe('second folder already exists');
+    expect(library.importing.value).toBe(false);
+  } finally {
+    scope.stop();
+  }
+});
+
+it('waits for an import to publish before a queued transfer starts after host operations finish', async () => {
+  const importing = Promise.withResolvers<string>();
+  const download = vi.fn(async () => undefined), list = vi.fn(async () => []);
+  const scope = effectScope();
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: () => importing.promise, download } }))!;
+  try {
+    // Unlinking one active destination holds the host owner while a different
+    // destination's explicitly queued job remains ready to run.
+    library.hostDirectories.busy.value = true;
+    const transfer = library.downloadRecipe({ recipeId: 'z-image-turbo', selections: {} });
+    const operation = library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
+    expect(library.importing.value).toBe(true);
+    library.hostDirectories.busy.value = false;
+    await new Promise(resolve => setImmediate(resolve));
+    expect(download).not.toHaveBeenCalled();
+    importing.resolve('user/imported'); await operation; await transfer;
+    expect(download).toHaveBeenCalledOnce(); expect(list).toHaveBeenCalledTimes(2);
     expect(library.importing.value).toBe(false);
   } finally {
     scope.stop();

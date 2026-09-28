@@ -4,6 +4,8 @@ import type { CatalogDownloadProgress } from './logic/catalog-download';
 import type { ImageRecipeSelection } from './model-recipes';
 import type { ComputedRef, Ref, ShallowRef } from 'vue';
 import type { ModelSlot, Request } from './types';
+import type { BrowserImageModelSelection } from '@/01-models/types';
+import type { ImageLoraSelection } from './lora-form';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 
 export type ImageModelChoice = {
@@ -18,6 +20,10 @@ export type SavedImageLoraChoice = {
   id: string; label: string; detail: string; file: File; path: string;
 };
 export type ImageRecipeAvailability = { available: number, total: number, selected: boolean, bytes: number };
+export type ImageDownloadQueueEntry = {
+  id: string, label: string, destination: string,
+  state: 'queued' | 'downloading' | 'paused' | 'failed' | 'incomplete', error: string,
+};
 export type HostModelDirectoryChoice = {
   id: string, name: string,
   access: 'readwrite' | 'read' | 'prompt' | 'missing' | 'error' | 'unsupported',
@@ -40,6 +46,8 @@ export type ImageBenchmarkTarget = {
   missing: ModelSlot[]; issue: string | undefined;
 };
 export type ImageLibraryView = {
+  captureModelSelection({ loras }: { loras: readonly ImageLoraSelection[] }): BrowserImageModelSelection | undefined;
+  restoreModelSelection({ selection }: { selection: BrowserImageModelSelection }): { loras: ImageLoraSelection[], missing: string[], missingInactive: string[] };
   hostDirectories: HostModelDirectoriesView;
   benchmarkTargets({ selections }: { selections: Readonly<Record<string, Partial<Record<ModelSlot, string>>>> }): ImageBenchmarkTarget[];
   selectedFacts: ComputedRef<Pick<ModelCandidate, 'family' | 'variant' | 'evidence'> | undefined>;
@@ -54,6 +62,10 @@ export type ImageLibraryView = {
   importProgress: ShallowRef<{ completed: number, total: number } | undefined>;
   importing: ComputedRef<boolean>;
   downloading: ComputedRef<boolean>;
+  downloadsDisabled: ComputedRef<boolean>;
+  downloadQueue: ComputedRef<ImageDownloadQueueEntry[]>;
+  retryQueuedDownload({ id }: { id: string }): Promise<void>;
+  removeQueuedDownload({ id }: { id: string }): void;
   downloadProgress: ShallowRef<CatalogDownloadProgress | undefined>;
   downloadState: Ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>;
   downloadRecipeId: ComputedRef<string>;

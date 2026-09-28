@@ -92,7 +92,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p v-if="previewError" role="alert" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
       <p v-if="preview.enabled && busy && !livePreview" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preview_empty() }}</p>
       <figure v-if="livePreview && livePlacement === 'panel'" tw-class="space-y-2" data-testid="image-live-preview">
-        <img :src="livePreview.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" v-bind="previewDisplaySize({ frame: livePreview, maxEdge: preview.maxEdge })" tw-class="max-w-full h-auto rounded-xl border border-gray-200 dark:border-gray-800" />
+        <img :src="livePreview.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" v-bind="previewDisplaySize({ frame: livePreview, maxEdge: preview.maxEdge })" :style="{ maxWidth: `min(100%, ${livePreview.width}px)` }" tw-class="h-auto rounded-xl border border-gray-200 dark:border-gray-800" />
         <figcaption tw-class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
           <p v-if="view.latestRun.value?.status === 'failed'">{{ lazyStrings.ImageGenerationPreview__preview_from_failed_generation() }}</p>
           <p v-else-if="view.latestRun.value?.status === 'cancelled'">{{ lazyStrings.ImageGenerationPreview__preview_from_cancelled_generation() }}</p>
@@ -102,19 +102,19 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div v-if="previewSnapshots.length" tw-class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <article v-for="(frame, index) in previewSnapshots" :key="frame.id" tw-class="min-w-0 space-y-1" data-testid="image-preview-snapshot">
           <button type="button" @click="viewerIndex = index" :aria-label="lazyStrings.ImageGenerationViewer__image_preview()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 block w-full">
-            <img :src="frame.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" v-bind="previewDisplaySize({ frame, maxEdge: preview.maxEdge })" loading="lazy" tw-class="max-w-full h-auto rounded-lg border border-gray-200 dark:border-gray-800" />
+            <img :src="frame.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" v-bind="previewDisplaySize({ frame, maxEdge: preview.maxEdge })" :style="{ maxWidth: `min(100%, ${frame.width}px)` }" loading="lazy" tw-class="h-auto rounded-lg border border-gray-200 dark:border-gray-800" />
           </button>
           <p tw-class="text-xs text-gray-500 dark:text-gray-400">#{{ frame.runId }} · {{ frame.step }} / {{ frame.steps }} · {{ formatElapsed({ elapsedMs: frame.elapsedMs }) }}</p>
           <div tw-class="flex flex-wrap gap-3 text-xs">
             <!-- Exporting retained pixels does not depend on the selected inference profile. -->
-            <ImageDownloadMenu :active="active" :disabled="false" :on-download="options => view.downloadPreview({ previewId: frame.id, ...options })" />
+            <ImageDownloadMenu :preferences="view.imageDownloadPreferences" :on-preferences-change="view.setImageDownloadPreferences" :active="active" :disabled="false" :on-download="options => view.downloadPreview({ previewId: frame.id, ...options })" />
             <button type="button" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 text-red-600 dark:text-red-400 font-bold rounded-xl border border-red-100 dark:border-red-900/30 bg-red-50/40 dark:bg-red-900/10 px-3 py-2 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-10" @click="view.removePreview({ previewId: frame.id })">{{ lazyStrings.stableDiffusionCppBrowser__remove() }}</button>
           </div>
         </article>
       </div>
     </div>
     <ImageGenerationViewer :download-enabled="true" v-if="viewerIndex !== undefined" v-model:index="viewerIndex" :count="previewSnapshots.length" @close="viewerIndex = undefined">
-      <template #download><ImageDownloadMenu v-if="previewSnapshots[viewerIndex]" :key="previewSnapshots[viewerIndex]!.id" :active="active" :disabled="false" :on-download="options => view.downloadPreview({ previewId: previewSnapshots[viewerIndex!]!.id, ...options })" /></template>
+      <template #download><ImageDownloadMenu :preferences="view.imageDownloadPreferences" :on-preferences-change="view.setImageDownloadPreferences" v-if="previewSnapshots[viewerIndex]" :key="previewSnapshots[viewerIndex]!.id" :active="active" :disabled="false" :on-download="options => view.downloadPreview({ previewId: previewSnapshots[viewerIndex!]!.id, ...options })" /></template>
       <img v-if="previewSnapshots[viewerIndex]" :src="previewSnapshots[viewerIndex]!.url" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" tw-class="max-w-full max-h-[85vh] object-contain" />
     </ImageGenerationViewer>
   </section>

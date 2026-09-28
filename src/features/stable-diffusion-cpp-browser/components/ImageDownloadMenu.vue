@@ -1,13 +1,35 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Ref } from 'vue';
 import { ChevronDownIcon, DownloadIcon, LoaderCircleIcon, Settings2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
-import type { ImageDownloadFormat, ImageDownloadResult } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
-const props = defineProps<{ active: boolean, disabled: boolean, onDownload: ({ format, includeMetadata }: { format: ImageDownloadFormat, includeMetadata: boolean }) => Promise<ImageDownloadResult> }>();
+import type { ImageDownloadFormat, ImageDownloadPreferences, ImageDownloadResult } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
+const props = defineProps<{
+  active: boolean, disabled: boolean,
+  preferences: Ref<ImageDownloadPreferences>,
+  onPreferencesChange: ({ preferences }: { preferences: ImageDownloadPreferences }) => void,
+  onDownload: ({ format, includeMetadata }: { format: ImageDownloadFormat, includeMetadata: boolean }) => Promise<ImageDownloadResult>,
+}>();
 const id = useId();
 const anchor = ref<HTMLElement>(), panel = ref<HTMLElement>(), toggle = ref<HTMLButtonElement>();
 const open = ref(false), busy = ref(false), error = ref('');
-const format = ref<ImageDownloadFormat>('png'), includeMetadata = ref(false);
+const format = ref<ImageDownloadFormat>(props.preferences.value.format);
+const includeMetadata = ref(props.preferences.value.metadata === 'include');
+watch(() => [props.preferences.value.format, props.preferences.value.metadata] as const, ([nextFormat, nextMetadata]) => {
+  format.value = nextFormat;
+  includeMetadata.value = nextMetadata === 'include';
+});
+function changeFormat({ event }: { event: Event }): void {
+  if (!(event.target instanceof HTMLSelectElement)) return;
+  const value = event.target.value;
+  if (value !== 'png' && value !== 'webp' && value !== 'jpeg') return;
+  format.value = value;
+  props.onPreferencesChange({ preferences: { format: value, metadata: includeMetadata.value ? 'include' : 'omit' } });
+}
+function changeMetadata({ event }: { event: Event }): void {
+  if (!(event.target instanceof HTMLInputElement)) return;
+  includeMetadata.value = event.target.checked;
+  props.onPreferencesChange({ preferences: { format: format.value, metadata: includeMetadata.value ? 'include' : 'omit' } });
+}
 const position = ref({ left: '8px', top: '8px' });
 let disposed = false;
 function close({ restoreFocus }: { restoreFocus: boolean }): void {
@@ -92,8 +114,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <button ref="toggle" type="button" :disabled="disabled || busy" :aria-expanded="open" :aria-controls="id" aria-haspopup="dialog" :aria-label="lazyStrings.ImageDownloadMenu__download_options()" @click="open ? close({ restoreFocus: false }) : show()" data-testid="image-download-options" tw-class="min-h-10 min-w-10 flex items-center justify-center border-l border-gray-200 dark:border-gray-700 rounded-r-xl transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"><ChevronDownIcon aria-hidden="true" tw-class="w-4 h-4" /></button>
     <Teleport to="body">
       <div v-if="open" :id="id" ref="panel" tabindex="-1" role="dialog" :aria-label="lazyStrings.ImageDownloadMenu__download_options()" :style="position" @keydown.stop="keydown({ event: $event })" data-testid="image-download-panel" tw-class="fixed z-[140] w-72 max-w-[calc(100vw-1rem)] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-xl p-4 space-y-3 outline-none">
-        <label tw-class="block text-sm font-medium space-y-1"><span>{{ lazyStrings.ImageDownloadMenu__image_format() }}</span><span tw-class="relative block"><select v-model="format" :disabled="busy" data-testid="image-download-format" tw-class="appearance-none cursor-pointer pr-9 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-800 dark:text-gray-100 shadow-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50"><option value="png">PNG</option><option value="webp">WebP</option><option value="jpeg">JPEG</option></select><ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /></span></label>
-        <label tw-class="min-h-10 cursor-pointer flex items-start gap-2 text-sm"><input v-model="includeMetadata" :disabled="busy" type="checkbox" role="switch" data-testid="image-download-metadata" tw-class="sr-only peer" /><span aria-hidden="true" tw-class="relative h-6 w-10 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 motion-reduce:transition-none motion-reduce:after:transition-none" />{{ lazyStrings.ImageDownloadMenu__include_generation_settings() }}</label>
+        <label tw-class="block text-sm font-medium space-y-1"><span>{{ lazyStrings.ImageDownloadMenu__image_format() }}</span><span tw-class="relative block"><select :value="format" :disabled="busy" @change="changeFormat({ event: $event })" data-testid="image-download-format" tw-class="appearance-none cursor-pointer pr-9 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-800 dark:text-gray-100 shadow-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50"><option value="png">PNG</option><option value="webp">WebP</option><option value="jpeg">JPEG</option></select><ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /></span></label>
+        <label tw-class="min-h-10 cursor-pointer flex items-start gap-2 text-sm"><input :checked="includeMetadata" :disabled="busy" @change="changeMetadata({ event: $event })" type="checkbox" role="switch" data-testid="image-download-metadata" tw-class="sr-only peer" /><span aria-hidden="true" tw-class="relative h-6 w-10 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 motion-reduce:transition-none motion-reduce:after:transition-none" />{{ lazyStrings.ImageDownloadMenu__include_generation_settings() }}</label>
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageDownloadMenu__downloaded_copy_only() }}</p>
         <p v-if="error" role="alert" data-testid="image-download-error" tw-class="text-sm text-red-600 dark:text-red-400 break-words">{{ error }}</p>
         <button type="button" :disabled="busy" @click="download" data-testid="image-download-confirm" tw-class="w-full min-h-10 rounded-xl bg-blue-600 text-white px-3 py-2 text-sm font-bold shadow-lg shadow-blue-500/25 transition-all hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"><LoaderCircleIcon v-if="busy" aria-hidden="true" tw-class="inline w-4 h-4 mr-2 animate-spin" />{{ lazyStrings.ImageDownloadMenu__download() }}</button>

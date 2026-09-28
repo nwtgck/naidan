@@ -16,7 +16,7 @@ vi.mock('./composables/use-host-model-directories', async () => {
     mocks.stopDownload.mockImplementation(stopDownload);
     const view = createDisabledImageLibrary().hostDirectories;
     view.destination.value = 'linked-models';
-    return { view, registrations: () => [], refresh: () => mocks.refresh(), downloadDestination: async () => ({ kind: 'host', directoryId: 'linked-models' }) };
+    return { view, registrations: () => [{ id: 'linked-models', name: 'weights' }], refresh: () => mocks.refresh(), downloadDestination: async () => ({ kind: 'host', directoryId: 'linked-models' }) };
   } };
 });
 const scopes: ReturnType<typeof effectScope>[] = [];
@@ -31,7 +31,7 @@ afterEach(() => {
 });
 function harness() {
   const blocked = ref(false), scope = effectScope(); scopes.push(scope);
-  const library = scope.run(() => useImageLibrary({ blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
   return { blocked, scope, library };
 }
 async function inventory(): Promise<ModelInventory> {
@@ -55,8 +55,10 @@ it('releases cancellation while the final host permission refresh is pending and
   expect(library.failure.value).toBe('');
 });
 
-it('settles the linked-folder stopDownload callback while publication is waiting for an independent save', async () => {
+it('settles the linked-folder stopDownload callback during inventory publication while the editor is busy', async () => {
   const { library, blocked } = harness();
+  const pending = Promise.withResolvers<ModelInventory>();
+  mocks.inspect.mockReturnValueOnce(pending.promise);
   mocks.download.mockImplementation(async () => {
     blocked.value = true;
   });
@@ -67,7 +69,8 @@ it('settles the linked-folder stopDownload callback while publication is waiting
   expect(library.downloading.value).toBe(false);
   expect(library.downloadState.value).toBe('paused');
   blocked.value = false; await new Promise(resolve => setImmediate(resolve));
-  expect(mocks.inspect).not.toHaveBeenCalled();
+  expect(mocks.inspect).toHaveBeenCalledOnce();
+  pending.resolve({ candidates: [], issues: [] });
 });
 
 it.each(['before inspection', 'during inspection'] as const)('publishes a completed linked-folder change after saving ends %s', async timing => {

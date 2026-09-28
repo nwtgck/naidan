@@ -25,7 +25,7 @@ it('offers an adapter-only OPFS import and markerless host files separately with
   mocks.get.mockResolvedValue(host);
   const list = async () => [...await listImageRepositories({ signal: undefined }), ...await listHostImageRepositories({ directories: [{ id: 'one', name: 'first-root' }, { id: 'two', name: 'second-root' }], signal: undefined })];
   const scope = effectScope();
-  const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importImageRepository, download: vi.fn() } }))!;
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importImageRepository, download: vi.fn() } }))!;
   try {
     await library.refresh();
     const saved = library.savedLoras.value;

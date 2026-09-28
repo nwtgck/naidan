@@ -29,7 +29,7 @@ function harness() {
   const inventory: ModelInventory = { candidates: [model], issues: [] };
   const download = vi.fn(async (_request: ImageRecipeDownloadRequest) => {});
   const onSelection = vi.fn(), scope = effectScope(); scopes.push(scope);
-  const library = scope.run(() => useImageLibrary({ blocked: () => false, onSelection, dependencies: { list: async () => [], scan: async () => inventory, import: vi.fn(), download } }))!;
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection, dependencies: { list: async () => [], scan: async () => inventory, import: vi.fn(), download } }))!;
   return { inventory, download, library, onSelection };
 }
 it('downloads only the optional adapter and preserves the chosen base and its readiness', async () => {
@@ -70,5 +70,7 @@ it('resumes an adapter download independently of recipe selections and never pro
   await h.library.resumeDownload();
   expect(h.download.mock.calls[1]![0].files).toEqual([entry.source]); expect(h.library.downloadState.value).toBe('incomplete');
   expect(h.library.main.value).toBe('model');
-  h.library.resetDownloadIntent(); expect(h.library.downloadLoraId.value).toBe(''); expect(h.library.downloadRecipeId.value).toBe('');
+  h.library.resetDownloadIntent(); expect(h.library.downloadLoraId.value).toBe(entry.id);
+  const job = h.library.downloadQueue.value[0]!; h.library.removeQueuedDownload({ id: job.id });
+  expect(h.library.downloadLoraId.value).toBe(''); expect(h.library.downloadRecipeId.value).toBe('');
 });

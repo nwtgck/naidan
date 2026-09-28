@@ -132,6 +132,7 @@ it.each([
   const image = wrapper.get('[data-testid="image-live-preview"] img');
   expect(image.attributes('width')).toBe(String(displayWidth));
   expect(image.attributes('height')).toBe(String(displayHeight));
+  expect(image.attributes('style')).toContain(`max-width: min(100%, ${width}px)`);
   expect(image.attributes('src')).toBe('blob:original-small-preview');
   expect(view.livePreview.value).toMatchObject({ width, height });
   expect(wrapper.get('figcaption').text()).toContain(`${width} × ${height}`);
@@ -177,6 +178,7 @@ it('sizes saved projection thumbnails while downloading the original frame and p
   const snapshot = wrapper.get('[data-testid="image-preview-snapshot"]');
   expect(snapshot.get('img').attributes('width')).toBe('128');
   expect(snapshot.get('img').attributes('height')).toBe('256');
+  expect(snapshot.get('img').attributes('style')).toContain('max-width: min(100%, 16px)');
   view.downloadPreview = vi.fn(async () => ({ status: 'downloaded' as const }));
   await snapshot.get('[data-testid="image-download-default"]').trigger('click');
   expect(view.downloadPreview).toHaveBeenCalledWith({ previewId: 2, format: 'png', includeMetadata: false });
@@ -226,6 +228,7 @@ it('closes an expanded snapshot when its pane becomes inactive while preserving 
   await wrapper.vm.$nextTick();
   await wrapper.get('[data-testid="image-preview-snapshot"] button').trigger('click');
   expect(document.querySelector('[data-testid="image-viewer"]')).not.toBeNull();
+  expect(document.querySelector('[data-testid="image-viewer-zoom-in"]')).not.toBeNull();
   await wrapper.setProps({ active: false });
   expect(document.querySelector('[data-testid="image-viewer"]')).toBeNull();
   expect(view.livePreview.value?.url).toBe('blob:original-small-preview');

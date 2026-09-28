@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { h } from 'vue';
+import { h, ref } from 'vue';
 import ImageGenerationViewer from './ImageGenerationViewer.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageDownloadMenu from './ImageDownloadMenu.vue';
+import type { ImageDownloadPreferences } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
 let wrapper: VueWrapper | undefined;
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -12,7 +13,10 @@ afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
 function openMenu({ onDownload }: { onDownload: InstanceType<typeof ImageDownloadMenu>['$props']['onDownload'] }): VueWrapper {
-  wrapper = mount(ImageDownloadMenu, { props: { active: true, disabled: false, onDownload }, global: { stubs: { Teleport: true } } });
+  const preferences = ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' });
+  wrapper = mount(ImageDownloadMenu, { props: { active: true, disabled: false, preferences, onPreferencesChange: ({ preferences: next }) => {
+    preferences.value = { ...next };
+  }, onDownload }, global: { stubs: { Teleport: true } } });
   return wrapper;
 }
 it('defaults to plain PNG and explicitly selects a format and metadata per image', async () => {
@@ -31,6 +35,24 @@ it('defaults to plain PNG and explicitly selects a format and metadata per image
   await ui.get('[data-testid="image-download-format"]').setValue('jpeg');
   await ui.get('[data-testid="image-download-confirm"]').trigger('click'); await flushPromises();
   expect(onDownload).toHaveBeenLastCalledWith({ format: 'jpeg', includeMetadata: true });
+});
+it('uses restored preferences without writing them back and saves only explicit changes', async () => {
+  const preferences = ref<ImageDownloadPreferences>({ format: 'jpeg', metadata: 'include' });
+  const onPreferencesChange = vi.fn(({ preferences: next }: { preferences: ImageDownloadPreferences }) => {
+    preferences.value = { ...next };
+  });
+  const onDownload = vi.fn(async () => ({ status: 'downloaded' as const }));
+  wrapper = mount(ImageDownloadMenu, { props: { active: true, disabled: false, preferences, onPreferencesChange, onDownload }, global: { stubs: { Teleport: true } } });
+  expect(wrapper.get('[data-testid="image-download-default"]').text()).toContain('JPEG');
+  expect(onPreferencesChange).not.toHaveBeenCalled();
+  await wrapper.get('[data-testid="image-download-default"]').trigger('click');
+  expect(onDownload).toHaveBeenCalledWith({ format: 'jpeg', includeMetadata: true });
+  expect(onPreferencesChange).not.toHaveBeenCalled();
+  await wrapper.get('[data-testid="image-download-options"]').trigger('click');
+  await wrapper.get('[data-testid="image-download-format"]').setValue('webp');
+  expect(onPreferencesChange).toHaveBeenLastCalledWith({ preferences: { format: 'webp', metadata: 'include' } });
+  await wrapper.get('[data-testid="image-download-metadata"]').setValue(false);
+  expect(onPreferencesChange).toHaveBeenLastCalledWith({ preferences: { format: 'webp', metadata: 'omit' } });
 });
 it('shows busy and failure beside the action without losing the requested metadata', async () => {
   const pending = Promise.withResolvers<{ status: 'failed', message: string }>();
@@ -84,7 +106,7 @@ it('keeps Escape and Tab inside download options opened from the image viewer', 
   const onClose = vi.fn();
   wrapper = mount(ImageGenerationViewer, {
     props: { downloadEnabled: true, index: 0, count: 2, onClose }, attachTo: document.body,
-    slots: { download: () => h(ImageDownloadMenu, { active: true, disabled: false, onDownload: async () => ({ status: 'downloaded' as const }) }) },
+    slots: { download: () => h(ImageDownloadMenu, { active: true, disabled: false, preferences: ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' }), onPreferencesChange: () => {}, onDownload: async () => ({ status: 'downloaded' as const }) }) },
   });
   const options = document.querySelector<HTMLButtonElement>('[data-testid="image-download-options"]')!;
   options.click(); await flushPromises();

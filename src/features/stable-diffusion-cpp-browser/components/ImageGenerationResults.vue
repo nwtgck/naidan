@@ -84,7 +84,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
       <div tw-class="grid grid-cols-2 gap-3" data-testid="image-result-grid">
         <article v-if="pendingImage && run" data-testid="image-pending-result" tw-class="col-span-2 min-w-0 bg-white dark:bg-gray-800/40 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm">
-          <ImageGenerationProgress :busy="view.busy.value" :supported="supported" :active="active" :stopping="view.stopping.value" :progress="view.progress.value" :width="run.width" :height="run.height" :image-url="view.livePreview.value?.url" />
+          <ImageGenerationProgress :busy="view.busy.value" :supported="supported" :active="active" :stopping="view.stopping.value" :progress="view.progress.value" :width="run.width" :height="run.height" :image="view.livePreview.value" />
         </article>
         <article v-if="unfinishedImage" :role="failedImage ? 'alert' : 'status'" :data-testid="failedImage ? 'image-failed-result' : 'image-cancelled-result'" tw-class="col-span-2 min-w-0 flex flex-col items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-5 py-8 text-center">
           <AlertCircleIcon v-if="failedImage" aria-hidden="true" tw-class="h-8 w-8 text-gray-500 dark:text-gray-400" />
@@ -96,7 +96,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-if="unfinishedImage && results.length" data-testid="image-previous-results" tw-class="col-span-2 text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationResults__previous_results() }}</p>
         <article data-testid="image-generated-result" v-for="(result, index) in results" :key="result.id" :tw-class="['min-w-0 bg-white dark:bg-gray-800/40 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm', index === 0 && !pendingImage && !unfinishedImage ? 'col-span-2' : '']">
           <button type="button" @click="viewerIndex = index" :aria-label="lazyStrings.ImageGenerationViewer__image_preview()" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 block w-full">
-            <div :style="{ aspectRatio: `${result.parameters.width} / ${result.parameters.height}`, maxWidth: `${65 * result.parameters.width / result.parameters.height}vh` }" data-testid="image-result-canvas" tw-class="relative w-full mx-auto">
+            <div :style="{ aspectRatio: `${result.parameters.width} / ${result.parameters.height}`, maxWidth: `min(${result.parameters.width}px, ${65 * result.parameters.width / result.parameters.height}vh)` }" data-testid="image-result-canvas" tw-class="relative w-full mx-auto">
               <img :src="result.url" :alt="result.parameters.prompt" :width="result.parameters.width" :height="result.parameters.height" tw-class="absolute inset-0 w-full h-full object-contain bg-gray-50 dark:bg-gray-950" />
             </div>
           </button>
@@ -106,7 +106,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ result.modelVersion }} · {{ result.parameters.width }} × {{ result.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__seed() }}: {{ result.parameters.seed }} · {{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ formatElapsed({ elapsedMs: result.elapsedMs }) }}</p>
             <div tw-class="flex flex-wrap items-center gap-3 text-sm">
               <!-- Exporting retained pixels does not depend on the selected inference profile. -->
-              <ImageDownloadMenu :active="active" :disabled="false" :on-download="options => view.downloadResult({ resultId: result.id, ...options })" data-testid="image-result-download" />
+              <ImageDownloadMenu :preferences="view.imageDownloadPreferences" :on-preferences-change="view.setImageDownloadPreferences" :active="active" :disabled="false" :on-download="options => view.downloadResult({ resultId: result.id, ...options })" data-testid="image-result-download" />
               <button v-if="view.savedHistoryId({ resultId: result.id })" type="button" :disabled="!view.history.available.value" @click="emit('openHistory', { id: view.savedHistoryId({ resultId: result.id }) })" data-testid="image-result-view-saved" tw-class="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 min-h-10 text-xs font-bold text-blue-600 dark:text-blue-400 shadow-sm transition-colors hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"><ImagesIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.ImageGenerationResults__view_in_my_images() }}</button>
             </div>
           </div>
@@ -172,7 +172,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </details>
     </div>
     <ImageGenerationViewer :download-enabled="true" v-if="viewerIndex !== undefined" v-model:index="viewerIndex" :count="results.length" @close="viewerIndex = undefined">
-      <template #download><ImageDownloadMenu v-if="results[viewerIndex]" :key="results[viewerIndex]!.id" :active="active" :disabled="false" :on-download="options => view.downloadResult({ resultId: results[viewerIndex!]!.id, ...options })" /></template>
+      <template #download><ImageDownloadMenu :preferences="view.imageDownloadPreferences" :on-preferences-change="view.setImageDownloadPreferences" v-if="results[viewerIndex]" :key="results[viewerIndex]!.id" :active="active" :disabled="false" :on-download="options => view.downloadResult({ resultId: results[viewerIndex!]!.id, ...options })" /></template>
       <img v-if="results[viewerIndex]" :src="results[viewerIndex]!.url" :alt="results[viewerIndex]!.parameters.prompt" tw-class="max-w-full max-h-[85vh] object-contain" />
     </ImageGenerationViewer>
   </div>

@@ -2329,6 +2329,8 @@ import { ImageGenerationHistory__readable_matches } from '@/strings/messages/Ima
 import { ImageGenerationHistory__some_history_files_could_not_be_read } from '@/strings/messages/ImageGenerationHistory__some_history_files_could_not_be_read/en';
 import { ImageGenerationLab__disabled_loras_not_restored } from '@/strings/messages/ImageGenerationLab__disabled_loras_not_restored/en';
 import { ImageGenerationResults__return_to_opfs_to_retry } from '@/strings/messages/ImageGenerationResults__return_to_opfs_to_retry/en';
+import { ImageModelCatalog__download_queue } from '@/strings/messages/ImageModelCatalog__download_queue/en';
+import { ImageModelCatalog__queued } from '@/strings/messages/ImageModelCatalog__queued/en';
 import { ImageModelCatalog__optional_lora } from '@/strings/messages/ImageModelCatalog__optional_lora/en';
 import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/en';
 import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/en';
@@ -4623,6 +4625,8 @@ export const catalog = {
   ImageGenerationHistory__some_history_files_could_not_be_read,
   ImageGenerationLab__disabled_loras_not_restored,
   ImageGenerationResults__return_to_opfs_to_retry,
+  ImageModelCatalog__download_queue,
+  ImageModelCatalog__queued,
   ImageModelCatalog__optional_lora,
   ImageModelCatalog__reference_style_lora_help,
   ImageModelCatalog__saved_choose_in_lora_controls,

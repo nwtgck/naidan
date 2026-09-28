@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, h, nextTick, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import type { Request } from './types';
 import type { ImageGenerationView } from './use-image-generation-types';
 import type { ImageClient } from './worker/types';
@@ -22,6 +23,9 @@ const mocks = vi.hoisted(() => {
     },
   };
 });
+const preferenceSettings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } });
+const preferencesInitialized = ref(false);
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: preferenceSettings, initialized: preferencesInitialized, updateExperimental: vi.fn() }) }));
 vi.mock('@/00-storage/service', () => ({ storageService: {
   getCurrentType: () => mocks.storageType,
   subscribeToChanges: ({ listener }: { listener: ({ event }: { event: { type: 'migration', timestamp: number } }) => void }) => {
@@ -55,6 +59,13 @@ vi.mock('./use-image-library', async () => {
     return { ...library, ...transfers, ready: computed(() => true), selectedModels: () => mocks.models,
       selectedFacts: computed(() => ({ family: 'z-image', variant: 'turbo', evidence: [] })),
       prepareHistoryFiles: () => mocks.prepareFiles(),
+      restoreModelSelection() {
+        library.main.value = 'missing-primary';
+        return { loras: [], missing: ['missing.gguf'], missingInactive: [] };
+      },
+      chooseMain({ id }: { id: string }) {
+        library.main.value = id;
+      },
       useManualFiles() {
         library.main.value = '';
       },
@@ -85,6 +96,8 @@ function result() {
 }
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
+  preferencesInitialized.value = false;
+  preferenceSettings.value = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } };
   vi.clearAllMocks(); mocks.listeners.clear(); mocks.storageType = 'opfs'; mocks.models = [{ slot: 'model', file: ggufFile() }];
   mocks.query.mockResolvedValue({ items: [], total: 0, warnings: [], warningCount: 0 }); mocks.save.mockResolvedValue(undefined); mocks.generate.mockResolvedValue(result());
   mocks.remove.mockReset().mockResolvedValue(undefined);
@@ -288,20 +301,21 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.formDisabled.value).toBe(false);
   });
 
-  it.each(['importing', 'downloading'] as const)('does not read a history image while model files are %s', async operation => {
+  it.each(['importing', 'downloading'] as const)('only blocks conflicting history image actions while model files are %s', async operation => {
     const view = open();
     await view.generate();
     const record = mocks.save.mock.calls[0]![0].record;
     mocks.setTransfer({ operation, active: true });
+    mocks.getFile.mockResolvedValue(new Blob(['reference'], { type: 'image/png' }));
     await view.useHistoryImage({ binaryObjectId: record.result.binaryObjectId, role: 'reference' });
-    expect(mocks.getFile).not.toHaveBeenCalled();
+    expect(mocks.getFile).toHaveBeenCalledTimes(operation === 'importing' ? 0 : 1);
     expect(view.historyActions.busy.value).toBe(false);
-    expect(view.imageInputs.value.referenceImages).toEqual([]);
+    expect(view.imageInputs.value.referenceImages).toHaveLength(operation === 'importing' ? 0 : 1);
     mocks.setTransfer({ operation, active: false });
     mocks.getFile.mockResolvedValueOnce(new Blob(['reference'], { type: 'image/png' }));
     await view.useHistoryImage({ binaryObjectId: record.result.binaryObjectId, role: 'reference' });
-    expect(mocks.getFile).toHaveBeenCalledOnce();
-    expect(view.imageInputs.value.referenceImages).toHaveLength(1);
+    expect(mocks.getFile).toHaveBeenCalledTimes(operation === 'importing' ? 1 : 2);
+    expect(view.imageInputs.value.referenceImages).toHaveLength(operation === 'importing' ? 1 : 2);
   });
 
   it('clears an earlier generation save error when its explicit retry succeeds without regenerating either image', async () => {
@@ -852,4 +866,17 @@ describe('hosted image history integration with a synthetic inference client', (
     const generation = view.generate(); view.randomizeSeed(); expect(view.parameters.value.seed).toBe(seed);
     pending.resolve(result()); await generation;
   });
+});
+
+it('clears only preference-restoration missing files when a usable base model is explicitly selected', async () => {
+  preferenceSettings.value.experimental = { browserImageGeneration: { modelSelection: {
+    primary: { slot: 'model', location: { kind: 'opfs', path: 'models/missing.gguf' } }, components: [], loras: [],
+  } } };
+  preferencesInitialized.value = true;
+  const view = open(); await flushPromises();
+  expect(view.historyActions.missingFiles.value).toEqual(['missing.gguf']);
+  await view.generate(); expect(mocks.generate).not.toHaveBeenCalled();
+  view.library.chooseMain({ id: 'available-model' }); await flushPromises();
+  expect(view.historyActions.missingFiles.value).toEqual([]);
+  await view.generate(); expect(mocks.generate).toHaveBeenCalledOnce();
 });
