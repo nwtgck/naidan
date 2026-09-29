@@ -6,7 +6,8 @@ import {
   StreamingZipWriter,
   type ZipArchiveEntry,
 } from '@/utils/zip-stream';
-import { createMemoryZipCentralDirectoryStore } from '@/utils/zip-stream/memory';
+import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
+import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 
 /** Evidence owns immutable file contents; ZIP is only its transport encoding. */
 export interface EvidenceArchiveReader {
@@ -44,42 +45,63 @@ export function createEvidenceFilesReader({ files }: {
   };
 }
 
-export async function createEvidenceArchive({ files }: {
+export interface PreparedEvidenceArchive {
   files: ReadonlyMap<string, Blob>;
-}): Promise<Blob> {
-  // Capture the file set synchronously. Later caller changes cannot alter the
-  // relationship between the manifest and the entries currently being written.
+  fileName: string;
+}
+
+/** ZIP output is bounded and demand-driven; immutable input files stay shared. */
+export function createEvidenceArchiveStream({ files }: {
+  files: ReadonlyMap<string, Blob>;
+}): ReadableStream<Uint8Array> {
   const owned = [...files.entries()];
-  // The shared reader treats 0xffff as the ZIP64 marker. Refuse before reading
-  // any body: byte budgets alone do not bound a batch of tiny tensor entries.
-  // Keep all retained files; splitting/partial evidence belongs to the caller.
+  // ZIP64 is not supported by the existing ZIP reader/writer.
   if (owned.length >= 0xffff) throw new Error('Evidence archive exceeds the supported entry count');
   for (const [path] of owned) validateEvidencePath({ path });
+  const abort = new AbortController();
+  const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
   const directory = createMemoryZipCentralDirectoryStore();
-  const chunks: Blob[] = [];
   const writer = new StreamingZipWriter({
-    output: {
-      async write({ chunk }) {
-        chunks.push(new Blob([Uint8Array.from(chunk)]));
-      },
-    },
+    output: output.sink,
     centralDirectoryStore: directory,
     compressionCodec: createWebZipCompressionCodec(),
   });
-  try {
-    for (const [path, content] of owned) {
-      await writer.addFile({
-        name: path, stream: content.stream(), compression: 'deflate',
-        // Evidence timestamps live in JSON. Container metadata must not change
-        // when the same retained files are exported again.
-        modifiedAt: new Date(1980, 0, 1),
-      });
+  const stream = createAbortableByteStream({
+    stream: output.stream, signal: abort.signal,
+    onCancel: () => abort.abort(new DOMException('Evidence export cancelled', 'AbortError')),
+  });
+  const produce = async (): Promise<void> => {
+    try {
+      for (const [path, content] of owned) {
+        abort.signal.throwIfAborted();
+        await writer.addFile({
+          name: path,
+          stream: createAbortableByteStream({ stream: content.stream(), signal: abort.signal, onCancel: undefined }),
+          compression: 'deflate', modifiedAt: new Date(1980, 0, 1),
+        });
+      }
+      abort.signal.throwIfAborted();
+      await writer.finalize();
+      await output.close();
+    } catch (reason) {
+      await output.abort({ reason }).catch(() => undefined);
+    } finally {
+      await directory.dispose();
     }
-    await writer.finalize();
-    return new Blob(chunks, { type: 'application/zip' });
-  } finally {
-    await directory.dispose();
-  }
+  };
+  // Output.write awaits backpressure; cancellation also wakes the active input.
+  void produce().catch(() => undefined);
+  return stream;
+}
+
+/** Buffered adapter for consumers that must randomly inspect the archive.
+ * User-facing downloads must use createEvidenceArchiveStream instead. */
+export async function createEvidenceArchive({ files }: {
+  files: ReadonlyMap<string, Blob>;
+}): Promise<Blob> {
+  return await new Response(createEvidenceArchiveStream({ files }), {
+    headers: { 'Content-Type': 'application/zip' },
+  }).blob();
 }
 
 /** Index once, decode one requested entry at a time, and retain no decoded body. */

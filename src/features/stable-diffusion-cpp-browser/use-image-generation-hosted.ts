@@ -1,3 +1,4 @@
+import { downloadBlob } from '@/utils/stream-download';
 import { nanoid } from 'nanoid';
 import { createImageDiagnosticBuffer, type ImageDiagnostic } from './diagnostics';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
@@ -97,12 +98,9 @@ export function useImageGeneration(): ImageGenerationView {
   }
   function saveDiagnostics(): void {
     const filename = `naidan-image-diagnostics-${nanoid()}.jsonl`;
-    const url = URL.createObjectURL(new Blob([diagnosticText.value], { type: 'text/plain;charset=utf-8' }));
-    try {
-      const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    }
+    // This diagnostic ring is bounded independently of output size. Keep its
+    // save path usable even while diagnosing an unavailable Service Worker.
+    downloadBlob({ blob: new Blob([diagnosticText.value], { type: 'text/plain;charset=utf-8' }), filename });
   }
   const finalGallery = createImageGallery<{ parameters: Parameters, modelVersion: string, uniformOutput: boolean, elapsedMs: number, request: ImageGenerationRecord['request'], image: ImageGenerationExportImage }>({ initialLimit: 20, maxBytes: 256 * 1024 ** 2 });
   const liveGallery = createImageGallery<Omit<PreviewFrame, 'png'> & { elapsedMs: number }>({ initialLimit: 1, maxBytes: 64 * 1024 ** 2 });

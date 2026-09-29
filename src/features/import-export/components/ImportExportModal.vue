@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { downloadReadableStream } from '@/utils/stream-download';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import {
   XIcon, UploadIcon, DownloadIcon, FileArchiveIcon,
   CheckCircle2Icon, AlertTriangleIcon, Loader2Icon,
@@ -42,6 +43,8 @@ const processingMessage = ref('');
 const error = ref<string | null>(null);
 
 // Export State
+let exportAbort: AbortController | undefined;
+onBeforeUnmount(() => exportAbort?.abort());
 const exportName = ref('');
 const {
   excludeChats,
@@ -160,37 +163,45 @@ function buildExportExclude(): ExportOptions['exclude'] {
 watch(() => props.isOpen, (isOpen) => {
   if (isOpen) {
     resetState();
+  } else {
+    exportAbort?.abort();
   }
 });
 
 async function handleExport() {
+  exportAbort?.abort();
+  const abort = new AbortController();
+  exportAbort = abort;
+  const isCurrent = () => exportAbort === abort && !abort.signal.aborted && props.isOpen;
+  const exclude = buildExportExclude();
+  const options = {
+    fileNameSegment: exportName.value.trim(),
+    ...(exclude === undefined ? {} : { exclude }),
+  };
   mode.value = 'processing';
-  processingMessage.value = await ensureStrings.ImportExportModal__compressing_data();
   error.value = null;
 
   try {
-    const exclude = buildExportExclude();
-    const { stream, filename } = await service.exportData({
-      fileNameSegment: exportName.value.trim(),
-      ...(exclude === undefined ? {} : { exclude }),
-    });
+    const preparing = await ensureStrings.ImportExportModal__compressing_data();
+    if (!isCurrent()) return;
+    processingMessage.value = preparing;
+    const { stream, filename } = await service.exportData(options);
 
-    const newResponse = new Response(stream);
-    const blob = await newResponse.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    addToast({ message: await ensureStrings.ImportExportModal__export_successful(), duration: 3000 });
+    // The download helper owns and cancels a late source when this view closed.
+    await downloadReadableStream({ stream, filename, size: undefined, signal: abort.signal });
+    if (!isCurrent()) return;
+    const message = await ensureStrings.ImportExportModal__export_successful();
+    if (!isCurrent()) return;
+    addToast({ message, duration: 3000 });
     emit('close');
   } catch (e) {
-    error.value = e instanceof Error ? e.message : await ensureStrings.ImportExportModal__export_failed();
+    if (!isCurrent()) return;
+    const message = e instanceof Error ? e.message : await ensureStrings.ImportExportModal__export_failed();
+    if (!isCurrent()) return;
+    error.value = message;
     mode.value = 'export';
+  } finally {
+    if (exportAbort === abort) exportAbort = undefined;
   }
 }
 

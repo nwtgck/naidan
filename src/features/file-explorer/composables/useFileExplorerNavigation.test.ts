@@ -193,6 +193,7 @@ function makeClient(): FileExplorerWorkerClient {
     readDirectory: vi.fn(async ({ path }: { path: string }) => readDirectory({ path })),
     readPreview: vi.fn(),
     readFile: vi.fn(),
+    openFileStream: vi.fn(),
     createFile: vi.fn(),
     createFolder: vi.fn(),
     deleteEntries: vi.fn(),
@@ -223,6 +224,7 @@ function makeClient(): FileExplorerWorkerClient {
       resultState: 'complete',
     }),
     startDirectoryArchive: vi.fn(() => ({
+      stream: new ReadableStream<Uint8Array>(),
       result: Promise.resolve({ status: 'cancelled' as const }),
       cancel: vi.fn().mockResolvedValue(undefined),
     })),

@@ -29,7 +29,7 @@ beforeEach(async () => {
   });
 });
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals();
+  wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();
   if (descriptor) Object.defineProperty(navigator, 'gpu', descriptor); else Reflect.deleteProperty(navigator, 'gpu');
 });
 it('opens without inference workers or model reads', async () => {
@@ -289,10 +289,12 @@ it('uses a fresh nanoid suffix for every diagnostic save during and after genera
   const running = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
   const save = wrapper.get('[data-testid="image-save-diagnostics"]');
   expect(save.element.matches(':disabled')).toBe(false);
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   await save.trigger('click'); await save.trigger('click');
   finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
   await running; await save.trigger('click');
-  await new Promise(resolve => setTimeout(resolve, 0));
+  for (const url of urls) expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(url);
+  await vi.advanceTimersByTimeAsync(60_000);
   expect(downloadNames).toHaveLength(3);
   for (const name of downloadNames) expect(name).toMatch(/^naidan-image-diagnostics-[A-Za-z0-9_-]{21}\.jsonl$/);
   expect(new Set(downloadNames).size).toBe(3);

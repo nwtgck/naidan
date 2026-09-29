@@ -1,4 +1,5 @@
 import * as Comlink from 'comlink';
+import { z } from 'zod';
 
 export type WorkerRemote<Api> = Comlink.Remote<Api>;
 export type WorkerProxy<T extends object> = T & Comlink.ProxyMarked;
@@ -158,6 +159,55 @@ export function subscribeWorkerNotifications<T>({ endpoint, schema, listener }: 
   target.start?.();
   return () => {
     active = false; target.removeEventListener('message', receive);
+  };
+}
+
+/** A schema-checked, single-owner MessagePort boundary for byte/control protocols.
+ * Keep raw postMessage/listeners in this audited module, not in feature code.
+ */
+export function createValidatedMessagePort<Incoming extends z.ZodType, Outgoing extends z.ZodType>({
+  port, incomingSchema, outgoingSchema, onMessage, onError,
+}: {
+  port: MessagePort,
+  incomingSchema: Incoming,
+  outgoingSchema: Outgoing,
+  onMessage: ({ message }: { message: z.infer<Incoming> }) => void | Promise<void>,
+  onError: ({ reason }: { reason: unknown }) => void,
+}): {
+  send: ({ message, transferables }: { message: z.input<Outgoing>, transferables: Transferable[] }) => void,
+  close: () => void,
+} {
+  let closed = false;
+  port.onmessage = (event: MessageEvent<unknown>) => {
+    if (closed) return;
+    try {
+      const result = onMessage({ message: incomingSchema.parse(event.data) });
+      if (result) void result.catch(reason => onError({ reason }));
+    } catch (reason) {
+      onError({ reason });
+    }
+  };
+  port.onmessageerror = () => onError({ reason: new Error('Invalid worker message') });
+  port.start();
+  return {
+    send({ message, transferables }) {
+      if (closed) return;
+      try {
+        port.postMessage(outgoingSchema.parse(message), transferables);
+      } catch (reason) {
+        // Close before notifying: error handlers may try to tell the peer that
+        // the stream failed. A broken port must not recurse through send().
+        closed = true;
+        port.onmessage = null; port.onmessageerror = null; port.close();
+        onError({ reason });
+      }
+    },
+    close() {
+      closed = true;
+      port.onmessage = null;
+      port.onmessageerror = null;
+      port.close();
+    },
   };
 }
 

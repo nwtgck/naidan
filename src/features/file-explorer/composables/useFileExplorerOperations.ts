@@ -1,3 +1,4 @@
+import { downloadStream } from '@/utils/stream-download';
 import { ensureStrings } from '@/strings';
 import { ref } from 'vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
@@ -149,13 +150,13 @@ export function useFileExplorerOperations({
     }
 
     try {
-      const response = await client.readFile({ path: entry.path });
-      const url = URL.createObjectURL(response.blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = entry.name;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      await downloadStream({
+        openStream: () => client.openFileStream({ path: entry.path }),
+        filename: entry.name,
+        // Directory listings are not snapshots: the file may have changed size.
+        size: undefined,
+        signal: undefined,
+      });
     } catch (error) {
       addToast({ message: await ensureStrings.fileExplorer__failed_to_download({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }

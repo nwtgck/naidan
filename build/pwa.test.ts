@@ -8,6 +8,9 @@ import { createWorkerHarness, MemoryCacheStorage, TestClients } from './test-sup
 import { USE_NETWORK_MESSAGE } from '../src/logic/pwa/protocol';
 import { UI_LOCALES } from '../src/01-models/ui-locale';
 
+import { serveByteStream, receiveByteStream, BYTE_STREAM_CHUNK_BYTES } from '../src/utils/byte-stream-port';
+import { downloadStatusSchema, createDownloadUrl, DOWNLOAD_ROOT } from '../src/utils/download/protocol';
+
 let root: string;
 let a: Awaited<ReturnType<typeof buildPWAFixture>>;
 let b: Awaited<ReturnType<typeof buildPWAFixture>>;
@@ -72,6 +75,89 @@ function setup() {
 }
 
 describe('real generated Workbox worker', () => {
+  it.each([['cache-first', 1], ['network-only', 1], ['cache-first', 2], ['network-only', 2]] as const)('streams a multi-hop 64 MiB download locally in %s mode with v%i', async (mode, version) => {
+    const f = setup(), worker = f.make(a);
+    await worker.lifecycle('install'); await worker.lifecycle('activate');
+    if (mode === 'network-only') await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    f.requested.length = 0;
+    f.offline();
+    const chunks = 256;
+    let produced = 0, consumed = 0, maximumAhead = 0;
+    const firstHop = new MessageChannel(), secondHop = new MessageChannel(), control = new MessageChannel();
+    const source = serveByteStream({ port: firstHop.port1, signal: undefined, openStream: async () => new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (produced === chunks) {
+          controller.close(); return;
+        }
+        controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES).fill(produced % 251));
+        produced += 1; maximumAhead = Math.max(maximumAhead, produced - consumed);
+      },
+    }, { highWaterMark: 0 }) });
+    const intermediate = receiveByteStream({ port: firstHop.port2 });
+    const sender = serveByteStream({ port: secondHop.port1, signal: undefined, openStream: async () => intermediate.stream });
+    const statuses: Array<ReturnType<typeof downloadStatusSchema.parse>> = [];
+    control.port1.onmessage = event => {
+      statuses.push(downloadStatusSchema.parse(event.data));
+    };
+    const token = crypto.randomUUID();
+    const downloadUrl = createDownloadUrl({ base: new URL(scope), token, version }).href;
+    const prepared = worker.messageWithPorts({ clientId: 'page', ports: [control.port2, secondHop.port2],
+      data: { type: 'naidan-download/prepare', version, token, metadata: { filename: 'large.bin', size: chunks * BYTE_STREAM_CHUNK_BYTES } } });
+    try {
+      await vi.waitFor(() => expect(statuses).toContainEqual({ type: 'ready', version, token }));
+      expect(produced).toBe(0);
+      // A newly created iframe has its own ID, not the initiating page's ID.
+      const { response, completed } = await worker.streamRequest({ url: downloadUrl,
+        clientId: 'new-download-frame', resultingClientId: 'next-frame', navigation: true, referrer: version === 2 ? '' : scope });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(response.headers.get('content-disposition')).toContain('attachment;');
+      expect(response.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox allow-downloads");
+      expect(response.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
+      expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin');
+      await prepared; // Preparation lease ends at claim, NOT at download EOF.
+      const reader = response.body!.getReader();
+      let total = 0;
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) break;
+        expect(part.value.byteLength).toBe(BYTE_STREAM_CHUNK_BYTES);
+        expect(part.value[0]).toBe(consumed % 251);
+        expect(part.value.at(-1)).toBe(consumed % 251);
+        total += part.value.byteLength; consumed += 1;
+        if (consumed === 1) {
+          const pausedAt = produced;
+          await new Promise(resolve => setTimeout(resolve, 20));
+          expect(produced).toBe(pausedAt);
+        }
+      }
+      reader.releaseLock();
+      await completed; await sender.completed; await source.completed;
+      expect(total).toBe(64 * 1024 * 1024);
+      expect(maximumAhead).toBeLessThanOrEqual(3);
+      expect(f.requested).toEqual([]);
+      expect(await f.storage.keys()).not.toContain(expect.stringContaining(DOWNLOAD_ROOT));
+      expect((await worker.request({ url: downloadUrl })).status).toBe(410);
+    } finally {
+      control.port1.postMessage({ type: 'cancel' });
+      sender.abort({ reason: new Error('test cleanup') }); source.abort({ reason: new Error('test cleanup') });
+      control.port1.close();
+      await prepared;
+    }
+  });
+
+  it('never sends invalid/expired download paths to the network, including after an update', async () => {
+    const f = setup(), old = f.make(a), next = f.make(b);
+    await old.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    f.offline();
+    for (const worker of [old, next]) for (const suffix of ['', 'v0/old', 'v1/missing', 'v99/future', 'v1/missing?invalid=1', 'v2/', 'v2/#?id=missing', 'v2/?id=private', 'v2/private']) {
+      expect((await worker.request({ url: `${scope}${DOWNLOAD_ROOT}${suffix}`, navigation: true })).status).toBe(410);
+    }
+    expect((await old.request({ url: `${scope}${DOWNLOAD_ROOT}v1/missing`, method: 'POST' })).status).toBe(405);
+    expect((await old.request({ url: `${scope}${DOWNLOAD_ROOT.slice(0, -1)}`, navigation: true })).status).toBe(410);
+    expect(f.requested).toEqual([]);
+  });
+
   it('keeps every automatic precache resource but excludes locale packages and source maps', async () => {
     const f = setup(), worker = f.make(a);
     await worker.lifecycle('install'); await worker.lifecycle('activate');

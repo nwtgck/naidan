@@ -27,6 +27,9 @@ const nativeBytes = await vi.hoisted(async () => {
   return { Uint8Array, ArrayBuffer };
 });
 
+const downloadSink = vi.hoisted(() => vi.fn());
+vi.mock('@/utils/stream-download', () => ({ downloadReadableStream: downloadSink }));
+
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn() }) }));
 
 const models = [
@@ -473,8 +476,8 @@ describe('complete Full collection through Session and actual Worker transports'
       }
       const exported: Blob[] = [];
       const collectionWorkerCount = workers.length;
-      vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
-        exported.push(blob as Blob); return 'blob:full-export';
+      downloadSink.mockImplementation(async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
+        exported.push(await new Response(stream).blob());
       });
       vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
       vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);

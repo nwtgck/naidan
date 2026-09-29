@@ -1,3 +1,4 @@
+import type { PreparedEvidenceArchive } from './evidence-archive';
 import { z } from 'zod';
 import { downloadTimingSnapshotSchema, type DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 import { createEvidenceArchive, openEvidenceArchive, setEvidenceFile, type EvidenceArchiveReader } from './evidence-archive';
@@ -49,6 +50,19 @@ export async function verifyOrdinaryDownloadTimingEvidence({ archive, associatio
   if (JSON.stringify(document.association) !== JSON.stringify(associationSchema.parse(association))) {
     throw new Error('Retained Download timing export association mismatch');
   }
+}
+
+export async function prepareRetainedDownloadTimingEvidence({ snapshot, exportId }: {
+  snapshot: DownloadTimingSnapshot;
+  exportId: string;
+}): Promise<PreparedEvidenceArchive> {
+  const association = associationSchema.parse({ kind: 'retained-export', exportId, investigation: 'not-run' });
+  if (snapshot.records.length === 0) throw new Error('No retained Download timing is available in this service session');
+  const file = createOrdinaryDownloadTimingEvidenceFile({ snapshot, association });
+  await readOrdinaryDownloadTimingEvidenceFile({ file });
+  const files = new Map<string, Blob>();
+  setEvidenceFile({ files, path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, content: file });
+  return { files, fileName: `download-timing-${exportId.replace(/[^a-zA-Z0-9_-]/gu, '-')}.zip` };
 }
 
 export async function createRetainedDownloadTimingEvidence({ snapshot, exportId }: {

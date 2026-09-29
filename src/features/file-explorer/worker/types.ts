@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { WorkerCapability, WorkerProxy } from '@/utils/worker-transport';
+import type { WorkerCapability, WorkerProxy, WorkerTransfer } from '@/utils/worker-transport';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import { fileSystemDirectoryHandleReferenceSchema } from '@/utils/file-system-handle-transport';
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
@@ -157,7 +157,6 @@ export const fileExplorerCreateDirectoryArchiveRequestSchema = z.object({
 export const fileExplorerCreateDirectoryArchiveResponseSchema = z.discriminatedUnion('status', [
   z.object({
     status: z.literal('completed'),
-    blob: z.custom<Blob>(),
     skippedEntryCount: z.number().int().nonnegative(),
   }),
   z.object({
@@ -382,8 +381,9 @@ export interface IFileExplorerWorker {
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ request }: { request: FileExplorerReadFileRequest }): Promise<FileExplorerReadFileResponse>,
+  streamFile({ request, port }: WorkerTransfer<{ request: FileExplorerReadFileRequest, port: MessagePort }>): Promise<void>,
   suggestArchiveExclusions({ request }: { request: FileExplorerSuggestArchiveExclusionsRequest }): Promise<FileExplorerSuggestArchiveExclusionsResponse>,
-  createDirectoryArchive({ request }: { request: FileExplorerCreateDirectoryArchiveRequest }): Promise<FileExplorerCreateDirectoryArchiveResponse>,
+  createDirectoryArchive({ request, port }: WorkerTransfer<{ request: FileExplorerCreateDirectoryArchiveRequest, port: MessagePort }>): Promise<FileExplorerCreateDirectoryArchiveResponse>,
   cancelDirectoryArchive({ request }: { request: FileExplorerCancelDirectoryArchiveRequest }): Promise<void>,
   createFile({ request }: { request: FileExplorerCreateFileRequest }): Promise<void>,
   createFolder({ request }: { request: FileExplorerCreateFolderRequest }): Promise<void>,
@@ -402,6 +402,7 @@ export interface IFileExplorerWorker {
 
 
 export interface FileExplorerDirectoryArchiveJob {
+  stream: ReadableStream<Uint8Array>,
   result: Promise<FileExplorerCreateDirectoryArchiveResponse>,
   cancel(): Promise<void>,
 }
@@ -416,6 +417,7 @@ export interface FileExplorerWorkerClient {
   readDirectory({ path }: { path: string }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ path, mode }: { path: string, mode: 'bounded' | 'force' }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ path }: { path: string }): Promise<FileExplorerReadFileResponse>,
+  openFileStream({ path }: { path: string }): Promise<ReadableStream<Uint8Array>>,
   suggestArchiveExclusions({ directoryPath, query, excludedRelativePaths }: { directoryPath: string, query: string, excludedRelativePaths: string[] }): Promise<FileExplorerSuggestArchiveExclusionsResponse>,
   startDirectoryArchive({ directoryPath, excludedRelativePaths }: { directoryPath: string, excludedRelativePaths: string[] }): FileExplorerDirectoryArchiveJob,
   createFile({ parentPath, name }: { parentPath: string, name: string }): Promise<void>,

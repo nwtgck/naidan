@@ -1,3 +1,4 @@
+import type { EvidenceStreamInput } from '@/features/transformers-js/model-support-investigation/evidence-worker/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Blob as NodeBlob } from 'node:buffer';
 import { webcrypto } from 'node:crypto';
@@ -44,6 +45,9 @@ const evidenceMocks = vi.hoisted(() => ({
   dispose: vi.fn(),
 }));
 
+const streamDownloadMocks = vi.hoisted(() => ({ download: vi.fn() }));
+vi.mock('@/utils/stream-download', () => ({ downloadReadableStream: streamDownloadMocks.download }));
+
 const confirmMocks = vi.hoisted(() => ({ showConfirm: vi.fn() }));
 
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => confirmMocks }));
@@ -58,7 +62,22 @@ vi.mock('@/features/transformers-js/model-support-investigation/worker/client-ho
 vi.mock('@/features/transformers-js/model-support-investigation/evidence-worker/client-hosted', () => ({
   createModelSupportInvestigationEvidenceWorkerClient: () => {
     evidenceMocks.createClient();
-    return { ...evidenceMocks };
+    return { ...evidenceMocks, async openEvidenceStream({ input }: { input: EvidenceStreamInput }) {
+      const archive = await (async () => {
+        switch (input.kind) {
+        case 'partial': { const { kind: _kind, ...request } = input; return await evidenceMocks.createPartialEvidence(request); }
+        case 'batch': { const { kind: _kind, ...request } = input; return await evidenceMocks.createBatchEvidence(request); }
+        case 'retained-timing': { const { kind: _kind, ...request } = input; return await evidenceMocks.createRetainedDownloadTimingEvidence(request); }
+        case 'download-verification': throw new Error('Unexpected download-verification fixture');
+        default: { const exhaustive: never = input; throw new Error(String(exhaustive)); }
+        }
+      })();
+      // The UI owns a stream now. These presentation fixtures do not encode ZIPs;
+      // real archive bytes and transports are covered by capture/full-flow tests.
+      return { stream: new ReadableStream<Uint8Array>({ start(controller) {
+        controller.close();
+      } }), fileName: archive.fileName };
+    } };
   },
 }));
 
@@ -508,6 +527,9 @@ describe('ModelSupportInvestigationModal', () => {
   beforeEach(() => {
     sessionTestOnly.clear();
     vi.clearAllMocks();
+    streamDownloadMocks.download.mockImplementation(async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
+      await stream.pipeTo(new WritableStream());
+    });
     confirmMocks.showConfirm.mockResolvedValue(true);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -601,7 +623,7 @@ describe('ModelSupportInvestigationModal', () => {
     expect(evidenceMocks.createBatchEvidence).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="model-support-investigation-setup"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="model-support-retained-timing-truncated"]').exists()).toBe(true);
-    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(streamDownloadMocks.download).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
@@ -632,7 +654,7 @@ describe('ModelSupportInvestigationModal', () => {
       expect(startButton.attributes('disabled')).toBeDefined();
       expect(exportButton.attributes('disabled')).toBeDefined();
       expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Retained export Worker termination unavailable');
-      expect(URL.createObjectURL).not.toHaveBeenCalled();
+      expect(streamDownloadMocks.download).toHaveBeenCalledTimes(1);
     } finally {
       wrapper.unmount();
       await flushPromises();
@@ -649,7 +671,7 @@ describe('ModelSupportInvestigationModal', () => {
     await flushPromises();
     pending.resolve({ blob: new Blob(['late']), fileName: 'late.zip' });
     await flushPromises();
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(streamDownloadMocks.download).not.toHaveBeenCalled();
     expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
     expect(evidenceMocks.dispose).toHaveBeenCalled();
   });
@@ -991,12 +1013,12 @@ org/second
     await flushPromises();
     oldEvidence.resolve({ blob: new Blob(['old-evidence']), fileName: 'old-evidence.zip' });
     await flushPromises();
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(streamDownloadMocks.download).not.toHaveBeenCalled();
     expect(reopened.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Not Run');
     await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
     await flushPromises();
     expect(evidenceMocks.createPartialEvidence.mock.calls[1]?.[0].run.runId).toBe('fresh-run');
-    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+    expect(streamDownloadMocks.download).toHaveBeenCalledOnce();
     reopened.unmount();
   });
 
@@ -2421,25 +2443,20 @@ org/second
     wrapper.unmount();
   });
 
-  it('clicks a connected Evidence download anchor before revoking its Object URL', async () => {
-    const click = vi.mocked(HTMLAnchorElement.prototype.click);
-    click.mockImplementation(function (this: HTMLAnchorElement) {
-      expect(this.isConnected).toBe(true);
-      expect(this.download).toBe('evidence.zip');
-      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
-    });
-
-    const wrapper = mount(ModelSupportInvestigationModal, {
-      props: { modelId: 'hf.co/org/model' },
-    });
+  it('keeps the Evidence Worker alive until the download consumer finishes', async () => {
+    const consumed = Promise.withResolvers<void>();
+    streamDownloadMocks.download.mockReturnValueOnce(consumed.promise);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'hf.co/org/model' } });
     await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
-
     await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
-    await vi.waitFor(() => expect(click).toHaveBeenCalledTimes(1));
-
-    expect(document.querySelector('a[download="evidence.zip"]')).toBeNull();
-    await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:evidence'));
+    await flushPromises();
+    expect(streamDownloadMocks.download).toHaveBeenCalledWith(expect.objectContaining({ filename: 'evidence.zip', stream: expect.any(ReadableStream) }));
+    expect(evidenceMocks.dispose).not.toHaveBeenCalled();
+    consumed.resolve();
+    await flushPromises();
+    expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
@@ -2475,7 +2492,7 @@ org/second
     await flushPromises();
 
     expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
-    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(streamDownloadMocks.download).toHaveBeenCalledTimes(1);
     expect(wrapper.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Passed');
     const exportButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-investigation-download"]');
     exportButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -2486,7 +2503,7 @@ org/second
     expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
     expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
     expect(exportButton.attributes('disabled')).toBeUndefined();
-    expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
+    expect(streamDownloadMocks.download).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 
@@ -2506,7 +2523,7 @@ org/second
       await flushPromises();
       await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
       await flushPromises();
-      expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+      expect(streamDownloadMocks.download).toHaveBeenCalledTimes(1);
       pending.resolve(completed);
       await flushPromises();
       expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
@@ -2516,7 +2533,7 @@ org/second
       expect(exportButton.attributes('disabled')).toBeUndefined();
       await exportButton.trigger('click');
       await flushPromises();
-      expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
+      expect(streamDownloadMocks.download).toHaveBeenCalledTimes(2);
       expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
     } finally {
       wrapper.unmount();
@@ -2537,7 +2554,7 @@ org/second
 
     expect(wrapper.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Failed');
     expect(wrapper.text()).toContain('archive verification failed');
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(streamDownloadMocks.download).not.toHaveBeenCalled();
     expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });

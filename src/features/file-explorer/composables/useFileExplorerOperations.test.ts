@@ -1,3 +1,4 @@
+import { downloadStream } from '@/utils/stream-download';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { ref } from 'vue';
@@ -8,6 +9,7 @@ import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/t
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
 const mockAddToast = vi.fn();
 
+vi.mock('@/utils/stream-download', () => ({ downloadStream: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/composables/useConfirm', () => ({
   useConfirm: () => ({ showConfirm: mockShowConfirm }),
 }));
@@ -48,6 +50,7 @@ describe('useFileExplorerOperations', () => {
     client = {
       readDirectory: vi.fn(),
       readPreview: vi.fn(),
+      openFileStream: vi.fn(),
       readFile: vi.fn().mockResolvedValue({ blob: new File([], 'download.txt') }),
       createFile: vi.fn().mockResolvedValue(undefined),
       createFolder: vi.fn().mockResolvedValue(undefined),
@@ -79,6 +82,7 @@ describe('useFileExplorerOperations', () => {
         resultState: 'complete',
       }),
       startDirectoryArchive: vi.fn(() => ({
+        stream: new ReadableStream<Uint8Array>(),
         result: Promise.resolve({ status: 'cancelled' as const }),
         cancel: vi.fn().mockResolvedValue(undefined),
       })),
@@ -215,20 +219,15 @@ describe('useFileExplorerOperations', () => {
     await expect(ops.downloadEntry({ entry })).resolves.toBeUndefined();
   });
 
-  it('downloadEntry creates and clicks a download anchor for files', async () => {
-    const anchor = { href: '', download: '', click: vi.fn() };
-    vi.spyOn(document, 'createElement').mockReturnValueOnce(anchor as unknown as HTMLElement);
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
-    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL');
-
+  it('downloadEntry opens a lazy streaming download for files', async () => {
     const ops = makeOps();
-    const entry = makeEntry('photo.png');
+    const entry = makeEntry('file.txt');
     await ops.downloadEntry({ entry });
+    expect(downloadStream).toHaveBeenCalledWith({
+      filename: 'file.txt', size: undefined, signal: undefined, openStream: expect.any(Function),
+    });
+    expect(client.readFile).not.toHaveBeenCalled();
 
-    expect(client.readFile).toHaveBeenCalledWith({ path: '/workspace/photo.png' });
-    expect(anchor.download).toBe('photo.png');
-    expect(anchor.click).toHaveBeenCalled();
-    expect(revokeSpy).toHaveBeenCalledWith('blob:fake');
   });
 
 });

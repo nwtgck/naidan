@@ -1,8 +1,8 @@
+import { createFileExplorerStreamClient } from './stream-client';
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { releaseWorkerRemote, workerCapability, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import {
-  fileExplorerCreateDirectoryArchiveResponseSchema,
   fileExplorerAnalyzeZipUploadResponseSchema,
   fileExplorerExecuteZipUploadResponseSchema,
   fileExplorerReadZipUploadPreviewDirectoryResponseSchema,
@@ -20,14 +20,6 @@ import {
   hasFileExplorerFileSystemHandles,
   mapFileExplorerRootToOpfsLocators,
 } from './root-transport';
-
-function createDirectoryArchiveJobId(): string {
-  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
-  }
-  return `file-explorer-directory-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 
 function createZipUploadJobId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -95,6 +87,7 @@ export async function createFileExplorerWorkerClient({
     })
     : await createRuntime({ requestRoot: root });
   const { worker, remote, sessionId } = runtime;
+  const streams = createFileExplorerStreamClient({ remote, sessionId, worker: worker });
 
   return {
     async readDirectory({ path }) {
@@ -119,17 +112,8 @@ export async function createFileExplorerWorkerClient({
         }),
       );
     },
-    startDirectoryArchive({ directoryPath, excludedRelativePaths }) {
-      const jobId = createDirectoryArchiveJobId();
-      return {
-        result: remote.createDirectoryArchive({
-          request: { sessionId, jobId, directoryPath, excludedRelativePaths },
-        }).then(response => fileExplorerCreateDirectoryArchiveResponseSchema.parse(response)),
-        async cancel() {
-          await remote.cancelDirectoryArchive({ request: { sessionId, jobId } });
-        },
-      };
-    },
+    openFileStream: streams.openFileStream,
+    startDirectoryArchive: streams.startDirectoryArchive,
     async createFile({ parentPath, name }) {
       await remote.createFile({ request: { sessionId, parentPath, name } });
     },
@@ -182,6 +166,7 @@ export async function createFileExplorerWorkerClient({
       await remote.uploadFiles({ request: { sessionId, targetDirectoryPath, files } });
     },
     async dispose() {
+      streams.disposeStreams();
       try {
         await remote.disposeSession({ request: { sessionId } });
         await releaseWorkerRemote({ remote });

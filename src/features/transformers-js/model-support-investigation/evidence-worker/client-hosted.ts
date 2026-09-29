@@ -1,4 +1,7 @@
-import { releaseWorkerRemote, wrapWorkerRemote } from "@/utils/worker-transport";
+import { z } from 'zod';
+import { receiveByteStream } from '@/utils/byte-stream-port';
+import { createEvidenceStreamRequest } from './stream-request';
+import { releaseWorkerRemote, wrapWorkerRemote, workerTransfer } from "@/utils/worker-transport";
 import type {
   IModelSupportInvestigationEvidenceWorker,
   ModelSupportInvestigationEvidenceWorkerClient,
@@ -44,6 +47,7 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
     },
   );
   const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: worker });
+  const activeStreams = new Set<ReturnType<typeof receiveByteStream>>();
   let disposed = false;
   let workerTerminated = false;
   const activeOperationRejectors = new Set<ReturnType<typeof Promise.withResolvers<never>>['reject']>();
@@ -51,8 +55,20 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
   function terminateWorker(): void {
     if (workerTerminated) return;
     workerTerminated = true;
+    for (const stream of activeStreams) stream.abort({ reason: new ModelSupportInvestigationEvidenceExportDisposedError() });
+    activeStreams.clear();
+    worker.removeEventListener('error', handleWorkerFailure);
+    worker.removeEventListener('messageerror', handleWorkerFailure);
     worker.terminate();
   }
+
+  function handleWorkerFailure(): void {
+    const error = new Error('Evidence Worker stopped responding');
+    for (const reject of activeOperationRejectors) reject(error);
+    terminateWorker();
+  }
+  worker.addEventListener('error', handleWorkerFailure);
+  worker.addEventListener('messageerror', handleWorkerFailure);
 
   function releaseRemoteBestEffort(): void {
     try {
@@ -88,6 +104,26 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
   }
 
   return {
+    async openEvidenceStream({ input }) {
+      if (disposed || workerTerminated) throw new Error('Model Support Investigation Evidence Worker client is disposed');
+      // Snapshot before the first await, exactly as for the inspection APIs.
+      const request = createEvidenceStreamRequest({ input });
+      const channel = new MessageChannel();
+      const received = receiveByteStream({ port: channel.port1 });
+      activeStreams.add(received);
+      void received.completed.then(() => activeStreams.delete(received), () => activeStreams.delete(received));
+      try {
+        // The timeout covers validation/metadata, never a slow disk or paused download.
+        const metadata = z.object({ fileName: z.string().min(1) }).strict().parse(await runExportOperation({
+          operation: remote.streamEvidence(workerTransfer({ value: { input: request, port: channel.port2 }, transferables: [channel.port2] })),
+        }));
+        return { stream: received.stream, fileName: metadata.fileName };
+      } catch (reason) {
+        received.abort({ reason });
+        channel.port2.close();
+        throw reason;
+      }
+    },
     async createPartialEvidence({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming }) {
       if (disposed || workerTerminated) {
         throw new Error("Model Support Investigation Evidence Worker client is disposed");

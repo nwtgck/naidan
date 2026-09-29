@@ -1,3 +1,7 @@
+import { WeshVFS } from '@/features/wesh/vfs';
+import { TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
+import { receiveByteStream } from '@/utils/byte-stream-port';
+import { MessageChannel } from 'node:worker_threads';
 import JSZip from 'jszip';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
@@ -208,7 +212,11 @@ describe('file-explorer.worker.impl', () => {
       resultState: 'complete',
     });
 
+    const channel = new MessageChannel();
+    const received = receiveByteStream({ port: channel.port1 as unknown as MessagePort });
+    const bytesPromise = new Response(received.stream).arrayBuffer();
     const archive = await worker.createDirectoryArchive({
+      port: channel.port2 as unknown as MessagePort,
       request: {
         sessionId,
         jobId: 'archive-job-1',
@@ -219,7 +227,7 @@ describe('file-explorer.worker.impl', () => {
     expect(archive.status).toBe('completed');
     if (archive.status !== 'completed') throw new Error('Expected a completed archive');
 
-    const zipBytes = Uint8Array.from(new Uint8Array(await archive.blob.arrayBuffer()));
+    const zipBytes = Uint8Array.from(new Uint8Array(await bytesPromise));
     const zip = await JSZip.loadAsync(zipBytes);
     expect(Object.keys(zip.files)).toContain('my-project/');
     expect(Object.keys(zip.files)).toContain('my-project/src/');
@@ -417,6 +425,43 @@ describe('file-explorer.worker.impl', () => {
       },
     });
     expect(targetListing.entries.map(entry => entry.name)).not.toContain('source.txt');
+  });
+
+  it('bounds virtual text preview reads before buffering and never reads unsupported binary previews', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'large-preview' });
+    for (const name of ['large.txt', 'large.bin']) {
+      const file = await root.getFileHandle(name, { create: true });
+      file.content = new Uint8Array(TEXT_PREVIEW_SIZE_LIMIT + 1024 * 1024);
+    }
+    const { sessionId } = await worker.prepareSession({ request: { root: {
+      kind: 'wesh-mounts', rootName: 'Files', mounts: [{ type: 'directory', path: '/preview',
+        handle: root as unknown as FileSystemDirectoryHandle, readOnly: true }],
+    } } });
+    const nativeHandle = vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
+    const originalOpen = WeshVFS.prototype.open;
+    let bytesRead = 0;
+    const opened = vi.spyOn(WeshVFS.prototype, 'open').mockImplementation(async function (this: WeshVFS, input) {
+      const handle = await originalOpen.call(this, input);
+      const originalRead = handle.read.bind(handle);
+      vi.spyOn(handle, 'read').mockImplementation(async input => {
+        const result = await originalRead(input);
+        bytesRead += result.bytesRead;
+        return result;
+      });
+      return handle;
+    });
+    try {
+      expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.txt', mode: 'bounded' } }))
+        .toMatchObject({ kind: 'text', oversized: true, rawText: '' });
+      expect(bytesRead).toBe(TEXT_PREVIEW_SIZE_LIMIT + 1);
+      const calls = opened.mock.calls.length;
+      expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.bin', mode: 'bounded' } }))
+        .toEqual({ kind: 'binary', oversized: false });
+      expect(opened).toHaveBeenCalledTimes(calls);
+    } finally {
+      opened.mockRestore(); nativeHandle.mockRestore();
+      await worker.disposeSession({ request: { sessionId } });
+    }
   });
 
   it('exposes virtual directories for wesh mounts roots', async () => {

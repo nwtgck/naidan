@@ -1,3 +1,4 @@
+import { serveByteStream, byteStreamPortSchema } from '@/utils/byte-stream-port';
 
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { WeshVFS } from '@/features/wesh/vfs';
@@ -116,6 +117,7 @@ type ResolvedVirtualFile = {
 
 const sessions = new Map<string, FileExplorerSession>();
 const directoryArchiveJobs = new Map<string, AbortController>();
+const fileReadJobs = new Map<string, Set<AbortController>>();
 const zipUploadJobs = new Map<string, AbortController>();
 const zipUploadAnalyses = new Map<string, {
   readonly targetDirectoryPath: string,
@@ -458,12 +460,14 @@ async function resolveFile({
   }
 }
 
-async function readAllBytesFromVirtualFile({
+async function readVirtualFileBytes({
   vfs,
   path,
+  maximumBytes,
 }: {
   vfs: WeshVFS,
   path: string,
+  maximumBytes: number | undefined,
 }): Promise<Uint8Array> {
   const handle = await vfs.open({
     path,
@@ -478,13 +482,15 @@ async function readAllBytesFromVirtualFile({
 
   try {
     const chunks: Uint8Array[] = [];
-    while (true) {
-      const buffer = new Uint8Array(64 * 1024);
+    let readBytes = 0;
+    while (maximumBytes === undefined || readBytes < maximumBytes) {
+      const buffer = new Uint8Array(Math.min(64 * 1024, maximumBytes === undefined ? Infinity : maximumBytes - readBytes));
       const { bytesRead } = await handle.read({ buffer });
       if (bytesRead === 0) {
         break;
       }
       chunks.push(buffer.subarray(0, bytesRead));
+      readBytes += bytesRead;
     }
 
     const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
@@ -1193,6 +1199,33 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       }
 
       const resolvedFile = await resolveFile({ session, path: normalizedPath });
+      const extension = getFileExtension({ name: resolvedFile.name });
+      const mimeCategory = getMimeCategory({ extension });
+      // Unsupported binary previews need no payload, especially for huge VFS files.
+      let previewLimit: number;
+      switch (mimeCategory) {
+      case 'binary':
+        return fileExplorerReadPreviewResponseSchema.parse({ kind: 'binary', oversized: false });
+      case 'text': previewLimit = TEXT_PREVIEW_SIZE_LIMIT; break;
+      case 'image':
+      case 'video':
+      case 'audio': previewLimit = MEDIA_PREVIEW_SIZE_LIMIT; break;
+      default: {
+        const exhaustive: never = mimeCategory;
+        throw new Error(`Unhandled preview category: ${String(exhaustive)}`);
+      }
+      }
+      const maximumBytes = (() => {
+        const mode = validated.mode;
+        switch (mode) {
+        case 'bounded': return previewLimit + 1;
+        case 'force': return undefined;
+        default: {
+          const exhaustive: never = mode;
+          throw new Error(`Unhandled preview mode: ${String(exhaustive)}`);
+        }
+        }
+      })();
       const nativeFile = await (() => {
         switch (resolvedFile.kind) {
         case 'native-file':
@@ -1210,9 +1243,12 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         case 'native-file':
           return Promise.resolve(undefined);
         case 'virtual-file':
-          return readAllBytesFromVirtualFile({
+          return readVirtualFileBytes({
             vfs: resolvedFile.vfs,
             path: resolvedFile.path,
+            // Read one byte beyond the limit to detect truncation, even if a
+            // concurrently changing virtual file has an inaccurate stat size.
+            maximumBytes,
           });
         default: {
           const _exhaustiveCheck: never = resolvedFile;
@@ -1220,8 +1256,6 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         }
         }
       })();
-      const extension = getFileExtension({ name: resolvedFile.name });
-      const mimeCategory = getMimeCategory({ extension });
       const fileSize = nativeFile?.size ?? virtualBytes?.byteLength ?? 0;
 
       switch (mimeCategory) {
@@ -1274,11 +1308,6 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           mimeType: nativeFile?.type ?? '',
           oversized: false,
         });
-      case 'binary':
-        return fileExplorerReadPreviewResponseSchema.parse({
-          kind: 'binary',
-          oversized: false,
-        });
       default: {
         const _exhaustiveCheck: never = mimeCategory;
         throw new Error(`Unhandled mime category: ${String(_exhaustiveCheck)}`);
@@ -1301,9 +1330,10 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       case 'virtual-file':
         return fileExplorerReadFileResponseSchema.parse({
           blob: new Blob([uint8ArrayToBlobPart({
-            bytes: await readAllBytesFromVirtualFile({
+            bytes: await readVirtualFileBytes({
               vfs: resolvedFile.vfs,
               path: resolvedFile.path,
+              maximumBytes: undefined,
             }),
           })]),
         });
@@ -1311,6 +1341,27 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         const _exhaustiveCheck: never = resolvedFile;
         throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
       }
+      }
+    },
+
+    async streamFile({ request, port }) {
+      byteStreamPortSchema.parse(port);
+      const validated = fileExplorerReadFileRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      const abortController = new AbortController();
+      const jobs = fileReadJobs.get(validated.sessionId) ?? new Set<AbortController>();
+      fileReadJobs.set(validated.sessionId, jobs);
+      jobs.add(abortController);
+      const source = serveByteStream({
+        port,
+        openStream: () => createDirectoryArchiveAccess({ session }).openFileStream({ path: validated.path }),
+        signal: abortController.signal,
+      });
+      try {
+        await source.completed;
+      } finally {
+        jobs.delete(abortController);
+        if (jobs.size === 0) fileReadJobs.delete(validated.sessionId);
       }
     },
 
@@ -1373,7 +1424,8 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       });
     },
 
-    async createDirectoryArchive({ request }) {
+    async createDirectoryArchive({ request, port }) {
+      byteStreamPortSchema.parse(port);
       const validated = fileExplorerCreateDirectoryArchiveRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
       const jobKey = createDirectoryArchiveJobKey({
@@ -1391,7 +1443,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           path: normalizedPath,
           rootName: session.rootName,
         });
-        const result = await createFileExplorerDirectoryArchive({
+        const archive = await createFileExplorerDirectoryArchive({
           access: createDirectoryArchiveAccess({ session }),
           sourceRootPath: normalizedPath,
           archiveRootName,
@@ -1400,9 +1452,11 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           }),
           signal: abortController.signal,
         });
+        const source = serveByteStream({ port, openStream: async () => archive.stream, signal: abortController.signal });
+        await source.completed;
+        const result = await archive.completed;
         return fileExplorerCreateDirectoryArchiveResponseSchema.parse({
           status: 'completed',
-          blob: result.blob,
           skippedEntryCount: result.skippedEntryCount,
         });
       } catch (error: unknown) {
@@ -1411,6 +1465,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         }
         throw error;
       } finally {
+        abortController.abort(new DOMException('Directory archive finished', 'AbortError'));
         directoryArchiveJobs.delete(jobKey);
       }
     },
@@ -1773,6 +1828,10 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
     async disposeSession({ request }) {
       const validated = fileExplorerDisposeSessionRequestSchema.parse(request);
       sessions.delete(validated.sessionId);
+      for (const controller of fileReadJobs.get(validated.sessionId) ?? []) {
+        controller.abort(new DOMException('File explorer session disposed', 'AbortError'));
+      }
+      fileReadJobs.delete(validated.sessionId);
       for (const [jobKey, abortController] of directoryArchiveJobs) {
         if (jobKey.startsWith(`${validated.sessionId}\0`)) {
           abortController.abort(new DOMException('File explorer session disposed', 'AbortError'));
