@@ -14,6 +14,7 @@ function fixture() {
   const worker = new EventTarget();
   const remote = {
     streamFile: vi.fn(),
+    prepareFileDownload: vi.fn(),
     createDirectoryArchive: vi.fn(({ port: _port }: { port: MessagePort }) => new Promise(() => undefined)),
     cancelDirectoryArchive: vi.fn(async () => undefined),
   };
@@ -74,4 +75,38 @@ describe('File Explorer stream client lifecycle', () => {
     client.disposeStreams();
     await rejected;
   });
+  it('returns the same validated native snapshot without opening a byte stream', async () => {
+    const { remote, client } = fixture();
+    const file = new File(['data'], 'native');
+    remote.prepareFileDownload.mockResolvedValue({ kind: 'file', blob: file });
+    const prepared = await client.prepareFileDownload({ path: '/native' });
+    expect(prepared.kind).toBe('file');
+    if (prepared.kind === 'file') expect(prepared.blob).toBe(file);
+    expect(remote.prepareFileDownload).toHaveBeenCalledWith({ request: { sessionId: 'session', path: '/native' } });
+    expect(remote.streamFile).not.toHaveBeenCalled();
+  });
+
+  it('rejects a forged file reference or unsafe size without reading anything', async () => {
+    const { remote, client } = fixture();
+    remote.prepareFileDownload.mockResolvedValue({ kind: 'file', blob: { size: 3 } });
+    await expect(client.prepareFileDownload({ path: '/invalid' })).rejects.toThrow();
+    const file = new Blob();
+    Object.defineProperty(file, 'size', { value: Number.MAX_SAFE_INTEGER + 1 });
+    remote.prepareFileDownload.mockResolvedValue({ kind: 'file', blob: file });
+    await expect(client.prepareFileDownload({ path: '/invalid-size' })).rejects.toThrow();
+    expect(remote.streamFile).not.toHaveBeenCalled();
+  });
+
+  it.each(['error', 'dispose'] as const)('finishes blocked File preparation on %s', async reason => {
+    const { remote, client, worker } = fixture();
+    remote.prepareFileDownload.mockReturnValue(new Promise(() => undefined));
+    const pending = client.prepareFileDownload({ path: '/file' });
+    const rejected = expect(pending).rejects.toThrow();
+    if (reason === 'error') worker.dispatchEvent(new Event('error'));
+    else client.disposeStreams();
+    await rejected;
+    await expect(client.prepareFileDownload({ path: '/later' })).rejects.toThrow();
+    expect(remote.prepareFileDownload).toHaveBeenCalledOnce();
+  });
+
 });

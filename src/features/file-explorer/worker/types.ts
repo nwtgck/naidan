@@ -129,6 +129,21 @@ export const fileExplorerReadFileResponseSchema = z.object({
 });
 
 
+// Keep the native object's prototype; do not parse it as a plain object. Like
+// the existing handle references this also accepts conforming host/test objects.
+const downloadBlobReferenceSchema = z.custom<Blob>(value => value !== null && typeof value === 'object'
+  && 'size' in value && typeof value.size === 'number' && Number.isSafeInteger(value.size) && value.size >= 0
+  && 'stream' in value && typeof value.stream === 'function'
+  && 'slice' in value && typeof value.slice === 'function');
+
+export const fileExplorerPrepareFileDownloadResponseSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('file'), blob: downloadBlobReferenceSchema }),
+  // A virtual file has no stable Blob snapshot. Do not use its stat/listing size.
+  z.object({ kind: z.literal('stream') }),
+]);
+export type FileExplorerPrepareFileDownloadResponse = z.infer<typeof fileExplorerPrepareFileDownloadResponseSchema>;
+
+
 export const fileExplorerSuggestArchiveExclusionsRequestSchema = z.object({
   sessionId: z.string().min(1),
   directoryPath: fileExplorerPathSchema,
@@ -381,6 +396,7 @@ export interface IFileExplorerWorker {
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ request }: { request: FileExplorerReadFileRequest }): Promise<FileExplorerReadFileResponse>,
+  prepareFileDownload({ request }: { request: FileExplorerReadFileRequest }): Promise<FileExplorerPrepareFileDownloadResponse>,
   streamFile({ request, port }: WorkerTransfer<{ request: FileExplorerReadFileRequest, port: MessagePort }>): Promise<void>,
   suggestArchiveExclusions({ request }: { request: FileExplorerSuggestArchiveExclusionsRequest }): Promise<FileExplorerSuggestArchiveExclusionsResponse>,
   createDirectoryArchive({ request, port }: WorkerTransfer<{ request: FileExplorerCreateDirectoryArchiveRequest, port: MessagePort }>): Promise<FileExplorerCreateDirectoryArchiveResponse>,
@@ -417,6 +433,7 @@ export interface FileExplorerWorkerClient {
   readDirectory({ path }: { path: string }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ path, mode }: { path: string, mode: 'bounded' | 'force' }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ path }: { path: string }): Promise<FileExplorerReadFileResponse>,
+  prepareFileDownload({ path }: { path: string }): Promise<FileExplorerPrepareFileDownloadResponse>,
   openFileStream({ path }: { path: string }): Promise<ReadableStream<Uint8Array>>,
   suggestArchiveExclusions({ directoryPath, query, excludedRelativePaths }: { directoryPath: string, query: string, excludedRelativePaths: string[] }): Promise<FileExplorerSuggestArchiveExclusionsResponse>,
   startDirectoryArchive({ directoryPath, excludedRelativePaths }: { directoryPath: string, excludedRelativePaths: string[] }): FileExplorerDirectoryArchiveJob,

@@ -112,6 +112,7 @@ describe('real generated Workbox worker', () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('referrer-policy')).toBe('no-referrer');
       expect(response.headers.get('content-disposition')).toContain('attachment;');
+      expect(response.headers.get('content-length')).toBe(String(chunks * BYTE_STREAM_CHUNK_BYTES));
       expect(response.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox allow-downloads");
       expect(response.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
       expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin');

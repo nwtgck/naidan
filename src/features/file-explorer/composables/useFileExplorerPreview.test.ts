@@ -93,6 +93,7 @@ describe('useFileExplorerPreview', () => {
         }
       }),
       readFile: vi.fn(),
+      prepareFileDownload: vi.fn().mockResolvedValue({ kind: 'stream' }),
       openFileStream: vi.fn(),
       createFile: vi.fn(),
       createFolder: vi.fn(),

@@ -9,7 +9,7 @@ import {
 
 export type StreamDownloadOptions = {
   filename: string,
-  /** Exact byte length only; omit for generated ZIPs or mutable files. */
+  /** Exact output byte length only, including zero; never a listing/estimated size. */
   size: number | undefined,
   signal: AbortSignal | undefined,
 };
@@ -161,6 +161,24 @@ async function downloadBufferedStream({ openStream, filename, size, signal }: {
 export async function downloadStream({ openStream, filename, size, signal }: StreamDownloadOptions & {
   openStream: StreamFactory,
 }): Promise<void> {
+  await downloadSource({ openStream, filename, size, signal, fallbackFile: undefined });
+}
+
+/**
+ * The same File/Blob supplies both exact size and bytes. In particular, an OPFS
+ * File must not be converted to a buffered Blob just because no SW is active.
+ * This does not reopen a path or promise that a modified disk file stays readable.
+ */
+export async function downloadFile({ file, filename, signal }: {
+  file: Blob, filename: string, signal: AbortSignal | undefined,
+}): Promise<void> {
+  await downloadSource({ openStream: async () => file.stream(), filename, size: file.size, signal, fallbackFile: file });
+}
+
+async function downloadSource({ openStream, filename, size, signal, fallbackFile }: StreamDownloadOptions & {
+  openStream: StreamFactory,
+  fallbackFile: Blob | undefined,
+}): Promise<void> {
   signal?.throwIfAborted();
   const metadata = downloadMetadataSchema.parse({ filename: normalizeDownloadFilename({ filename }), size });
   const lifecycle = new AbortController();
@@ -196,7 +214,12 @@ export async function downloadStream({ openStream, filename, size, signal }: Str
       // to retry with the untouched input, after downloadWithWorker's cleanup.
     }
     lifecycle.signal.throwIfAborted();
-    await downloadBufferedStream({ openStream, filename: metadata.filename, size: metadata.size, signal: lifecycle.signal });
+    if (fallbackFile !== undefined) {
+      // Keep the browser-backed File intact: no reader, chunks, or second Blob.
+      downloadBlob({ blob: fallbackFile, filename: metadata.filename });
+    } else {
+      await downloadBufferedStream({ openStream, filename: metadata.filename, size: metadata.size, signal: lifecycle.signal });
+    }
   } finally {
     signal?.removeEventListener('abort', onAbort);
     window.removeEventListener('pagehide', onPageHide);

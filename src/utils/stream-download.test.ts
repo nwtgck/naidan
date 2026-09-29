@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import { serveByteStream, receiveByteStream } from './byte-stream-port';
 import { StreamingZipWriter, createWebZipCompressionCodec } from './zip-stream';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from './zip-stream/memory';
-import { downloadStream, downloadReadableStream, downloadBlob, TEST_ONLY } from './stream-download';
+import { downloadStream, downloadReadableStream, downloadBlob, downloadFile, TEST_ONLY } from './stream-download';
 import { DOWNLOAD_HEARTBEAT_MS, DOWNLOAD_CLAIM_TIMEOUT_MS, DOWNLOAD_VERSION, DOWNLOAD_FRAGMENT_PATH, downloadPrepareSchema } from './download/protocol';
 import { installStreamDownloadWorker, type DownloadMessageEvent, type DownloadFetchEvent, type DownloadWorkerScope } from './download/service-worker';
 
@@ -12,6 +12,7 @@ let onMessage: (event: DownloadMessageEvent) => void;
 let onFetch: (event: DownloadFetchEvent) => void;
 let lifetimes: Promise<unknown>[];
 let consumed: number[][];
+let responseHeaders: Headers[];
 let worker: EventTarget & { state: string, postMessage: ReturnType<typeof vi.fn<(message: unknown, ports: MessagePort[]) => void>> };
 let registration: { active: typeof worker | null, scope: string, update: ReturnType<typeof vi.fn>, navigationPreload?: { getState: ReturnType<typeof vi.fn>, disable: ReturnType<typeof vi.fn> } };
 let getRegistration: ReturnType<typeof vi.fn<() => Promise<typeof registration | undefined>>>;
@@ -26,6 +27,7 @@ const { DOWNLOAD_SETUP_TIMEOUT_MS } = TEST_ONLY;
 beforeEach(() => {
   lifetimes = [];
   consumed = [];
+  responseHeaders = [];
   otherPorts = [];
   page = new EventTarget();
   installStreamDownloadWorker({ scope: {
@@ -97,6 +99,7 @@ function claimFrame({ src, consume }: { src: string, consume: boolean }): void {
       lifetimes.push(promise);
     },
     respondWith(response) {
+      void Promise.resolve(response).then(value => responseHeaders.push(value.headers));
       if (consume) void Promise.resolve(response).then(async value => {
         consumed.push([...new Uint8Array(await value.arrayBuffer())]);
       }).catch(() => undefined);
@@ -734,5 +737,127 @@ describe('Blob download URL lifetime', () => {
     expect(() => downloadBlob({ blob: new Blob(['data']), filename: 'data.bin' })).toThrow(failure);
     expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:test');
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+
+describe('native File snapshots and exact output lengths', () => {
+  it.each([0, 3])('uses the same File for Content-Length and bytes (%i bytes)', async length => {
+    const file = new File([new Uint8Array(length).fill(7)], 'source.bin');
+    const stream = vi.spyOn(file, 'stream');
+    const arrayBuffer = vi.spyOn(file, 'arrayBuffer');
+    await downloadFile({ file, filename: 'saved.bin', signal: undefined });
+    const prepared = downloadPrepareSchema.parse(worker.postMessage.mock.calls[0]![0]);
+    expect(prepared.metadata.size).toBe(length);
+    expect(responseHeaders[0]!.get('content-length')).toBe(String(length));
+    expect(consumed).toEqual([Array.from({ length }, () => 7)]);
+    expect(stream).toHaveBeenCalledOnce();
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it.each([3, undefined])('passes an exact stream length through or omits an unknown length (%s)', async size => {
+    await downloadReadableStream({ stream: smallStream(), filename: 'output', size, signal: undefined });
+    expect(responseHeaders[0]!.get('content-length')).toBe(size === undefined ? null : '3');
+    expect(consumed).toEqual([[1, 2, 3]]);
+  });
+
+  it('saves the original File without reading it when no worker is registered', async () => {
+    fakeClock();
+    getRegistration.mockResolvedValue(undefined);
+    const file = new File(['unchanged'], 'disk.bin');
+    const stream = vi.spyOn(file, 'stream');
+    const arrayBuffer = vi.spyOn(file, 'arrayBuffer');
+    const text = vi.spyOn(file, 'text');
+    await downloadFile({ file, filename: 'download.bin', signal: undefined });
+    expect(savedBlob()).toBe(file);
+    expect(stream).not.toHaveBeenCalled();
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(worker.postMessage).not.toHaveBeenCalled();
+    expect(navigator.serviceWorker.register).not.toHaveBeenCalled();
+    expect(registration.update).not.toHaveBeenCalled();
+    expect(click).toHaveBeenCalledOnce();
+  });
+
+  it('does not wait for initial precaching and uses the activated worker on the next save without reload', async () => {
+    fakeClock();
+    const file = new File(['file'], 'model.gguf');
+    const stream = vi.spyOn(file, 'stream');
+    const register = vi.fn();
+    registration.active = null;
+    worker.state = 'installing';
+    Object.assign(registration, { installing: worker });
+    vi.stubGlobal('navigator', { serviceWorker: { controller: null, getRegistration, register,
+      get ready() {
+        throw new Error('Must not wait for precaching');
+      },
+    } });
+    await downloadFile({ file, filename: file.name, signal: undefined });
+    expect(savedBlob()).toBe(file);
+    expect(stream).not.toHaveBeenCalled();
+    expect(worker.postMessage).not.toHaveBeenCalled();
+    // Only browser lifecycle changes; neither reload nor clients.claim is needed.
+    registration.active = worker;
+    worker.state = 'activated';
+    Object.assign(registration, { installing: null });
+    await downloadFile({ file, filename: file.name, signal: undefined });
+    expect(stream).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(responseHeaders[0]!.get('content-length')).toBe('4');
+    expect(register).not.toHaveBeenCalled();
+    expect(registration.update).not.toHaveBeenCalled();
+  });
+
+  it('can use the active worker while the replacement is still installing', async () => {
+    const replacement = { state: 'installing', postMessage: vi.fn() };
+    Object.assign(registration, { installing: replacement });
+    await downloadFile({ file: new Blob(['old worker still serves']), filename: 'during-update', signal: undefined });
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(replacement.postMessage).not.toHaveBeenCalled();
+    expect(registration.update).not.toHaveBeenCalled();
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('keeps the original File when worker preparation fails before reading', async () => {
+    fakeClock();
+    const file = new File(['data'], 'file');
+    const stream = vi.spyOn(file, 'stream');
+    worker.postMessage.mockImplementation(() => {
+      throw new DOMException('cannot send', 'DataCloneError');
+    });
+    await downloadFile({ file, filename: file.name, signal: undefined });
+    expect(savedBlob()).toBe(file);
+    expect(stream).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a File that became unreadable after the download was claimed', async () => {
+    const file = new File(['data'], 'changed');
+    const stream = vi.spyOn(file, 'stream').mockImplementation(() => {
+      throw new DOMException('changed', 'NotReadableError');
+    });
+    await expect(downloadFile({ file, filename: file.name, signal: undefined })).rejects.toThrow();
+    expect(stream).toHaveBeenCalledOnce();
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('does not turn cancellation during File preparation into a native fallback', async () => {
+    const file = new File(['data'], 'cancel');
+    const stream = vi.spyOn(file, 'stream');
+    const abort = new AbortController();
+    worker.postMessage.mockImplementation((_data, ports) => {
+      otherPorts.push(...ports);
+    });
+    const operation = downloadFile({ file, filename: file.name, signal: abort.signal });
+    const rejected = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
+    abort.abort();
+    await rejected;
+    expect(stream).not.toHaveBeenCalled();
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 });

@@ -2,11 +2,12 @@ import { receiveByteStream } from '@/utils/byte-stream-port';
 import { workerTransfer, type WorkerRemote } from '@/utils/worker-transport';
 import {
   fileExplorerCreateDirectoryArchiveResponseSchema,
+  fileExplorerPrepareFileDownloadResponseSchema,
   type FileExplorerDirectoryArchiveJob,
   type IFileExplorerWorker,
 } from './types';
 
-/** Shared by hosted and standalone: no Blob and no browser-specific transport. */
+/** Shared hosted/standalone lifecycle: native snapshots or bounded byte streams. */
 export function createFileExplorerStreamClient({ remote, sessionId, worker }: {
   remote: WorkerRemote<IFileExplorerWorker>,
   sessionId: string,
@@ -35,6 +36,14 @@ export function createFileExplorerStreamClient({ remote, sessionId, worker }: {
     return receiver;
   };
   return {
+    async prepareFileDownload({ path }: { path: string }) {
+      if (failure) throw failure;
+      const response = await Promise.race([
+        interrupted.promise, remote.prepareFileDownload({ request: { sessionId, path } }),
+      ]);
+      if (failure) throw failure;
+      return fileExplorerPrepareFileDownloadResponseSchema.parse(response);
+    },
     async openFileStream({ path }: { path: string }): Promise<ReadableStream<Uint8Array>> {
       if (failure) throw failure;
       const channel = new MessageChannel();

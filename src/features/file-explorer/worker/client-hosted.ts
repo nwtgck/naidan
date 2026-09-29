@@ -112,6 +112,7 @@ export async function createFileExplorerWorkerClient({
         }),
       );
     },
+    prepareFileDownload: streams.prepareFileDownload,
     openFileStream: streams.openFileStream,
     startDirectoryArchive: streams.startDirectoryArchive,
     async createFile({ parentPath, name }) {

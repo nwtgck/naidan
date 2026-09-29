@@ -7,13 +7,14 @@ uploading the output. When that route is unavailable **before the download
 starts**, the sink uses the former Blob/object-URL save. This includes ordinary
 Vite development mode; it does not enable or register a development worker.
 Neither route adds a dependency. ZIP generation and file byte sources remain
-separate from the sink. The compatibility route retains the whole output and
-therefore has the former large-file memory limitations.
+separate from the sink. The stream-only compatibility route retains the whole output and therefore has
+the former large-file memory limitations. Native File/Blob inputs instead keep
+their browser-backed object intact, including during initial PWA installation.
 
 ## Public API and ownership
 
 ```ts
-import { downloadStream, downloadReadableStream, downloadBlob } from '@/utils/stream-download';
+import { downloadStream, downloadReadableStream, downloadFile, downloadBlob } from '@/utils/stream-download';
 
 await downloadStream({
   filename: 'archive.zip',
@@ -29,7 +30,11 @@ await downloadReadableStream({
   stream: existingZipStream,
 });
 
-// A native File/Blob need not be converted to ArrayBuffer first.
+// Prefer a streaming response with Content-Length = existingFile.size; if the
+// worker is unavailable, reuse this very File instead of buffering its stream.
+await downloadFile({ file: existingFile, filename: existingFile.name, signal: undefined });
+
+// Synchronous direct-Blob saving remains available (e.g. small diagnostics).
 downloadBlob({ blob: existingFile, filename: existingFile.name });
 ```
 
@@ -62,6 +67,38 @@ that the operating system has durably flushed the destination file.
 Browser download permissions, final save-dialog cancellation, and filesystem
 write failures cannot all be observed by the application. An unknown final ZIP
 length is supported; there is no guessed Content-Length.
+
+## Native files and exact sizes
+
+File Explorer's `prepareFileDownload` resolves the selected path in its existing
+Worker. Native/OPFS-backed entries return one `getFile()` result via structured
+clone. No `arrayBuffer()`, `text()` or payload read is needed for this step. The
+page passes that same object's size and lazy stream to the sink; the Service
+Worker still receives only metadata and bounded bytes, not a filesystem path.
+The native route also removes the extra File Explorer Worker-to-page byte hop.
+A VFS-only entry returns `kind: 'stream'`, retains the lazy byte bridge, and does
+not claim an exact length based on a possibly stale listing or mutable `stat`.
+
+`downloadFile` uses `file.size` for the existing optional protocol `size` field.
+`downloadStream` and `downloadReadableStream` accept exact sizes as before.
+The worker emits Content-Length for known sizes (including zero), omits it for
+unknown output, and checks for short/long output. This supplies information for
+browser progress reporting, not a promise of any particular browser UI. A File
+can become unreadable when its disk backing is modified/removed; we do not lock
+the file or reopen its path silently after failure. A listing size and a later
+path read would not provide this size/data coupling.
+
+## Initial installation
+
+The existing all-assets precache/install barrier is unchanged. An installing
+worker is not a download fetch handler. Without an activated worker, native
+File/Blob downloads use the original object directly, without reading all bytes
+into a new Blob. ZIPs and other stream-only generators retain the buffered
+fallback. Once the worker activates, the next save can use it without a page
+reload or controller (the iframe is a new navigation). During an update, an
+already-active compatible worker can still serve downloads while its successor
+installs. No fake precache successes, reduced manifest, forced activation,
+registration in dev, extra registration, or wait for asset installation is added.
 
 ## Data and control planes
 

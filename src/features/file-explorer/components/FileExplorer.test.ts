@@ -223,6 +223,9 @@ async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
         } as const;
       }
     },
+    async prepareFileDownload() {
+      return { kind: 'stream' as const };
+    },
     async openFileStream() {
       return new ReadableStream<Uint8Array>({ start(controller) {
         controller.close();

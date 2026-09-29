@@ -57,6 +57,7 @@ import {
   fileExplorerReadDirectoryResponseSchema,
   fileExplorerReadFileRequestSchema,
   fileExplorerReadFileResponseSchema,
+  fileExplorerPrepareFileDownloadResponseSchema,
   fileExplorerReadPreviewRequestSchema,
   fileExplorerReadPreviewResponseSchema,
   fileExplorerRenameEntryRequestSchema,
@@ -1340,6 +1341,28 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       default: {
         const _exhaustiveCheck: never = resolvedFile;
         throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
+      }
+      }
+    },
+
+    async prepareFileDownload({ request }) {
+      const validated = fileExplorerReadFileRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      const resolvedFile = await resolveFile({ session, path: validated.path });
+      switch (resolvedFile.kind) {
+      case 'native-file':
+        // Obtain size and data from one File, never a listing plus a later reopen.
+        // File is structured-cloned by the existing worker transport, not read
+        // into an ArrayBuffer. This includes OPFS and native-backed Wesh mounts.
+        return fileExplorerPrepareFileDownloadResponseSchema.parse({
+          kind: 'file', blob: await resolvedFile.handle.getFile(),
+        });
+      case 'virtual-file':
+        // No eager read or Blob materialization for computed/mutable VFS files.
+        return fileExplorerPrepareFileDownloadResponseSchema.parse({ kind: 'stream' });
+      default: {
+        const exhaustive: never = resolvedFile;
+        throw new Error(`Unhandled download file: ${String(exhaustive)}`);
       }
       }
     },

@@ -193,6 +193,7 @@ function makeClient(): FileExplorerWorkerClient {
     readDirectory: vi.fn(async ({ path }: { path: string }) => readDirectory({ path })),
     readPreview: vi.fn(),
     readFile: vi.fn(),
+    prepareFileDownload: vi.fn().mockResolvedValue({ kind: 'stream' }),
     openFileStream: vi.fn(),
     createFile: vi.fn(),
     createFolder: vi.fn(),
