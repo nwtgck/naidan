@@ -50,6 +50,9 @@ import type {
   ChatSidebarItem,
   SidebarItem,
   Settings,
+  BrowserImageGenerationSettings,
+  BrowserImageModelLocation,
+  BrowserImageModelSelection,
   Endpoint,
   StorageType,
   SystemPrompt,
@@ -75,6 +78,7 @@ import {
   toChatGroupId,
   toChatId,
   toMessageId,
+  toHostModelDirectoryId,
   toProviderProfileId,
   toToolCallId,
   toVolumeId,
@@ -2061,6 +2065,184 @@ export const buildSidebarItemsFromHierarchy = (
     .filter((i): i is SidebarItem => i !== null);
 };
 
+type BrowserImageGenerationDto = NonNullable<NonNullable<SettingsDto['experimental']>['browserImageGeneration']>;
+type BrowserImageModelSelectionDto = NonNullable<BrowserImageGenerationDto['modelSelection']>;
+type BrowserImageModelLocationDto = BrowserImageModelSelectionDto['primary']['location'];
+
+const browserImageModelLocationToDomain = ({ dto }: { dto: BrowserImageModelLocationDto }): BrowserImageModelLocation => {
+  switch (dto.kind) {
+  case 'opfs': {
+    const { kind, path, ...unhandled } = dto;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<BrowserImageModelLocation, { kind: 'opfs' }>>()({ kind, path });
+  }
+  case 'host': {
+    const { kind, directoryId, path, ...unhandled } = dto;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<BrowserImageModelLocation, { kind: 'host' }>>()({ kind, directoryId: toHostModelDirectoryId({ raw: directoryId }), path });
+  }
+  default: { const exhaustive: never = dto; throw new Error(String(exhaustive)); }
+  }
+};
+
+const browserImageModelLocationToDto = ({ domain }: { domain: BrowserImageModelLocation }): BrowserImageModelLocationDto => {
+  switch (domain.kind) {
+  case 'opfs': {
+    const { kind, path, ...unhandled } = domain;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<BrowserImageModelLocationDto, { kind: 'opfs' }>>()({ kind, path });
+  }
+  case 'host': {
+    const { kind, directoryId, path, ...unhandled } = domain;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<BrowserImageModelLocationDto, { kind: 'host' }>>()({ kind, directoryId: idToRaw({ id: directoryId }), path });
+  }
+  default: { const exhaustive: never = domain; throw new Error(String(exhaustive)); }
+  }
+};
+
+const browserImageModelSelectionToDomain = ({ dto }: { dto: BrowserImageModelSelectionDto }): BrowserImageModelSelection => {
+  const { primary, components, loras, ...unhandled } = dto;
+  unhandled satisfies Record<PropertyKey, never>;
+  const { slot, location, ...unhandledPrimary } = primary;
+  unhandledPrimary satisfies Record<PropertyKey, never>;
+  return exactObject<BrowserImageModelSelection>()({
+    primary: exactObject<BrowserImageModelSelection['primary']>()({ slot, location: browserImageModelLocationToDomain({ dto: location }) }),
+    components: components.map(({ slot, choice, ...unhandledComponent }) => {
+      unhandledComponent satisfies Record<PropertyKey, never>;
+      const mappedChoice: BrowserImageModelSelection['components'][number]['choice'] = (() => {
+        switch (choice.kind) {
+        case 'file': {
+          const { kind, location, ...unhandledFile } = choice;
+          unhandledFile satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<BrowserImageModelSelection['components'][number]['choice'], { kind: 'file' }>>()({ kind, location: browserImageModelLocationToDomain({ dto: location }) });
+        }
+        case 'none': {
+          const { kind, ...unhandledNone } = choice;
+          unhandledNone satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<BrowserImageModelSelection['components'][number]['choice'], { kind: 'none' }>>()({ kind });
+        }
+        default: { const exhaustive: never = choice; throw new Error(String(exhaustive)); }
+        }
+      })();
+      return exactObject<BrowserImageModelSelection['components'][number]>()({ slot, choice: mappedChoice });
+    }),
+    loras: loras.map(({ location, enabled, strength, ...unhandledLora }) => {
+      unhandledLora satisfies Record<PropertyKey, never>;
+      return exactObject<BrowserImageModelSelection['loras'][number]>()({ location: browserImageModelLocationToDomain({ dto: location }), enabled, strength });
+    }),
+  });
+};
+
+const browserImageModelSelectionToDto = ({ domain }: { domain: BrowserImageModelSelection }): BrowserImageModelSelectionDto => {
+  const { primary, components, loras, ...unhandled } = domain;
+  unhandled satisfies Record<PropertyKey, never>;
+  const { slot, location, ...unhandledPrimary } = primary;
+  unhandledPrimary satisfies Record<PropertyKey, never>;
+  return exactObject<BrowserImageModelSelectionDto>()({
+    primary: exactObject<BrowserImageModelSelectionDto['primary']>()({ slot, location: browserImageModelLocationToDto({ domain: location }) }),
+    components: components.map(({ slot, choice, ...unhandledComponent }) => {
+      unhandledComponent satisfies Record<PropertyKey, never>;
+      const mappedChoice: BrowserImageModelSelectionDto['components'][number]['choice'] = (() => {
+        switch (choice.kind) {
+        case 'file': {
+          const { kind, location, ...unhandledFile } = choice;
+          unhandledFile satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<BrowserImageModelSelectionDto['components'][number]['choice'], { kind: 'file' }>>()({ kind, location: browserImageModelLocationToDto({ domain: location }) });
+        }
+        case 'none': {
+          const { kind, ...unhandledNone } = choice;
+          unhandledNone satisfies Record<PropertyKey, never>;
+          return exactObject<Extract<BrowserImageModelSelectionDto['components'][number]['choice'], { kind: 'none' }>>()({ kind });
+        }
+        default: { const exhaustive: never = choice; throw new Error(String(exhaustive)); }
+        }
+      })();
+      return exactObject<BrowserImageModelSelectionDto['components'][number]>()({ slot, choice: mappedChoice });
+    }),
+    loras: loras.map(({ location, enabled, strength, ...unhandledLora }) => {
+      unhandledLora satisfies Record<PropertyKey, never>;
+      return exactObject<BrowserImageModelSelectionDto['loras'][number]>()({ location: browserImageModelLocationToDto({ domain: location }), enabled, strength });
+    }),
+  });
+};
+
+const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDto | undefined }): BrowserImageGenerationSettings | undefined => {
+  if (dto === undefined) return undefined;
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+    preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = dto;
+  unhandled satisfies Record<PropertyKey, never>;
+  const destination: BrowserImageGenerationSettings['modelDownloadDestination'] = (() => {
+    if (modelDownloadDestination === undefined) return undefined;
+    switch (modelDownloadDestination.kind) {
+    case 'opfs': {
+      const { kind, ...unhandledDestination } = modelDownloadDestination;
+      unhandledDestination satisfies Record<PropertyKey, never>;
+      return exactObject<{ kind: 'opfs' }>()({ kind });
+    }
+    case 'host': {
+      const { kind, directoryId, ...unhandledDestination } = modelDownloadDestination;
+      unhandledDestination satisfies Record<PropertyKey, never>;
+      return exactObject<Extract<NonNullable<BrowserImageGenerationSettings['modelDownloadDestination']>, { kind: 'host' }>>()({ kind, directoryId: toHostModelDirectoryId({ raw: directoryId }) });
+    }
+    default: { const exhaustive: never = modelDownloadDestination; throw new Error(String(exhaustive)); }
+    }
+  })();
+  const mappedDownload = (() => {
+    if (imageDownload === undefined) return undefined;
+    const { format, metadata, ...unhandledDownload } = imageDownload;
+    unhandledDownload satisfies Record<PropertyKey, never>;
+    return exactObject<NonNullable<BrowserImageGenerationSettings['imageDownload']>>()({ format, metadata });
+  })();
+  const mappedPreview = (() => {
+    if (preview === undefined) return undefined;
+    const { enabled, mode, interval, startStep, maxEdge, ...unhandledPreview } = preview;
+    unhandledPreview satisfies Record<PropertyKey, never>;
+    return exactObject<NonNullable<BrowserImageGenerationSettings['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
+  })();
+  return exactObject<BrowserImageGenerationSettings>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
+    imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), preview: mappedPreview,
+    keepPreviews, maxPreviews, maxResults, bf16WeightType });
+};
+
+const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGenerationSettings | undefined }): BrowserImageGenerationDto | undefined => {
+  if (domain === undefined) return undefined;
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+    preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = domain;
+  unhandled satisfies Record<PropertyKey, never>;
+  const destination: BrowserImageGenerationDto['modelDownloadDestination'] = (() => {
+    if (modelDownloadDestination === undefined) return undefined;
+    switch (modelDownloadDestination.kind) {
+    case 'opfs': {
+      const { kind, ...unhandledDestination } = modelDownloadDestination;
+      unhandledDestination satisfies Record<PropertyKey, never>;
+      return exactObject<{ kind: 'opfs' }>()({ kind });
+    }
+    case 'host': {
+      const { kind, directoryId, ...unhandledDestination } = modelDownloadDestination;
+      unhandledDestination satisfies Record<PropertyKey, never>;
+      return exactObject<Extract<NonNullable<BrowserImageGenerationDto['modelDownloadDestination']>, { kind: 'host' }>>()({ kind, directoryId: idToRaw({ id: directoryId }) });
+    }
+    default: { const exhaustive: never = modelDownloadDestination; throw new Error(String(exhaustive)); }
+    }
+  })();
+  const mappedDownload = (() => {
+    if (imageDownload === undefined) return undefined;
+    const { format, metadata, ...unhandledDownload } = imageDownload;
+    unhandledDownload satisfies Record<PropertyKey, never>;
+    return exactObject<NonNullable<BrowserImageGenerationDto['imageDownload']>>()({ format, metadata });
+  })();
+  const mappedPreview = (() => {
+    if (preview === undefined) return undefined;
+    const { enabled, mode, interval, startStep, maxEdge, ...unhandledPreview } = preview;
+    unhandledPreview satisfies Record<PropertyKey, never>;
+    return exactObject<NonNullable<BrowserImageGenerationDto['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
+  })();
+  return exactObject<BrowserImageGenerationDto>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
+    imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }), preview: mappedPreview,
+    keepPreviews, maxPreviews, maxResults, bf16WeightType });
+};
+
 export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
   const titleGeneration = settingsTitleGenerationToDomain({ dto });
 
@@ -2095,7 +2277,9 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       fakeLm,
       sidebarSendMessageReorder,
       globalSearch,
+      browserImageGeneration,
       unreadable,
+      hostModelDirectories,
       ...unhandledExperimental
     } = experimental ?? {};
 
@@ -2130,7 +2314,15 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       fakeLm: fakeLm ?? 'disabled',
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
+      browserImageGeneration: browserImageGenerationToDomain({ dto: browserImageGeneration }),
       unreadable,
+      hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
+        unhandledDirectory satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['hostModelDirectories']>[number]>()({
+          id: toHostModelDirectoryId({ raw: id }),
+          name,
+        });
+      }),
     });
   })();
 
@@ -2200,7 +2392,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       fakeLm,
       sidebarSendMessageReorder,
       globalSearch,
+      browserImageGeneration,
       unreadable: _unreadable,
+      hostModelDirectories,
       ...unhandledExperimental
     } = experimental ?? {};
 
@@ -2239,7 +2433,15 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       }),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDto,
+      browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),
       unreadable: undefined,
+      hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
+        unhandledDirectory satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['hostModelDirectories']>[number]>()({
+          id: idToRaw({ id }),
+          name,
+        });
+      }),
     });
   })();
 

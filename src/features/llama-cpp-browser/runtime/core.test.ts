@@ -9,7 +9,7 @@ import { attachCore, createCore, type Core } from './core';
 describe('native call adaptation', () => {
   let core: Core;
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({ profile: 'cpu-wasm32', baseURL, moduleOptions: {
       wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {},
     } });
@@ -40,7 +40,7 @@ describe('native call adaptation', () => {
     // Substitute the real CPU32 module only at loading so this test also runs
     // without host JSPI. Exercise its call-mode selection and the wasm32 ABI.
     const load = vi.spyOn(artifacts, 'loadCoreModule').mockImplementationOnce(args => original({ ...args, profile: 'cpu-wasm32' }));
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
     const jspiCore = await createCore({ profile: 'webgpu-wasm32-jspi', baseURL, moduleOptions: {
       wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {},
     } });

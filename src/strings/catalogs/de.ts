@@ -1,3 +1,32 @@
+import { ImageEngineState__engine_busy_until_idle } from '@/strings/messages/ImageEngineState__engine_busy_until_idle/de';
+import { ImageEngineState__runtime_buffer_reports_may_be_missing } from '@/strings/messages/ImageEngineState__runtime_buffer_reports_may_be_missing/de';
+import { ImageEngineState__engine_state } from '@/strings/messages/ImageEngineState__engine_state/de';
+import { ImageEngineState__refresh_state } from '@/strings/messages/ImageEngineState__refresh_state/de';
+import { ImageEngineState__refreshing } from '@/strings/messages/ImageEngineState__refreshing/de';
+import { ImageEngineState__unknown_model } from '@/strings/messages/ImageEngineState__unknown_model/de';
+import { ImageEngineState__unavailable } from '@/strings/messages/ImageEngineState__unavailable/de';
+import { ImageEngineState__released } from '@/strings/messages/ImageEngineState__released/de';
+import { ImageEngineState__no_model_loaded } from '@/strings/messages/ImageEngineState__no_model_loaded/de';
+import { ImageEngineState__not_observed_yet } from '@/strings/messages/ImageEngineState__not_observed_yet/de';
+import { ImageEngineState__could_not_read_state } from '@/strings/messages/ImageEngineState__could_not_read_state/de';
+import { ImageEngineState__runtime_and_model } from '@/strings/messages/ImageEngineState__runtime_and_model/de';
+import { ImageEngineState__memory_observations } from '@/strings/messages/ImageEngineState__memory_observations/de';
+import { ImageEngineState__memory_values_are_not_total_gpu_memory } from '@/strings/messages/ImageEngineState__memory_values_are_not_total_gpu_memory/de';
+import { ImageEngineState__some_counters_saturated } from '@/strings/messages/ImageEngineState__some_counters_saturated/de';
+import { ImageEngineState__observed_at } from '@/strings/messages/ImageEngineState__observed_at/de';
+import { ImageEngineState__busy_during_generation } from '@/strings/messages/ImageEngineState__busy_during_generation/de';
+import { ImageEngineState__detail_label } from '@/strings/messages/ImageEngineState__detail_label/de';
+import { ImageEngineState__memory_label } from '@/strings/messages/ImageEngineState__memory_label/de';
+import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/de';
+import { ImageModelPicker__search_choices } from '@/strings/messages/ImageModelPicker__search_choices/de';
+import { ImageGenerationResults__images_kept_on_screen } from '@/strings/messages/ImageGenerationResults__images_kept_on_screen/de';
+import { ImageGenerationResults__display_settings } from '@/strings/messages/ImageGenerationResults__display_settings/de';
+import { ImageGenerationEditor__custom_size } from '@/strings/messages/ImageGenerationEditor__custom_size/de';
+import { ImageDownloadMenu__downloaded_copy_only } from '@/strings/messages/ImageDownloadMenu__downloaded_copy_only/de';
+import { ImageDownloadMenu__include_generation_settings } from '@/strings/messages/ImageDownloadMenu__include_generation_settings/de';
+import { ImageDownloadMenu__image_format } from '@/strings/messages/ImageDownloadMenu__image_format/de';
+import { ImageDownloadMenu__download_options } from '@/strings/messages/ImageDownloadMenu__download_options/de';
+import { ImageDownloadMenu__download } from '@/strings/messages/ImageDownloadMenu__download/de';
 import { stableDiffusionCppBrowser__preview_mode_locked } from '@/strings/messages/stableDiffusionCppBrowser__preview_mode_locked/de';
 import { stableDiffusionCppBrowser__preset_unknown } from '@/strings/messages/stableDiffusionCppBrowser__preset_unknown/de';
 import { stableDiffusionCppBrowser__qwen_preset_policy } from '@/strings/messages/stableDiffusionCppBrowser__qwen_preset_policy/de';
@@ -661,6 +690,8 @@ import { HistoryManipulationModal__type_message_content } from '@/strings/messag
 import { ImageConjuringLoader__generating_image } from '@/strings/messages/ImageConjuringLoader__generating_image/de';
 import { ImageConjuringLoader__generating_images } from '@/strings/messages/ImageConjuringLoader__generating_images/de';
 import { ImageConjuringLoader__image_count } from '@/strings/messages/ImageConjuringLoader__image_count/de';
+import { ImageGenerationProgress__steps_completed } from '@/strings/messages/ImageGenerationProgress__steps_completed/de';
+import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/de';
 import { ImageConjuringLoader__steps } from '@/strings/messages/ImageConjuringLoader__steps/de';
 import { ImageDownloadButton__download_image } from '@/strings/messages/ImageDownloadButton__download_image/de';
 import { ImageDownloadButton__embed_prompt_seed_etc } from '@/strings/messages/ImageDownloadButton__embed_prompt_seed_etc/de';
@@ -2038,6 +2069,19 @@ import { stableDiffusionCppBrowser__gpu_budget } from '@/strings/messages/stable
 import { stableDiffusionCppBrowser__gpu_budget_help } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget_help/de';
 import { stableDiffusionCppBrowser__catalog_file_notice } from '@/strings/messages/stableDiffusionCppBrowser__catalog_file_notice/de';
 import { stableDiffusionCppBrowser__catalog_drop_help } from '@/strings/messages/stableDiffusionCppBrowser__catalog_drop_help/de';
+import { ImageHostModelDirectories__download_to } from '@/strings/messages/ImageHostModelDirectories__download_to/de';
+import { ImageHostModelDirectories__browser_storage } from '@/strings/messages/ImageHostModelDirectories__browser_storage/de';
+import { ImageHostModelDirectories__browser_storage_unavailable } from '@/strings/messages/ImageHostModelDirectories__browser_storage_unavailable/de';
+import { ImageHostModelDirectories__linked_folder } from '@/strings/messages/ImageHostModelDirectories__linked_folder/de';
+import { ImageHostModelDirectories__link_folder } from '@/strings/messages/ImageHostModelDirectories__link_folder/de';
+import { ImageHostModelDirectories__reconnect } from '@/strings/messages/ImageHostModelDirectories__reconnect/de';
+import { ImageHostModelDirectories__unlink } from '@/strings/messages/ImageHostModelDirectories__unlink/de';
+import { ImageHostModelDirectories__unlink_keeps_files } from '@/strings/messages/ImageHostModelDirectories__unlink_keeps_files/de';
+import { ImageHostModelDirectories__linked_folders_unavailable } from '@/strings/messages/ImageHostModelDirectories__linked_folders_unavailable/de';
+import { ImageHostModelDirectories__choose_folder_above_owner } from '@/strings/messages/ImageHostModelDirectories__choose_folder_above_owner/de';
+import { ImageHostModelDirectories__example_folder_layout } from '@/strings/messages/ImageHostModelDirectories__example_folder_layout/de';
+import { ImageHostModelDirectories__linked_folders } from '@/strings/messages/ImageHostModelDirectories__linked_folders/de';
+import { ImageHostModelDirectories__folder_access } from '@/strings/messages/ImageHostModelDirectories__folder_access/de';
 import { stableDiffusionCppBrowser__catalog_layout } from '@/strings/messages/stableDiffusionCppBrowser__catalog_layout/de';
 import { stableDiffusionCppBrowser__catalog_source } from '@/strings/messages/stableDiffusionCppBrowser__catalog_source/de';
 import { stableDiffusionCppBrowser__catalog_download } from '@/strings/messages/stableDiffusionCppBrowser__catalog_download/de';
@@ -2081,6 +2125,7 @@ import { stableDiffusionCppBrowser__structural_match } from '@/strings/messages/
 import { stableDiffusionCppBrowser__unverified_candidate } from '@/strings/messages/stableDiffusionCppBrowser__unverified_candidate/de';
 import { stableDiffusionCppBrowser__incompatible_candidate } from '@/strings/messages/stableDiffusionCppBrowser__incompatible_candidate/de';
 import { stableDiffusionCppBrowser__component_required } from '@/strings/messages/stableDiffusionCppBrowser__component_required/de';
+import { ImageModelPicker__use_built_in_component } from '@/strings/messages/ImageModelPicker__use_built_in_component/de';
 import { stableDiffusionCppBrowser__select_component } from '@/strings/messages/stableDiffusionCppBrowser__select_component/de';
 import { stableDiffusionCppBrowser__filter_components } from '@/strings/messages/stableDiffusionCppBrowser__filter_components/de';
 import { stableDiffusionCppBrowser__scanning_repositories } from '@/strings/messages/stableDiffusionCppBrowser__scanning_repositories/de';
@@ -2094,12 +2139,266 @@ import { stableDiffusionCppBrowser__advanced_parameters_help } from '@/strings/m
 import { stableDiffusionCppBrowser__sampler } from '@/strings/messages/stableDiffusionCppBrowser__sampler/de';
 import { stableDiffusionCppBrowser__scheduler } from '@/strings/messages/stableDiffusionCppBrowser__scheduler/de';
 import { stableDiffusionCppBrowser__distilled_guidance } from '@/strings/messages/stableDiffusionCppBrowser__distilled_guidance/de';
+import { stableDiffusionCppBrowser__bf16_weight_conversion } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion/de';
+import { stableDiffusionCppBrowser__bf16_weight_conversion_help } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion_help/de';
 import { stableDiffusionCppBrowser__conditioning_cache } from '@/strings/messages/stableDiffusionCppBrowser__conditioning_cache/de';
 import { stableDiffusionCppBrowser__vae_tiling } from '@/strings/messages/stableDiffusionCppBrowser__vae_tiling/de';
 import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/stableDiffusionCppBrowser__vae_tile_size/de';
 import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/de';
 import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/de';
+import { imageBenchmark__diagnostics } from '@/strings/messages/imageBenchmark__diagnostics/de';
+
+import { imageBenchmark__introduction } from '@/strings/messages/imageBenchmark__introduction/de';
+
+import { imageBenchmark__shared_settings } from '@/strings/messages/imageBenchmark__shared_settings/de';
+
+import { imageBenchmark__model_sampling_defaults } from '@/strings/messages/imageBenchmark__model_sampling_defaults/de';
+
+import { imageBenchmark__defaults_help } from '@/strings/messages/imageBenchmark__defaults_help/de';
+
+import { imageBenchmark__protocol } from '@/strings/messages/imageBenchmark__protocol/de';
+
+import { imageBenchmark__cold_then_warm } from '@/strings/messages/imageBenchmark__cold_then_warm/de';
+
+import { imageBenchmark__fresh_each } from '@/strings/messages/imageBenchmark__fresh_each/de';
+
+import { imageBenchmark__runs_per_model } from '@/strings/messages/imageBenchmark__runs_per_model/de';
+
+import { imageBenchmark__order } from '@/strings/messages/imageBenchmark__order/de';
+
+import { imageBenchmark__listed_order } from '@/strings/messages/imageBenchmark__listed_order/de';
+
+import { imageBenchmark__reverse_order } from '@/strings/messages/imageBenchmark__reverse_order/de';
+
+import { imageBenchmark__cooldown } from '@/strings/messages/imageBenchmark__cooldown/de';
+
+import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/de';
+
+import { imageBenchmark__keep_images } from '@/strings/messages/imageBenchmark__keep_images/de';
+
+import { imageBenchmark__limits } from '@/strings/messages/imageBenchmark__limits/de';
+
+import { imageBenchmark__fairness } from '@/strings/messages/imageBenchmark__fairness/de';
+
+import { imageBenchmark__environment_notes } from '@/strings/messages/imageBenchmark__environment_notes/de';
+
+import { imageBenchmark__available_models } from '@/strings/messages/imageBenchmark__available_models/de';
+
+import { imageBenchmark__select_all } from '@/strings/messages/imageBenchmark__select_all/de';
+
+import { imageBenchmark__select_none } from '@/strings/messages/imageBenchmark__select_none/de';
+
+import { imageBenchmark__no_models } from '@/strings/messages/imageBenchmark__no_models/de';
+
+import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/de';
+
+import { imageBenchmark__overrides } from '@/strings/messages/imageBenchmark__overrides/de';
+
+import { imageBenchmark__override } from '@/strings/messages/imageBenchmark__override/de';
+
+import { imageBenchmark__effective_request } from '@/strings/messages/imageBenchmark__effective_request/de';
+
+import { imageBenchmark__start } from '@/strings/messages/imageBenchmark__start/de';
+
+import { imageBenchmark__stop } from '@/strings/messages/imageBenchmark__stop/de';
+
+import { imageBenchmark__download_zip } from '@/strings/messages/imageBenchmark__download_zip/de';
+
+import { imageBenchmark__new_measurement } from '@/strings/messages/imageBenchmark__new_measurement/de';
+
+import { imageBenchmark__include_prompts } from '@/strings/messages/imageBenchmark__include_prompts/de';
+
+import { imageBenchmark__export_privacy } from '@/strings/messages/imageBenchmark__export_privacy/de';
+
+import { imageBenchmark__archive_saved } from '@/strings/messages/imageBenchmark__archive_saved/de';
+
+import { imageBenchmark__results } from '@/strings/messages/imageBenchmark__results/de';
+
+import { imageBenchmark__run } from '@/strings/messages/imageBenchmark__run/de';
+
+import { imageBenchmark__cold } from '@/strings/messages/imageBenchmark__cold/de';
+
+import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/de';
+
+import { imageBenchmark__queued } from '@/strings/messages/imageBenchmark__queued/de';
+
+import { imageBenchmark__running } from '@/strings/messages/imageBenchmark__running/de';
+
+import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__succeeded/de';
+
+import { imageBenchmark__failed } from '@/strings/messages/imageBenchmark__failed/de';
+
+import { imageBenchmark__cancelled } from '@/strings/messages/imageBenchmark__cancelled/de';
+
+import { imageBenchmark__skipped } from '@/strings/messages/imageBenchmark__skipped/de';
+
+import { imageBenchmark__elapsed } from '@/strings/messages/imageBenchmark__elapsed/de';
+
+import { imageBenchmark__sampling } from '@/strings/messages/imageBenchmark__sampling/de';
+
+import { imageBenchmark__model_load } from '@/strings/messages/imageBenchmark__model_load/de';
+
+import { imageBenchmark__check_plan } from '@/strings/messages/imageBenchmark__check_plan/de';
+
+import { imageBenchmark__exporting } from '@/strings/messages/imageBenchmark__exporting/de';
+
+import { imageBenchmark__freshness_warning } from '@/strings/messages/imageBenchmark__freshness_warning/de';
+
+import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageBenchmarkResult__generated_image/de';
+import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/de';
+import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/de';
+import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/de';
+
+import { ImageLoraControls__lora_adapters } from '@/strings/messages/ImageLoraControls__lora_adapters/de';
+import { ImageLoraControls__choose_files } from '@/strings/messages/ImageLoraControls__choose_files/de';
+import { ImageLoraControls__saved_adapters } from '@/strings/messages/ImageLoraControls__saved_adapters/de';
+import { ImageLoraControls__choose_saved_adapter } from '@/strings/messages/ImageLoraControls__choose_saved_adapter/de';
+import { ImageLoraControls__saved_adapter_compatibility_unverified } from '@/strings/messages/ImageLoraControls__saved_adapter_compatibility_unverified/de';
+import { ImageLoraControls__add_adapter } from '@/strings/messages/ImageLoraControls__add_adapter/de';
+import { ImageGenerationLab__image_generation_entirely_in_browser } from '@/strings/messages/ImageGenerationLab__image_generation_entirely_in_browser/de';
+import { ImageGenerationLab__debug } from '@/strings/messages/ImageGenerationLab__debug/de';
+import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/de';
+import { ImageGenerationLab__models } from '@/strings/messages/ImageGenerationLab__models/de';
+import { ImageGenerationLab__history } from '@/strings/messages/ImageGenerationLab__history/de';
+import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/ImageGenerationLab__prepare_models_help/de';
+import { ImageGenerationLab__back_to_generation } from '@/strings/messages/ImageGenerationLab__back_to_generation/de';
+import { ImageGenerationEditor__choose_model_to_begin } from '@/strings/messages/ImageGenerationEditor__choose_model_to_begin/de';
+import { ImageGenerationEditor__sampling_settings } from '@/strings/messages/ImageGenerationEditor__sampling_settings/de';
+import { ImageModelCatalog__checking_saved_models } from '@/strings/messages/ImageModelCatalog__checking_saved_models/de';
+import { ImageHistoryImage__loading_image } from '@/strings/messages/ImageHistoryImage__loading_image/de';
+import { ImageHistoryImage__image_unavailable } from '@/strings/messages/ImageHistoryImage__image_unavailable/de';
+import { ImageHistoryImage__could_not_load_image } from '@/strings/messages/ImageHistoryImage__could_not_load_image/de';
+import { ImageGenerationHistory__experimental_history_notice } from '@/strings/messages/ImageGenerationHistory__experimental_history_notice/de';
+import { ImageGenerationHistory__backup_does_not_include_history } from '@/strings/messages/ImageGenerationHistory__backup_does_not_include_history/de';
+import { ImageGenerationHistory__opfs_required } from '@/strings/messages/ImageGenerationHistory__opfs_required/de';
+import { ImageGenerationHistory__search_history } from '@/strings/messages/ImageGenerationHistory__search_history/de';
+import { ImageGenerationHistory__refresh } from '@/strings/messages/ImageGenerationHistory__refresh/de';
+import { ImageGenerationHistory__first_page } from '@/strings/messages/ImageGenerationHistory__first_page/de';
+import { ImageGenerationHistory__previous_page } from '@/strings/messages/ImageGenerationHistory__previous_page/de';
+import { ImageGenerationHistory__next_page } from '@/strings/messages/ImageGenerationHistory__next_page/de';
+import { ImageGenerationHistory__last_page } from '@/strings/messages/ImageGenerationHistory__last_page/de';
+import { ImageGenerationHistory__page_of_total } from '@/strings/messages/ImageGenerationHistory__page_of_total/de';
+import { ImageGenerationHistory__loading_history } from '@/strings/messages/ImageGenerationHistory__loading_history/de';
+import { ImageGenerationHistory__no_history_found } from '@/strings/messages/ImageGenerationHistory__no_history_found/de';
+import { ImageGenerationHistory__load_more } from '@/strings/messages/ImageGenerationHistory__load_more/de';
+import { ImageGenerationHistory__close_details } from '@/strings/messages/ImageGenerationHistory__close_details/de';
+import { ImageGenerationHistory__reuse_settings } from '@/strings/messages/ImageGenerationHistory__reuse_settings/de';
+import { ImageGenerationHistory__use_as_initial_image } from '@/strings/messages/ImageGenerationHistory__use_as_initial_image/de';
+import { ImageGenerationHistory__use_as_reference_image } from '@/strings/messages/ImageGenerationHistory__use_as_reference_image/de';
+import { ImageGenerationHistory__include_settings_in_png } from '@/strings/messages/ImageGenerationHistory__include_settings_in_png/de';
+import { ImageGenerationHistory__requested_seed } from '@/strings/messages/ImageGenerationHistory__requested_seed/de';
+import { ImageGenerationHistory__requested_settings } from '@/strings/messages/ImageGenerationHistory__requested_settings/de';
+import { ImageGenerationHistory__reuse_does_not_download_models } from '@/strings/messages/ImageGenerationHistory__reuse_does_not_download_models/de';
+import { ImageGenerationHistory__generation_details } from '@/strings/messages/ImageGenerationHistory__generation_details/de';
+import { ImageGenerationHistory__delete_image_file } from '@/strings/messages/ImageGenerationHistory__delete_image_file/de';
+import { ImageGenerationHistory__deleting_image_file_affects_other_records } from '@/strings/messages/ImageGenerationHistory__deleting_image_file_affects_other_records/de';
+import { ImageGenerationHistory__remove_from_history } from '@/strings/messages/ImageGenerationHistory__remove_from_history/de';
+import { ImageGenerationHistory__removing_keeps_image_files } from '@/strings/messages/ImageGenerationHistory__removing_keeps_image_files/de';
+import { ImageGenerationViewer__image_preview } from '@/strings/messages/ImageGenerationViewer__image_preview/de';
+import { ImageGenerationViewer__previous_image } from '@/strings/messages/ImageGenerationViewer__previous_image/de';
+import { ImageGenerationViewer__next_image } from '@/strings/messages/ImageGenerationViewer__next_image/de';
+import { ImageGenerationViewer__zoom_in } from '@/strings/messages/ImageGenerationViewer__zoom_in/de';
+import { ImageGenerationViewer__zoom_out } from '@/strings/messages/ImageGenerationViewer__zoom_out/de';
+import { ImageGenerationViewer__reset_view } from '@/strings/messages/ImageGenerationViewer__reset_view/de';
+import { ImageGenerationViewer__close_preview } from '@/strings/messages/ImageGenerationViewer__close_preview/de';
+import { ImageGenerationLab__select_missing_files } from '@/strings/messages/ImageGenerationLab__select_missing_files/de';
+import { ImageGenerationLab__continue_without_missing_files } from '@/strings/messages/ImageGenerationLab__continue_without_missing_files/de';
+import { ImageGenerationResults__save_generation_history } from '@/strings/messages/ImageGenerationResults__save_generation_history/de';
+import { ImageGenerationResults__saving_history } from '@/strings/messages/ImageGenerationResults__saving_history/de';
+import { ImageGenerationResults__history_setting_applies_to_next_generation } from '@/strings/messages/ImageGenerationResults__history_setting_applies_to_next_generation/de';
+import { ImageGenerationResults__saved_to_history } from '@/strings/messages/ImageGenerationResults__saved_to_history/de';
+import { ImageGenerationResults__history_save_failed_download_image } from '@/strings/messages/ImageGenerationResults__history_save_failed_download_image/de';
+import { ImageGenerationResults__retry_saving } from '@/strings/messages/ImageGenerationResults__retry_saving/de';
+import { ImageGenerationResults__about_saved_history } from '@/strings/messages/ImageGenerationResults__about_saved_history/de';
+import { ImageGenerationResults__current_images_are_temporary } from '@/strings/messages/ImageGenerationResults__current_images_are_temporary/de';
+import { ImageGenerationResults__latest_generation } from '@/strings/messages/ImageGenerationResults__latest_generation/de';
+import { ImageGenerationResults__image_generation_failed } from '@/strings/messages/ImageGenerationResults__image_generation_failed/de';
+import { ImageGenerationResults__no_final_image_was_created } from '@/strings/messages/ImageGenerationResults__no_final_image_was_created/de';
+import { ImageGenerationResults__view_diagnostics } from '@/strings/messages/ImageGenerationResults__view_diagnostics/de';
+import { ImageGenerationResults__previous_results } from '@/strings/messages/ImageGenerationResults__previous_results/de';
+import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/de';
+import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/de';
+import { ImageGenerationResults__unsaved_generations } from '@/strings/messages/ImageGenerationResults__unsaved_generations/de';
+import { ImageGenerationResults__view_in_my_images } from '@/strings/messages/ImageGenerationResults__view_in_my_images/de';
+import { ImageGenerationEditor__model_configuration } from '@/strings/messages/ImageGenerationEditor__model_configuration/de';
+import { ImageInputControls__image_count } from '@/strings/messages/ImageInputControls__image_count/de';
+import { ImageInputControls__expand_image } from '@/strings/messages/ImageInputControls__expand_image/de';
+import { ImageInputControls__preview_unavailable } from '@/strings/messages/ImageInputControls__preview_unavailable/de';
+import { ImageInputControls__move_later } from '@/strings/messages/ImageInputControls__move_later/de';
+import { ImageInputControls__move_earlier } from '@/strings/messages/ImageInputControls__move_earlier/de';
+import { ImageInputControls__reference_images_help } from '@/strings/messages/ImageInputControls__reference_images_help/de';
+import { ImageInputControls__drop_image_here } from '@/strings/messages/ImageInputControls__drop_image_here/de';
+import { ImageInputControls__add_reference_images } from '@/strings/messages/ImageInputControls__add_reference_images/de';
+import { ImageInputControls__replace_image } from '@/strings/messages/ImageInputControls__replace_image/de';
+import { ImageInputControls__choose_image } from '@/strings/messages/ImageInputControls__choose_image/de';
+import { ImageLoraControls__selected_adapters } from '@/strings/messages/ImageLoraControls__selected_adapters/de';
+import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/de';
+import { ImageGenerationEditor__view_result } from '@/strings/messages/ImageGenerationEditor__view_result/de';
+import { ImageGenerationEditor__edits_apply_to_next_generation } from '@/strings/messages/ImageGenerationEditor__edits_apply_to_next_generation/de';
+import { ImageGenerationEditor__pick_new_seed } from '@/strings/messages/ImageGenerationEditor__pick_new_seed/de';
+import { ImageGenerationEditor__fixed_seed } from '@/strings/messages/ImageGenerationEditor__fixed_seed/de';
+import { ImageGenerationEditor__new_seed_each_time } from '@/strings/messages/ImageGenerationEditor__new_seed_each_time/de';
+import { ImageGenerationEditor__resolution_must_use_supported_dimensions } from '@/strings/messages/ImageGenerationEditor__resolution_must_use_supported_dimensions/de';
+import { ImageGenerationEditor__swap_width_and_height } from '@/strings/messages/ImageGenerationEditor__swap_width_and_height/de';
+import { ImageGenerationEditor__image_size } from '@/strings/messages/ImageGenerationEditor__image_size/de';
+import { ImageGenerationEditor__prepare_model } from '@/strings/messages/ImageGenerationEditor__prepare_model/de';
+import { ImageGenerationHistory__read_warnings } from '@/strings/messages/ImageGenerationHistory__read_warnings/de';
+import { ImageGenerationHistory__readable_matches } from '@/strings/messages/ImageGenerationHistory__readable_matches/de';
+import { ImageGenerationHistory__some_history_files_could_not_be_read } from '@/strings/messages/ImageGenerationHistory__some_history_files_could_not_be_read/de';
+import { ImageGenerationLab__disabled_loras_not_restored } from '@/strings/messages/ImageGenerationLab__disabled_loras_not_restored/de';
+import { ImageGenerationResults__return_to_opfs_to_retry } from '@/strings/messages/ImageGenerationResults__return_to_opfs_to_retry/de';
+import { ImageModelCatalog__download_queue } from '@/strings/messages/ImageModelCatalog__download_queue/de';
+import { ImageModelCatalog__queued } from '@/strings/messages/ImageModelCatalog__queued/de';
+import { ImageModelCatalog__recommended } from '@/strings/messages/ImageModelCatalog__recommended/de';
+import { ImageModelCatalog__optional_lora } from '@/strings/messages/ImageModelCatalog__optional_lora/de';
+import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/de';
+import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/de';
+import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/de';
+import { ImageLoraControls__enabled } from '@/strings/messages/ImageLoraControls__enabled/de';
+import { ImageLoraControls__remove } from '@/strings/messages/ImageLoraControls__remove/de';
+import { ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files } from '@/strings/messages/ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files/de';
+import { ImageLoraControls__choose_adapters_for_selected_model } from '@/strings/messages/ImageLoraControls__choose_adapters_for_selected_model/de';
+
+import { ImageInputControls__input_images } from '@/strings/messages/ImageInputControls__input_images/de';
+import { ImageInputControls__initial_image } from '@/strings/messages/ImageInputControls__initial_image/de';
+import { ImageInputControls__reference_images } from '@/strings/messages/ImageInputControls__reference_images/de';
+import { ImageInputControls__change_strength } from '@/strings/messages/ImageInputControls__change_strength/de';
+import { ImageInputControls__remove } from '@/strings/messages/ImageInputControls__remove/de';
+import { ImageInputControls__choose_png_jpeg_or_webp } from '@/strings/messages/ImageInputControls__choose_png_jpeg_or_webp/de';
+import { ImageInputControls__initial_image_help } from '@/strings/messages/ImageInputControls__initial_image_help/de';
+import { ImageInputControls__model_support_required } from '@/strings/messages/ImageInputControls__model_support_required/de';
+import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/de';
+
 export const catalog = {
+  ImageModelPicker__choose_a_model,
+  ImageModelPicker__search_choices,
+  ImageEngineState__engine_busy_until_idle,
+  ImageEngineState__runtime_buffer_reports_may_be_missing,
+  ImageEngineState__engine_state,
+  ImageEngineState__refresh_state,
+  ImageEngineState__refreshing,
+  ImageEngineState__unknown_model,
+  ImageEngineState__unavailable,
+  ImageEngineState__released,
+  ImageEngineState__no_model_loaded,
+  ImageEngineState__not_observed_yet,
+  ImageEngineState__could_not_read_state,
+  ImageEngineState__runtime_and_model,
+  ImageEngineState__memory_observations,
+  ImageEngineState__memory_values_are_not_total_gpu_memory,
+  ImageEngineState__some_counters_saturated,
+  ImageEngineState__observed_at,
+  ImageEngineState__busy_during_generation,
+  ImageEngineState__detail_label,
+  ImageEngineState__memory_label,
+  ImageGenerationResults__images_kept_on_screen,
+  ImageGenerationResults__display_settings,
+  ImageGenerationEditor__custom_size,
+  ImageDownloadMenu__downloaded_copy_only,
+  ImageDownloadMenu__include_generation_settings,
+  ImageDownloadMenu__image_format,
+  ImageDownloadMenu__download_options,
+  ImageDownloadMenu__download,
   stableDiffusionCppBrowser__preview_mode_locked,
   stableDiffusionCppBrowser__preset_unknown,
   stableDiffusionCppBrowser__qwen_preset_policy,
@@ -2150,6 +2449,7 @@ export const catalog = {
   stableDiffusionCppBrowser__unverified_candidate,
   stableDiffusionCppBrowser__incompatible_candidate,
   stableDiffusionCppBrowser__component_required,
+  ImageModelPicker__use_built_in_component,
   stableDiffusionCppBrowser__select_component,
   stableDiffusionCppBrowser__filter_components,
   stableDiffusionCppBrowser__scanning_repositories,
@@ -2163,6 +2463,8 @@ export const catalog = {
   stableDiffusionCppBrowser__sampler,
   stableDiffusionCppBrowser__scheduler,
   stableDiffusionCppBrowser__distilled_guidance,
+  stableDiffusionCppBrowser__bf16_weight_conversion,
+  stableDiffusionCppBrowser__bf16_weight_conversion_help,
   stableDiffusionCppBrowser__conditioning_cache,
   stableDiffusionCppBrowser__vae_tiling,
   stableDiffusionCppBrowser__vae_tile_size,
@@ -2200,6 +2502,19 @@ export const catalog = {
   stableDiffusionCppBrowser__gpu_budget_help,
   stableDiffusionCppBrowser__catalog_file_notice,
   stableDiffusionCppBrowser__catalog_drop_help,
+  ImageHostModelDirectories__download_to,
+  ImageHostModelDirectories__browser_storage,
+  ImageHostModelDirectories__browser_storage_unavailable,
+  ImageHostModelDirectories__linked_folder,
+  ImageHostModelDirectories__link_folder,
+  ImageHostModelDirectories__reconnect,
+  ImageHostModelDirectories__unlink,
+  ImageHostModelDirectories__unlink_keeps_files,
+  ImageHostModelDirectories__linked_folders_unavailable,
+  ImageHostModelDirectories__choose_folder_above_owner,
+  ImageHostModelDirectories__example_folder_layout,
+  ImageHostModelDirectories__linked_folders,
+  ImageHostModelDirectories__folder_access,
   stableDiffusionCppBrowser__catalog_layout,
   stableDiffusionCppBrowser__catalog_source,
   stableDiffusionCppBrowser__catalog_download,
@@ -2835,6 +3150,8 @@ export const catalog = {
   ImageConjuringLoader__generating_image,
   ImageConjuringLoader__generating_images,
   ImageConjuringLoader__image_count,
+  ImageGenerationProgress__steps_completed,
+  ImageGenerationProgress__processing_step,
   ImageConjuringLoader__steps,
   ImageDownloadButton__download_image,
   ImageDownloadButton__embed_prompt_seed_etc,
@@ -4197,4 +4514,175 @@ export const catalog = {
   audioGeneration__copy_text,
   audioGeneration__text_copied,
   audioGeneration__copy_failed_select_text,
+  imageBenchmark__diagnostics,
+  imageBenchmark__introduction,
+  imageBenchmark__shared_settings,
+  imageBenchmark__model_sampling_defaults,
+  imageBenchmark__defaults_help,
+  imageBenchmark__protocol,
+  imageBenchmark__cold_then_warm,
+  imageBenchmark__fresh_each,
+  imageBenchmark__runs_per_model,
+  imageBenchmark__order,
+  imageBenchmark__listed_order,
+  imageBenchmark__reverse_order,
+  imageBenchmark__cooldown,
+  imageBenchmark__timeout,
+  ImageBenchmarkResult__no_image,
+  ImageBenchmarkResult__image_memory_limit_reached,
+  ImageBenchmarkResult__image_not_retained,
+  ImageBenchmarkResult__generated_image,
+  imageBenchmark__keep_images,
+  imageBenchmark__limits,
+  imageBenchmark__fairness,
+  imageBenchmark__environment_notes,
+  imageBenchmark__available_models,
+  imageBenchmark__select_all,
+  imageBenchmark__select_none,
+  imageBenchmark__no_models,
+  imageBenchmark__unavailable_components,
+  imageBenchmark__overrides,
+  imageBenchmark__override,
+  imageBenchmark__effective_request,
+  imageBenchmark__start,
+  imageBenchmark__stop,
+  imageBenchmark__download_zip,
+  imageBenchmark__new_measurement,
+  imageBenchmark__include_prompts,
+  imageBenchmark__export_privacy,
+  imageBenchmark__archive_saved,
+  imageBenchmark__results,
+  imageBenchmark__run,
+  imageBenchmark__cold,
+  imageBenchmark__warm,
+  imageBenchmark__queued,
+  imageBenchmark__running,
+  imageBenchmark__succeeded,
+  imageBenchmark__failed,
+  imageBenchmark__cancelled,
+  imageBenchmark__skipped,
+  imageBenchmark__elapsed,
+  imageBenchmark__sampling,
+  imageBenchmark__model_load,
+  imageBenchmark__check_plan,
+  imageBenchmark__exporting,
+  imageBenchmark__freshness_warning,
+  ImageLoraControls__lora_adapters,
+  ImageLoraControls__choose_files,
+  ImageLoraControls__saved_adapters,
+  ImageLoraControls__choose_saved_adapter,
+  ImageLoraControls__saved_adapter_compatibility_unverified,
+  ImageLoraControls__add_adapter,
+  ImageGenerationLab__image_generation_entirely_in_browser,
+  ImageGenerationLab__debug,
+  ImageGenerationLab__record_detailed_logs,
+  ImageGenerationLab__models,
+  ImageGenerationLab__history,
+  ImageGenerationLab__prepare_models_help,
+  ImageGenerationLab__back_to_generation,
+  ImageGenerationEditor__choose_model_to_begin,
+  ImageGenerationEditor__sampling_settings,
+  ImageModelCatalog__checking_saved_models,
+  ImageHistoryImage__loading_image,
+  ImageHistoryImage__image_unavailable,
+  ImageHistoryImage__could_not_load_image,
+  ImageGenerationHistory__experimental_history_notice,
+  ImageGenerationHistory__backup_does_not_include_history,
+  ImageGenerationHistory__opfs_required,
+  ImageGenerationHistory__search_history,
+  ImageGenerationHistory__refresh,
+  ImageGenerationHistory__first_page,
+  ImageGenerationHistory__previous_page,
+  ImageGenerationHistory__next_page,
+  ImageGenerationHistory__last_page,
+  ImageGenerationHistory__page_of_total,
+  ImageGenerationHistory__loading_history,
+  ImageGenerationHistory__no_history_found,
+  ImageGenerationHistory__load_more,
+  ImageGenerationHistory__close_details,
+  ImageGenerationHistory__reuse_settings,
+  ImageGenerationHistory__use_as_initial_image,
+  ImageGenerationHistory__use_as_reference_image,
+  ImageGenerationHistory__include_settings_in_png,
+  ImageGenerationHistory__requested_seed,
+  ImageGenerationHistory__requested_settings,
+  ImageGenerationHistory__reuse_does_not_download_models,
+  ImageGenerationHistory__generation_details,
+  ImageGenerationHistory__delete_image_file,
+  ImageGenerationHistory__deleting_image_file_affects_other_records,
+  ImageGenerationHistory__remove_from_history,
+  ImageGenerationHistory__removing_keeps_image_files,
+  ImageGenerationViewer__image_preview,
+  ImageGenerationViewer__previous_image,
+  ImageGenerationViewer__next_image,
+  ImageGenerationViewer__zoom_in,
+  ImageGenerationViewer__zoom_out,
+  ImageGenerationViewer__reset_view,
+  ImageGenerationViewer__close_preview,
+  ImageGenerationLab__select_missing_files,
+  ImageGenerationLab__continue_without_missing_files,
+  ImageGenerationResults__save_generation_history,
+  ImageGenerationResults__saving_history,
+  ImageGenerationResults__history_setting_applies_to_next_generation,
+  ImageGenerationResults__saved_to_history,
+  ImageGenerationResults__history_save_failed_download_image,
+  ImageGenerationResults__retry_saving,
+  ImageGenerationResults__about_saved_history,
+  ImageGenerationResults__current_images_are_temporary,
+  ImageGenerationResults__latest_generation,
+  ImageGenerationResults__image_generation_failed,
+  ImageGenerationResults__no_final_image_was_created,
+  ImageGenerationResults__view_diagnostics,
+  ImageGenerationResults__previous_results,
+  ImageGenerationPreview__preview_from_failed_generation,
+  ImageGenerationPreview__preview_from_cancelled_generation,
+  ImageGenerationResults__unsaved_generations,
+  ImageGenerationResults__view_in_my_images,
+  ImageGenerationEditor__model_configuration,
+  ImageInputControls__image_count,
+  ImageInputControls__expand_image,
+  ImageInputControls__preview_unavailable,
+  ImageInputControls__move_later,
+  ImageInputControls__move_earlier,
+  ImageInputControls__reference_images_help,
+  ImageInputControls__drop_image_here,
+  ImageInputControls__add_reference_images,
+  ImageInputControls__replace_image,
+  ImageInputControls__choose_image,
+  ImageLoraControls__selected_adapters,
+  ImageGenerationLab__saved_models,
+  ImageGenerationEditor__view_result,
+  ImageGenerationEditor__edits_apply_to_next_generation,
+  ImageGenerationEditor__pick_new_seed,
+  ImageGenerationEditor__fixed_seed,
+  ImageGenerationEditor__new_seed_each_time,
+  ImageGenerationEditor__resolution_must_use_supported_dimensions,
+  ImageGenerationEditor__swap_width_and_height,
+  ImageGenerationEditor__image_size,
+  ImageGenerationEditor__prepare_model,
+  ImageGenerationHistory__read_warnings,
+  ImageGenerationHistory__readable_matches,
+  ImageGenerationHistory__some_history_files_could_not_be_read,
+  ImageGenerationLab__disabled_loras_not_restored,
+  ImageGenerationResults__return_to_opfs_to_retry,
+  ImageModelCatalog__download_queue,
+  ImageModelCatalog__queued,
+  ImageModelCatalog__recommended,
+  ImageModelCatalog__optional_lora,
+  ImageModelCatalog__reference_style_lora_help,
+  ImageModelCatalog__saved_choose_in_lora_controls,
+  ImageLoraControls__strength,
+  ImageLoraControls__enabled,
+  ImageLoraControls__remove,
+  ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files,
+  ImageLoraControls__choose_adapters_for_selected_model,
+  ImageInputControls__input_images,
+  ImageInputControls__initial_image,
+  ImageInputControls__reference_images,
+  ImageInputControls__change_strength,
+  ImageInputControls__remove,
+  ImageInputControls__choose_png_jpeg_or_webp,
+  ImageInputControls__initial_image_help,
+  ImageInputControls__model_support_required,
+  imageBenchmark__include_input_images_in_zip,
 } satisfies Strings;

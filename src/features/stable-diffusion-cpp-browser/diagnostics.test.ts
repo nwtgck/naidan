@@ -9,6 +9,7 @@ it('redacts prompt/token dumps and signed URLs before they enter exports', () =>
 it('keeps native verbose text opt-in while structural checkpoints work in normal mode', () => {
   const listener = vi.fn(); const trace = createImageTrace({ debug: 'off', secrets: [], listener, now: () => 10 });
   trace.native({ message: 'detail', level: 0 }); expect(listener).not.toHaveBeenCalled();
+  trace.native({ message: 'util.h:101  - graph-stage-v1 runner=anima stage=graph event=begin\n', level: 0 }); expect(listener).not.toHaveBeenCalled();
   trace.emit({ event: 'start', stage: 'generation', message: undefined, fields: {} }); expect(listener).toHaveBeenCalledOnce();
 });
 it('bounds high-frequency logs and reports omitted lines instead of queuing promises', () => {
@@ -18,6 +19,39 @@ it('bounds high-frequency logs and reports omitted lines instead of queuing prom
   expect(listener).toHaveBeenCalledTimes(60); time = 1001;
   trace.native({ message: 'next', level: 0 });
   expect(listener.mock.calls[60]?.[0].diagnostic).toMatchObject({ event: 'dropped', fields: { nativeLines: 4940 } });
+});
+it('exports graph boundaries after verbose saturation without spending or resetting the verbose budget', () => {
+  const buffer = createImageDiagnosticBuffer();
+  const trace = createImageTrace({ debug: 'on', secrets: ['private-runner'], listener: buffer.append, now: () => 0 });
+  const first = 'util.h:101  - graph-stage-v1 runner=private-runner stage=graph event=begin\n';
+  const begin = 'util.h:101  - graph-stage-v1 runner=anima stage=scheduler-create event=begin\n';
+  const end = 'util.h:101  - graph-stage-v1 runner=anima stage=scheduler-create event=end\n';
+  trace.native({ message: first, level: 0 });
+  for (let i = 0; i < 60; i++) trace.native({ message: 'verbose ' + i, level: 0 });
+  trace.native({ message: begin, level: 0 }); trace.native({ message: end, level: 0 });
+  trace.native({ message: 'ordinary log after the boundary', level: 0 });
+  // Similar text inside an arbitrary log is still ordinary bounded verbosity.
+  trace.native({ message: 'prefix ' + begin, level: 0 });
+  trace.native({ message: begin.replace('util.h', 'model.cpp'), level: 0 });
+  trace.native({ message: begin.replace('event=begin', 'event=other'), level: 0 });
+  trace.native({ message: begin, level: 1 });
+  trace.native({ message: begin + 'extra line', level: 0 });
+  const exported = buffer.text();
+  expect(exported).toContain('verbose 59');
+  expect(exported).toContain(JSON.stringify(begin)); expect(exported).toContain(JSON.stringify(end));
+  expect(exported).toContain('runner=[redacted]'); expect(exported).not.toContain('private-runner');
+  expect(exported.split('\n')).toHaveLength(63);
+  expect(exported).not.toContain('ordinary log'); expect(exported).not.toContain('prefix '); expect(exported).not.toContain('model.cpp');
+  expect(exported).not.toContain('event=other'); expect(exported).not.toContain('extra line');
+});
+it('keeps the export buffer bounded even for graph-stage diagnostics', () => {
+  const buffer = createImageDiagnosticBuffer();
+  const trace = createImageTrace({ debug: 'on', secrets: [], listener: buffer.append, now: () => 0 });
+  for (let i = 0; i < 2000; i++) trace.native({ message: `util.h:101  - graph-stage-v1 runner=runner-${i} stage=graph event=failed\n`, level: 0 });
+  const exported = buffer.text();
+  expect(exported).toContain('runner=runner-1999'); expect(exported).toContain('buffer-truncated');
+  expect(exported.split('\n').length).toBeLessThanOrEqual(1517);
+  expect(new TextEncoder().encode(exported).length).toBeLessThan(385 * 1024);
 });
 it('does not let a throwing observer break a native callback', () => {
   const trace = createImageTrace({ debug: 'on', secrets: [], listener() {

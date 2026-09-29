@@ -1,0 +1,1 @@
+export const ImageEngineState__memory_values_are_not_total_gpu_memory = (): string => "Diese Kategorien können sich überschneiden. Sie zeigen weder einen Gesamtwert noch die physische GPU-Speichernutzung oder den freien GPU-Speicher.";

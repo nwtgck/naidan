@@ -1,0 +1,1 @@
+export const ImageEngineState__memory_values_are_not_total_gpu_memory = (): string => "Essas categorias podem se sobrepor. Elas não representam um total, o uso físico de memória da GPU nem a memória disponível.";

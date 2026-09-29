@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__deleting_image_file_affects_other_records = (): string => 'Nur die erzeugte Bilddatei wird gelöscht. Der Verlaufseintrag, Vorschaubilder und Eingabebilder bleiben erhalten. Andere Einträge, die diese Datei verwenden, können das Bild nicht mehr anzeigen.';

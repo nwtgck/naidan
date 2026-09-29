@@ -1,0 +1,1 @@
+export const ImageModelCatalog__reference_style_lora_help = (): string => "Adaptador de referência de estilo/edição para Krea 2 Turbo. Requer uma imagem de referência. Após baixar, adicione nos controles de LoRA. A aplicação nativa não foi verificada.";

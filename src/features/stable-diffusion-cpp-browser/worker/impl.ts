@@ -12,6 +12,7 @@ import { createPreviewOutput } from './preview-output';
 import { encodeImagePixels } from './image-output';
 import { loadCoreFactory } from './core-loader';
 import type { SyncBlobReader } from './gguf-file';
+import { imageEngineInspectionSchema } from '@/features/stable-diffusion-cpp-browser/engine-state';
 declare const FileReaderSync: { new (): SyncBlobReader };
 
 /** Long-lived only after success. A failed instance is terminal; the window
@@ -42,6 +43,14 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
     }
   };
   const api: WorkerServerApi<ImageWorker> = {
+    async inspectEngine() {
+      if (failed) return { status: 'unavailable', reason: 'released' };
+      if (busy) return { status: 'unavailable', reason: 'busy' };
+      if (!session) return { status: 'unavailable', reason: 'not-loaded' };
+      const result = imageEngineInspectionSchema.parse(await session.inspectEngine());
+      if (result.status === 'failed' && result.disposition === 'retire-worker') failed = true;
+      return result;
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Top-level Comlink callback transfer.
     async generate(rawRequest, report) {
       if (busy || failed) throw new Error('Image worker is busy or failed; replace it before generating');
@@ -105,7 +114,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
       };
       trace.emit({ event: 'request', stage: 'worker', message: undefined, fields: {
         profile: request.artifact.profile, source: request.artifact.modulePath.split('/')[1]!, schema: request.artifact.schemaSha256,
-        debug: request.debug ?? 'off', models: request.models.length, width: request.parameters.width, height: request.parameters.height,
+        debug: request.debug ?? 'off', models: request.models.length, loras: request.loras.filter(lora => lora.strength !== 0).length, width: request.parameters.width, height: request.parameters.height,
         steps: request.parameters.steps, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset', weightResidency: request.weightResidency,
         guidance: request.parameters.guidance, sampler: request.parameters.sampler, scheduler: request.parameters.scheduler, seed: request.parameters.seed,
         flashAttention: request.parameters.flashAttention, vaeTiling: request.parameters.vaeTiling, vaeTileSize: request.parameters.vaeTileSize,

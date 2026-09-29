@@ -5,6 +5,7 @@ export async function qwenRecipeFixtureBytes({ file, layers }: { file: ImageReci
   const name = file.path.split('/').at(-1)!;
   const blob = (() => {
     switch (file.role) {
+    case 'model': throw new Error('Qwen Image recipes use separate components');
     case 'diffusion': return ggufFixture({ name, metadata: {}, extraBytes: 0, tensors: [
       tensor({ name: 'txt_in.text_norm.weight', shape: [4096] }),
       tensor({ name: 'img_in.weight', shape: [1, 64] }),

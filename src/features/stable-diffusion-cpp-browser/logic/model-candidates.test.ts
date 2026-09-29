@@ -1,11 +1,20 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import { scanImageRepositories, componentRequirements, defaultCompanion, componentMatch } from './model-candidates';
-import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, tensor, sdVaeTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
 import type { LocalImageRepository } from './repository-store';
 function repository({ id, file }: { id: string, file: File }): LocalImageRepository {
   return { id, name: id, files: [{ path: file.name, file }] };
 }
+
+it('offers latent-4 VAE structures only as explicit checkpoint overrides, without classifying an image model', async () => {
+  const file = safetensorsFixture({ name: 'unknown.bin', tensors: sdVaeTensors }).file;
+  const result = await scanImageRepositories({ repositories: [repository({ id: 'user/vae', file })], signal: undefined });
+  expect(result.candidates[0]).toMatchObject({ family: 'unknown', classes: ['vae-sd4'], roles: ['vae'] });
+  expect(componentRequirements({ family: 'sd-checkpoint' })).toEqual([{ slot: 'vae', accepts: ['vae-sd4'], required: false }]);
+  expect(componentRequirements({ family: 'unknown' })).toEqual([]);
+  expect(componentMatch({ candidate: result.candidates[0]!, requirement: { slot: 'vae', accepts: ['vae-flux16'] } })).toBe('incompatible');
+});
 
 it('recognizes Z-Image by tensors, and resolves VAE and Qwen3 across repositories', async () => {
   const main = ggufFixture({ name: 'opaque.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;

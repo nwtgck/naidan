@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__reuse_does_not_download_models = (): string => 'Die Wiederverwendung lädt keine Modelle herunter. Fehlende Dateien müssen erneut gewählt werden. -1 ist nicht der tatsächlich verwendete Zufalls-Seed.';

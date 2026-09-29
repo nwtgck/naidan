@@ -4,6 +4,9 @@ import type { CatalogDownloadProgress } from './logic/catalog-download';
 import type { ImageRecipeSelection } from './model-recipes';
 import type { ComputedRef, Ref, ShallowRef } from 'vue';
 import type { ModelSlot, Request } from './types';
+import type { BrowserImageModelSelection } from '@/01-models/types';
+import type { ImageLoraSelection } from './lora-form';
+import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 
 export type ImageModelChoice = {
   id: string; label: string; detail: string; evidence: string[];
@@ -12,10 +15,44 @@ export type ImageModelChoice = {
 export type ImageComponentChoice = {
   slot: ModelSlot; selected: string; required: boolean; choices: ImageModelChoice[];
 };
+/** Header-identified adapters; compatibility with the selected base is unverified. */
+export type SavedImageLoraChoice = {
+  id: string; label: string; detail: string; file: File; path: string;
+};
 export type ImageRecipeAvailability = { available: number, total: number, selected: boolean, bytes: number };
+export type ImageDownloadQueueEntry = {
+  id: string, label: string, destination: string,
+  state: 'queued' | 'downloading' | 'paused' | 'failed' | 'incomplete', error: string,
+};
+export type HostModelDirectoryChoice = {
+  id: string, name: string,
+  access: 'readwrite' | 'read' | 'prompt' | 'missing' | 'error' | 'unsupported',
+  error: string | undefined,
+};
+export type HostModelDirectoriesView = {
+  supported: ComputedRef<boolean>, entries: ComputedRef<HostModelDirectoryChoice[]>, busy: Ref<boolean>,
+  destination: Ref<string>,
+  add(): Promise<void>,
+  reconnect({ id }: { id: string }): Promise<void>,
+  remove({ id }: { id: string }): Promise<void>,
+  selectDestination({ id }: { id: string }): void,
+};
+/** Known primary model, with its explicitly resolved local component set. */
+export type ImageBenchmarkTarget = {
+  id: string; label: string; detail: string;
+  facts: Pick<ModelCandidate, 'family' | 'variant' | 'evidence'>;
+  composition: 'selected' | 'automatic'; models: Request['models'] | undefined;
+  components: ImageComponentChoice[];
+  missing: ModelSlot[]; issue: string | undefined;
+};
 export type ImageLibraryView = {
+  captureModelSelection({ loras }: { loras: readonly ImageLoraSelection[] }): BrowserImageModelSelection | undefined;
+  restoreModelSelection({ selection }: { selection: BrowserImageModelSelection }): { loras: ImageLoraSelection[], missing: string[], missingInactive: string[] };
+  hostDirectories: HostModelDirectoriesView;
+  benchmarkTargets({ selections }: { selections: Readonly<Record<string, Partial<Record<ModelSlot, string>>>> }): ImageBenchmarkTarget[];
   selectedFacts: ComputedRef<Pick<ModelCandidate, 'family' | 'variant' | 'evidence'> | undefined>;
   models: ComputedRef<ImageModelChoice[]>;
+  savedLoras: ComputedRef<SavedImageLoraChoice[]>;
   main: Ref<string>;
   components: ComputedRef<ImageComponentChoice[]>;
   scanState: Ref<'idle' | 'scanning'>;
@@ -25,15 +62,22 @@ export type ImageLibraryView = {
   importProgress: ShallowRef<{ completed: number, total: number } | undefined>;
   importing: ComputedRef<boolean>;
   downloading: ComputedRef<boolean>;
+  downloadsDisabled: ComputedRef<boolean>;
+  downloadQueue: ComputedRef<ImageDownloadQueueEntry[]>;
+  retryQueuedDownload({ id }: { id: string }): Promise<void>;
+  removeQueuedDownload({ id }: { id: string }): void;
   downloadProgress: ShallowRef<CatalogDownloadProgress | undefined>;
   downloadState: Ref<'idle' | 'downloading' | 'complete' | 'paused' | 'failed' | 'incomplete'>;
-  downloadRecipeId: Ref<string>;
+  downloadRecipeId: ComputedRef<string>;
+  downloadLoraId: ComputedRef<string>;
   downloadRecipe({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): Promise<void>;
   chooseRecipe({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): void;
+  downloadLora({ id }: { id: string }): Promise<void>;
+  loraAvailable({ id }: { id: string }): boolean;
   cancelDownload(): void;
   resumeDownload(): Promise<void>;
   resetDownloadIntent(): void;
-  downloadSelections: ShallowRef<ImageRecipeSelection>;
+  downloadSelections: ComputedRef<ImageRecipeSelection>;
   recipeAvailability({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): ImageRecipeAvailability;
   failure: Ref<string>;
   issues: ComputedRef<string[]>;
@@ -46,6 +90,9 @@ export type ImageLibraryView = {
   cancelImport(): void;
   useManualFiles(): void;
   selectedModels(): Request['models'] | undefined;
+  historyFileLocation({ file }: { file: File }): ImageGenerationModelFile;
+  findHistoryFile({ location }: { location: ImageGenerationModelFile }): File | undefined;
+  prepareHistoryFiles(): Promise<void>;
 };
 export const TEST_ONLY = {
 };

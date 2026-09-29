@@ -6,11 +6,11 @@ export function createImageDownloadWorker(): WorkerServerApi<ImageDownloadWorker
   let active: AbortController | undefined;
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Worker transport passes its proxied callback as a separate argument.
-    async download({ files }, onProgress, fetch) {
+    async download({ files, destination }, onProgress, fetch) {
       if (active) throw new Error('Image download Worker is busy');
       const controller = new AbortController(); active = controller;
       try {
-        await downloadImageRecipe({ files, signal: controller.signal, fetch: async ({ request }) => {
+        await downloadImageRecipe({ files, destination, signal: controller.signal, fetch: async ({ request }) => {
           controller.signal.throwIfAborted();
           const port = await fetch({ request: { url: request.url, headers: request.headers } });
           const received = receivePrivacyStream({ port, signal: controller.signal, onFinish() {} });

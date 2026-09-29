@@ -1,0 +1,1 @@
+export const ImageLoraControls__choose_adapters_for_selected_model = (): string => 'Choose adapters made for the selected model. Image generation success does not confirm LoRA application. Enable debug mode to inspect runtime logs. These selections are not saved.';

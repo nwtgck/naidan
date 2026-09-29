@@ -15,6 +15,9 @@ it('ignores per-image parameters and preview settings while keeping all context 
       request.parameters.flashAttention = true;
     },
     () => {
+      request.parameters.bf16WeightType = 'f16';
+    },
+    () => {
       request.parameters.conditioningCacheSize = 1;
     },
     () => {
@@ -45,6 +48,25 @@ it('never treats distinct manual files as equal by name, size and modified time'
   request.models[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
   expect(keys.key({ request })).not.toBe(first);
 });
+it('retains a session for LoRA strength changes but replaces it for changed adapter files or paths', () => {
+  const keys = createImageSessionKeys(), request = requestFixture();
+  const noAdapter = keys.key({ request });
+  const file = request.models[0]!.file;
+  request.loras = [{ file, path: 'styles/adapter.gguf', strength: 1 }];
+  const selected = keys.key({ request });
+  expect(selected).not.toBe(noAdapter);
+  request.loras[0]!.strength = 0.5;
+  expect(keys.key({ request })).toBe(selected);
+  request.loras[0]!.strength = 0;
+  expect(keys.key({ request })).toBe(selected);
+  request.loras[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
+  expect(keys.key({ request })).not.toBe(selected);
+  request.loras[0]!.file = file;
+  request.loras[0]!.path = 'different/adapter.gguf';
+  expect(keys.key({ request })).not.toBe(selected);
+  request.loras = [];
+  expect(keys.key({ request })).toBe(noAdapter);
+});
 it('accepts a stable published identity across refresh and invalidates its companions and revision', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
   request.models[0]!.sourceId = 'reviewed-publication-with-all-companions';
@@ -61,4 +83,16 @@ it('invalidates on manual companion identity or path but does not depend on mode
   expect(keys.key({ request })).not.toBe(first);
   request.models.push({ slot: 'vae', file: request.models[0]!.file });
   const reordered = keys.key({ request }); request.models.reverse(); expect(keys.key({ request })).toBe(reordered);
+});
+
+it('retains the model context for new input images, changed strength and removal', () => {
+  const keys = createImageSessionKeys(), request = requestFixture();
+  const before = keys.key({ request });
+  const first = new File(['first'], 'same.png', { type: 'image/png' });
+  request.imageInputs = { initImage: first, strength: 0.3, referenceImages: [first] };
+  expect(keys.key({ request })).toBe(before);
+  request.imageInputs = { initImage: undefined, strength: 0.8, referenceImages: [new File(['other'], 'same.png', { type: 'image/png' })] };
+  expect(keys.key({ request })).toBe(before);
+  request.imageInputs.referenceImages = [];
+  expect(keys.key({ request })).toBe(before);
 });

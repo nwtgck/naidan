@@ -1,0 +1,1 @@
+export const imageBenchmark__limits = (): string => "Hasta 100 ejecuciones por lote. Los PNG tienen un límite total de 128 MiB; las omisiones se registran. Los resultados quedan en memoria hasta exportarlos.";

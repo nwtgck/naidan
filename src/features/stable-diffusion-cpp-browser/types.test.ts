@@ -5,6 +5,16 @@ describe('image experiment boundary', () => {
   it('accepts an unsharded GGUF without reading its bytes', () => {
     expect(requestSchema.parse(requestFixture()).models[0]?.file.size).toBe(24);
   });
+  it('validates bounded run-local LoRA selections without reading adapter bytes', () => {
+    const request = requestFixture(), file = ggufFile();
+    expect(requestSchema.parse({ ...request, loras: [{ file, strength: 0 }] }).loras[0]?.strength).toBe(0);
+    expect(requestSchema.parse({ ...request, loras: [{ file, path: 'style/adapter.gguf', strength: -0.5 }] }).loras).toHaveLength(1);
+    for (const loras of [[{ file, strength: Infinity }], [{ file, strength: NaN }], [{ file, strength: 11 }], [{ file, path: '../adapter.gguf', strength: 1 }], [{ file, path: '/adapter.gguf', strength: 1 }], Array.from({ length: 17 }, () => ({ file, strength: 1 }))]) {
+      expect(requestSchema.safeParse({ ...request, loras }).success).toBe(false);
+    }
+    const { loras: _loras, ...withoutAdapters } = request;
+    expect(requestSchema.parse(withoutAdapters).loras).toEqual([]);
+  });
   it.each([{ width: 4096 }, { width: 255 }, { steps: 0 }, { guidance: Infinity }, { seed: '-2' }, { seed: '9223372036854775808' }, { seed: 42 }, { seed: '' }, { seed: '-' }, { seed: 'abc' }, { seed: '1e3' }, { prompt: ' ' }, { prompt: 'a\0b' }])('rejects unsupported parameters %s', change => {
     expect(parametersSchema.safeParse({ ...parametersFixture(), ...change }).success).toBe(false);
   });

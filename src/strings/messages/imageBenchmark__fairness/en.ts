@@ -1,0 +1,1 @@
+export const imageBenchmark__fairness = (): string => "The normal generation model is released before measuring. Workers are disposed between models. Browser/OS caches, other apps, temperature and GPU memory reclamation are not controlled.";

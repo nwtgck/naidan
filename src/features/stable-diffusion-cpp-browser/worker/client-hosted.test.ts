@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createImageClient } from './client-hosted';
 import { requestFixture as request } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
-const mocks = vi.hoisted(() => ({ generate: vi.fn(), release: vi.fn(), terminate: vi.fn(), constructed: vi.fn(), messages: [] as unknown[], workers: [] as EventTarget[] }));
-vi.mock('@/utils/worker-transport', async importOriginal => ({ ...await importOriginal<typeof import('@/utils/worker-transport')>(), wrapWorkerRemote: () => ({ generate: mocks.generate }), releaseWorkerRemote: () => mocks.release(), workerProxy: ({ value }: { value: unknown }) => value }));
+import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/engine-state';
+import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
+const mocks = vi.hoisted(() => ({ inspect: vi.fn(), generate: vi.fn(), release: vi.fn(), terminate: vi.fn(), constructed: vi.fn(), messages: [] as unknown[], workers: [] as EventTarget[] }));
+vi.mock('@/utils/worker-transport', async importOriginal => ({ ...await importOriginal<typeof import('@/utils/worker-transport')>(), wrapWorkerRemote: () => ({ generate: mocks.generate, inspectEngine: mocks.inspect }), releaseWorkerRemote: () => mocks.release(), workerProxy: ({ value }: { value: unknown }) => value }));
 beforeEach(() => {
   vi.clearAllMocks(); mocks.workers.length = 0; mocks.messages.length = 0;
   vi.stubGlobal('Worker', class extends EventTarget {
@@ -16,6 +18,29 @@ beforeEach(() => {
   });
 });
 afterEach(() => vi.unstubAllGlobals());
+it('does not start a Worker for inspection and rejects observations during an active generation', async () => {
+  const client = createImageClient();
+  expect(await client.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' });
+  expect(mocks.constructed).not.toHaveBeenCalled();
+  mocks.generate.mockImplementationOnce(() => new Promise(() => undefined));
+  const controller = new AbortController(), generation = client.generate({ request: request(), signal: controller.signal, onProgress: vi.fn() });
+  const stopped = expect(generation).rejects.toMatchObject({ name: 'AbortError' });
+  expect(await client.inspectEngine()).toEqual({ status: 'unavailable', reason: 'busy' }); expect(mocks.inspect).not.toHaveBeenCalled();
+  controller.abort(); await stopped; client.dispose();
+});
+it('discards an old Worker snapshot after model release and terminates a poisoned observer', async () => {
+  mocks.generate.mockResolvedValue({ png: new Blob(['fixture'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
+  const onReleased = vi.fn(), client = createImageClient({ onReleased });
+  const generate = () => client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() });
+  await generate(); const pending = Promise.withResolvers<ImageEngineInspection>(); mocks.inspect.mockReturnValueOnce(pending.promise);
+  const old = client.inspectEngine(); client.release(); await generate();
+  pending.resolve({ status: 'ready', snapshot: engineSnapshotFixture() });
+  expect(await old).toEqual({ status: 'unavailable', reason: 'released' });
+  mocks.inspect.mockResolvedValueOnce({ status: 'failed', disposition: 'retire-worker', message: 'Native trap' });
+  expect(await client.inspectEngine()).toMatchObject({ status: 'failed', disposition: 'retire-worker' });
+  expect(mocks.terminate).toHaveBeenCalledTimes(2); expect(onReleased).toHaveBeenCalledTimes(2);
+  expect(await client.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' }); client.dispose();
+});
 it('does not create a worker before explicit generation and ignores pre-aborted requests', async () => {
   const client = createImageClient(); expect(mocks.constructed).not.toHaveBeenCalled();
   const controller = new AbortController(); controller.abort();

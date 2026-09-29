@@ -18,7 +18,7 @@ let root: MemoryDirectory;
 const scopes: ReturnType<typeof effectScope>[] = [];
 function library() {
   const scope = effectScope(); scopes.push(scope);
-  return scope.run(() => useImageLibrary({ blocked: () => false, onSelection() {}, dependencies: {
+  return scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
     download: args => downloadImageRecipe({ ...args, fetch: privacyFetchStream }), list: listImageRepositories, scan: scanImageRepositories, import: importImageRepository,
   } }))!;
 }

@@ -4,7 +4,7 @@ export type GalleryEntry<T> = T & { id: number, url: string };
  * but revoking one owner must never break another owner's image. */
 export function createImageGallery<T extends object>({ maxBytes, initialLimit }: { maxBytes: number, initialLimit: number }) {
   let next = 0, used = 0, limit = initialLimit;
-  let items: { entry: GalleryEntry<T>, bytes: number }[] = [];
+  let items: { entry: GalleryEntry<T>, bytes: number, blob: Blob }[] = [];
   const revoke = ({ item }: { item: { entry: GalleryEntry<T>, bytes: number } }) => {
     URL.revokeObjectURL(item.entry.url); used -= item.bytes;
   };
@@ -20,10 +20,13 @@ export function createImageGallery<T extends object>({ maxBytes, initialLimit }:
       const bytes = blob.size + width * height * 4;
       if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > maxBytes) throw new Error('Image exceeds gallery memory budget');
       const entry = { ...metadata, id: ++next, url: URL.createObjectURL(blob) };
-      items.unshift({ entry, bytes }); used += bytes; trim(); return entry;
+      items.unshift({ entry, bytes, blob }); used += bytes; trim(); return entry;
     },
     entries(): GalleryEntry<T>[] {
       return items.map(item => item.entry);
+    },
+    getBlob({ id }: { id: number }): Blob | undefined {
+      return items.find(item => item.entry.id === id)?.blob;
     },
     setLimit({ value }: { value: number }): void {
       if (!Number.isInteger(value) || value < 1 || value > 100) return;

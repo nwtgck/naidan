@@ -22,9 +22,9 @@ import { BOUNDARY_STRING_LOCALES } from './boundary-strings/message-catalog';
 import { createZipPackages } from './zip-packages';
 
 const repo = process.cwd();
-const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs');
+const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs');
 const binaryId = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser';
-const core32Id = path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
+const core32Id = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
 const binary32Id = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi';
 function closure({ entry, chunks, dynamic }: { entry: Rollup.OutputChunk, chunks: Rollup.OutputChunk[], dynamic: boolean }): Set<string> {
   const found = new Set<string>();
@@ -79,8 +79,8 @@ describe('pinned standalone native artifacts', () => {
     const plugin = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' }).corePlugin;
     const load = plugin.load;
     if (typeof load !== 'function') throw new Error('Expected a load hook');
-    expect(() => load.call({} as never, path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`))).toThrow('Unavailable llama.cpp artifact');
-    expect(() => load.call({} as never, path.join(repo, 'node_modules/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/test/core.mjs'))).toThrow('Unavailable llama.cpp artifact');
+    expect(() => load.call({} as never, path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`))).toThrow('Unavailable llama.cpp artifact');
+    expect(() => load.call({} as never, path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/test/core.mjs'))).toThrow('Unavailable llama.cpp artifact');
   });
   it('registers both reviewed JSPI binaries and core imports for standalone capability selection', () => {
     const { corePlugin, embeddedBinaries } = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
@@ -92,8 +92,8 @@ describe('pinned standalone native artifacts', () => {
     if (typeof resolve !== 'function') throw new Error('Expected a resolve hook');
     for (const profile of ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi']) {
       expect(resolve.call({} as never, `virtual:llama-cpp-browser-core/${profile}`, undefined, {} as never))
-        .toBe(path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`));
-      expect(embeddedBinaries.some(binary => binary.filePath === path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`))).toBe(true);
+        .toBe(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`));
+      expect(embeddedBinaries.some(binary => binary.filePath === path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`))).toBe(true);
     }
   });
   it('keeps complete native legal comments without copying implementation bodies', () => {

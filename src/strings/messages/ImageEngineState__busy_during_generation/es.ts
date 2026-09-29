@@ -1,0 +1,1 @@
+export const ImageEngineState__busy_during_generation = ({ phase }: { phase: string }): string => `La generación está en curso (${phase}). Los valores no se pueden actualizar hasta que el motor esté inactivo.`;

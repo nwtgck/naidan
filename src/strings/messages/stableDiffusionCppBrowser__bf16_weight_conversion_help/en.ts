@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__bf16_weight_conversion_help = (): string => "F32 preserves BF16 values and doubles their weight memory. F16 uses the same weight memory but can lose precision and numeric range. Existing quantization is unchanged.";

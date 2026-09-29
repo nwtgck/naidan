@@ -1,0 +1,1 @@
+export const ImageGenerationResults__history_save_failed_download_image = (): string => 'Das Bild wurde erzeugt, aber der Verlauf konnte nicht gespeichert werden. Du kannst das Bild unten herunterladen.';

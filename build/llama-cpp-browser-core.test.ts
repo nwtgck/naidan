@@ -4,13 +4,32 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import os from 'node:os';
 import path from 'node:path';
 import { createContext, SourceTextModule } from 'node:vm';
+import { gunzipSync } from 'node:zlib';
 import { createServer } from 'vite';
+import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild, transformBrowserCore } from '../src/features/llama-cpp-browser/build-core';
+import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-browser/build-runtime-assets';
 
 const repo = process.cwd();
 const profiles = ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const;
 describe('shared browser core adapter', () => {
+  it('reads the combined inventory and emits five verified hosted Wasm payloads', async () => {
+    const files = new Map<string, Uint8Array>();
+    const hook = createLlamaCppRuntimeAssetsPlugin({ rootDir: repo }).generateBundle;
+    if (typeof hook !== 'function') throw new Error('Expected hosted asset hook');
+    await hook.call({ emitFile(file: { type: string, fileName?: string, source?: Uint8Array }) {
+      if (file.type !== 'asset' || !file.fileName || !file.source) throw new Error('Unexpected runtime emission');
+      files.set(file.fileName, file.source); return file.fileName;
+    } } as never, {} as never, {} as never, false);
+    expect(files.size).toBe(5);
+    for (const profile of profiles) {
+      const name = `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`;
+      const bytes = files.get(name);
+      if (!bytes) throw new Error(`Missing hosted runtime asset: ${profile}`);
+      expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
+    }
+  });
   it.each(profiles)('transforms %s at the same virtual dev boundary used by production', async profile => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-dev-'));
     const server = await createServer({ configFile: false, root, logLevel: 'silent',
@@ -19,7 +38,7 @@ describe('shared browser core adapter', () => {
     });
     try {
       const id = `virtual:llama-cpp-browser-core/${profile}`;
-      const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+      const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
       const resolved = await server.environments.client.pluginContainer.resolveId(id);
       expect(resolved?.id).toBe(realPath);
       expect(server.config.optimizeDeps.exclude).toContain(id);
@@ -51,15 +70,26 @@ describe('shared browser core adapter', () => {
     try {
       const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
       cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
-      const relative = 'profiles/cpu-wasm32/browser/core.mjs';
+      const relative = 'llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.mjs';
       const data = readFileSync(path.join(artifact, relative), 'utf8') + '\n';
       writeFileSync(path.join(artifact, relative), data);
-      // JSON here is an owned fixture; only change its existing reviewed record.
-      const manifest = readFileSync(path.join(artifact, 'manifest.json'), 'utf8');
-      const original = readFileSync(path.join(repo, 'node_modules/llama-cpp-browser-core', relative));
-      writeFileSync(path.join(artifact, 'manifest.json'), manifest
-        .replace(createHash('sha256').update(original).digest('hex'), createHash('sha256').update(data).digest('hex'))
-        .replace(`"bytes": ${original.byteLength}`, `"bytes": ${Buffer.byteLength(data)}`));
+      // Keep both inventories internally consistent so the exact-source guard
+      // rejects this unreviewed browser core rather than a corrupt fixture.
+      const inventory = z.object({ files: z.array(z.object({ path: z.string(), bytes: z.number(), sha256: z.string() })) }).passthrough();
+      const innerPath = path.join(artifact, 'llama-cpp-browser-core/manifest.json');
+      const inner = inventory.parse(JSON.parse(readFileSync(innerPath, 'utf8')));
+      const innerFile = inner.files.find(file => file.path === 'profiles/cpu-wasm32/browser/core.mjs');
+      if (!innerFile) throw new Error('Missing test core');
+      innerFile.bytes = Buffer.byteLength(data); innerFile.sha256 = createHash('sha256').update(data).digest('hex');
+      const innerData = JSON.stringify(inner); writeFileSync(innerPath, innerData);
+      const rootPath = path.join(artifact, 'manifest.json');
+      const rootManifest = inventory.parse(JSON.parse(readFileSync(rootPath, 'utf8')));
+      const coreFile = rootManifest.files.find(file => file.path === relative);
+      const innerManifest = rootManifest.files.find(file => file.path === 'llama-cpp-browser-core/manifest.json');
+      if (!coreFile || !innerManifest) throw new Error('Missing test inventory entries');
+      coreFile.bytes = Buffer.byteLength(data); coreFile.sha256 = createHash('sha256').update(data).digest('hex');
+      innerManifest.bytes = Buffer.byteLength(innerData); innerManifest.sha256 = createHash('sha256').update(innerData).digest('hex');
+      writeFileSync(rootPath, JSON.stringify(rootManifest));
       expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode: 'hosted' })).toThrow('Unreviewed browser core artifact');
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -67,7 +97,7 @@ describe('shared browser core adapter', () => {
   });
   it('initializes real CPU Wasm from the original non-zero-offset byte view with no fetch or Node imports', async () => {
     const profile = 'cpu-wasm32';
-    const id = path.join(repo, `node_modules/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+    const id = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const source = transformBrowserCore({ source: readFileSync(id, 'utf8'), id, profile }).code;
     const binary = readFileSync(id.replace('core.mjs', 'core.wasm'));
     const storage = new Uint8Array(binary.length + 32);

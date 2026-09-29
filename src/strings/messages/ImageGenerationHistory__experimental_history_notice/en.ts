@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__experimental_history_notice = (): string => 'Saving generation history is experimental. Updates to Naidan may cause saved images or generation information to be lost. Download images you want to keep.';

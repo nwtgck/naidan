@@ -8,7 +8,7 @@ import type { ImageDownloadWorker } from './types';
  * cannot create a Worker or start metadata requests. Cancellation normally lets
  * the writer checkpoint. A crashed/stalled Worker cannot keep the UI busy forever.
  */
-export async function downloadImageRecipeInWorker({ files, signal, onProgress }: ImageRecipeDownloadRequest): Promise<void> {
+export async function downloadImageRecipeInWorker({ files, signal, onProgress, destination }: ImageRecipeDownloadRequest): Promise<void> {
   signal.throwIfAborted();
   const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-image-model-download' });
   const remote = (() => {
@@ -30,7 +30,7 @@ export async function downloadImageRecipeInWorker({ files, signal, onProgress }:
   signal.addEventListener('abort', abort, { once: true });
   worker.addEventListener('error', crash); worker.addEventListener('messageerror', crash);
   try {
-    const operation = remote.download({ files: files.map(file => ({ ...file })) }, workerProxy({ value: ({ progress }) => {
+    const operation = remote.download({ files: files.map(file => ({ ...file })), destination }, workerProxy({ value: ({ progress }) => {
       const parsed = catalogDownloadProgressSchema.safeParse(progress);
       if (parsed.success && !signal.aborted) {
         try {

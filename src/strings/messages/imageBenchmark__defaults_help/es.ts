@@ -1,0 +1,1 @@
+export const imageBenchmark__defaults_help = (): string => "Tamaño, pasos, textos y semilla siguen siendo comunes salvo cambios individuales. Los mismos pasos no implican igual trabajo o calidad. Los argumentos del modelo aparecen en la solicitud efectiva.";

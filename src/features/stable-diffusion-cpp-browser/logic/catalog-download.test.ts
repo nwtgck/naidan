@@ -15,6 +15,13 @@ vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: calls.fetch }))
 let root: MemoryDirectory;
 const revision = 'a'.repeat(40);
 const file: ImageRecipeFile = { role: 'diffusion', repository: 'org/model', revision, path: 'weights/model.gguf', directory: 'model', approximateBytes: 32 };
+it('acquires a role-independent optional file through the same verified publication path', async () => {
+  const bytes = gguf(); serve({ actual: bytes, expected: bytes });
+  const { repository, revision, path } = file;
+  await downloadImageRecipe({ files: [{ repository, revision, path }], signal: new AbortController().signal, onProgress() {} });
+  const stored = (await listImageRepositories({ signal: undefined }))[0]!.files[0]!;
+  expect(stored.receipt?.source).toEqual({ kind: 'hugging-face', repository, revision, path, sha256: createHash('sha256').update(bytes).digest('hex') });
+});
 function gguf(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(32), view = new DataView(bytes.buffer);
   view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return bytes;

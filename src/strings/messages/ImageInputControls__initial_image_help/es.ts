@@ -1,0 +1,1 @@
+export const ImageInputControls__initial_image_help = (): string => "La imagen inicial se ajusta al tamaño de salida. Una intensidad mayor la cambia más. Los píxeles transparentes usan un fondo blanco.";

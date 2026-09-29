@@ -1,5 +1,5 @@
 import { createDisabledImageLibrary } from './library-standalone';
-import { computed, ref } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { lazyStrings } from '@/strings';
 import { createImageForm } from './form';
 import type { ImageGenerationView } from './use-image-generation-types';
@@ -10,10 +10,33 @@ export function useImageGeneration(): ImageGenerationView {
   return {
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
     ...form,
+    engineState: { opened: ref(false), status: ref('unavailable'), snapshot: shallowRef(), reason: ref('unsupported'), error: ref(''),
+      canRefresh: computed(() => false), setOpened() {}, async refresh() {} },
+    seedMode: ref('random'), randomizeSeed() {},
+    history: { available: ref(false), items: shallowRef([]), total: ref(0), currentPage: ref(1), pageCount: ref(1), loading: ref(false), error: ref(''), warnings: shallowRef([]), warningCount: ref(0), selected: shallowRef(), detailLoading: ref(false), detailError: ref(''), imageInvalidation: shallowRef(),
+      setQuery() {}, async reload() {}, async goToPage() {}, async select() {}, async remove() {}, async removeImage() {}, async getImage() {
+        return undefined;
+      }, clearSelection() {}, dispose() {} },
+    historySaving: { enabled: ref(true), supported: computed(() => false), status: ref('idle'), error: ref(''), pendingCount: ref(0), async retry() {} },
+    historyActions: { busy: ref(false), error: ref(''), missingFiles: ref([]), missingInactiveFiles: ref([]) },
+    async reuseHistory() {}, async useHistoryImage() {},
+    savedHistoryId: () => undefined,
+    async downloadHistory() {
+      return { status: 'cancelled' };
+    },
+    async downloadResult() {
+      return { status: 'cancelled' };
+    },
+    async downloadPreview() {
+      return { status: 'cancelled' };
+    },
+    clearHistoryMissingFiles() {},
+    acquireBenchmark: () => false, releaseBenchmark() {},
     library: createDisabledImageLibrary(),
     busy: computed(() => false),
     supported: computed(() => false),
     formDisabled: computed(() => true),
+    draftDisabled: computed(() => true),
     unavailable: computed(() => lazyStrings.stableDiffusionCppBrowser__hosted_build_required()),
     recommendation: computed(() => undefined),
     manualInspectionState: ref('idle'), async inspectManualFiles() {},

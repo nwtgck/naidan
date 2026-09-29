@@ -1,13 +1,13 @@
 import type { CatalogFetch } from '@/features/stable-diffusion-cpp-browser/download-worker/fetch-types';
 import { z } from 'zod';
-import type { ImageRecipeFile } from '@/features/stable-diffusion-cpp-browser/model-recipes';
-import { imageFileIdentity, imageDownloadSourceSchema } from './catalog-source';
+import { imageFileIdentity, imageDownloadSourceSchema, type ImageDownloadSource } from './catalog-source';
 import { saveImageCatalogFile } from './catalog-file-download';
 
 import type { CatalogDownloadProgress } from '@/features/stable-diffusion-cpp-browser/download-worker/progress';
 export type { CatalogDownloadProgress } from '@/features/stable-diffusion-cpp-browser/download-worker/progress';
 type Report = ({ progress }: { progress: CatalogDownloadProgress }) => void;
-export type ImageRecipeDownloadRequest = { files: readonly ImageRecipeFile[], signal: AbortSignal, onProgress: Report };
+export type ImageDownloadDestination = { kind: 'opfs' } | { kind: 'host', directoryId: string };
+export type ImageRecipeDownloadRequest = { files: readonly ImageDownloadSource[], signal: AbortSignal, onProgress: Report, destination?: ImageDownloadDestination };
 export type ImageRecipeDownloader = ({ files, signal, onProgress }: ImageRecipeDownloadRequest) => Promise<void>;
 function notify({ report, progress }: { report: Report, progress: CatalogDownloadProgress }): void {
   try {
@@ -17,11 +17,12 @@ function notify({ report, progress }: { report: Report, progress: CatalogDownloa
 /** Explicit acquisition only. Metadata discovery, transfer, verification and
  * publication run in a Worker. A completed file survives failures in later
  * components; pending files can only be resumed by another explicit action.
+ * File acquisition is role-independent, including optional adapter downloads.
  */
-export async function downloadImageRecipe({ files, signal, onProgress, fetch }: ImageRecipeDownloadRequest & { fetch: CatalogFetch }): Promise<void> {
+export async function downloadImageRecipe({ files, signal, onProgress, fetch, destination }: ImageRecipeDownloadRequest & { fetch: CatalogFetch }): Promise<void> {
   z.array(imageDownloadSourceSchema).min(1).max(16).parse(files);
   if (new Set(files.map(file => `${file.repository}/${file.path}`)).size !== files.length) throw new Error('Duplicate catalog file');
-  if (!navigator.locks || !navigator.storage?.getDirectory) throw new Error('Safe model download storage is unavailable');
+  if (!navigator.locks || (destination?.kind !== 'host' && !navigator.storage?.getDirectory)) throw new Error('Safe model download storage is unavailable');
   const planned = [];
   for (const [index, file] of files.entries()) {
     notify({ report: onProgress, progress: { phase: 'checking', index, count: files.length, path: file.path, repository: file.repository,
@@ -33,7 +34,7 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch }: 
   let completed = 0, processed = 0;
   for (const [index, file] of planned.entries()) {
     let reported = -Infinity, fileProcessed = 0;
-    await saveImageCatalogFile({ file, signal, fetch, report: ({ progress }) => {
+    await saveImageCatalogFile({ file, signal, fetch, destination, report: ({ progress }) => {
       fileProcessed = progress.processed;
       if (performance.now() - reported < 150 && progress.bytes !== file.size) return;
       reported = performance.now();

@@ -11,7 +11,7 @@ afterEach(() => {
 });
 describe('prebuilt runtime loading', () => {
   it('decompresses the served core asset and initializes the actual supplied CPU Wasm', async () => {
-    const base = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/profiles') + '/');
+    const base = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
     const wasm = await readFile(new URL('cpu-wasm32/browser/core.wasm', base));
     const fetcher = vi.fn().mockResolvedValue(new Response(Uint8Array.from(gzipSync(wasm))));
     vi.stubGlobal('fetch', fetcher);

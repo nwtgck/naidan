@@ -10,12 +10,17 @@ export interface NativeApi {
   free_sd_ctx(context: bigint): Promise<void>;
   sd_cancel_generation(context: bigint, mode: number): Promise<void>;
   sd_ctx_supports_image_generation(context: bigint): Promise<number>;
+  /** Optional observational API: absence must not prevent image generation. */
+  sd_ctx_get_runtime_info?(context: bigint, output: bigint, bytes: bigint): Promise<number>;
+  sd_ctx_get_memory_info?(context: bigint, output: bigint, bytes: bigint): Promise<number>;
+  sd_ctx_get_params?(context: bigint, output: bigint, bytes: bigint): Promise<number>;
   sd_get_model_version_name(context: bigint): Promise<bigint>;
   sd_get_default_sample_method(context: bigint): Promise<number>;
   sd_get_default_scheduler(context: bigint, sampler: number): Promise<number>;
   str_to_sample_method(name: bigint): Promise<number>;
   str_to_scheduler(name: bigint): Promise<number>;
   sd_set_log_callback(callback: bigint, data: bigint): Promise<void>;
+  sd_set_graph_diagnostics(enabled: number): Promise<void>;
   sd_set_progress_callback(callback: bigint, data: bigint): Promise<void>;
   sd_set_preview_callback(callback: bigint, mode: number, interval: number, denoised: number, noisy: number, data: bigint): Promise<void>;
   sd_list_devices(buffer: bigint, bytes: bigint): Promise<bigint>;

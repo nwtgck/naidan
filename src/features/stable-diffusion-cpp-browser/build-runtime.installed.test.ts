@@ -17,14 +17,18 @@ it('connects the installed bicore image dependency without replacing the llama d
   })) }).parse(JSON.parse(readFileSync(path.join(rootDir, 'package-lock.json'), 'utf8')));
   const name = 'stable-diffusion-cpp-browser-core';
   const specifier = pkg.dependencies[name];
-  expect(specifier).toMatch(/^github:nwtgck\/llama-cpp-browser-core#[0-9a-f]{40}$/);
-  expect(specifier).not.toBe(pkg.dependencies['llama-cpp-browser-core']);
+  expect(specifier).toMatch(/^github:nwtgck\/browser-inference-core#[0-9a-f]{40}$/);
   expect(lock.packages['']?.dependencies?.[name]).toBe(specifier);
   expect(lock.packages['node_modules/' + name]?.resolved?.split('#')[1]).toBe(specifier?.split('#')[1]);
   expect(lock.packages['node_modules/' + name]?.integrity).toMatch(/^sha512-/);
+  const llamaName = 'llama-cpp-browser-core', llamaSpecifier = pkg.dependencies[llamaName];
+  expect(llamaSpecifier).toMatch(/^github:nwtgck\/browser-inference-core#[0-9a-f]{40}$/);
+  expect(lock.packages['']?.dependencies?.[llamaName]).toBe(llamaSpecifier);
+  expect(lock.packages['node_modules/' + llamaName]?.resolved?.split('#')[1]).toBe(llamaSpecifier?.split('#')[1]);
+  expect(lock.packages['node_modules/' + llamaName]?.integrity).toMatch(/^sha512-/);
 
   const manifest = z.object({ capabilities: z.object({ safetensorsFileOffsetBits: z.literal(64), ggufShards: z.literal(true) }) })
-    .parse(JSON.parse(readFileSync(path.join(rootDir, 'node_modules', name, 'stable-diffusion-cpp/manifest.json'), 'utf8')));
+    .parse(JSON.parse(readFileSync(path.join(rootDir, 'node_modules', name, 'stable-diffusion-cpp-browser-core/manifest.json'), 'utf8')));
   expect(manifest.capabilities.ggufShards).toBe(true);
   const result = readImageArtifacts({ rootDir, mode: 'hosted', artifactDir: undefined });
   expect(result.configuration.kind).toBe('available');

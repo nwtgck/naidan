@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__backup_does_not_include_history = (): string => 'Las copias ZIP incluyen imágenes, pero no el historial que las vincula con sus ajustes. Reemplazar datos desde una copia elimina ese historial.';
