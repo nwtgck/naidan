@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive, toRaw } from 'vue';
 import { z } from 'zod';
@@ -57,7 +58,7 @@ vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: v
 vi.mock('@/composables/useStoragePersistence', () => ({ useStoragePersistence: () => ({ requestPersistence: vi.fn() }) }));
 vi.mock('@/composables/chat/ui/useChatNavigation', () => ({ useChatNavigation: () => ({ openChat: vi.fn() }) }));
 vi.mock('@/composables/chat/ui/useChatOrganization', () => ({ useChatOrganization: () => ({ reorderSidebarChatAfterSend: vi.fn() }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { notify: state.notify, getFile: vi.fn(), saveFile: vi.fn(), canPersistBinary: true } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined), notify: state.notify, getFile: vi.fn(), saveFile: vi.fn(), canPersistBinary: true } }));
 
 import { generateResponseForAssistant, regenerateMessageForChat } from './chat-generation-flow';
 

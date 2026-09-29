@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const chats = new Map<string, any>();
@@ -36,6 +37,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     vi.doMock('../00-storage/service', () => ({
       storageService: {
+        getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
         getSidebarStructure: vi.fn().mockResolvedValue([]),
         saveChat: vi.fn().mockImplementation((chat) => {
           chats.set(chat.id, chat);

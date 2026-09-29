@@ -1,3 +1,4 @@
+import { canInitializeModelLaunchDefaults, type ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { ref, readonly, computed, watch, type ComputedRef, type Ref } from 'vue';
 import {
@@ -37,6 +38,11 @@ const _settings = ref<Settings>({
   endpoint: { type: 'openai', url: '' },
 } as Settings);
 
+let globalDefaultRevision = 0;
+watch(() => ({ endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId }), (next, previous) => {
+  if (next.modelId !== previous.modelId || !areEndpointsEqual({ left: next.endpoint, right: previous.endpoint })) globalDefaultRevision++;
+}, { flush: 'sync' });
+
 const _initialized = ref(false);
 const _isOnboardingDismissed = ref(false);
 const _onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
@@ -67,6 +73,8 @@ const searchContextSize = computed<SearchContextSize>(() => (
 
 interface UseSettingsApi {
   settings: Readonly<Ref<Settings>>,
+  captureModelLaunchDefaults(): Promise<ModelLaunchDefaultSnapshot>,
+  initializeModelLaunchDefaults({ modelId, expected }: { modelId: string, expected: ModelLaunchDefaultSnapshot }): Promise<'applied' | 'changed'>,
   initialized: Readonly<Ref<boolean>>,
   isOnboardingDismissed: ComputedRef<boolean>,
   onboardingDraft: Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>,
@@ -522,6 +530,39 @@ export function useSettings(): UseSettingsApi {
     await storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), ...patch } as Settings) });
   }
 
+  async function captureModelLaunchDefaults(): Promise<ModelLaunchDefaultSnapshot> {
+    const isStorageCurrent = storageService.captureModelLaunchStorage();
+    const snapshot = { endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId, revision: globalDefaultRevision, isStorageCurrent };
+    const stored = await storageService.loadSettings();
+    const matches = stored === null || (areEndpointsEqual({ left: stored.endpoint, right: snapshot.endpoint }) && stored.defaultModelId === snapshot.modelId);
+    return { ...snapshot, storedMatches: matches };
+  }
+
+  async function initializeModelLaunchDefaults({ modelId, expected }: { modelId: string, expected: ModelLaunchDefaultSnapshot }): Promise<'applied' | 'changed'> {
+    const stillExpected = ({ current }: { current: Settings }): boolean => (
+      expected.isStorageCurrent() && expected.revision === globalDefaultRevision
+      && current.defaultModelId === expected.modelId
+      && areEndpointsEqual({ left: current.endpoint, right: expected.endpoint })
+      && canInitializeModelLaunchDefaults({ endpoint: current.endpoint, modelId: current.defaultModelId })
+    );
+    if (!expected.storedMatches || !stillExpected({ current: _settings.value })) return 'changed';
+    let applied = false;
+    await storageService.updateSettings({ updater: ({ current }) => {
+      const base = current ?? _settings.value;
+      if (!stillExpected({ current: base })) return base;
+      applied = true;
+      return { ...base, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
+    } });
+    if (!applied) return 'changed';
+    // A newer explicit in-memory selection must not be overwritten by the
+    // completion of this write. It owns its own settings save.
+    if (stillExpected({ current: _settings.value })) {
+      _settings.value = { ..._settings.value, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
+      void fetchModels({}).catch(() => {});
+    }
+    return 'applied';
+  }
+
   async function updateGlobalModel({ modelId }: { modelId: string }) {
     _settings.value.defaultModelId = modelId;
     await storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), defaultModelId: modelId }) });
@@ -725,6 +766,8 @@ export function useSettings(): UseSettingsApi {
 
   return {
     settings: readonly(_settings) as Readonly<Ref<Settings>>,
+    captureModelLaunchDefaults,
+    initializeModelLaunchDefaults,
     initialized: readonly(_initialized),
     isOnboardingDismissed,
     onboardingDraft: readonly(_onboardingDraft) as Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>,

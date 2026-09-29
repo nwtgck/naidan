@@ -45,6 +45,9 @@ export function useModelPresetCoordinator(): Readonly<ShallowRef<ModelPreset | u
   const input = computed(() => {
     // Onboarding can appear while the initial navigation guard is still waiting.
     const route = router.currentRoute.value === START_LOCATION ? resolveInitialRoute({ router }) : router.currentRoute.value;
+    // Root model links now belong to the WelcomeScreen launcher. Other routes
+    // retain the legacy explicit settings/onboarding entry behavior.
+    if (route.path === '/') return undefined;
     return readFirstQueryValue({ value: route.query['llama-cpp-browser-model'] });
   });
   coordinateModelPreset({ state, input, initialized, isOnboardingDismissed });

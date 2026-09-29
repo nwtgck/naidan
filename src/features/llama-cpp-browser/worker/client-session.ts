@@ -4,7 +4,7 @@ import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-b
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { workerProxy, type WorkerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
-import { workerAudioCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
+import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
 // Both transports share cancellation, validation and callback lifetime rules.
 export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTransport, getAssetBaseURL }: {
@@ -154,6 +154,19 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     }),
     removeModel: async ({ plan, signal }) => {
       return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined, abortTimeoutMs: undefined }));
+    },
+    prepareModel: async ({ request, onProgress, signal }) => {
+      const accepted = workerPrepareCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      let acceptingEvents = true;
+      try {
+        await invoke({ call: () => remote.prepareModel(accepted, workerProxy({ value: ({ ...event }) => {
+          if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+        } })), signal, onAbort: () => {
+          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+        }, abortTimeoutMs: 5000 });
+      } finally {
+        acceptingEvents = false;
+      }
     },
     generate: async ({ request, onEvent, onProgress, signal }) => {
       const accepted = workerGenerateCallSchema.parse({ ...request, generationId: ++nextGenerationId,

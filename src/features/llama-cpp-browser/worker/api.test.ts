@@ -1,6 +1,8 @@
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import type { generateAudio } from './audio-generation';
+import type { prepareSession } from './session';
+import type { WorkerPrepareCall } from './types';
 import type { WorkerAudioCall } from './types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { logNativeDiagnostic, logOperation } from '@/features/llama-cpp-browser/debug-log';
@@ -14,12 +16,12 @@ import type { generate } from "./generation";
 
 const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
 const completed = () => ({ ...result, toolCalls: [] });
-const calls = vi.hoisted(() => ({ audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
 vi.mock("@/features/llama-cpp-browser/runtime/detect-profile", () => ({ probeRuntimeProfiles: calls.probe }));
 vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
 vi.mock("./audio-generation", () => ({ generateAudio: calls.audio }));
 vi.mock("./generation", () => ({ generate: calls.generate }));
-vi.mock("./session", () => ({ invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
+vi.mock("./session", () => ({ prepareSession: calls.prepare, invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
 vi.mock("../runtime/model-store", () => ({ withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
   importStoredModel: calls.import, removeStoredModel: calls.remove, listStoredModels: calls.list }));
 function request({ generationId }: { generationId: number }): WorkerGenerateCall {
@@ -355,5 +357,45 @@ describe('preview control isolation', () => {
   });
   it.each([0, -1, 1.5, Number.NaN])('rejects malformed request version %s before applying intent', async requestVersion => {
     await expect(createWorkerApi().requestAudioPreview({ generationId: 1, requestVersion })).rejects.toThrow();
+  });
+});
+
+
+function preparation({ generationId }: { generationId: number }): WorkerPrepareCall {
+  return { generationId, model: 'local.gguf', options: { profile: 'cpu-wasm32' }, debug: 'off', assetBaseURL: 'https://example.invalid/profiles/' };
+}
+describe('preparation RPC ownership', () => {
+  it('prepares the session with no messages or generation and drains progress before releasing the lane', async () => {
+    const gate = deferred();
+    calls.prepare.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress({ progress: { phase: 'loading', completed: 1, total: 1 } });
+      throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+    });
+    const api = createWorkerApi(); const progress = vi.fn(() => gate.promise);
+    const pending = api.prepareModel(preparation({ generationId: 401 }), progress);
+    const rejected = expect(pending).rejects.toThrow('invalid-gguf');
+    await vi.waitFor(() => expect(progress).toHaveBeenCalledOnce());
+    expect(calls.prepare.mock.calls.at(-1)?.[0].request).not.toHaveProperty('messages');
+    expect(calls.generate).not.toHaveBeenCalled();
+    await expect(api.release()).rejects.toThrow('busy');
+    await expect(api.prepareModel(preparation({ generationId: 402 }), () => {})).rejects.toThrow('busy');
+    gate.resolve(); await rejected; await api.release();
+  });
+  it('targets cancellation by operation identity while keeping the lane until native cleanup completes', async () => {
+    const gate = deferred(); let signal: AbortSignal | undefined;
+    calls.prepare.mockImplementationOnce(async args => {
+      signal = args.signal; await gate.promise; throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    const api = createWorkerApi(); const pending = api.prepareModel(preparation({ generationId: 501 }), () => {});
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    await api.cancelGeneration({ generationId: 500 }); expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 501 }); expect(signal?.aborted).toBe(true);
+    await expect(api.generate(request({ generationId: 502 }), async () => {}, () => {})).rejects.toThrow('busy');
+    gate.resolve(); await rejected; await api.release();
+  });
+  it('rejects accidental fake-conversation data before touching the session', async () => {
+    await expect(createWorkerApi().prepareModel({ ...preparation({ generationId: 601 }), ...{ messages: [] } }, () => {})).rejects.toThrow();
+    expect(calls.prepare).not.toHaveBeenCalled();
   });
 });

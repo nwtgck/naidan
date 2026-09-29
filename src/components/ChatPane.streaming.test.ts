@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -79,6 +80,7 @@ vi.mock('../features/lm/ollama', () => ({
 const chats = new Map<string, any>();
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn(),

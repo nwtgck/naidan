@@ -37,6 +37,10 @@ export type ChangeType = StorageChangeEvent['type'];
 
 export type ChangeListener = ({ event }: { event: StorageChangeEvent }) => void | Promise<void>;
 
+// Page-local fallback is not cross-tab exclusion. Persistent model launches
+// still require Web Locks; memory storage can use these serialized lanes.
+const fallbackLocks = new Map<string, Promise<void>>();
+
 export class StorageSynchronizer {
   private listeners: Set<ChangeListener> = new Set();
   private broadcastChannel: BroadcastChannel | null = null;
@@ -169,8 +173,17 @@ export class StorageSynchronizer {
         }
       }
     } else {
-      // Fallback for environments without Web Locks
-      return await fn();
+      const previous = fallbackLocks.get(lockKey) ?? Promise.resolve();
+      const released = Promise.withResolvers<void>();
+      const tail = previous.then(() => released.promise);
+      fallbackLocks.set(lockKey, tail);
+      await previous;
+      try {
+        return await fn();
+      } finally {
+        released.resolve();
+        if (fallbackLocks.get(lockKey) === tail) fallbackLocks.delete(lockKey);
+      }
     }
   }
 

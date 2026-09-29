@@ -52,7 +52,7 @@ type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBase
 type SessionPurpose = { kind: 'chat' } | { kind: 'audio', contextTokens: number, audioBackend: AudioBackend };
 
 export async function prepareSession({ request, onProgress, signal }: {
-  request: WorkerGenerateInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
+  request: SessionRequest, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
 }): Promise<{ core: Core, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval, slidingWindow: number, cache: PromptCache, projector: bigint }> {
   const session = await prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'chat' } });
   if (session.sequenceRemoval === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
@@ -185,6 +185,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   checkCancelled();
   const debug = request.debug ?? 'off';
   if (directory.projectorPath && (!current.projector || current.projector.debug !== debug)) {
+    // Weight loading is complete, but companion/context setup has no measured
+    // denominator. Do not keep advertising a completed load percentage here.
+    onProgress({ progress: { phase: "initializing", completed: 0, total: 0 } });
     // Debug callbacks belong only to the projector. Preserve the LM and its KV cache.
     await current.projector?.release();
     current.projector = undefined;

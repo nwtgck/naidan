@@ -50,7 +50,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <template v-if="downloading && downloadProgress">
       <p tw-class="min-w-0 truncate text-[11px] text-gray-500 dark:text-gray-400" :title="downloadProgress.path">{{ downloadProgress.index + 1 }}/{{ downloadProgress.count }} · {{ downloadProgress.path.split('/').at(-1) }}</p>
-      <LlamaCppBrowserDownloadProgress v-if="progress" :key="downloadProgress.phase" :progress="progress" />
+      <LlamaCppBrowserDownloadProgress appearance="manager" v-if="progress" :key="downloadProgress.phase" :progress="progress" />
     </template>
   </div>
 </template>

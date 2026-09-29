@@ -1,3 +1,4 @@
+import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-launch';
 import { modelFileIsPending } from '@/logic/model-file-publication';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
@@ -11,7 +12,7 @@ export type ModelFile = { path: string, handle: FileSystemFileHandle, file: File
 export type ModelDirectory = { id: string, name: string, files: ModelFile[], modelPath: string, projectorPath: string | undefined };
 
 export function validSegment({ name }: { name: string }): boolean {
-  return name.length > 0 && name !== '.' && name !== '..' && !/[\\/]/.test(name) && !Array.from(name).some(character => character.charCodeAt(0) < 32) && new TextEncoder().encode(name).length <= 255;
+  return isModelSourceSegment({ name });
 }
 export function allowedModelDirectory({ name }: { name: string }): boolean {
   return validSegment({ name }) && !name.startsWith('.');

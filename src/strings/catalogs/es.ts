@@ -1,3 +1,38 @@
+import { LlamaCppBrowserDownloadSources__copy_failed } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_failed/es';
+import { LlamaCppBrowserDownloadSources__url_copied } from '@/strings/messages/LlamaCppBrowserDownloadSources__url_copied/es';
+import { LlamaCppBrowserDownloadSources__copy_url } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_url/es';
+import { LlamaCppBrowserDownloadSources__current_file } from '@/strings/messages/LlamaCppBrowserDownloadSources__current_file/es';
+import { LlamaCppBrowserDownloadSources__revision } from '@/strings/messages/LlamaCppBrowserDownloadSources__revision/es';
+import { LlamaCppBrowserDownloadSources__request_urls_help } from '@/strings/messages/LlamaCppBrowserDownloadSources__request_urls_help/es';
+import { LlamaCppBrowserDownloadSources__files_and_sources } from '@/strings/messages/LlamaCppBrowserDownloadSources__files_and_sources/es';
+import { LlamaCppBrowserModelLaunch__initializing_runtime_and_context } from '@/strings/messages/LlamaCppBrowserModelLaunch__initializing_runtime_and_context/es';
+import { LlamaCppBrowserModelLaunch__loading_model_weights } from '@/strings/messages/LlamaCppBrowserModelLaunch__loading_model_weights/es';
+import { LlamaCppBrowserModelLaunch__loading_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__loading_model/es';
+import { LlamaCppBrowserModelLaunch__restoring_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__restoring_model/es';
+import { LlamaCppBrowserModelLaunch__checking_local_files } from '@/strings/messages/LlamaCppBrowserModelLaunch__checking_local_files/es';
+import { LlamaCppBrowserModelLaunch__opening_chat } from '@/strings/messages/LlamaCppBrowserModelLaunch__opening_chat/es';
+import { LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections/es';
+import { LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded/es';
+import { LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server/es';
+import { LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device/es';
+import { LlamaCppBrowserModelLaunch__prepare_on_send } from '@/strings/messages/LlamaCppBrowserModelLaunch__prepare_on_send/es';
+import { LlamaCppBrowserModelLaunch__runs_privately_in_your_browser } from '@/strings/messages/LlamaCppBrowserModelLaunch__runs_privately_in_your_browser/es';
+import { LlamaCppBrowserModelLaunch__checking_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__checking_model/es';
+import { LlamaCppBrowserModelLaunch__model_link_could_not_be_opened } from '@/strings/messages/LlamaCppBrowserModelLaunch__model_link_could_not_be_opened/es';
+import { LlamaCppBrowserModelLaunch__variant_not_found } from '@/strings/messages/LlamaCppBrowserModelLaunch__variant_not_found/es';
+import { LlamaCppBrowserModelLaunch__companion_needs_selection } from '@/strings/messages/LlamaCppBrowserModelLaunch__companion_needs_selection/es';
+import { LlamaCppBrowserModelLaunch__start_with_this_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__start_with_this_model/es';
+import { LlamaCppBrowserModelLaunch__quantization } from '@/strings/messages/LlamaCppBrowserModelLaunch__quantization/es';
+import { LlamaCppBrowserModelLaunch__refresh_choices } from '@/strings/messages/LlamaCppBrowserModelLaunch__refresh_choices/es';
+import { LlamaCppBrowserModelLaunch__retry } from '@/strings/messages/LlamaCppBrowserModelLaunch__retry/es';
+import { LlamaCppBrowserModelLaunch__ready_when_you_are } from '@/strings/messages/LlamaCppBrowserModelLaunch__ready_when_you_are/es';
+import { LlamaCppBrowserModelLaunch__no_installation_or_environment_setup } from '@/strings/messages/LlamaCppBrowserModelLaunch__no_installation_or_environment_setup/es';
+import { LlamaCppBrowserModelLaunch__use_selected_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__use_selected_model/es';
+import { LlamaCppBrowserModelLaunch__could_not_prepare_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__could_not_prepare_model/es';
+import { LlamaCppBrowserModelLaunch__global_defaults_not_saved } from '@/strings/messages/LlamaCppBrowserModelLaunch__global_defaults_not_saved/es';
+import { LlamaCppBrowserModelLaunch__chat_settings_changed } from '@/strings/messages/LlamaCppBrowserModelLaunch__chat_settings_changed/es';
+import { LlamaCppBrowserModelLaunch__unavailable_here } from '@/strings/messages/LlamaCppBrowserModelLaunch__unavailable_here/es';
+import { LlamaCppBrowserModelLaunch__model_not_ready } from '@/strings/messages/LlamaCppBrowserModelLaunch__model_not_ready/es';
 import { ImageEngineState__engine_busy_until_idle } from '@/strings/messages/ImageEngineState__engine_busy_until_idle/es';
 import { ImageEngineState__runtime_buffer_reports_may_be_missing } from '@/strings/messages/ImageEngineState__runtime_buffer_reports_may_be_missing/es';
 import { ImageEngineState__engine_state } from '@/strings/messages/ImageEngineState__engine_state/es';
@@ -119,6 +154,18 @@ import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SH
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/es';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/es';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/es';
+import { LlamaCppBrowserModelRecovery__manage_models } from '@/strings/messages/LlamaCppBrowserModelRecovery__manage_models/es';
+import { LlamaCppBrowserModelRecovery__check_again } from '@/strings/messages/LlamaCppBrowserModelRecovery__check_again/es';
+import { LlamaCppBrowserModelRecovery__could_not_prepare_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_prepare_download/es';
+import { LlamaCppBrowserModelRecovery__add_original_model_files } from '@/strings/messages/LlamaCppBrowserModelRecovery__add_original_model_files/es';
+import { LlamaCppBrowserModelRecovery__review_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__review_download/es';
+import { LlamaCppBrowserModelRecovery__download } from '@/strings/messages/LlamaCppBrowserModelRecovery__download/es';
+import { LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing } from '@/strings/messages/LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing/es';
+import { LlamaCppBrowserModelRecovery__model_not_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelRecovery__model_not_in_this_browser/es';
+import { LlamaCppBrowserModelRecovery__could_not_check_model_storage } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_check_model_storage/es';
+import { LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face/es';
+import { LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers/es';
+import { LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser/es';
 
 import { llamaCppBrowserDownloads__find_more } from '@/strings/messages/llamaCppBrowserDownloads__find_more/es';
 import { llamaCppBrowserDownloads__active_downloads } from '@/strings/messages/llamaCppBrowserDownloads__active_downloads/es';
@@ -2370,6 +2417,42 @@ import { ImageInputControls__model_support_required } from '@/strings/messages/I
 import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/es';
 
 export const catalog = {
+  LlamaCppBrowserDownloadSources__copy_failed,
+  LlamaCppBrowserDownloadSources__url_copied,
+  LlamaCppBrowserDownloadSources__copy_url,
+  LlamaCppBrowserDownloadSources__current_file,
+  LlamaCppBrowserDownloadSources__revision,
+  LlamaCppBrowserDownloadSources__request_urls_help,
+  LlamaCppBrowserDownloadSources__files_and_sources,
+  LlamaCppBrowserModelLaunch__initializing_runtime_and_context,
+  LlamaCppBrowserModelLaunch__loading_model_weights,
+  LlamaCppBrowserModelLaunch__loading_model,
+  LlamaCppBrowserModelLaunch__restoring_model,
+  LlamaCppBrowserModelLaunch__checking_local_files,
+  LlamaCppBrowserModelLaunch__opening_chat,
+  LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device,
+  LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server,
+  LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded,
+  LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections,
+  LlamaCppBrowserModelLaunch__prepare_on_send,
+  LlamaCppBrowserModelLaunch__runs_privately_in_your_browser,
+  LlamaCppBrowserModelLaunch__checking_model,
+  LlamaCppBrowserModelLaunch__model_link_could_not_be_opened,
+  LlamaCppBrowserModelLaunch__variant_not_found,
+  LlamaCppBrowserModelLaunch__companion_needs_selection,
+  LlamaCppBrowserModelLaunch__start_with_this_model,
+  LlamaCppBrowserModelLaunch__quantization,
+  LlamaCppBrowserModelLaunch__refresh_choices,
+  LlamaCppBrowserModelLaunch__retry,
+  LlamaCppBrowserModelLaunch__ready_when_you_are,
+  LlamaCppBrowserModelLaunch__no_installation_or_environment_setup,
+  LlamaCppBrowserModelLaunch__use_selected_model,
+  LlamaCppBrowserModelLaunch__could_not_prepare_model,
+  LlamaCppBrowserModelLaunch__global_defaults_not_saved,
+  LlamaCppBrowserModelLaunch__chat_settings_changed,
+  LlamaCppBrowserModelLaunch__unavailable_here,
+  LlamaCppBrowserModelLaunch__model_not_ready,
+
   ImageModelPicker__choose_a_model,
   ImageModelPicker__search_choices,
   ImageEngineState__engine_busy_until_idle,
@@ -2614,6 +2697,18 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  LlamaCppBrowserModelRecovery__manage_models,
+  LlamaCppBrowserModelRecovery__check_again,
+  LlamaCppBrowserModelRecovery__could_not_prepare_download,
+  LlamaCppBrowserModelRecovery__add_original_model_files,
+  LlamaCppBrowserModelRecovery__review_download,
+  LlamaCppBrowserModelRecovery__download,
+  LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing,
+  LlamaCppBrowserModelRecovery__model_not_in_this_browser,
+  LlamaCppBrowserModelRecovery__could_not_check_model_storage,
+  LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face,
+  LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers,
+  LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser,
 
   ChatPage__failed_to_load_chat,
   ChatPage__retry,

@@ -110,3 +110,43 @@ describe('WelcomeScreen.vue', () => {
     expect(contentBox.classes()).toContain('sm:space-y-12');
   });
 });
+
+
+describe('WelcomeScreen primary slot', () => {
+  it('replaces only the privacy and portable section while retaining suggestions', async () => {
+    const wrapper = mount(WelcomeScreen, { slots: { primary: '<section data-testid="launch-slot">Linked model</section>' } });
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="suggestions-container"]').text()).toContain('Write a story'));
+    expect(wrapper.find('[data-testid="launch-slot"]').text()).toBe('Linked model');
+    expect(wrapper.text()).not.toContain('All conversations are stored locally.');
+    expect(wrapper.find('a[download]').exists()).toBe(false);
+    expect(wrapper.classes()).toContain('relative'); expect(wrapper.classes()).not.toContain('absolute');
+    wrapper.unmount();
+  });
+});
+
+describe('model-link discovery opt-out', () => {
+  it('removes hidden setup suggestions from keyboard navigation, then restores them', async () => {
+    const wrapper = mount(WelcomeScreen, {
+      props: { suggestionsVisibility: 'hidden' },
+      slots: { primary: '<section>Model setup</section>' },
+    });
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(false);
+    expect(wrapper.findAll('button')).toHaveLength(0);
+    await wrapper.setProps({ suggestionsVisibility: 'visible' });
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    expect(wrapper.findAll('button').length).toBeGreaterThan(0);
+    wrapper.unmount();
+  });
+});
+
+
+describe('ordinary Chat recovery slot', () => {
+  it('supplements rather than replaces the usual welcome and keeps discovery links', () => {
+    const wrapper = mount(WelcomeScreen, { slots: { notice: '<section data-testid="recovery-slot">Model recovery</section>' } });
+    expect(wrapper.find('[data-testid="recovery-slot"]').exists()).toBe(true);
+    expect(wrapper.find('h2').text()).toContain('All conversations are stored locally.');
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    expect(wrapper.classes()).toContain('relative');
+    wrapper.unmount();
+  });
+});

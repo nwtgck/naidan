@@ -1,3 +1,4 @@
+import { prepareModelLaunchChat, restoreModelLaunch, detachRemovedModelLaunchOwners, readModelLaunch, type ModelLaunchChatRequest } from './model-launch';
 import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, StorageSnapshot, BinaryObject, Volume, VolumeType, Mount } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move storage notification text translation to the application layer.
@@ -133,13 +134,61 @@ export class StorageService {
     try {
       await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadHierarchy();
+        const before = structuredClone(current);
         const updated = await updater({ current: current });
+        await detachRemovedModelLaunchOwners({ provider: this.getProvider(), before, after: updated });
         await this.getProvider().saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateHierarchy' }) });
       this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateHierarchy' });
       throw e;
+    }
+  }
+
+  /** An in-memory capability for an async operation, not a persisted identifier. */
+  captureModelLaunchStorage(): () => boolean {
+    const provider = this.getProvider();
+    return () => provider === this.getProvider();
+  }
+
+  /** Setup state is session-local; it is never part of stored Chat data. */
+  getModelLaunch({ chatId }: { chatId: ChatId }) {
+    return this.provider === null ? undefined : readModelLaunch({ provider: this.provider, chatId });
+  }
+
+  async restoreModelLaunch({ chatId, input, requestedVariant, target, signal }: Omit<Parameters<typeof restoreModelLaunch>[0], 'provider'> & { signal: AbortSignal }) {
+    const provider = this.getProvider();
+    return this.synchronizer.withLock({ lockKey: LOCK_METADATA, fn: async () => {
+      signal.throwIfAborted();
+      if (provider !== this.getProvider()) return undefined;
+      const restored = await restoreModelLaunch({ provider, chatId, input, requestedVariant, target });
+      signal.throwIfAborted();
+      return provider === this.getProvider() ? restored : undefined;
+    } });
+  }
+
+  /** A launch never holds a storage lock across metadata or payload requests. */
+  async prepareModelLaunchChat({ request, signal }: { request: ModelLaunchChatRequest, signal: AbortSignal }): Promise<Chat> {
+    const provider = this.getProvider();
+    if (this.currentType !== 'memory' && (typeof navigator === 'undefined' || !navigator.locks?.request)) throw new Error('Model launch requires storage locking');
+    try {
+      const chat = await this.synchronizer.withLock({ lockKey: LOCK_METADATA, fn: () => this.synchronizer.withLock({
+        lockKey: SYNC_LOCK_KEY, fn: () => this.synchronizer.withLock({
+          lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id: request.chatId })}`,
+          fn: async () => {
+            signal.throwIfAborted();
+            if (provider !== this.getProvider()) throw new Error('Model launch storage changed');
+            // Finish a started durable write sequence even if navigation changes.
+            return prepareModelLaunchChat({ provider, request });
+          },
+        }),
+      }) });
+      this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
+      return chat;
+    } catch (error) {
+      if (!signal.aborted) await this.handleStorageError({ error, source: 'prepareModelLaunchChat' });
+      throw error;
     }
   }
 

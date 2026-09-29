@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
@@ -7,6 +8,7 @@ import { toChatGroupId } from '@/01-models/ids';
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     updateChatGroup: vi.fn().mockResolvedValue(undefined),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => {

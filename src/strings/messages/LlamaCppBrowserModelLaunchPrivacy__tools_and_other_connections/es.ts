@@ -1,0 +1,1 @@
+export const LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections = (): string => "Esto describe la inferencia con este modelo. Las herramientas y otras conexiones de modelos pueden usar la red.";

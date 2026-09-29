@@ -1,0 +1,1 @@
+export const LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections = (): string => "Dies beschreibt die Inferenz mit diesem Modell. Tools und andere Modellverbindungen können das Netzwerk nutzen.";

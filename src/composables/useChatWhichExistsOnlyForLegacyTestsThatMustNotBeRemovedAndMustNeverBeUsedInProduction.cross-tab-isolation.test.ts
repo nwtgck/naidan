@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { getMessageText } from '@/01-models/message-text';
@@ -84,6 +85,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     vi.doMock('../00-storage/service', () => ({
       storageService: {
+        getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
         init: vi.fn(),
         subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
           getShared().listeners.add(listener);

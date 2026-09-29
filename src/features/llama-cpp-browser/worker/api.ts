@@ -11,9 +11,9 @@ import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
 import { errorCode, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreLock } from "@/features/llama-cpp-browser/runtime/model-store";
-import { invalidateStoredModel, releaseSession } from "./session";
+import { invalidateStoredModel, releaseSession, prepareSession } from "./session";
 import { generate } from "./generation";
-import { workerAudioCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
+import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
 
 async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   try {
@@ -76,6 +76,28 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     }
   }
   return {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with a top-level callback.
+    async prepareModel(request, onProgress) {
+      const { generationId, ...accepted } = workerPrepareCallSchema.parse(request);
+      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      const controller = new AbortController(); active = { generationId, controller };
+      const events = eventQueue();
+      try {
+        await guarded({ operation: async () => {
+          await prepareSession({ request: accepted, signal: controller.signal, onProgress: ({ progress }) => {
+            events.send({ operation: () => {
+              if (!controller.signal.aborted) return onProgress(progress);
+            } });
+          } });
+        } });
+      } finally {
+        try {
+          await events.finish();
+        } finally {
+          active = undefined;
+        }
+      }
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with top-level proxy callbacks.
     async generateAudio(request, onProgress, onDiagnostic, onPreview) {
       const { generationId, ...accepted } = workerAudioCallSchema.parse(request);

@@ -42,6 +42,10 @@ import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
+import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchCard.vue';
+import { useModelLaunchChat } from '@/features/llama-cpp-browser/composables/useModelLaunchChat';
+import { useMissingLlamaCppBrowserModel } from '@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel';
+import LlamaCppBrowserModelRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelRecovery.vue';
 import ChatInput from './ChatInput.vue';
 import ChatApprovalPanel from '@/features/tools/components/chat-approval/ChatApprovalPanel.vue';
 import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoicesPanel.vue';
@@ -148,6 +152,11 @@ const chatGroup = chatPaneState.chatGroup;
 const activeMessages = chatPaneState.activeMessages;
 const allMessages = chatPaneState.allMessages;
 const resolvedSettings = chatPaneState.resolvedSettings;
+const modelLaunch = useModelLaunchChat({ chat, resolved: computed(() => resolvedSettings.value ?? undefined) });
+const modelRecovery = useMissingLlamaCppBrowserModel({
+  chat, resolved: computed(() => resolvedSettings.value ?? undefined),
+  enabled: computed(() => !modelLaunch.visible.value || (chat.value?.root.items.length ?? 0) > 0),
+});
 const inheritedSettings = chatPaneState.inheritedSettings;
 const availableChatGroups = chatPaneState.chatGroups;
 const availableModels = chatModels.availableModels;
@@ -777,6 +786,7 @@ const resolvedEndpointType = computed(() => {
 });
 
 const isChatSubmissionEnabled = computed(() => {
+  if (!modelLaunch.maySend.value || !modelRecovery.maySend.value) return false;
   const endpoint = resolvedSettings.value?.endpoint;
   const type = resolvedEndpointType.value;
   if (endpoint === undefined || type === undefined || !isConfiguredEndpoint({ endpoint })) return false;
@@ -1654,8 +1664,16 @@ watch(
           <WelcomeScreen
             v-else
             :has-input="(chatInputRef?.input || '').trim().length > 0"
+            :suggestions-visibility="modelLaunch.composerVisibility.value"
             @select-suggestion="(text) => chatInputRef?.applySuggestion({ text })"
-          />
+          >
+            <template v-if="modelLaunch.visible.value" #primary>
+              <LlamaCppBrowserModelLaunchCard :state="modelLaunch" />
+            </template>
+            <template v-if="modelRecovery.visible.value" #notice>
+              <LlamaCppBrowserModelRecovery :state="modelRecovery" />
+            </template>
+          </WelcomeScreen>
         </template>
 
         <!-- Conditional spacer: only large when maximized or animating to allow scrolling hidden content -->
@@ -1678,6 +1696,11 @@ watch(
       />
     </div>
 
+    <!-- An existing conversation gets the same recovery path without replacing
+         its messages or hiding input. Empty chats show it in WelcomeScreen. -->
+    <div v-if="activeMessages.length > 0 && modelRecovery.visible.value" tw-class="px-4 pb-2 max-h-64 overflow-y-auto shrink-0">
+      <LlamaCppBrowserModelRecovery :state="modelRecovery" />
+    </div>
     <!-- Input Layer -->
     <ChatMediaShelf
       v-if="chat && mediaShelfVisibility === 'visible'"
@@ -1690,8 +1713,11 @@ watch(
       v-if="resolvedSettings?.endpoint.type === 'browser_provided_lm'"
       tw-class="mx-4 mb-2"
     />
+    <!-- Only llama-cpp-browser-model setup hides the composer. Keep it mounted
+         so entering/leaving setup never discards the draft or attachments. -->
     <ChatInput
       v-if="chat"
+      v-show="modelLaunch.composerVisibility.value === 'visible'"
       ref="chatInputRef"
       :chat-id="chat.id"
       :chat="chat"

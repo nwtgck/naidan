@@ -152,3 +152,15 @@ describe('dedicated audio context configuration', () => {
     expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
   });
 });
+
+
+describe('preparing a conversation without generating one', () => {
+  it('loads the real session from a minimal prepare request and reuses it on the first send', async () => {
+    const full = request({ debug: 'off' });
+    const prepared = await prepareSession({ request: { model: full.model, options: full.options, debug: full.debug, assetBaseURL: full.assetBaseURL }, signal: undefined, onProgress: () => {} });
+    expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    const readyForSend = await prepareSession({ request: full, signal: undefined, onProgress: () => {} });
+    expect(readyForSend.model).toBe(prepared.model); expect(readyForSend.context).toBe(prepared.context);
+    expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+});

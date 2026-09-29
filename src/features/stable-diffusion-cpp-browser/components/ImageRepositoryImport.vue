@@ -31,7 +31,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <div v-if="importing" role="status" aria-live="polite" tw-class="text-xs space-y-1">
       <p>{{ lazyStrings.stableDiffusionCppBrowser__importing_repository() }}</p>
-      <LlamaCppBrowserDownloadProgress :progress="progress" />
+      <LlamaCppBrowserDownloadProgress appearance="manager" :progress="progress" />
     </div>
   </section>
 </template>

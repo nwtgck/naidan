@@ -119,3 +119,24 @@ describe('independent HF variants in one repository', () => {
     expect(quantizationChoices({ repository, models: groupModelFiles({ files: [{ path: 'Model-UD-Q4_K_XL.gguf', size: 128 }] }).models })[0]?.label).toBe('Q4_K_XL · UD');
   });
 });
+
+describe('scoped local launch validation', () => {
+  it('does not read unrelated quantization headers but still validates the requested weights and projector', async () => {
+    await publish({ input: selection({ quant: 'Q4_K_M' }) });
+    await publish({ input: selection({ quant: 'Q8_0' }) });
+    const folder = await repositoryFolder({ repository, create: false });
+    const other = await selectedFile({ folder, path: 'Model-Q8_0.gguf', create: false });
+    const snapshot = await other.getFile();
+    const slice = vi.spyOn(snapshot, 'slice').mockImplementation(() => {
+      throw new DOMException('Unrelated model is unreadable', 'NotReadableError');
+    });
+    const get = vi.spyOn(other, 'getFile').mockResolvedValue(snapshot);
+    try {
+      expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
+      expect(slice).not.toHaveBeenCalled();
+      await expect(installedSelection({ selection: selection({ quant: 'Q8_0' }) })).rejects.toMatchObject({ name: 'NotReadableError' });
+    } finally {
+      slice.mockRestore(); get.mockRestore();
+    }
+  });
+});

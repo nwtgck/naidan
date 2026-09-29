@@ -42,6 +42,31 @@ const {
 }));
 
 // Mock dependencies
+// Test the real ChatPane/ChatInput wiring independently of the setup state
+// machine, which has deferred-file and download tests in useModelLaunchChat.
+const launchComposerOverride = ref<'visible' | 'hidden'>();
+vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async importOriginal => {
+  const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useModelLaunchChat')>();
+  return { ...original, useModelLaunchChat: (args: Parameters<typeof original.useModelLaunchChat>[0]) => {
+    const state = original.useModelLaunchChat(args);
+    return { ...state, composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value) };
+  } };
+});
+// Disk inspection/cancellation is exercised in useMissingLlamaCppBrowserModel.
+// This suite keeps that boundary controlled while testing the real pane/input
+// policy, including the separate ordinary-Chat notice below.
+const recoveryAvailability = ref<'checking' | 'available' | 'missing' | 'unreadable'>('available');
+vi.mock('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel', async importOriginal => {
+  const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel')>();
+  return { ...original, useMissingLlamaCppBrowserModel: (args: Parameters<typeof original.useMissingLlamaCppBrowserModel>[0]) => {
+    const state = original.useMissingLlamaCppBrowserModel(args);
+    return { ...state,
+      availability: recoveryAvailability,
+      visible: computed(() => state.modelId.value !== undefined && ['missing', 'unreadable'].includes(recoveryAvailability.value)),
+      maySend: computed(() => state.modelId.value === undefined || recoveryAvailability.value === 'available'),
+    };
+  } };
+});
 const mockSendMessage = vi.fn().mockResolvedValue(true);
 const mockAbortChat = vi.fn();
 const mockStreaming = ref(false);
@@ -710,6 +735,8 @@ vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: () => undefined,
+    captureModelLaunchStorage: () => () => true,
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     subscribeToChanges: vi.fn(),
@@ -733,6 +760,8 @@ Object.defineProperty(navigator, 'clipboard', {
 let wrapper: VueWrapper<any> | null = null;
 
 function resetMocks() {
+  launchComposerOverride.value = undefined;
+  recoveryAvailability.value = 'available';
   const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
   clearAllDrafts();
   vi.useRealTimers();
@@ -4011,4 +4040,82 @@ describe('ChatPane Model Selection', () => {
     // 5. Verify Tools Menu UI is also synced
     expect(toolsMenu.props('selectedReasoningEffort')).toBe('low');
   }, 20_000);
+});
+
+describe('model-link composer visibility wiring', () => {
+  beforeEach(() => {
+    resetMocks();
+    document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
+  });
+  afterEach(() => {
+    wrapper?.unmount(); wrapper = null;
+    launchComposerOverride.value = undefined;
+    document.body.innerHTML = '';
+  });
+  it('keeps the same input instance and draft while setup hides the composer and suggestions', async () => {
+    wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const instance = input.element;
+    const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Draft survives model setup');
+    launchComposerOverride.value = 'hidden';
+    await nextTick();
+    expect(wrapper.getComponent(ChatInput).element).toBe(instance);
+    expect(input.isVisible()).toBe(false);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(false);
+    launchComposerOverride.value = 'visible';
+    await nextTick();
+    expect(wrapper.getComponent(ChatInput).element).toBe(instance);
+    expect(input.isVisible()).toBe(true);
+    expect(textarea.element.value).toBe('Draft survives model setup');
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+  });
+});
+
+
+describe('ordinary Chat missing browser model notice', () => {
+  beforeEach(() => {
+    resetMocks(); setupScrollToMock();
+  });
+  afterEach(() => {
+    recoveryAvailability.value = 'available';
+  });
+  it('keeps the existing input and draft visible while an asynchronous absence notice appears', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf' };
+    recoveryAvailability.value = 'checking';
+    const wrapper = mount(ChatPane, { props: { chatId: toChatId({ raw: '1' }) }, global: { plugins: [router] } });
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('textarea');
+    await textarea.setValue('keep writing while the model is prepared');
+    const original = textarea.element;
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    recoveryAvailability.value = 'missing'; await flushPromises();
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(true);
+    expect(wrapper.get('textarea').isVisible()).toBe(true);
+    expect(wrapper.get('textarea').element).toBe(original);
+    expect(textarea.element.value).toBe('keep writing while the model is prepared');
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    recoveryAvailability.value = 'available'; await flushPromises();
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(true);
+    expect(wrapper.get('textarea').element).toBe(original);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+  it('also offers recovery for a nonempty conversation without hiding messages or input', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/original' };
+    const node = createTextNode({ id: toMessageId({ raw: 'existing-user' }), role: 'user', text: 'Existing conversation', createdAt: 1 });
+    mockActiveMessages.value = [node];
+    mockCurrentChat.value!.root.items = [node];
+    recoveryAvailability.value = 'missing';
+    const wrapper = mount(ChatPane, { props: { chatId: toChatId({ raw: '1' }) }, global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Existing conversation');
+    expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
+    expect(wrapper.get('textarea').isVisible()).toBe(true);
+    wrapper.unmount();
+  });
 });

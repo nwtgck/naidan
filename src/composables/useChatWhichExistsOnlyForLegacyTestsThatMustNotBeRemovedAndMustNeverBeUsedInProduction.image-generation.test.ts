@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import type { MessageNode } from '@/01-models/types';
 import { getMessageText } from '@/01-models/message-text';
@@ -34,6 +35,7 @@ vi.mock('../features/lm/openai', () => ({
 // Mock storage
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => ({ id, root: { items: [] } })),
