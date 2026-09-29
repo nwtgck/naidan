@@ -2,10 +2,17 @@ import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  createFileExplorerDirectoryArchive,
+  createFileExplorerDirectoryArchive as openDirectoryArchive,
   type FileExplorerDirectoryArchiveAccess,
   type FileExplorerDirectoryArchiveSourceEntry,
 } from './directory-archive';
+
+async function createFileExplorerDirectoryArchive(options: Parameters<typeof openDirectoryArchive>[0]) {
+  const archive = await openDirectoryArchive(options);
+  const blob = await new Response(archive.stream).blob();
+  const result = await archive.completed;
+  return { blob, ...result };
+}
 
 function createTextStream({ text }: { text: string }): ReadableStream<Uint8Array> {
   const bytes = new TextEncoder().encode(text);
@@ -223,4 +230,28 @@ describe('createFileExplorerDirectoryArchive', () => {
     await expect(archivePromise).rejects.toMatchObject({ name: 'AbortError' });
     expect(cancel).toHaveBeenCalledOnce();
   });
+  it('cancels a blocked input when the output stream is cancelled, without a caller signal', async () => {
+    const opened = Promise.withResolvers<void>();
+    const cancel = vi.fn();
+    const archive = await openDirectoryArchive({
+      access: {
+        async listDirectory() {
+          return [{ name: 'blocked', kind: 'file', modifiedAt: undefined }];
+        },
+        async openFileStream() {
+          opened.resolve();
+          return new ReadableStream<Uint8Array>({ pull() {
+            return new Promise(() => undefined);
+          }, cancel });
+        },
+      },
+      sourceRootPath: '/project', archiveRootName: 'project', excludedRelativePaths: [],
+      signal: new AbortController().signal,
+    });
+    await opened.promise;
+    await archive.stream.cancel();
+    await expect(archive.completed).rejects.toMatchObject({ name: 'AbortError' });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
 });

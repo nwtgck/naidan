@@ -1,3 +1,4 @@
+import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
 import {
   StreamingZipWriter,
   createWebZipCompressionCodec,
@@ -23,8 +24,8 @@ export interface FileExplorerDirectoryArchiveAccess {
 }
 
 export type FileExplorerDirectoryArchiveResult = {
-  blob: Blob,
-  skippedEntryCount: number,
+  stream: ReadableStream<Uint8Array>,
+  completed: Promise<{ skippedEntryCount: number }>,
 };
 
 function joinPath({ parentPath, name }: { parentPath: string, name: string }): string {
@@ -35,102 +36,13 @@ function joinArchivePath({ parentPath, name }: { parentPath: string, name: strin
   return `${parentPath}/${name}`;
 }
 
-function createAbortAwareStream({
-  stream,
-  signal,
-}: {
-  stream: ReadableStream<Uint8Array>,
-  signal: AbortSignal,
-}): ReadableStream<Uint8Array> {
-  const reader = stream.getReader();
-  let status: 'open' | 'closed' = 'open';
-  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
-
-  function releaseReader(): void {
-    try {
-      reader.releaseLock();
-    } catch {
-      // The reader can already be released after an overlapping cancel or completion.
-    }
-  }
-
-  function removeAbortListener(): void {
-    signal.removeEventListener('abort', handleAbort);
-  }
-
-  function isClosed(): boolean {
-    return status === 'closed';
-  }
-
-  function handleAbort(): void {
-    if (isClosed()) {
-      return;
-    }
-    status = 'closed';
-    removeAbortListener();
-    const reason = signal.reason ?? new DOMException('Directory archive cancelled', 'AbortError');
-    void reader.cancel(reason).catch(() => undefined).finally(releaseReader);
-    streamController?.error(reason);
-  }
-
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      streamController = controller;
-      if (signal.aborted) {
-        handleAbort();
-        return;
-      }
-      signal.addEventListener('abort', handleAbort, { once: true });
-    },
-    async pull(controller) {
-      if (isClosed()) {
-        return;
-      }
-      try {
-        const result = await reader.read();
-        if (isClosed()) {
-          return;
-        }
-        if (result.done) {
-          status = 'closed';
-          removeAbortListener();
-          releaseReader();
-          controller.close();
-          return;
-        }
-        controller.enqueue(result.value);
-      } catch (error) {
-        if (isClosed()) {
-          return;
-        }
-        status = 'closed';
-        removeAbortListener();
-        await reader.cancel(error).catch(() => undefined);
-        releaseReader();
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      if (isClosed()) {
-        return;
-      }
-      status = 'closed';
-      removeAbortListener();
-      try {
-        await reader.cancel(reason);
-      } finally {
-        releaseReader();
-      }
-    },
-  });
-}
 
 export async function createFileExplorerDirectoryArchive({
   access,
   sourceRootPath,
   archiveRootName,
   excludedRelativePaths,
-  signal,
+  signal: parentSignal,
 }: {
   access: FileExplorerDirectoryArchiveAccess,
   sourceRootPath: string,
@@ -149,7 +61,16 @@ export async function createFileExplorerDirectoryArchive({
     centralDirectoryStore,
     compressionCodec: createWebZipCompressionCodec(),
   });
-  const blobPromise = new Response(output.stream).blob();
+  const abortController = new AbortController();
+  const signal = abortController.signal;
+  const forwardAbort = () => abortController.abort(parentSignal.reason);
+  parentSignal.addEventListener('abort', forwardAbort, { once: true });
+  if (parentSignal.aborted) forwardAbort();
+  const stream = createAbortableByteStream({
+    stream: output.stream,
+    signal,
+    onCancel: () => abortController.abort(new DOMException('Directory archive cancelled', 'AbortError')),
+  });
   const exclusions = new Set(excludedRelativePaths);
   let skippedEntryCount = 0;
 
@@ -203,7 +124,7 @@ export async function createFileExplorerDirectoryArchive({
           name: childArchivePath,
           modifiedAt: childModifiedAt,
           compression: 'deflate',
-          stream: createAbortAwareStream({ stream, signal }),
+          stream: createAbortableByteStream({ stream, signal, onCancel: undefined }),
         });
         break;
       }
@@ -218,33 +139,38 @@ export async function createFileExplorerDirectoryArchive({
     }
   };
 
-  try {
-    await addDirectory({
-      sourcePath: sourceRootPath,
-      relativePath: '',
-      archivePath: archiveRootName,
-      modifiedAt: new Date(),
-    });
-    signal.throwIfAborted();
-    await writer.finalize();
-    signal.throwIfAborted();
-    await output.close();
-    const blob = await blobPromise;
-    signal.throwIfAborted();
-    return {
-      blob,
-      skippedEntryCount,
-    };
-  } catch (error: unknown) {
-    await output.abort({ reason: error }).catch(() => undefined);
-    await blobPromise.catch(() => undefined);
-    throw error;
-  } finally {
-    await centralDirectoryStore.dispose();
-  }
+  const produce = async (): Promise<{ skippedEntryCount: number }> => {
+    try {
+      await addDirectory({
+        sourcePath: sourceRootPath,
+        relativePath: '',
+        archivePath: archiveRootName,
+        modifiedAt: new Date(),
+      });
+      signal.throwIfAborted();
+      await writer.finalize();
+      signal.throwIfAborted();
+      await output.close();
+      signal.throwIfAborted();
+      return { skippedEntryCount };
+    } catch (error: unknown) {
+      // Compression/output implementations may surface their own error during
+      // cancellation; preserve the operation's explicit cancellation reason.
+      const reason = signal.aborted
+        ? signal.reason ?? new DOMException('Directory archive cancelled', 'AbortError')
+        : error;
+      await output.abort({ reason }).catch(() => undefined);
+      throw reason;
+    } finally {
+      parentSignal.removeEventListener('abort', forwardAbort);
+      await centralDirectoryStore.dispose();
+    }
+  };
+  const completed = produce();
+  void completed.catch(() => undefined);
+  return { stream, completed };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
-// ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
 };

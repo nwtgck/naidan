@@ -12,6 +12,7 @@ import { storageService } from '@/00-storage/service';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 import type { UserMessageNode } from '@/01-models/types';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { TEST_ONLY } from '@/utils/stream-download';
 
 vi.mock('@/00-storage/service', () => ({ storageService: {
   getFile: vi.fn(), getBinaryObject: vi.fn(), deleteBinaryObject: vi.fn(), subscribeToChanges: vi.fn(() => () => {}),
@@ -63,6 +64,7 @@ async function readBytes({ blob }: { blob: Blob }): Promise<Uint8Array> {
 }
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   vi.clearAllMocks(); downloads = []; urls = new Map();
   vi.mocked(storageService.getFile).mockResolvedValue(null);
   vi.mocked(storageService.getBinaryObject).mockResolvedValue(null);
@@ -82,6 +84,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  vi.clearAllTimers(); vi.useRealTimers();
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 it('opens and downloads an unsaved attachment through the real shelf, preview state, modal and action', async () => {
@@ -95,7 +98,10 @@ it('opens and downloads an unsaved attachment through the real shelf, preview st
   await modal.get('[data-testid="preview-delete-btn"]').trigger('click'); expect(modal.emitted('delete')).toBeUndefined();
   await modal.get('[data-testid="preview-download-btn"]').trigger('click'); await flushPromises();
   expect(downloads).toHaveLength(1); expect(downloads[0]?.blob).toBe(blob); expect(downloads[0]?.name).toBe('local.png');
+  expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(downloads[0]?.url);
+  await vi.advanceTimersByTimeAsync(TEST_ONLY.DOWNLOAD_BLOB_RELEASE_DELAY_MS);
   expect(URL.revokeObjectURL).toHaveBeenCalledWith(downloads[0]?.url);
+  expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:memory-1');
   expect(original.parts[1]).toMatchObject({ attachment: { status: 'memory', blob } });
   await modal.get('[data-testid="preview-close-btn"]').trigger('click'); await flushPromises();
   expect(preview.state.value).toBeNull(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:memory-1');

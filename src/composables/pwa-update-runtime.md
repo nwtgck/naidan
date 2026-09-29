@@ -44,14 +44,19 @@ normal supersession is not reported as a preparation failure.
 
 ## The worker and its effect on other tabs
 
-`pwa/sw.ts` contains the complete custom worker. Workbox installs the **full
+`pwa/sw.ts` contains the custom update worker and installs the separate local
+stream-download handler before update routing. Workbox installs the **full
 automatically generated manifest** from `build/pwa.ts`, retaining the original
 ZIP/map exclusions and size limit. No minimum-resource list is maintained.
 
-The only custom command is `NAIDAN_PWA_USE_NETWORK_V1`. A same-origin, in-scope
+The update command is `NAIDAN_PWA_USE_NETWORK_V1`. A same-origin, in-scope
 window must supply a reply port. The worker stores its own private build ID in
 ONE record in `naidan-pwa-network-mode:<scope>`, then acknowledges success.
-Afterwards, in-scope, same-origin GET requests use `fetch` with `cache: 'no-store'`.
+Afterwards, ordinary in-scope, same-origin GET requests use `fetch` with
+`cache: 'no-store'`. The reserved `__naidan_download__/` root is handled locally
+first, including invalid/expired requests, so generated file bytes and tokens
+are not sent to the network by this update mode. Its versioned prepare/stream
+protocol is independent of update consent; see `src/utils/download/README.md`.
 Foreign origins, sibling scopes and non-GET requests are not intercepted. This
 avoids wrapping model/API responses and streams. Installation fetches are native
 Workbox fetches and still prepare the full application.

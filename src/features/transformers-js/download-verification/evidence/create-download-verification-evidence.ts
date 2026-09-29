@@ -1,4 +1,4 @@
-import { createEvidenceArchive, setEvidenceFile } from '@/features/transformers-js/model-support-investigation/logic/evidence-archive';
+import { createEvidenceArchive, createEvidenceFilesReader, type PreparedEvidenceArchive, setEvidenceFile } from '@/features/transformers-js/model-support-investigation/logic/evidence-archive';
 import { HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST } from '@/features/transformers-js/runtime/runtime-asset-manifest';
 import { TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES } from '@/features/transformers-js/production-load-candidates';
 import type {
@@ -6,7 +6,7 @@ import type {
   DownloadVerificationEvidenceInput,
   DownloadVerificationEvidenceStability,
 } from '@/features/transformers-js/download-verification/evidence/types';
-import { verifyGeneratedEvidenceArchive } from '@/features/transformers-js/model-support-investigation/logic/verify-evidence-archive';
+import { verifyGeneratedEvidenceArchive, verifyGeneratedEvidenceFiles } from '@/features/transformers-js/model-support-investigation/logic/verify-evidence-archive';
 import { downloadRuntimeAcceptanceIdentity } from './runtime-acceptance-identity';
 import { CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH, cacheAcceptanceTimingEvidenceSchema } from './cache-acceptance-timing';
 
@@ -442,9 +442,9 @@ export function createDownloadVerificationEvidenceLaneFiles({ evidence }: {
   return { files, readiness, candidates, runtimeIdentity };
 }
 
-export async function createDownloadVerificationEvidence({ evidence }: {
+export async function prepareDownloadVerificationEvidence({ evidence }: {
   evidence: DownloadVerificationEvidenceInput;
-}): Promise<DownloadVerificationEvidenceArchive> {
+}): Promise<PreparedEvidenceArchive> {
   const files = new Map<string, Blob>();
   const { files: laneFiles, readiness, candidates, runtimeIdentity } = createDownloadVerificationEvidenceLaneFiles({ evidence });
 
@@ -488,12 +488,18 @@ export async function createDownloadVerificationEvidence({ evidence }: {
     files: manifestFiles,
   }, undefined, 2)}\n` });
 
-  const blob = await createEvidenceArchive({ files });
-  await verifyGeneratedEvidenceArchive({ blob });
+  await verifyGeneratedEvidenceFiles({ archive: createEvidenceFilesReader({ files }) });
   return {
-    blob,
+    files,
     fileName: `model-support-investigation-download-${safeFilePart({ value: evidence.run.normalizedModelId })}-${evidence.runId}.zip`,
   };
+}
+
+export async function createDownloadVerificationEvidence({ ...args }: Parameters<typeof prepareDownloadVerificationEvidence>[0]): Promise<DownloadVerificationEvidenceArchive> {
+  const { files, fileName } = await prepareDownloadVerificationEvidence(args);
+  const blob = await createEvidenceArchive({ files });
+  await verifyGeneratedEvidenceArchive({ blob });
+  return { blob, fileName };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

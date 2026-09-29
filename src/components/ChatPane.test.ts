@@ -11,6 +11,11 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { WeshMount } from '@/features/wesh/types';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
+const mockStreamDownload = vi.hoisted(() => vi.fn());
+vi.mock('@/utils/stream-download', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/stream-download')>(), downloadStream: mockStreamDownload,
+}));
+
 // Mock router
 const router = createRouter({
   history: createWebHistory(),
@@ -2949,66 +2954,23 @@ describe('ChatPane Export Functionality', () => {
   });
 
   // Mock browser APIs for file download
-  const mockCreateObjectURL = vi.fn((blob: Blob | MediaSource) => {
-    // Mock Blob content access for testing
-    if (blob instanceof Blob) {
-      // We can't easily mock blob.text() without implementing the whole Blob interface
-      // But we can check the blob content in the test itself if needed
-      (blob as any).text = async () => {
-        return new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(reader.error);
-          reader.readAsText(blob);
-        });
-      };
-    }
-    return 'blob:mockurl';
-  });
-  const mockRevokeObjectURL = vi.fn();
-  const mockAnchorClick = vi.fn();
-  const mockAppendChild = vi.fn();
-  const mockRemoveChild = vi.fn();
-  let originalCreateElement: any;
-
-  beforeAll(() => {
-    // Capture the original createElement once, before any mocks are applied
-    originalCreateElement = document.createElement;
-  });
-
+  const exported: Array<{ filename: string; text: string }> = [];
   beforeEach(() => {
     resetMocks();
+    exported.length = 0;
     document.body.innerHTML = '<div id="app"></div>';
     setupScrollToMock();
-
-    // Setup browser API spies/mocks
-    vi.spyOn(URL, 'createObjectURL').mockImplementation(mockCreateObjectURL as any);
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(mockRevokeObjectURL);
-
-    // Robust mock for document.createElement to avoid breaking Vue internals
-    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
-      // Create the real element first
-      const el = originalCreateElement.call(document, tagName);
-
-      // If it's an anchor tag, attach our spy
-      if (tagName === 'a') {
-        // Also attach spy to the real element's click just in case
-        vi.spyOn(el, 'click').mockImplementation(mockAnchorClick);
-        return el;
-      }
-      return el;
+    // Replace only the browser's sink; exercise the real text producer/encoder.
+    mockStreamDownload.mockImplementation(async ({ filename, openStream }: {
+      filename: string; openStream: () => Promise<ReadableStream<Uint8Array>>;
+    }) => {
+      exported.push({ filename, text: await new Response(await openStream()).text() });
     });
-
-    vi.spyOn(document.body, 'appendChild').mockImplementation(mockAppendChild);
-    vi.spyOn(document.body, 'removeChild').mockImplementation(mockRemoveChild);
   });
-
   afterEach(() => {
-    // Restore all mocks to their original state to ensure a clean slate before applying new mocks
     vi.restoreAllMocks();
     if (wrapper) {
-      wrapper.unmount();
-      wrapper = null;
+      wrapper.unmount(); wrapper = null;
     }
     document.body.innerHTML = '';
   });
@@ -3026,9 +2988,7 @@ describe('ChatPane Export Functionality', () => {
     await wrapper.get('[data-testid="more-actions-button"]').trigger('click');
     await wrapper.get('[data-testid="export-markdown-button"]').trigger('click');
     await flushPromises();
-    const blob = mockCreateObjectURL.mock.calls.at(-1)?.[0];
-    if (!(blob instanceof Blob)) throw new Error('Expected exported Markdown Blob.');
-    const text = await blob.text();
+    const text = exported.at(-1)!.text;
     expect(text.match(/Visible answer/g)).toHaveLength(1);
     expect(text).not.toContain('Draft-only value');
     expect(text.match(/## AI:/g)).toHaveLength(1);
@@ -3064,17 +3024,9 @@ describe('ChatPane Export Functionality', () => {
     await exportButton.trigger('click');
     await flushPromises();
 
-    expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(mockAnchorClick).toHaveBeenCalled();
-    expect(mockAppendChild).toHaveBeenCalledWith(expect.any(Object));
-    expect(mockRemoveChild).toHaveBeenCalledWith(expect.any(Object));
+    expect(mockStreamDownload).toHaveBeenCalled();
 
-    // Verify blob content (simplified check since we mocked createObjectURL)
-    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-    expect(blob).toBeInstanceOf(Blob);
-    expect(blob.type).toBe('text/plain;charset=utf-8');
-
-    const text = await blob.text();
+    const text = exported[0]!.text;
     expect(text).toContain('# Predefined Chat Title');
     expect(text).toContain(`\
 ## User:
@@ -3084,8 +3036,7 @@ Hello AI`);
 Hello User`);
 
     // Verify filename
-    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-    expect(link.download).toBe('Predefined Chat Title.txt');
+    expect(exported[0]!.filename).toBe('Predefined Chat Title.txt');
   });
 
   it('should handle empty chat for markdown export (no current chat)', async () => {
@@ -3102,8 +3053,7 @@ Hello User`);
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     expect(exportButton.exists()).toBe(false);
 
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
-    expect(mockAnchorClick).not.toHaveBeenCalled();
+    expect(mockStreamDownload).not.toHaveBeenCalled();
   });
 
   it('should export with default title if current chat title is empty', async () => {
@@ -3134,18 +3084,15 @@ Hello User`);
     await flushPromises();
 
     // Just verify the calls happened
-    expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(mockAnchorClick).toHaveBeenCalled();
+    expect(mockStreamDownload).toHaveBeenCalled();
 
-    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-    const text = await blob.text();
+    const text = exported[0]!.text;
     expect(text).toContain('# New Chat');
     expect(text).toContain(`\
 ## User:
 Another message`);
 
-    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-    expect(link.download).toBe('new_chat.txt');
+    expect(exported[0]!.filename).toBe('new_chat.txt');
   });
 
   it('should handle empty active messages for export', async () => {
@@ -3173,15 +3120,12 @@ Another message`);
     await exportButton.trigger('click');
     await flushPromises();
 
-    expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(mockAnchorClick).toHaveBeenCalled();
+    expect(mockStreamDownload).toHaveBeenCalled();
 
-    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-    const text = await blob.text();
+    const text = exported[0]!.text;
     expect(text).toContain('# Chat with no messages');
 
-    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-    expect(link.download).toBe('Chat with no messages.txt');
+    expect(exported[0]!.filename).toBe('Chat with no messages.txt');
   });
 
   it('should export chat as URL', async () => {

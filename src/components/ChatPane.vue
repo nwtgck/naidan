@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { downloadStream } from "@/utils/stream-download";
+import { createTextExportStream } from "@/utils/text-export-stream";
 import { ensureStrings, lazyStrings } from '@/strings';
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
@@ -405,7 +407,9 @@ function handleAbortTitleGeneration() {
 }
 
 async function exportChat() {
-  if (!chat.value || !chatFlow.value) return;
+  const snapshot = chat.value;
+  const flow = chatFlow.value;
+  if (!snapshot || !flow) return;
 
   const newChatTitle = await ensureStrings.SHARED__new_chat();
   const userLabel = await ensureStrings.ChatPane__user();
@@ -420,144 +424,148 @@ async function exportChat() {
   const argumentsLabel = await ensureStrings.ChatPane__arguments();
   const resultLabel = await ensureStrings.ChatPane__result();
   const processSequenceLabel = await ensureStrings.ChatPane__process_sequence();
-  let markdownContent = `# ${chat.value.title || newChatTitle}\n\n`;
+  try {
+    await downloadStream({ filename: `${snapshot.title || 'new_chat'}.txt`, size: undefined, signal: undefined,
+      openStream: async () => createTextExportStream({ produce: async ({ write }) => {
+        await write({ text: `# ${snapshot.title || newChatTitle}\n\n` });
 
-  const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
-    for (const item of items) {
-      const itemType = item.type;
-      switch (itemType) {
-      case 'message': {
-        // Generating tool arguments are presentation-only and must not enter exports.
-        if (item.toolCallDrafts?.length) continue;
-        const msg = item.node;
-        const role = (() => {
-          const r = msg.role;
-          switch (r) {
-          case 'user': return userLabel;
-          case 'assistant': return aiLabel;
-          case 'system': return systemLabel;
-          case 'tool': return toolLabel;
-          default: {
-            const _ex: never = r;
-            return (_ex as string);
-          }
-          }
-        })();
-        const prefix = (() => {
-          const mode = item.mode;
-          switch (mode) {
-          case 'thinking': return `[${thoughtLabel}]: `;
-          case 'content':
-          case 'tool_calls':
-          case 'waiting':
-            return '';
-          default: {
-            const _ex: never = mode;
-            return _ex;
-          }
-          }
-        })();
-        markdownContent += `## ${role}:\n${prefix}${item.partContent ?? getDisplayedMessageText({ message: msg })}\n\n`;
-        break;
-      }
-      case 'tool_group': {
-        markdownContent += `## ${toolExecutionsLabel}:\n`;
-        for (const tc of item.toolCalls) {
-          let resultStr = '';
-          const status = tc.result.status;
-          switch (status) {
-          case 'success': {
-            const contentType = tc.result.content.type;
-            switch (contentType) {
-            case 'text':
-              resultStr = tc.result.content.text;
+        const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
+          for (const item of items) {
+            const itemType = item.type;
+            switch (itemType) {
+            case 'message': {
+              // Generating tool arguments are presentation-only and must not enter exports.
+              if (item.toolCallDrafts?.length) continue;
+              const msg = item.node;
+              const role = (() => {
+                const r = msg.role;
+                switch (r) {
+                case 'user': return userLabel;
+                case 'assistant': return aiLabel;
+                case 'system': return systemLabel;
+                case 'tool': return toolLabel;
+                default: {
+                  const _ex: never = r;
+                  return (_ex as string);
+                }
+                }
+              })();
+              const prefix = (() => {
+                const mode = item.mode;
+                switch (mode) {
+                case 'thinking': return `[${thoughtLabel}]: `;
+                case 'content':
+                case 'tool_calls':
+                case 'waiting':
+                  return '';
+                default: {
+                  const _ex: never = mode;
+                  return _ex;
+                }
+                }
+              })();
+              await write({ text: `## ${role}:\n${prefix}` });
+              await write({ text: item.partContent ?? getDisplayedMessageText({ message: msg }) });
+              await write({ text: '\n\n' });
               break;
-            case 'binary_object': {
-              const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
-              resultStr = blob ? await blob.text() : binaryObjectMissing;
+            }
+            case 'tool_group': {
+              await write({ text: `## ${toolExecutionsLabel}:\n` });
+              for (const tc of item.toolCalls) {
+                let resultStr: string | Blob = '';
+                let errorPrefix = '';
+                const status = tc.result.status;
+                switch (status) {
+                case 'success': {
+                  const contentType = tc.result.content.type;
+                  switch (contentType) {
+                  case 'text':
+                    resultStr = tc.result.content.text;
+                    break;
+                  case 'binary_object': {
+                    const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
+                    resultStr = blob ?? binaryObjectMissing;
+                    break;
+                  }
+                  default: {
+                    const _ex: never = contentType;
+                    resultStr = `[Unknown content type: ${_ex}]`;
+                  }
+                  }
+                  break;
+                }
+                case 'error': {
+                  const messageType = tc.result.error.message.type;
+                  switch (messageType) {
+                  case 'text':
+                    resultStr = tc.result.error.message.text;
+                    break;
+                  case 'binary_object': {
+                    const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
+                    resultStr = blob ?? binaryErrorDetailMissing;
+                    errorPrefix = `Error [${tc.result.error.code}]: `;
+                    break;
+                  }
+                  default: {
+                    const _ex: never = messageType;
+                    resultStr = `[Unknown error message type: ${_ex}]`;
+                  }
+                  }
+                  break;
+                }
+                case 'executing':
+                  resultStr = toolStillExecuting;
+                  break;
+                default: {
+                  const _ex: never = status;
+                  resultStr = `[Unknown status: ${_ex}]`;
+                }
+                }
+                await write({ text: `### ${tc.call.function.name}\n${argumentsLabel}: ` });
+                await write({ text: tc.call.function.arguments });
+                await write({ text: `\n${resultLabel}: ${errorPrefix}` });
+                await write({ text: resultStr });
+                await write({ text: '\n\n' });
+              }
+              break;
+            }
+            case 'process_sequence': {
+              const summaryParts: string[] = [];
+              if (item.stats.thinkingSteps > 0) {
+                summaryParts.push(await ensureStrings.AssistantProcessSequence__thinking_steps({ count: item.stats.thinkingSteps }));
+              }
+              if (item.stats.toolCallCount > 0) {
+                summaryParts.push(await ensureStrings.AssistantProcessSequence__tool_executions({ count: item.stats.toolCallCount }));
+              }
+              if (item.stats.toolNames.length > 0) {
+                const displayedToolNames = item.stats.toolNames.slice(0, 2);
+                let toolSummary = await ensureStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
+                if (item.stats.toolNames.length > displayedToolNames.length) {
+                  toolSummary += ` ${await ensureStrings.AssistantProcessSequence__and_more({ count: item.stats.toolNames.length - displayedToolNames.length })}`;
+                }
+                summaryParts.push(toolSummary);
+              }
+              const summary = summaryParts.length > 0
+                ? summaryParts.join(' • ')
+                : await ensureStrings.AssistantProcessSequence__process_details();
+              await write({ text: `## ${processSequenceLabel}: ${summary}\n` });
+              await processFlowItems({ items: item.items });
               break;
             }
             default: {
-              const _ex: never = contentType;
-              resultStr = `[Unknown content type: ${_ex}]`;
+              const _ex: never = itemType;
+              console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
             }
             }
-            break;
           }
-          case 'error': {
-            const messageType = tc.result.error.message.type;
-            switch (messageType) {
-            case 'text':
-              resultStr = tc.result.error.message.text;
-              break;
-            case 'binary_object': {
-              const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
-              const detail = blob ? await blob.text() : binaryErrorDetailMissing;
-              resultStr = `Error [${tc.result.error.code}]: ${detail}`;
-              break;
-            }
-            default: {
-              const _ex: never = messageType;
-              resultStr = `[Unknown error message type: ${_ex}]`;
-            }
-            }
-            break;
-          }
-          case 'executing':
-            resultStr = toolStillExecuting;
-            break;
-          default: {
-            const _ex: never = status;
-            resultStr = `[Unknown status: ${_ex}]`;
-          }
-          }
-          markdownContent += `### ${tc.call.function.name}\n${argumentsLabel}: ${tc.call.function.arguments}\n${resultLabel}: ${resultStr}\n\n`;
-        }
-        break;
-      }
-      case 'process_sequence': {
-        const summaryParts: string[] = [];
-        if (item.stats.thinkingSteps > 0) {
-          summaryParts.push(await ensureStrings.AssistantProcessSequence__thinking_steps({ count: item.stats.thinkingSteps }));
-        }
-        if (item.stats.toolCallCount > 0) {
-          summaryParts.push(await ensureStrings.AssistantProcessSequence__tool_executions({ count: item.stats.toolCallCount }));
-        }
-        if (item.stats.toolNames.length > 0) {
-          const displayedToolNames = item.stats.toolNames.slice(0, 2);
-          let toolSummary = await ensureStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
-          if (item.stats.toolNames.length > displayedToolNames.length) {
-            toolSummary += ` ${await ensureStrings.AssistantProcessSequence__and_more({ count: item.stats.toolNames.length - displayedToolNames.length })}`;
-          }
-          summaryParts.push(toolSummary);
-        }
-        const summary = summaryParts.length > 0
-          ? summaryParts.join(' • ')
-          : await ensureStrings.AssistantProcessSequence__process_details();
-        markdownContent += `## ${processSequenceLabel}: ${summary}\n`;
-        await processFlowItems({ items: item.items });
-        break;
-      }
-      default: {
-        const _ex: never = itemType;
-        console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
-      }
-      }
-    }
-  };
+        };
 
-  await processFlowItems({ items: chatFlow.value });
-
-  const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
-  const filename = `${chat.value.title || 'new_chat'}.txt`;
-
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(link.href);
+        await processFlowItems({ items: flow });
+      } }),
+    });
+  } catch (error) {
+    addToast({ message: error instanceof Error ? error.message : String(error), duration: 5000 });
+  }
 }
 
 async function shareAsURL() {

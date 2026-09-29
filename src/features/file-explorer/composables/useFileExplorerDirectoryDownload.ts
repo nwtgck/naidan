@@ -1,3 +1,4 @@
+import { downloadReadableStream } from '@/utils/stream-download';
 import { reactive } from 'vue';
 
 import { useToast } from '@/composables/useToast';
@@ -42,6 +43,7 @@ export function useFileExplorerDirectoryDownload({
   let suggestionTimer: ReturnType<typeof setTimeout> | undefined;
   let suggestionGeneration = 0;
   let archiveGeneration = 0;
+  let activeDownloadAbort: AbortController | undefined;
   let activeArchiveJob: FileExplorerDirectoryArchiveJob | undefined;
 
   function invalidateSuggestions(): void {
@@ -117,6 +119,8 @@ export function useFileExplorerDirectoryDownload({
 
   function open({ target }: { target: { path: string, name: string } }): void {
     archiveGeneration += 1;
+    activeDownloadAbort?.abort(new DOMException('Download replaced', 'AbortError'));
+    activeDownloadAbort = undefined;
     const previousJob = activeArchiveJob;
     activeArchiveJob = undefined;
     if (previousJob !== undefined) {
@@ -135,6 +139,8 @@ export function useFileExplorerDirectoryDownload({
   async function close(): Promise<void> {
     archiveGeneration += 1;
     invalidateSuggestions();
+    activeDownloadAbort?.abort(new DOMException('Download cancelled', 'AbortError'));
+    activeDownloadAbort = undefined;
     const job = activeArchiveJob;
     activeArchiveJob = undefined;
     state.visibility = 'hidden';
@@ -239,21 +245,6 @@ export function useFileExplorerDirectoryDownload({
     resetSuggestions();
   }
 
-  function startBrowserDownload({ blob, filename }: { blob: Blob, filename: string }): void {
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.hidden = true;
-    document.body.append(anchor);
-    try {
-      anchor.click();
-    } finally {
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
-  }
-
   async function confirm(): Promise<void> {
     const target = state.target;
     if (target === undefined || state.creationStatus === 'creating') {
@@ -263,34 +254,36 @@ export function useFileExplorerDirectoryDownload({
     resetSuggestions();
     const generation = ++archiveGeneration;
     state.creationStatus = 'creating';
+    const downloadAbort = new AbortController();
+    activeDownloadAbort = downloadAbort;
+    let job: FileExplorerDirectoryArchiveJob | undefined;
 
     try {
-      const job = client.startDirectoryArchive({
+      job = client.startDirectoryArchive({
         directoryPath: target.path,
         excludedRelativePaths: state.exclusions.map(exclusion => exclusion.relativePath),
       });
       activeArchiveJob = job;
+      const trimmedArchiveName = state.archiveName.trim();
+      const archiveBase = trimmedArchiveName.toLowerCase().endsWith('.zip')
+        ? trimmedArchiveName.slice(0, -4)
+        : trimmedArchiveName;
+      // Consume concurrently: waiting for ZIP completion before opening the sink
+      // would deadlock as soon as the bounded output queue becomes full.
+      await downloadReadableStream({
+        stream: job.stream,
+        filename: sanitizeFilename({ base: archiveBase, suffix: '.zip', fallback: target.name }),
+        size: undefined,
+        signal: downloadAbort.signal,
+      });
       const response = await job.result;
-      if (generation !== archiveGeneration) {
-        return;
-      }
+      if (generation !== archiveGeneration) return;
       switch (response.status) {
       case 'cancelled':
         break;
       case 'completed': {
-        const trimmedArchiveName = state.archiveName.trim();
-        const archiveBase = trimmedArchiveName.toLowerCase().endsWith('.zip')
-          ? trimmedArchiveName.slice(0, -4)
-          : trimmedArchiveName;
-        startBrowserDownload({
-          blob: response.blob,
-          filename: sanitizeFilename({
-            base: archiveBase,
-            suffix: '.zip',
-            fallback: target.name,
-          }),
-        });
         activeArchiveJob = undefined;
+        activeDownloadAbort = undefined;
         await close();
         if (response.skippedEntryCount > 0) {
           addToast({
@@ -307,6 +300,9 @@ export function useFileExplorerDirectoryDownload({
       }
       }
     } catch (error: unknown) {
+      // Cancel only this invocation: an older failure must not cancel a newly
+      // started download, and a dead worker must not block the error display.
+      void job?.cancel().catch(() => undefined);
       if (generation !== archiveGeneration) {
         return;
       }
@@ -318,6 +314,7 @@ export function useFileExplorerDirectoryDownload({
     } finally {
       if (generation === archiveGeneration) {
         activeArchiveJob = undefined;
+        activeDownloadAbort = undefined;
         state.creationStatus = 'idle';
       }
     }
@@ -326,6 +323,8 @@ export function useFileExplorerDirectoryDownload({
   function dispose(): void {
     invalidateSuggestions();
     archiveGeneration += 1;
+    activeDownloadAbort?.abort(new DOMException('Download cancelled', 'AbortError'));
+    activeDownloadAbort = undefined;
     const job = activeArchiveJob;
     activeArchiveJob = undefined;
     if (job !== undefined) {

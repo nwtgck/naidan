@@ -1,3 +1,4 @@
+import { downloadBlob } from '@/utils/stream-download';
 import { storageService } from '@/00-storage/service';
 import { idToRaw } from '@/01-models/ids';
 import { useConfirm } from './useConfirm';
@@ -37,17 +38,7 @@ export function useBinaryActions() {
     const blob = memoryBlob ?? await storageService.getFile({ binaryObjectId: obj.id });
     if (!blob) return;
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = obj.name || idToRaw({ id: obj.id });
-    document.body.appendChild(a);
-    try {
-      a.click();
-    } finally {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
+    downloadBlob({ blob, filename: obj.name || idToRaw({ id: obj.id }) });
   };
 
   return {

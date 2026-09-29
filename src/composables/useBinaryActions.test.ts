@@ -68,16 +68,9 @@ describe('useBinaryActions', () => {
     const mockBlob = new Blob(['data']);
     vi.mocked(storageService.getFile).mockResolvedValue(mockBlob);
 
-    // Mock document.createElement
-    const mockAnchor = {
-      click: vi.fn(),
-      href: '',
-      download: '',
-    };
-    const spy = vi.spyOn(document, 'createElement').mockReturnValue(mockAnchor as any);
-    vi.spyOn(document.body, 'appendChild').mockImplementation(() => mockAnchor as any);
-    vi.spyOn(document.body, 'removeChild').mockImplementation(() => mockAnchor as any);
-
+    const mockAnchor = document.createElement('a');
+    vi.spyOn(mockAnchor, 'click').mockImplementation(() => undefined);
+    const spy = vi.spyOn(document, 'createElement').mockReturnValue(mockAnchor);
     await downloadBinaryObject({ obj: { id: toBinaryObjectId({ raw: 'bin-1' }), name: 'test.png' }, memoryBlob: undefined });
 
     expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: toBinaryObjectId({ raw: 'bin-1' }) });

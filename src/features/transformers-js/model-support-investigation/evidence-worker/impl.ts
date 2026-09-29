@@ -1,3 +1,5 @@
+import type { WorkerServerApi } from '@/utils/worker-transport';
+import { streamEvidence } from './stream-export';
 import {
   createBatchModelSupportEvidence,
   createPartialModelSupportEvidence,
@@ -10,8 +12,9 @@ import { createDownloadVerificationEvidence } from "@/features/transformers-js/d
 import { replayMetadataSidecarsSchema } from '@/features/transformers-js/model-support-investigation/logic/replay-metadata-export';
 import { createRetainedDownloadTimingEvidence, readOrdinaryDownloadTimingEvidenceFile } from '@/features/transformers-js/model-support-investigation/logic/ordinary-download-timing-evidence';
 
-export function createModelSupportInvestigationEvidenceWorker(): IModelSupportInvestigationEvidenceWorker {
+export function createModelSupportInvestigationEvidenceWorker(): WorkerServerApi<IModelSupportInvestigationEvidenceWorker> {
   return {
+    streamEvidence,
     async createPartialEvidence({ request, replayMetadata, nativeEvidence, ordinaryDownloadTiming }) {
       const { run, recovery } = await readModelSupportInvestigationEvidenceWorkerRequest({ request });
       const sidecars = replayMetadata === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata);

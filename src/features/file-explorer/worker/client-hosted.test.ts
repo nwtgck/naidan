@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Blob as NodeBlob } from 'node:buffer';
 import * as Comlink from 'comlink';
 import JSZip from 'jszip';
+import { MessageChannel } from 'node:worker_threads';
 import { isProxy, reactive } from 'vue';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { TEST_ONLY as FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY } from '@/utils/file-system-handle-transport';
@@ -133,6 +134,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
   const createdWorkers: FakeWorker[] = [];
 
   beforeEach(() => {
+    vi.stubGlobal('MessageChannel', MessageChannel);
     createdWorkers.length = 0;
     fileSystemHandlesCloneable = true;
     FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY.resetFileSystemHandleCloneCapability();
@@ -219,10 +221,11 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
       directoryPath: '/docs',
       excludedRelativePaths: [],
     });
+    const archiveBytes = await new Response(archiveJob.stream).arrayBuffer();
     const archiveResponse = await archiveJob.result;
     expect(archiveResponse.status).toBe('completed');
     if (archiveResponse.status === 'completed') {
-      expect(archiveResponse.blob.size).toBeGreaterThan(0);
+      expect(archiveBytes.byteLength).toBeGreaterThan(0);
     }
 
     await client.deleteEntries({ paths: ['/final.txt', '/upload.txt'] });
@@ -337,6 +340,12 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
 
     const rootListing = await client.readDirectory({ path: '/' });
     expect(rootListing.entries.map(entry => entry.name)).toEqual(['home']);
+
+    const prepared = await client.prepareFileDownload({ path: '/home/user/project/index.ts' });
+    expect(prepared.kind).toBe('file');
+    if (prepared.kind !== 'file') throw new Error('Expected native File over the worker facade');
+    expect(prepared.blob.size).toBe(22);
+    expect(await prepared.blob.text()).toBe('export const value = 1');
 
     const mountListing = await client.readDirectory({ path: '/home/user/project' });
     expect(mountListing.entries.map(entry => entry.name)).toEqual(['index.ts']);

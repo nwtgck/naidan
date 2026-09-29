@@ -1,3 +1,4 @@
+import { downloadReadableStream } from '@/utils/stream-download';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
@@ -6,6 +7,11 @@ import { useFileExplorerDirectoryDownload } from './useFileExplorerDirectoryDown
 
 const mockAddToast = vi.fn();
 const clickedDownloadNames: string[] = [];
+vi.mock('@/utils/stream-download', () => ({
+  downloadReadableStream: vi.fn(async ({ filename }: { filename: string }) => {
+    clickedDownloadNames.push(filename);
+  }),
+}));
 vi.mock('@/composables/useToast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
@@ -46,6 +52,9 @@ function createClient({
     resultState: 'complete',
   });
   const startDirectoryArchive = vi.fn(() => ({
+    stream: new ReadableStream<Uint8Array>({ start(controller) {
+      controller.close();
+    } }),
     result: archiveResult,
     cancel: cancelArchive,
   }));
@@ -160,12 +169,15 @@ describe('useFileExplorerDirectoryDownload', () => {
       directoryPath: '/hoge/my-project',
       excludedRelativePaths: ['dist/cache'],
     });
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(downloadReadableStream).toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(clickedDownloadNames).toEqual(['backup.zip']);
     expect(client.cancelArchive).not.toHaveBeenCalled();
     const anchor = document.querySelector('a');
     expect(anchor).toBeNull();
-    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled();
+    expect(downloadReadableStream).toHaveBeenCalledWith(expect.objectContaining({
+      stream: expect.any(ReadableStream), size: undefined, signal: expect.any(AbortSignal),
+    }));
     expect(controller.state.visibility).toBe('hidden');
   });
 
@@ -238,6 +250,29 @@ describe('useFileExplorerDirectoryDownload', () => {
       message: 'Failed to download: Worker is unavailable',
     });
     controller.dispose();
+  });
+
+  it('aborts the prior download immediately when opening another directory', async () => {
+    const client = createClient();
+    const controller = useFileExplorerDirectoryDownload({ client });
+    let previousSignal: AbortSignal | undefined;
+    vi.mocked(downloadReadableStream).mockImplementationOnce(({ signal }) => {
+      previousSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    });
+    controller.open({ target: { path: '/first', name: 'first' } });
+    const first = controller.confirm();
+    expect(previousSignal?.aborted).toBe(false);
+    controller.open({ target: { path: '/second', name: 'second' } });
+    await first;
+    expect(previousSignal?.aborted).toBe(true);
+    expect(controller.state.target?.path).toBe('/second');
+    expect(controller.state.creationStatus).toBe('idle');
+    expect(mockAddToast).not.toHaveBeenCalled();
+    await controller.confirm();
+    expect(controller.state.visibility).toBe('hidden');
   });
 
   it('reports unsupported skipped entries after a successful download', async () => {

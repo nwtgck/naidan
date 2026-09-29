@@ -1,8 +1,9 @@
+import { receiveByteStream } from '@/utils/byte-stream-port';
 // @vitest-environment node
 import { createHash, webcrypto } from 'node:crypto';
 import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { exposeWorkerRemote, releaseWorkerRemote, wrapWorkerRemote } from '@/utils/worker-transport';
+import { exposeWorkerRemote, releaseWorkerRemote, wrapWorkerRemote, workerTransfer } from '@/utils/worker-transport';
 import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
 import { captureScenarioInput } from '@/features/transformers-js/model-support-investigation/logic/production-provider-capture-plan';
 import { createProductionProviderTrace } from '@/features/transformers-js/model-support-investigation/logic/production-provider-trace';
@@ -130,7 +131,16 @@ describe('Provider and native Evidence Worker transport', () => {
       const reopened = structuredClone({ run, recovery, nativeEvidence });
       const repeatedInput = { request: createModelSupportInvestigationEvidenceWorkerRequest(reopened), nativeEvidence: reopened.nativeEvidence };
       const second = await remote.createPartialEvidence(repeatedInput);
-      for (const archive of [first, second]) {
+      const output = new MessageChannel();
+      const received = receiveByteStream({ port: output.port1 });
+      const metadata = await remote.streamEvidence(workerTransfer({ value: {
+        input: { kind: 'partial', ...repeatedInput }, port: output.port2,
+      }, transferables: [output.port2] }));
+      // Buffer only in this verification sink to run an independent ZIP reader.
+      const streamed = { blob: await new Response(received.stream).blob(), fileName: metadata.fileName };
+      await received.completed;
+      expect(streamed.fileName).toBe(first.fileName);
+      for (const archive of [first, second, streamed]) {
         const zip = await JSZip.loadAsync(await archive.blob.arrayBuffer());
         expect(await zip.file('production-provider/capture.json')!.async('string')).toBe(expectedProvider);
         const summaryJson = await zip.file('production-provider/summary.json')!.async('string');

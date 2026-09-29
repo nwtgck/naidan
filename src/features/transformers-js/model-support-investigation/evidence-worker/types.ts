@@ -1,3 +1,4 @@
+import type { WorkerTransfer } from '@/utils/worker-transport';
 import type { InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 import type { ProductionProviderNativeEvidenceSidecar } from '@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence';
 import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
@@ -16,7 +17,20 @@ export interface ModelSupportInvestigationEvidenceArchive {
   fileName: string,
 }
 
+export type EvidenceStreamRequest =
+  | ({ kind: 'partial' } & Parameters<IModelSupportInvestigationEvidenceWorker['createPartialEvidence']>[0])
+  | ({ kind: 'batch' } & Parameters<IModelSupportInvestigationEvidenceWorker['createBatchEvidence']>[0])
+  | ({ kind: 'download-verification' } & Parameters<IModelSupportInvestigationEvidenceWorker['createDownloadVerificationEvidence']>[0])
+  | ({ kind: 'retained-timing' } & Parameters<IModelSupportInvestigationEvidenceWorker['createRetainedDownloadTimingEvidence']>[0]);
+
+export type EvidenceStreamInput =
+  | ({ kind: 'partial' } & Parameters<ModelSupportInvestigationEvidenceWorkerClient['createPartialEvidence']>[0])
+  | ({ kind: 'batch' } & Parameters<ModelSupportInvestigationEvidenceWorkerClient['createBatchEvidence']>[0])
+  | ({ kind: 'download-verification' } & Parameters<ModelSupportInvestigationEvidenceWorkerClient['createDownloadVerificationEvidence']>[0])
+  | ({ kind: 'retained-timing' } & Parameters<ModelSupportInvestigationEvidenceWorkerClient['createRetainedDownloadTimingEvidence']>[0]);
+
 export interface IModelSupportInvestigationEvidenceWorker {
+  streamEvidence({ input, port }: WorkerTransfer<{ input: EvidenceStreamRequest; port: MessagePort }>): Promise<{ fileName: string }> ,
   createPartialEvidence({ request, replayMetadata, nativeEvidence, ordinaryDownloadTiming }: {
     request: Blob,
     replayMetadata?: InvestigationReplayMetadataSidecar[],
@@ -36,6 +50,7 @@ export interface IModelSupportInvestigationEvidenceWorker {
 }
 
 export interface ModelSupportInvestigationEvidenceWorkerClient {
+  openEvidenceStream({ input }: { input: EvidenceStreamInput }): Promise<{ stream: ReadableStream<Uint8Array>; fileName: string }> ,
   createPartialEvidence({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming }: {
     run: ModelSupportInvestigationRun,
     recovery: ModelSupportInvestigationRecovery | undefined,

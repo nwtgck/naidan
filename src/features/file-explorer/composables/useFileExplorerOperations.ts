@@ -1,3 +1,4 @@
+import { downloadFile, downloadStream } from '@/utils/stream-download';
 import { ensureStrings } from '@/strings';
 import { ref } from 'vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
@@ -148,16 +149,36 @@ export function useFileExplorerOperations({
     }
     }
 
+    const abort = new AbortController();
+    const onPageHide = () => abort.abort(new DOMException('Download page closed', 'AbortError'));
+    window.addEventListener('pagehide', onPageHide, { once: true });
     try {
-      const response = await client.readFile({ path: entry.path });
-      const url = URL.createObjectURL(response.blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = entry.name;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      const { path, name } = entry;
+      const source = await client.prepareFileDownload({ path });
+      abort.signal.throwIfAborted();
+      switch (source.kind) {
+      case 'file':
+        await downloadFile({ file: source.blob, filename: name, signal: abort.signal });
+        break;
+      case 'stream':
+        await downloadStream({
+          openStream: () => client.openFileStream({ path }),
+          filename: name,
+          // A mutable/computed VFS file's listing is not an exact output length.
+          size: undefined,
+          signal: abort.signal,
+        });
+        break;
+      default: {
+        const exhaustive: never = source;
+        throw new Error(`Unhandled download source: ${String(exhaustive)}`);
+      }
+      }
     } catch (error) {
+      if (abort.signal.aborted) return;
       addToast({ message: await ensureStrings.fileExplorer__failed_to_download({ errorMessage: error instanceof Error ? error.message : String(error) }) });
+    } finally {
+      window.removeEventListener('pagehide', onPageHide);
     }
   }
 

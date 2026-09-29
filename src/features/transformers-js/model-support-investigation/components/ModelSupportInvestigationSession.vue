@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { downloadReadableStream } from "@/utils/stream-download";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, toRaw } from "vue";
 import {
   AlertCircleIcon,
@@ -1662,21 +1663,22 @@ async function downloadPartialEvidence(): Promise<void> {
     if (!sessionView.isActive()) return;
     const evidenceClient = createModelSupportInvestigationEvidenceWorkerClient();
     ownedClients.add(evidenceClient);
-    const { blob, fileName } = await (async () => {
-      try {
+    try {
+      const { stream, fileName } = await (async () => {
         if (sourceSnapshot !== undefined && executions.length <= 1) {
           const exportedRun = withEvidenceExportStep({
             sourceRun: sourceSnapshot.run,
             status: "passed",
             detail: passedDetail,
           });
-          return await evidenceClient.createPartialEvidence({
+          return await evidenceClient.openEvidenceStream({ input: {
+            kind: "partial",
             run: exportedRun,
             recovery: sourceSnapshot.recovery,
             replayMetadata: sourceSnapshot.replayMetadata,
             nativeEvidence: sourceSnapshot.nativeEvidence,
             ordinaryDownloadTiming,
-          });
+          } });
         }
 
         const items: ModelSupportInvestigationBatchEvidenceItem[] = capturedItems.map(item => {
@@ -1692,34 +1694,26 @@ async function downloadPartialEvidence(): Promise<void> {
             run: packagedRun,
           };
         });
-        return await evidenceClient.createBatchEvidence({
+        return await evidenceClient.openEvidenceStream({ input: {
+          kind: "batch",
           batchId,
           items,
           ordinaryDownloadTiming,
-        });
-      } finally {
-        try {
-          await disposeOwnedClient({ client: evidenceClient });
-        } catch (error) {
-          // A completed ZIP stays valid. Cleanup is a separate authority gate
-          // for future work, not a reason to relabel or discard that artifact.
-          teardownError.value = error instanceof Error ? error.message : 'Investigation resource release remains unconfirmed';
-        }
+        } });
+      })();
+      if (!sessionView.isActive()) {
+        void stream.cancel(new DOMException('Investigation view closed', 'AbortError')).catch(() => undefined);
+        return;
       }
-    })();
-    if (!sessionView.isActive()) return;
-    updateEvidenceExportPresentation({ status: "passed", detail: passedDetail });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.style.display = "none";
-    document.body.append(anchor);
-    try {
-      anchor.click();
+      await downloadReadableStream({ stream, filename: fileName, size: undefined, signal: undefined });
+      if (sessionView.isActive()) updateEvidenceExportPresentation({ status: "passed", detail: passedDetail });
     } finally {
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      // The worker owns the producer until the response is consumed/cancelled.
+      try {
+        await disposeOwnedClient({ client: evidenceClient });
+      } catch (error) {
+        teardownError.value = error instanceof Error ? error.message : 'Investigation resource release remains unconfirmed';
+      }
     }
   } catch (error) {
     if (!sessionView.isActive()) return;
@@ -1740,25 +1734,17 @@ async function downloadRetainedTiming(): Promise<void> {
   try {
     const client = createModelSupportInvestigationEvidenceWorkerClient();
     ownedClients.add(client);
-    const archive = await (async () => {
-      try {
-        return await client.createRetainedDownloadTimingEvidence({ snapshot: ordinaryDownloadTiming, exportId: crypto.randomUUID() });
-      } finally {
-        await disposeOwnedClient({ client });
-      }
-    })();
-    if (!sessionView.isActive()) return;
-    const url = URL.createObjectURL(archive.blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = archive.fileName;
-    anchor.style.display = 'none';
-    document.body.append(anchor);
     try {
-      anchor.click();
+      const { stream, fileName } = await client.openEvidenceStream({ input: {
+        kind: 'retained-timing', snapshot: ordinaryDownloadTiming, exportId: crypto.randomUUID(),
+      } });
+      if (!sessionView.isActive()) {
+        void stream.cancel(new DOMException('Investigation view closed', 'AbortError')).catch(() => undefined);
+        return;
+      }
+      await downloadReadableStream({ stream, filename: fileName, size: undefined, signal: undefined });
     } finally {
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      await disposeOwnedClient({ client });
     }
   } catch (error) {
     if (!sessionView.isActive()) return;

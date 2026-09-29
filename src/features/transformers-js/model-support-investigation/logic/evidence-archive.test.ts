@@ -1,7 +1,7 @@
 // @vitest-environment node
 import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createEvidenceArchive, createEvidenceFilesReader, openEvidenceArchive, setEvidenceFile } from './evidence-archive';
+import { createEvidenceArchive, createEvidenceArchiveStream, createEvidenceFilesReader, openEvidenceArchive, setEvidenceFile } from './evidence-archive';
 import { StreamingZipReader } from '@/utils/zip-stream';
 
 beforeEach(() => {
@@ -19,6 +19,34 @@ afterEach(() => {
 });
 
 describe('Evidence transport over the shared streaming ZIP core', () => {
+  it('streams immutable input files without whole-file reads or collecting the encoded ZIP', async () => {
+    const file = new Blob(['content'.repeat(10000)]);
+    const readAll = vi.spyOn(file, 'arrayBuffer').mockRejectedValue(new Error('whole file read forbidden'));
+    const files = new Map([['original.txt', file]]);
+    const stream = createEvidenceArchiveStream({ files });
+    files.set('later.txt', new Blob(['must not be exported']));
+    const zip = await JSZip.loadAsync(await new Response(stream).arrayBuffer(), { checkCRC32: true });
+    expect(Object.keys(zip.files)).toEqual(['original.txt']);
+    expect(await zip.file('original.txt')!.async('text')).toBe('content'.repeat(10000));
+    expect(readAll).not.toHaveBeenCalled();
+  });
+
+  it('cancels an active file read when the archive consumer stops', async () => {
+    const cancel = vi.fn();
+    const file = new Blob(['placeholder']);
+    const opened = vi.spyOn(file, 'stream').mockImplementation(() => new ReadableStream({
+      pull() {
+        return new Promise(() => undefined);
+      }, cancel,
+    }));
+    const stream = createEvidenceArchiveStream({ files: new Map([['slow.txt', file]]) });
+    const reader = stream.getReader();
+    await reader.read();
+    await vi.waitFor(() => expect(opened).toHaveBeenCalledOnce());
+    await reader.cancel();
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  });
+
   it('refuses an oversized declared sidecar before opening or decompressing its stream', async () => {
     const source = new JSZip();
     source.file('timing.json', '{}');
