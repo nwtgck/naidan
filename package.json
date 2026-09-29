@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.44.1-dev",
+  "version": "0.47.1-dev",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -25,6 +25,7 @@
     "he": "^1.2.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
+    "llama-cpp-browser-core": "github:nwtgck/llama-cpp-browser-core#8eb01e7aa8ad0968a6dfba26d938817d4a441b31",
     "lucide-vue-next": "^0.562.0",
     "marked": "^18.0.5",
     "marked-highlight": "^2.2.4",

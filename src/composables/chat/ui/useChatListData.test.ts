@@ -26,8 +26,8 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   rootItems: { value: [] },
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     chats: computed(() => mockState.chats),
   }),
 }));

@@ -1,0 +1,1 @@
+export const LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection = (): string => "No se pudo seleccionar de forma inequívoca la variante solicitada. Selecciona una variante del modelo.";

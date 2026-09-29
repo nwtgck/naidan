@@ -1,4 +1,4 @@
-import { toChatId } from '@/01-models/ids';
+import { idToRaw, toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount as baseMount } from '@vue/test-utils';
@@ -47,14 +47,26 @@ describe('Assistant Turn Visual Logic', () => {
   /**
    * Swift-style helper to create a base node.
    */
-  const createBaseNode = ({ role, modelId }: { role: 'user' | 'assistant' | 'tool', modelId?: string }): MessageNode => ({
-    id: generateId<MessageId>(),
-    role,
-    content: '',
-    timestamp: Date.now(),
-    modelId,
-    replies: { items: [] },
-  } as any);
+  const createBaseNode = ({ role, modelId }: { role: 'user' | 'assistant' | 'tool', modelId: string | undefined }): MessageNode => {
+    const base = {
+      id: generateId<MessageId>(),
+      createdAt: Date.now(),
+      lmParameters: undefined,
+      replies: { items: [] },
+    };
+    switch (role) {
+    case 'user':
+      return { ...base, role, modelId: undefined, parts: [{ type: 'text', text: '', completeness: 'complete' }] };
+    case 'assistant':
+      return { ...base, role, modelId, parts: [{ type: 'text', text: '', completeness: 'complete' }], interruption: undefined };
+    case 'tool':
+      return { ...base, role, modelId: undefined, parts: [] };
+    default: {
+      const _ex: never = role;
+      throw new Error(`Unhandled role: ${_ex}`);
+    }
+    }
+  };
 
   describe('Header Visibility (Icon + ModelID)', () => {
     it('Pattern 1: Assistant turn starts with a Sequence -> Sequence must show header', () => {
@@ -62,7 +74,7 @@ describe('Assistant Turn Visual Logic', () => {
 
       const wrapper = mount(AssistantProcessSequence, {
         props: {
-          items: [{ type: 'message', node, mode: 'thinking', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, flow: { position: 'standalone', nesting: 'none' } }],
+          items: [{ type: 'message', key: `${idToRaw({ id: node.id })}:reasoning`, node, mode: 'thinking', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, flow: { position: 'standalone', nesting: 'none' } }],
           isProcessing: false,
           isFirstInTurn: true,
         },
@@ -90,7 +102,7 @@ describe('Assistant Turn Visual Logic', () => {
     });
 
     it('Pattern 3: Inside a Sequence -> MessageItem must NOT show header even if isFirstInTurn is true', () => {
-      const node = createBaseNode({ role: 'assistant' });
+      const node = createBaseNode({ role: 'assistant', modelId: undefined });
 
       const wrapper = mount(MessageItem, {
         props: {
@@ -106,7 +118,7 @@ describe('Assistant Turn Visual Logic', () => {
     });
 
     it('Pattern 4: Mid-turn Content after a sequence -> MessageItem must NOT show header', () => {
-      const node = createBaseNode({ role: 'assistant' });
+      const node = createBaseNode({ role: 'assistant', modelId: undefined });
 
       const wrapper = mount(MessageItem, {
         props: {
@@ -122,7 +134,7 @@ describe('Assistant Turn Visual Logic', () => {
     });
 
     it('User Icon Restoration: User turn starts -> MessageItem must show User icon', () => {
-      const node = createBaseNode({ role: 'user' });
+      const node = createBaseNode({ role: 'user', modelId: undefined });
 
       const wrapper = mount(MessageItem, {
         props: {
@@ -213,7 +225,7 @@ describe('Assistant Turn Visual Logic', () => {
 
   describe('Nesting & Visual Continuity', () => {
     it('MessageItem removes background when isNested is true', () => {
-      const node = createBaseNode({ role: 'assistant' });
+      const node = createBaseNode({ role: 'assistant', modelId: undefined });
       const wrapper = mount(MessageItem, {
         props: {
           message: node,

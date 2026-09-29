@@ -1,3 +1,5 @@
+// Keep work and synchronous dependencies before the first render small.
+// Wire startup here; place feature-specific UI and behavior in MainApp or AppAuxiliaryUi.
 import { createApp, shallowRef } from 'vue';
 import './style.css';
 import App from './App.vue';

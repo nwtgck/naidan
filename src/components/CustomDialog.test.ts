@@ -50,6 +50,13 @@ describe('CustomDialog.vue', () => {
     expect(wrapper.find('button[data-testid="dialog-cancel-button"]').text()).toBe('Cancel');
   });
 
+  it('shows file details collapsed and renders filenames as text', async () => {
+    expect(wrapper.find('[data-testid="dialog-details"]').exists()).toBe(false);
+    await wrapper.setProps({ details: { summary: 'Files to delete', items: ['nested/model.gguf', '<b>notes</b>'] } });
+    expect(wrapper.get<HTMLDetailsElement>('[data-testid="dialog-details"]').element.open).toBe(false);
+    expect(wrapper.get('[data-testid="dialog-details-items"]').text()).toContain('<b>notes</b>');
+    expect(wrapper.find('[data-testid="dialog-details-items"] b').exists()).toBe(false);
+  });
   it('applies danger variant to confirm button', async () => {
     await wrapper.setProps({ confirmButtonVariant: 'danger' });
     const confirmButton = wrapper.find('button[data-testid="dialog-confirm-button"]');

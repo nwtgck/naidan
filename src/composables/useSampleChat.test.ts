@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { useSampleChat } from './useSampleChat';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
 import { storageService } from '@/00-storage/service';
+import sampleContent from '@/assets/sample-showcase.md?raw';
 import { idToRaw } from '@/01-models/ids';
 
 // Mock dependencies
@@ -68,21 +69,24 @@ describe('useSampleChat', () => {
     expect(m2.role).toBe('assistant');
     expect(m3.role).toBe('assistant');
 
-    // 2. Verify Thinking Process Extraction (m2 should have thinking)
-    expect(m2.thinking).toBeDefined();
-    expect(m2.thinking?.length).toBeGreaterThan(0);
-    expect(m2.content).not.toContain('<think>'); // Should be stripped
+    // Rendering may fold tagged regions, but persistence keeps the original text.
+    const m2Text = m2.parts.filter(part => part.type === 'text').map(part => part.text).join('');
+    const m3Text = m3.parts.filter(part => part.type === 'text').map(part => part.text).join('');
+    expect(m2Text).toBe(sampleContent);
+    expect(m2Text).toContain('<think>');
+    expect(m2.parts.every(part => part.type === 'text')).toBe(true);
+    expect(m2).not.toHaveProperty('thinking');
 
     // 3. Verify Markdown Features in m2 content
-    expect(m2.content).toContain('```python');   // Code blocks
-    expect(m2.content).toContain('$$');          // Math
-    expect(m2.content).toContain('```mermaid');  // Diagrams
-    expect(m2.content).toContain('|');           // Tables
-    expect(m2.content).toContain('- [x]');       // Task lists
+    expect(m2Text).toContain('```python');   // Code blocks
+    expect(m2Text).toContain('$$');          // Math
+    expect(m2Text).toContain('```mermaid');  // Diagrams
+    expect(m2Text).toContain('|');           // Tables
+    expect(m2Text).toContain('- [x]');       // Task lists
 
     // 4. Verify Branching/Versioning demo in m3
-    expect(m3.content).toContain('alternative response');
-    expect(m3.content).toContain('arrows');
+    expect(m3Text).toContain('alternative response');
+    expect(m3Text).toContain('arrows');
 
     expect(mockLoadChats).toHaveBeenCalled();
     expect(mockOpenChat).toHaveBeenCalledWith({ chatId });
@@ -107,7 +111,7 @@ describe('useSampleChat', () => {
     const messages: Array<{ id: string, role: string, content: string | undefined }> = [];
     let current = content.root.items[0];
     while (current) {
-      messages.push({ id: idToRaw({ id: current.id }), role: current.role, content: current.content });
+      messages.push({ id: idToRaw({ id: current.id }), role: current.role, content: current.parts.filter(part => part.type === 'text').map(part => part.text).join('') });
       current = current.replies.items[0];
     }
 

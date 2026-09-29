@@ -79,8 +79,8 @@ vi.mock('../composables/useGlobalEvents', () => ({
   }),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: ref(null),
     currentChatGroup: ref(null),
     streaming: ref(false),

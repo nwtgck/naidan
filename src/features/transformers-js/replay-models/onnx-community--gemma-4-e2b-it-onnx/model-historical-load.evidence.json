@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "historical-model-support-investigation-production-observation",
+    "observedAt": "2026-09-02T00:08:31.019Z",
+    "note": "Historical observation from the implementation under test at that time. It is not a declaration of the current Production route."
+  },
+  "modelId": "onnx-community/gemma-4-E2B-it-ONNX",
+  "resolvedRevision": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
+  "candidate": {
+    "device": "webgpu",
+    "dtype": "q4f16"
+  },
+  "autoClass": "AutoModelForCausalLM",
+  "modelType": "gemma4",
+  "sessionNames": [
+    "decoder_model_merged",
+    "embed_tokens"
+  ]
+}

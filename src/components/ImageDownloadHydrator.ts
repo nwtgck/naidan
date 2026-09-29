@@ -90,8 +90,10 @@ export const ImageDownloadHydrator = {
   /**
    * Orchestrates the download of a generated image, optionally embedding metadata.
    */
-  async download({ id, prompt, steps, seed, model, withMetadata, storageService, onError }: {
+  async download({ id, name, memoryBlob, prompt, steps, seed, model, withMetadata, storageService, onError }: {
     id: BinaryObjectId,
+    name: string | undefined,
+    memoryBlob: Blob | undefined,
     prompt: string,
     steps: number | undefined,
     seed: number | undefined,
@@ -101,16 +103,15 @@ export const ImageDownloadHydrator = {
     onError: ({ error }: { error: unknown }) => void,
   }) {
     try {
-      const obj = await storageService.getBinaryObject({ binaryObjectId: id });
-      const blob = await storageService.getFile({ binaryObjectId: id });
+      const obj = memoryBlob === undefined ? await storageService.getBinaryObject({ binaryObjectId: id }) : undefined;
+      const blob = memoryBlob ?? await storageService.getFile({ binaryObjectId: id });
       if (!blob) throw new Error('Image blob not found');
 
       let suffix = '.png';
-      if (obj?.name) {
-        const lastDot = obj.name.lastIndexOf('.');
-        if (lastDot !== -1) {
-          suffix = obj.name.slice(lastDot);
-        }
+      const filenameHint = name ?? obj?.name;
+      if (filenameHint) {
+        const lastDot = filenameHint.lastIndexOf('.');
+        if (lastDot !== -1) suffix = filenameHint.slice(lastDot);
       }
 
       let finalBlob = blob;
@@ -139,11 +140,13 @@ export const ImageDownloadHydrator = {
       link.href = downloadUrl;
       link.download = filename;
       document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      // Revoke the temporary URL after a delay
-      setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      try {
+        link.click();
+      } finally {
+        document.body.removeChild(link);
+        // The download owns this URL even if its originating view is already closed.
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      }
     } catch (err) {
       console.error('[Hydrator] Failed to download generated image:', err);
     }

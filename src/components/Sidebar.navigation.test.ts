@@ -27,8 +27,8 @@ const mockSetActiveFocusArea = vi.fn(({ area }: { area: FocusArea }) => {
   mockActiveFocusArea.value = area;
 });
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
     streaming: ref(false),

@@ -1,0 +1,1 @@
+export const llamaCppBrowser__files_changed_review_before_deleting = (): string => "Der Löschvorgang wurde gestoppt, da sich die Dateien geändert haben. Prüfe die Liste, bevor du es erneut versuchst.";

@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness = (): string => "조사 완료는 각 기능의 정확성을 보장하지 않습니다. 실패하거나 실행하지 못한 항목을 먼저 표시합니다. 실행 성공과 관측만 완료한 상태를 구분하며, 선택하지 않은 범위는 미완료 작업이 아닙니다.";

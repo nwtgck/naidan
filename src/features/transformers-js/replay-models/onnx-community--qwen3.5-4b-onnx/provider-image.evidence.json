@@ -1,0 +1,496 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "image",
+  "contextSha256": "caf488216beb48f4dc3452e6eaafcca3be260ea2389cf7e9fdb16fac4534e5b5",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Describe the single synthetic image in one short phrase."
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+              }
+            }
+          ]
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 1,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              86
+            ],
+            "byteLength": 688,
+            "sha256": "409ed59fa1e558530fe05cade26d3e968c154d06b93eccdab42c62e6c0cada1f"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              86
+            ],
+            "byteLength": 688,
+            "sha256": "4eb88326bbc20fe23ae0112e59f574ca357de1287dc295df66fa2c65f8a7f9f1"
+          }
+        },
+        {
+          "name": "pixel_values",
+          "value": {
+            "kind": "tensor",
+            "dtype": "float32",
+            "dims": [
+              256,
+              1536
+            ],
+            "byteLength": 1572864,
+            "sha256": "106f0647ae10a6516b1ab2968038161e287ef40d1b22ca047531ed768e594ef1"
+          }
+        },
+        {
+          "name": "image_grid_thw",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              3
+            ],
+            "byteLength": 24,
+            "sha256": "53389fa912f56f81bbbe0669ab378c489b4cfaf9501876dcaec451ae86db735b"
+          }
+        },
+        {
+          "name": "original_sizes",
+          "value": {
+            "kind": "image-sizes",
+            "value": [
+              [
+                1,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "name": "reshaped_input_sizes",
+          "value": {
+            "kind": "image-sizes",
+            "value": [
+              [
+                256,
+                256
+              ]
+            ]
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              86
+            ],
+            "byteLength": 688,
+            "sha256": "409ed59fa1e558530fe05cade26d3e968c154d06b93eccdab42c62e6c0cada1f"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              86
+            ],
+            "byteLength": 688,
+            "sha256": "4eb88326bbc20fe23ae0112e59f574ca357de1287dc295df66fa2c65f8a7f9f1"
+          }
+        },
+        {
+          "name": "pixel_values",
+          "value": {
+            "kind": "tensor",
+            "dtype": "float32",
+            "dims": [
+              256,
+              1536
+            ],
+            "byteLength": 1572864,
+            "sha256": "106f0647ae10a6516b1ab2968038161e287ef40d1b22ca047531ed768e594ef1"
+          }
+        },
+        {
+          "name": "image_grid_thw",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              3
+            ],
+            "byteLength": 24,
+            "sha256": "53389fa912f56f81bbbe0669ab378c489b4cfaf9501876dcaec451ae86db735b"
+          }
+        },
+        {
+          "name": "original_sizes",
+          "value": {
+            "kind": "image-sizes",
+            "value": [
+              [
+                1,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "name": "reshaped_input_sizes",
+          "value": {
+            "kind": "image-sizes",
+            "value": [
+              [
+                256,
+                256
+              ]
+            ]
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 14,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "pixel_values",
+              "image_grid_thw",
+              "original_sizes",
+              "reshaped_input_sizes",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 1,
+          "contextLimit": 262144,
+          "promptTokenCount": 86,
+          "usedContextTokenCount": 86
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "248045",
+              "846",
+              "198",
+              "72240",
+              "279",
+              "3074",
+              "26388",
+              "2099",
+              "303",
+              "799",
+              "2716",
+              "16629",
+              "13",
+              "248053",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248056",
+              "248054",
+              "248046",
+              "198",
+              "248045",
+              "74455",
+              "198",
+              "248068",
+              "198"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "760"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "The",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          87
+        ],
+        "byteLength": 696,
+        "sha256": "042631c2e980515c4458ca782f5065233cf96359bebb91640f6d436a68772616",
+        "tokens": [
+          "248045",
+          "846",
+          "198",
+          "72240",
+          "279",
+          "3074",
+          "26388",
+          "2099",
+          "303",
+          "799",
+          "2716",
+          "16629",
+          "13",
+          "248053",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248056",
+          "248054",
+          "248046",
+          "198",
+          "248045",
+          "74455",
+          "198",
+          "248068",
+          "198",
+          "760"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "7ac58d6286fbec93b73c0bd6dc9b21d46d0218e0c30fcc96265c0dbdd93099d3"
+}

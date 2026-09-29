@@ -11,13 +11,16 @@ import type {
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
   ModelLoadResult,
+  ProductionModelLoadAcceptanceResult,
   ProgressInfo,
   TransformersJsPrefetchResult,
   TransformersJsProductionInvestigationObservation,
   TransformersJsProductionInvestigationScenario,
   WorkerToolDefinition,
+  ITransformersJsWorker,
+  InferenceMessage,
 } from "@/features/transformers-js/types";
-import type { ChatMessage, LmParameters, ToolCall } from "@/01-models/types";
+import type { LmParameters, ToolCall } from "@/01-models/types";
 
 type PreviousDepth = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
@@ -53,13 +56,18 @@ type WorkerTransportData =
   | TransformersJsProductionInvestigationObservation
   | ProgressInfo
   | ModelLoadResult
+  | ProductionModelLoadAcceptanceResult
   | TransformersJsPrefetchResult
-  | ChatMessage
+  // Application parts can own Blob attachments; the Worker receives projected input.
+  | InferenceMessage
   | LmParameters
   | ToolCall
   | WorkerToolDefinition;
+type ContinuationOwnerData = Parameters<ITransformersJsWorker['generateText']>[6];
+const continuationOwnerExtraTypes: AssertNever<Exclude<ContinuationOwnerData, string | undefined>>[] = [];
 
 const workerTransportFunctionPaths: AssertNever<FunctionPath<WorkerTransportData>>[] = [];
+const ordinaryLoadExtraFields: AssertNever<Exclude<keyof ModelLoadResult, 'device' | 'dtype'>>[] = [];
 const functionPathProbe: FunctionPath<{
   nested: {
     callback: ({ value }: { value: string }) => void,
@@ -69,6 +77,8 @@ const functionPathProbe: FunctionPath<{
 describe("Model Support Investigation Worker transport data", () => {
   it("keeps transported DTOs free of functions and callable class instances", () => {
     expect(workerTransportFunctionPaths).toEqual([]);
+    expect(ordinaryLoadExtraFields).toEqual([]);
+    expect(continuationOwnerExtraTypes).toEqual([]);
     expect(functionPathProbe).toBe("nested.callback");
   });
 });

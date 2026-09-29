@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation = (): string => "Exporte as medições de downloads comuns retidas nesta sessão da página. Isso não inicia uma investigação, carregamento ou download.";

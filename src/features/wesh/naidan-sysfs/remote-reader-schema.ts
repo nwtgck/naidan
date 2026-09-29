@@ -4,9 +4,17 @@ import { resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 import {
   BinaryObjectSchemaDto,
   ChatContentSchemaDto,
-  ChatGroupSchemaDto,
-  ChatMetaSchemaDto,
+  ChatGroupSchemaDtoV2,
+  ChatMetaSchemaDtoV2,
+  MessageBranchSchemaDtoV2,
 } from '@/00-storage/00-dto/dto';
+
+// Sysfs exposes the current representation. Legacy persistence readers remain
+// separate; transferring a chat does not rewrite its saved V1 record.
+export const naidanSysfsRemoteChatContentPayloadSchema = resolveMissingAsUndefined(z.object({
+  ...ChatContentSchemaDto.shape,
+  root: MessageBranchSchemaDtoV2,
+}));
 
 /**
  * Persistence DTOs can carry forward-compatibility metadata on non-enumerable
@@ -33,9 +41,9 @@ type NaidanSysfsRemoteValue<T> =
       }
       : T;
 
-export type NaidanSysfsRemoteChatMetaValue = NaidanSysfsRemoteValue<z.output<typeof ChatMetaSchemaDto>>;
-export type NaidanSysfsRemoteChatContentValue = NaidanSysfsRemoteValue<z.output<typeof ChatContentSchemaDto>>;
-export type NaidanSysfsRemoteChatGroupValue = NaidanSysfsRemoteValue<z.output<typeof ChatGroupSchemaDto>>;
+export type NaidanSysfsRemoteChatMetaValue = NaidanSysfsRemoteValue<z.output<typeof ChatMetaSchemaDtoV2>>;
+export type NaidanSysfsRemoteChatContentValue = NaidanSysfsRemoteValue<z.output<typeof naidanSysfsRemoteChatContentPayloadSchema>>;
+export type NaidanSysfsRemoteChatGroupValue = NaidanSysfsRemoteValue<z.output<typeof ChatGroupSchemaDtoV2>>;
 
 export const naidanSysfsRemoteChatSummarySchema = z.object({
   id: z.string().min(1),
@@ -51,7 +59,7 @@ export const naidanSysfsRemoteChatSidebarItemSchema = z.object({
 });
 
 export const naidanSysfsRemoteChatGroupPayloadSchema = z.object({
-  dto: ChatGroupSchemaDto,
+  dto: ChatGroupSchemaDtoV2,
   items: z.array(naidanSysfsRemoteChatSidebarItemSchema),
 });
 
@@ -65,11 +73,9 @@ export const naidanSysfsRemoteSidebarItemSchema = z.union([
 ]);
 
 export const naidanSysfsRemoteChatMetaPayloadSchema = z.object({
-  dto: ChatMetaSchemaDto,
+  dto: ChatMetaSchemaDtoV2,
   groupId: z.union([z.string().min(1), z.null(), z.undefined()]),
 });
-
-export const naidanSysfsRemoteChatContentPayloadSchema = ChatContentSchemaDto;
 
 export const naidanSysfsRemoteChatPayloadSchema = z.object({
   metadata: naidanSysfsRemoteChatMetaPayloadSchema,

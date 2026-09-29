@@ -1,4 +1,6 @@
+import { buildGemma4TemplateInput } from './gemma4';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toToolCallId } from '@/01-models/ids';
 
 vi.mock('@huggingface/transformers', () => ({
   RawImage: {
@@ -7,6 +9,18 @@ vi.mock('@huggingface/transformers', () => ({
 }));
 
 describe('transformers-js-gemma4', () => {
+  it.each([
+    { effort: undefined, expected: {} },
+    { effort: 'none' as const, expected: { enable_thinking: false } },
+    { effort: 'low' as const, expected: { enable_thinking: true } },
+    { effort: 'medium' as const, expected: { enable_thinking: true } },
+    { effort: 'high' as const, expected: { enable_thinking: true } },
+  ])('maps explicit reasoning $effort without inventing a native default', async ({ effort, expected }) => {
+    const { getGemma4ThinkingTemplateOptions } = await import('./gemma4');
+    expect(getGemma4ThinkingTemplateOptions({ parameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined,
+      presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort } } })).toEqual(expected);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -58,5 +72,159 @@ describe('transformers-js-gemma4', () => {
       ],
     }]);
     expect(result.images).toEqual([{ id: 'raw-1' }]);
+  });
+
+  it('preserves native tool roles, IDs, supplied assistant content and dictionary argument value types', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const id = toToolCallId({ raw: 'synthetic-call' });
+    const messages = [
+      { role: 'user' as const, content: 'Use the synthetic tool.' },
+      { role: 'assistant' as const, content: 'Supplied assistant text.', tool_calls: [{ id, type: 'function' as const,
+        function: { name: 'lookup', arguments: '{"text":"12","count":12,"flag":false,"nested":[1,{"key":true}]}' } }] },
+      { role: 'tool' as const, tool_call_id: id, content: 'Result body unchanged.' },
+    ];
+    const result = await buildGemma4TemplateInput({ messages });
+    expect(result).toEqual({ images: [], templateMessages: [messages[0], {
+      ...messages[1], tool_calls: [{ id, type: 'function', function: { name: 'lookup', arguments: { text: '12', count: 12, flag: false, nested: [1, { key: true }] } } }],
+    }, messages[2]] });
+    expect(messages[1]!.tool_calls![0]!.function.arguments).toBe('{"text":"12","count":12,"flag":false,"nested":[1,{"key":true}]}');
+  });
+
+  it('preserves literal think tags as assistant text without changing user or tool data', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const id = toToolCallId({ raw: 'synthetic-thinking-call' });
+    const result = await buildGemma4TemplateInput({ messages: [
+      { role: 'user', content: '<think>User literal</think>' },
+      { role: 'assistant', content: '<think> Reason </think>Answer', tool_calls: [{ id, type: 'function', function: { name: 'probe', arguments: '{"text":"<think>Argument literal</think>"}' } }] },
+      { role: 'tool', tool_call_id: id, content: '<think>Result literal</think>' },
+    ] });
+    expect(result.templateMessages).toEqual([
+      { role: 'user', content: '<think>User literal</think>' },
+      { role: 'assistant', content: '<think> Reason </think>Answer', tool_calls: [{ id, type: 'function', function: { name: 'probe', arguments: { text: '<think>Argument literal</think>' } } }] },
+      { role: 'tool', tool_call_id: id, content: '<think>Result literal</think>' },
+    ]);
+  });
+
+  it('preserves empty and multiple literal think regions without assigning them channel semantics', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const result = await buildGemma4TemplateInput({ messages: [
+      { role: 'assistant', content: '<think></think>Answer' },
+      { role: 'assistant', content: '<think> A </think>Between<think>B</think>After' },
+    ] });
+    expect(result.templateMessages).toEqual([
+      { role: 'assistant', content: '<think></think>Answer' },
+      { role: 'assistant', content: '<think> A </think>Between<think>B</think>After' },
+    ]);
+  });
+
+  it('keeps text-array boundaries even when literal tags span adjacent parts', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const result = await buildGemma4TemplateInput({ messages: [
+      { role: 'assistant', content: [{ type: 'text', text: '<thi' }, { type: 'text', text: 'nk> Reason </think>Answer' }] },
+      { role: 'assistant', content: [{ type: 'text', text: '<think>Reason</think>' }] },
+      { role: 'assistant', content: [{ type: 'text', text: ' First ' }, { type: 'text', text: ' Second ' }] },
+      { role: 'user', content: [{ type: 'text', text: '<think>User literal</think>' }] },
+    ] });
+    expect(result.templateMessages).toEqual([
+      { role: 'assistant', content: [{ type: 'text', text: '<thi' }, { type: 'text', text: 'nk> Reason </think>Answer' }] },
+      { role: 'assistant', content: [{ type: 'text', text: '<think>Reason</think>' }] },
+      { role: 'assistant', content: [{ type: 'text', text: ' First ' }, { type: 'text', text: ' Second ' }] },
+      { role: 'user', content: [{ type: 'text', text: '<think>User literal</think>' }] },
+    ]);
+  });
+
+  it('preserves empty content arrays separately from an explicit empty string', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const messages = [{ role: 'assistant', content: [] }, { role: 'assistant', content: '' }];
+    expect((await buildGemma4TemplateInput({ messages })).templateMessages).toStrictEqual(messages);
+  });
+
+  it('does not trim or close a literal unfinished think region', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    const content = `\
+  <think> 未完の本文🙂
+
+`;
+    const messages = [{ role: 'assistant', content }];
+    const result = await buildGemma4TemplateInput({ messages });
+    expect(result.templateMessages).toStrictEqual(messages);
+    expect(Object.hasOwn(result.templateMessages[0]!, 'reasoning_content')).toBe(false);
+  });
+
+  it('rejects malformed tool arguments rather than manufacturing an empty argument object', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    await expect(buildGemma4TemplateInput({ messages: [{ role: 'assistant', content: '', tool_calls: [{
+      id: toToolCallId({ raw: 'synthetic-malformed' }), type: 'function', function: { name: 'lookup', arguments: '{malformed' },
+    }] }] })).rejects.toThrow();
+  });
+
+  it('rejects a native quote delimiter in a tool result before constructing the next template input', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    await expect(buildGemma4TemplateInput({ messages: [{ role: 'tool', content: 'Result<|"|>value' }] }))
+      .rejects.toThrow('quote delimiter');
+  });
+
+  it('checks the native unseparated concatenation of tool result text parts for quote delimiters', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    await expect(buildGemma4TemplateInput({ messages: [{ role: 'tool', content: [
+      { type: 'text', text: 'Result<|' }, { type: 'text', text: '"|>value' },
+    ] }] })).rejects.toThrow('quote delimiter');
+  });
+
+  it('rejects a null argument that the native template would silently serialize as an empty slot', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    await expect(buildGemma4TemplateInput({ messages: [{ role: 'assistant', content: '', tool_calls: [{
+      id: toToolCallId({ raw: 'synthetic-null' }), type: 'function', function: { name: 'lookup', arguments: '{"items":[1,null]}' },
+    }] }] })).rejects.toThrow('cannot preserve this argument value');
+  });
+
+  it('rejects a string containing the unescaped native quote delimiter instead of changing its meaning', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    await expect(buildGemma4TemplateInput({ messages: [{ role: 'assistant', content: '', tool_calls: [{
+      id: toToolCallId({ raw: 'synthetic-delimiter' }), type: 'function', function: { name: 'lookup', arguments: JSON.stringify({ text: 'one<|"|>,other:<|"|>two' }) },
+    }] }] })).rejects.toThrow('quote delimiter');
+  });
+
+  it('rejects an ambiguous bare argument key rather than adding an invented escape convention', async () => {
+    const { buildGemma4TemplateInput } = await import('./gemma4');
+    await expect(buildGemma4TemplateInput({ messages: [{ role: 'assistant', content: '', tool_calls: [{
+      id: toToolCallId({ raw: 'synthetic-key' }), type: 'function', function: { name: 'lookup', arguments: '{"a:b":1}' },
+    }] }] })).rejects.toThrow('bare argument key');
+  });
+});
+
+describe('Gemma structured reasoning input', () => {
+  it('keeps reasoning separate from literal content without adding or removing newlines', async () => {
+    const source = { role: 'assistant', content: '<think>literal</think>', reasoning: { text: '  R\n', completeness: 'complete' as const } };
+    const result = await buildGemma4TemplateInput({ messages: [source] });
+    expect(result.templateMessages).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning_content: '  R\n' }]);
+    expect(source.reasoning.text).toBe('  R\n');
+    expect(Object.hasOwn(result.templateMessages[0]!, 'reasoning')).toBe(false);
+  });
+
+  it('keeps an empty reasoning field distinct from absence and preserves an absent body', async () => {
+    expect((await buildGemma4TemplateInput({ messages: [{ role: 'assistant', content: [], reasoning: { text: '', completeness: 'complete' } }] })).templateMessages)
+      .toEqual([{ role: 'assistant', content: [], reasoning_content: '' }]);
+    expect((await buildGemma4TemplateInput({ messages: [{ role: 'assistant', content: [] }] })).templateMessages)
+      .toEqual([{ role: 'assistant', content: [] }]);
+  });
+
+  it('rejects unfinished reasoning before attempting an earlier image read', async () => {
+    await expect(buildGemma4TemplateInput({ messages: [
+      { role: 'user', content: [{ type: 'image_url', image_url: { url: 'invalid-image-sentinel' } }] },
+      { role: 'assistant', content: '', reasoning: { text: 'R', completeness: 'partial' } },
+    ] })).rejects.toThrow('unfinished');
+  });
+});
+
+describe('Gemma call-only template content', () => {
+  it('uses the native empty body for call-only history without adding a stored text part', async () => {
+    const messages = [{ role: 'assistant' as const, content: [], reasoning: { text: 'R', completeness: 'complete' as const },
+      tool_calls: [{ id: toToolCallId({ raw: 'c' }), type: 'function' as const, function: { name: 'f', arguments: '{}' } }],
+    }];
+    const before = structuredClone(messages);
+    const { templateMessages } = await buildGemma4TemplateInput({ messages });
+    expect(templateMessages[0]).toMatchObject({ content: '', reasoning_content: 'R' });
+    expect(messages).toEqual(before);
   });
 });

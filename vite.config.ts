@@ -1,4 +1,5 @@
 /// <reference types="vitest" />
+import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core';
 import VueRouter from 'vue-router/vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 import type { Alias } from 'vite';
@@ -24,26 +25,18 @@ import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
+import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
+import { createPrivacyFetchBrokerDevHeadersPlugin } from './build/privacy-fetch-broker-dev';
+import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
 import { createZipPackages } from './build/zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
+import { createLlamaCppRuntimeAssetsPlugin } from './src/features/llama-cpp-browser/build-runtime-assets';
 import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
+import { createTransformersJsFixesViteConfig } from './build/transformers-js-fixes/plugin';
 import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
-
-function setCrossOriginResourcePolicy({ res }: {
-  res: import('node:http').ServerResponse,
-}): void {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-}
-
-function setCrossOriginModuleHeaders({ res }: {
-  res: import('node:http').ServerResponse,
-}): void {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-}
 
 const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
@@ -62,39 +55,7 @@ const standaloneBuildBudgets = {
   maxInitialRequestBytes: 1_200_000,
 } as const;
 
-const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch';
-const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/features/privacy-fetch/';
-const ZOD_MODULE_PATH_SEGMENT = '/node_modules/zod/';
 const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker';
-
-function normalizeModulePathForChunkRouting(modulePath: string): string {
-  return modulePath.replaceAll('\\', '/');
-}
-
-function isPrivacyFetchBrokerChunk(chunkInfo: {
-  name: string,
-  facadeModuleId?: string | null,
-  moduleIds?: string[],
-}): boolean {
-  if (chunkInfo.name.includes(PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER)) {
-    return true;
-  }
-
-  if (chunkInfo.facadeModuleId !== undefined && chunkInfo.facadeModuleId !== null) {
-    const normalizedFacadeModuleId = normalizeModulePathForChunkRouting(chunkInfo.facadeModuleId);
-    if (normalizedFacadeModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)) {
-      return true;
-    }
-  }
-
-  // Keep zod-backed validation chunks alongside the broker bundle so shared
-  // dependencies still stay inside the broker asset subtree for auditing.
-  return chunkInfo.moduleIds?.some((moduleId) => {
-    const normalizedModuleId = normalizeModulePathForChunkRouting(moduleId);
-    return normalizedModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)
-      || normalizedModuleId.includes(ZOD_MODULE_PATH_SEGMENT);
-  }) ?? false;
-}
 
 // Dev-server-only HTML cleanup for the privacy fetch broker page.
 // This targets only /privacy-fetch-broker.html, which runs inside a sandboxed
@@ -139,30 +100,6 @@ function stripPrivacyFetchBrokerDevInjectedScriptsPlugin(): import('vite').Plugi
     },
   };
 }
-
-const privacyFetchBrokerDevHeadersPlugin = () => ({
-  name: 'privacy-fetch-broker-dev-headers',
-  configureServer(server: import('vite').ViteDevServer) {
-    server.middlewares.use((req, res, next) => {
-      const url = req.url ?? '';
-
-      if (url === '/privacy-fetch-broker.html') {
-        setCrossOriginResourcePolicy({ res });
-      }
-
-      if (
-        url.startsWith('/src/features/privacy-fetch/')
-        || url.startsWith('/node_modules/')
-        || url.startsWith('/@vite/')
-        || url.startsWith('/@id/')
-      ) {
-        setCrossOriginModuleHeaders({ res });
-      }
-
-      next();
-    });
-  },
-});
 
 function ensureExistingPath(relativePath: string): string {
   const absolutePath = path.resolve(__dirname, relativePath);
@@ -221,7 +158,10 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone';
+  const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
+  const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode });
   const isHosted = mode === 'hosted';
+  const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: __dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted
     ? path.resolve(__dirname, `dist/debug-tailwind-${mode}`)
     : undefined;
@@ -254,18 +194,10 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     server: {
-      headers: {
-        // Required for SharedArrayBuffer and multi-threaded WebAssembly (Transformers.js)
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
+      headers: DEV_SERVER_ISOLATION_HEADERS,
     },
     preview: {
-      headers: {
-        // Required for SharedArrayBuffer and multi-threaded WebAssembly (Transformers.js)
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
+      headers: DEV_SERVER_ISOLATION_HEADERS,
     },
     // Inject global constants for compile-time conditional logic (tree-shaking)
     define: {
@@ -300,7 +232,14 @@ export default defineConfig(({ mode }) => {
         },
       ],
     },
+    ...transformersJsFixes,
+    worker: {
+      ...transformersJsFixes.worker,
+      plugins: () => [...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
+    },
     plugins: [
+      createDevServerIsolationPlugin(),
+      ...transformersJsFixes.plugins,
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({
@@ -330,7 +269,7 @@ export default defineConfig(({ mode }) => {
         },
       }),
       stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
-      privacyFetchBrokerDevHeadersPlugin(),
+      createPrivacyFetchBrokerDevHeadersPlugin(),
       !isStandalone && !isHosted && viteStaticCopy({
         targets: [
           {
@@ -341,6 +280,8 @@ export default defineConfig(({ mode }) => {
         ],
       }),
       isHosted && createHostedTransformersRuntimeAssetsPlugin({ rootDir: __dirname }),
+      !isStandalone && createLlamaCppRuntimeAssetsPlugin({ rootDir: __dirname }),
+      llamaCppBuild.corePlugin,
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
         onBuildDependenciesCollected({ dependencies }) {
@@ -350,6 +291,7 @@ export default defineConfig(({ mode }) => {
       !isStandalone && manualGzipWasmPlugin({ outDir }),
       isStandalone && createNaidanStandalonePlugin({
         workers: standaloneWorkerDefinitions,
+        embeddedBinaries: llamaCppBuild.embeddedBinaries,
         systemRuntimePath: standaloneSystemJsRuntimePath,
         systemRuntimeSourceMapPath: standaloneSystemJsSourceMapPath,
         diagnostics: standaloneWorkerDiagnostics,
@@ -359,7 +301,9 @@ export default defineConfig(({ mode }) => {
           // policy assumptions change; output-level guards remain enabled below.
           mode: 'external',
           evidence: 'Reviewed the configured standalone Worker source graph for Worker-reachable UI-only globals '
-            + 'and source-candidate Raw Worker constructors; renew when the Worker/source graph or these assumptions change.',
+            + 'and source-candidate Raw Worker constructors. build/llama-cpp-browser-standalone.test.ts additionally '
+            + 'builds the real llama inference/download Workers with the inline source audit and verifies their lazy native graph '
+            + 'in all eight release ZIP variants; renew when the Worker/source graph or these assumptions change.',
         },
         releaseValidation: {
           outputDirectory: path.resolve(__dirname, outDir),
@@ -448,7 +392,7 @@ export default defineConfig(({ mode }) => {
         input: rollupInput,
         output: {
           entryFileNames: (chunkInfo) => {
-            if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
+            if (!isStandalone && isPrivacyFetchBrokerChunk({ chunkInfo })) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
             // The semantic marker describes the emitted System.register format.
@@ -460,7 +404,7 @@ export default defineConfig(({ mode }) => {
               : 'assets/[name]-[hash].js';
           },
           chunkFileNames: (chunkInfo) => {
-            if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
+            if (!isStandalone && isPrivacyFetchBrokerChunk({ chunkInfo })) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
             // Keep the same SystemJS marker on lazy chunks so output format
@@ -474,6 +418,11 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      // Replay evaluates verified ESM bytes without Node's permanent import cache.
+      // Node 22's V8 compilation cache also retains VM modules and captured
+      // fixture state. Disable that optimization in test workers so completed
+      // runtimes can be collected; this trades compilation CPU, not heap limits.
+      execArgv: ['--experimental-vm-modules', '--no-compilation-cache'],
       exclude: [
         ...configDefaults.exclude,
         'src/test-tmp/**',

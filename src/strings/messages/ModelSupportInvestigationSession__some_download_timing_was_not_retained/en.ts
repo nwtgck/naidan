@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__some_download_timing_was_not_retained = (): string => "Some observations were not retained because of recording limits or unavailable timing. The export includes these gaps.";

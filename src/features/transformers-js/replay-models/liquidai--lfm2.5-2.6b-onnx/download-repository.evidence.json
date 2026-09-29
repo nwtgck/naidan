@@ -1,0 +1,265 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "hugging-face-model-api-captured-by-model-support-investigation",
+    "observedAt": "2026-09-02T00:07:51.468Z",
+    "note": "Public repository facts only. No large artifact body is stored in this fixture."
+  },
+  "modelId": "LiquidAI/LFM2.5-2.6B-ONNX",
+  "requestedRevision": "main",
+  "resolvedRevision": "66826372fd4fa166f53be0371c9315745c07cace",
+  "modelType": "lfm2",
+  "architectures": [
+    "Lfm2ForCausalLM"
+  ],
+  "transformersJsConfig": {
+    "use_external_data_format": {
+      "model.onnx": 6,
+      "model_fp16.onnx": 3,
+      "model_q4.onnx": 1,
+      "model_q8.onnx": 2,
+      "model_q4f16.onnx": 2
+    },
+    "kv_cache_dtype": {
+      "fp32": "float32",
+      "q4f16": "float16"
+    }
+  },
+  "files": [
+    {
+      "path": ".gitattributes",
+      "size": 2422,
+      "blobId": "6519ead92921b336de95295981e036222b5097fa"
+    },
+    {
+      "path": "chat_template.jinja",
+      "size": 5404,
+      "blobId": "52e08707f537acef064e23078d3a79179a467768"
+    },
+    {
+      "path": "config.json",
+      "size": 1728,
+      "blobId": "d9d13db2993bb864d7fe88d463416773067a1eab"
+    },
+    {
+      "path": "generation_config.json",
+      "size": 146,
+      "blobId": "db3b1cb8cfd2d03446aa30d41693b2d3c8ce5ec9"
+    },
+    {
+      "path": "LICENSE",
+      "size": 10574,
+      "blobId": "2a513f17eb4b8008fb100349fd2b7551d009fed0"
+    },
+    {
+      "path": "onnx/model_fp16.onnx",
+      "size": 275079,
+      "blobId": "865c8a38c2395e83ac9489221c4988c47c0646f7",
+      "lfs": {
+        "sha256": "074be11712bdfea6f61e26728492d2ebfbffaf720e57664a78c584a88d126b4f",
+        "size": 275079,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model_fp16.onnx_data",
+      "size": 2147258368,
+      "blobId": "3bff6ec84d481372f8c63431bd761da74324d9a0",
+      "lfs": {
+        "sha256": "256a8b47a9a1e5d427c3d54435a7470cfd865f884009b101075bf329261cbb35",
+        "size": 2147258368,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_fp16.onnx_data_1",
+      "size": 2128846848,
+      "blobId": "4e188b0a888228acc3e3657d2b5f6b3d1491e128",
+      "lfs": {
+        "sha256": "a56d7ac78be6e3fcc90ea2691550e51568c6220b2e83a5f2f09196710b2acb44",
+        "size": 2128846848,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_fp16.onnx_data_2",
+      "size": 1134673920,
+      "blobId": "a063947b96952f19c167a8d8e0854f91415b3f3d",
+      "lfs": {
+        "sha256": "e7ecd730b1e2e04e322b6a284f936ac90c7c90c0da2dc4b61735df97809820e8",
+        "size": 1134673920,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4.onnx",
+      "size": 315101,
+      "blobId": "4a5c12e2c09f8a1aa306496d21bc10ed08a0cd90",
+      "lfs": {
+        "sha256": "7ab036e314110db418b37a36175c5998e9ef441fc88d637523cd6d2a6ff2de0d",
+        "size": 315101,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model_q4.onnx_data",
+      "size": 1854562304,
+      "blobId": "b2814449250ec408b7e1d0ce573212befce6398c",
+      "lfs": {
+        "sha256": "67ad572dfc165a31c199ed79d8ccf27fb1cdd8781bbeeba67a592013cd29d6cf",
+        "size": 1854562304,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx",
+      "size": 222160,
+      "blobId": "4462cbbf098ac67d87c5753356fe6d199b68a813",
+      "lfs": {
+        "sha256": "871354d43abc0d718a7a089d2fe10ad5d1f83e08acbfb9f45e4d137b41a1e9a4",
+        "size": 222160,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data",
+      "size": 1063972864,
+      "blobId": "3764edaff0766058f0d77ad95bc0d21624c6273c",
+      "lfs": {
+        "sha256": "34537bf4a6d70ddf1627bd3709d31c8b7db8d5bcaee2098c45661be59476fbec",
+        "size": 1063972864,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data_1",
+      "size": 469958656,
+      "blobId": "ff153a80065c47d8eaa3b89d26862284634d633d",
+      "lfs": {
+        "sha256": "1b645b44902caccd406098c4dbef5724927c5fb2a2be4a087ae328989b111a7f",
+        "size": 469958656,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/model_q8.onnx",
+      "size": 343485,
+      "blobId": "b1e33a0b3a735405a9563d5eb98348ed2b86f3ae",
+      "lfs": {
+        "sha256": "bdc18f4154e6f3a61b3880edf3e50ac58eeecda5e98cf202cbf1f77d2a93663a",
+        "size": 343485,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model_q8.onnx_data",
+      "size": 2133549056,
+      "blobId": "3a9dbe14f5faa10cf7c41f5680329ad66c399b61",
+      "lfs": {
+        "sha256": "7df8eb6f0729a013cd3bbdc348808e6103249472d1187e1e4b8ace0651fe89c2",
+        "size": 2133549056,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q8.onnx_data_1",
+      "size": 1764065280,
+      "blobId": "f9f714aeee21bb6ecaba066eb8151bf1735ca324",
+      "lfs": {
+        "sha256": "dfaa64201b3add25ce1ff3efa998d5dc7b095331c581258b705260812908f368",
+        "size": 1764065280,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model.onnx",
+      "size": 264630,
+      "blobId": "6dcee8a0a602bdaa02dc16780c3747704e6a621c",
+      "lfs": {
+        "sha256": "88543b320751c99120d11ac5c59e99bcbd7ee4371e417cb309b1d5f4d82a67d4",
+        "size": 264630,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/model.onnx_data",
+      "size": 2138423296,
+      "blobId": "e210164ef149497bd3c7073e67f69d2e482ad55b",
+      "lfs": {
+        "sha256": "f8f57c76a7d835f1aced54c0946aaebddc209467a0c2da891fc1828efc9b8fba",
+        "size": 2138423296,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model.onnx_data_1",
+      "size": 2139316224,
+      "blobId": "dc372c4ef6c1beed001ff8d67514523c8f9a0ca5",
+      "lfs": {
+        "sha256": "b1f0fe0267529ac65d9410fdd662f9f78a199bf10abc52ac60e64fd79dcb77a2",
+        "size": 2139316224,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model.onnx_data_2",
+      "size": 2093195264,
+      "blobId": "ab191c6217e679a2bcd5cb5647101b932fce3c97",
+      "lfs": {
+        "sha256": "9ac1b3310eb39809bb04e2718ccad6625bec46f39bcaf35d48970f9f7a82f1c6",
+        "size": 2093195264,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model.onnx_data_3",
+      "size": 2114125824,
+      "blobId": "11019c082e4f55e050c909c746b37597fb680859",
+      "lfs": {
+        "sha256": "1ab4e6bf77f4186109a7521bcda4d7ec2eb3a7575f6971d98b7186b274a86c17",
+        "size": 2114125824,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model.onnx_data_4",
+      "size": 2093195264,
+      "blobId": "ddaf2a7421cf1c2b3217083df97b1806ddb01947",
+      "lfs": {
+        "sha256": "b0541c6493f4e9a951d5b1e29ecb72c836b032bd9dc516b9753e4679562991d7",
+        "size": 2093195264,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model.onnx_data_5",
+      "size": 243302400,
+      "blobId": "7baa4fc74c5378463f3961eb111124439225667e",
+      "lfs": {
+        "sha256": "466a7543b60381e2977e2252d04c0f4b10e21f09eb3640b25c6d983aa680d3c7",
+        "size": 243302400,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "README.md",
+      "size": 2972,
+      "blobId": "169cbc39aba6786fc7645b9bee20d2755ee9a4c6"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 6063,
+      "blobId": "c06ffbb6a2800b23210484ab1b7c11af0d133a42"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 17905598,
+      "blobId": "caab3a0ae45d59a9fe42fcd3b7e7c64011b55d13",
+      "lfs": {
+        "sha256": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41",
+        "size": 17905598,
+        "pointerSize": 133
+      }
+    }
+  ]
+}

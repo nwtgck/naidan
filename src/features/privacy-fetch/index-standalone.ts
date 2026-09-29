@@ -1,5 +1,6 @@
-export { privacyFetch } from './client-standalone';
+export { privacyFetch, privacyFetchStream } from './client-standalone';
 export type {
+  PrivacyFetchStreamResponse,
   PrivacyFetchHeaderEntries,
   PrivacyFetchRequest,
   PrivacyFetchResponse,

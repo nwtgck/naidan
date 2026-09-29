@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness = (): string => "Collection completion does not certify feature correctness. Failed and unexecuted checks are listed first. Successful execution and collected observations are distinct; unselected scopes are not pending work.";

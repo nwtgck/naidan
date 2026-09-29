@@ -11,6 +11,8 @@ export function endpointTypeLabel({
     return 'OpenAI';
   case 'ollama':
     return 'Ollama';
+  case 'llama_cpp_browser':
+    return 'llama.cpp browser';
   case 'transformers_js':
     return 'Transformers.js';
   case 'browser_provided_lm':

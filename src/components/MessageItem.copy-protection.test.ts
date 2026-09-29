@@ -30,10 +30,12 @@ describe('MessageItem Copy Protection', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({
     id: toMessageId({ raw: 'test-id' }),
     role: 'assistant',
-    content,
-    thinking,
-    timestamp: Date.now(),
     replies: { items: [] },
+    parts: [...(thinking !== undefined ? [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }] : []), ...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
+    createdAt: Date.now(),
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
   });
 
   const originalGetSelection = window.getSelection;
@@ -51,7 +53,7 @@ describe('MessageItem Copy Protection', () => {
 
   it('toggles thinking block when no text is selected', async () => {
     const message = createMessage('Final response', 'Thought process');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
 
     const toggle = wrapper.find('[data-testid="toggle-thinking"]');
 
@@ -67,7 +69,7 @@ describe('MessageItem Copy Protection', () => {
 
   it('does NOT toggle thinking block when text is selected (prevents accidental closing on copy)', async () => {
     const message = createMessage('Final response', 'Thought process');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
 
     const toggle = wrapper.find('[data-testid="toggle-thinking"]');
 

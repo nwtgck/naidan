@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
@@ -62,6 +63,7 @@ import { systemPromptUiModeFromValue } from './system-prompt-settings-editor';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
+const LlamaCppBrowserUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/llama-cpp-browser/components/LlamaCppBrowserUpsell.vue') });
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsUpsell.vue') });
 
 const props = defineProps<{
@@ -372,6 +374,7 @@ const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
   openai: true,
   ollama: true,
   transformers_js: true,
+  llama_cpp_browser: true,
   browser_provided_lm: true,
 };
 
@@ -901,8 +904,9 @@ function setLocalTitleEndpointType({
       },
     });
     return;
+  case 'llama_cpp_browser':
   case 'transformers_js': {
-    const nextEndpoint: Endpoint = { type: 'transformers_js' };
+    const nextEndpoint: Endpoint = { type: endpointType };
     setLocalTitleGeneration({
       titleGeneration: {
         endpoint: nextEndpoint,
@@ -1347,7 +1351,7 @@ onMounted(() => {
     const endpoint = currentChat.value.endpoint ?? settings.value.endpoint;
     const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
     const type = endpoint.type;
-    if (type === 'transformers_js' || type === 'browser_provided_lm' || isLocalhost({ url })) void fetchModels();
+    if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || isLocalhost({ url })) void fetchModels();
   }
 });
 
@@ -1454,6 +1458,7 @@ async function updateEndpointType({
     clearBrowserProvidedLmModelOverrides();
     resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
     break;
+  case 'llama_cpp_browser':
   case 'transformers_js':
     localSettings.value.endpoint = { type: endpointType };
     clearBrowserProvidedLmModelOverrides();
@@ -1571,7 +1576,7 @@ async function fetchModels() {
 
 watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchModels();
+  if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchModels();
 });
 
 watch(
@@ -1579,7 +1584,7 @@ watch(
   ([url, type]) => {
     error.value = null;
     if (localTitleGenerationMode.value !== 'disabled' && !localTitleEndpointUsesSameScope.value) {
-      if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchTitleEndpointModels();
+      if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchTitleEndpointModels();
     }
   },
   { immediate: true },
@@ -1715,7 +1720,8 @@ defineExpose({
                 <option value="global">{{ inheritedEndpointTypeLabel() }}</option>
                 <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                 <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
-                <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
+                <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
+                <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
                 <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
                 <option
                   v-if="localTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"
@@ -1823,6 +1829,7 @@ defineExpose({
                 />
               </fieldset>
               <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
+              <LlamaCppBrowserUpsell :show="effectiveEndpointType === 'llama_cpp_browser'" />
             </div>
           </div>
 
@@ -1874,7 +1881,8 @@ defineExpose({
                   <option value="same_scope">{{ sameScopeTitleEndpointTypeOptionLabel }}</option>
                   <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                   <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
-                  <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
+                  <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
+                  <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
                   <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
                   <option
                     v-if="localTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"

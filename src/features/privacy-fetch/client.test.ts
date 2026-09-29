@@ -1,7 +1,14 @@
+import { servePrivacyStream } from './stream-port';
+import { streamRequestSchema } from './stream-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isPrivacyFetchError } from './errors';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 import { TEST_ONLY as PRIVACY_FETCH_BROKER_CLIENT_TEST_ONLY } from './broker-client';
+
+vi.mock('@/utils/worker-transport', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/worker-transport')>(),
+  getReadableStreamTransferSupport: vi.fn(async () => 'unsupported' as const),
+}));
 
 const { mockGenerateId } = vi.hoisted(() => ({
   mockGenerateId: vi.fn(),
@@ -31,6 +38,7 @@ describe('createPrivacyFetchBrokerClient', () => {
   afterEach(() => {
     document.body.innerHTML = '';
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   function createFakeWindowHarness(): FakeWindowHarness {
@@ -153,6 +161,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       request: {
         url: 'https://en.wikipedia.org/w/api.php?origin=*',
         signal: undefined,
+        headers: [['Accept', 'application/json']],
       },
     });
     await Promise.resolve();
@@ -168,6 +177,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       type: 'request',
       requestId: 'req-success',
       url: 'https://en.wikipedia.org/w/api.php?origin=*',
+      headers: [['accept', 'application/json']],
     }, '*');
 
     const body = new TextEncoder().encode('{"ok":true}').buffer;
@@ -542,4 +552,44 @@ describe('createPrivacyFetchBrokerClient', () => {
 
     client.dispose();
   });
+  it('bootstraps a stream through the broker iframe and disposes its active body', async () => {
+    const { client, brokerWindow, dispatchBrokerMessage } = createClientHarness();
+    const url = 'https://huggingface.co/owner/model/resolve/main/model.gguf';
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }), {
+      status: 206, headers: { 'Content-Range': 'bytes 3-9/10' },
+    });
+    Object.defineProperty(response, 'url', { value: url });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    vi.mocked(brokerWindow.postMessage).mockImplementation((message: unknown, _origin?: string | WindowPostMessageOptions, transfer?: Transferable[]) => {
+      const parsed = streamRequestSchema.parse(message);
+      const port = Array.isArray(transfer) ? transfer[0] : undefined;
+      if (!(port instanceof MessagePort)) throw new Error('Missing stream port');
+      const { type: _type, protocol: _protocol, ...request } = parsed;
+      servePrivacyStream({ port, request });
+    });
+    dispatchBrokerMessage({ source: brokerWindow, data: {
+      protocol: PRIVACY_FETCH_PROTOCOL, type: 'ready',
+      capabilities: { responseBody: 'arrayBuffer', transferArrayBuffer: true, headers: 'entries' },
+    } });
+    const streamed = await client.fetchStream({ request: { url, headers: [['Range', 'bytes=3-']] } });
+    expect(streamed.status).toBe(206);
+    expect(streamed.headers.get('content-range')).toBe('bytes 3-9/10');
+    client.dispose();
+    await expect(streamed.body.getReader().read()).rejects.toMatchObject({ code: 'broker_disposed' });
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  });
+
+  it('aborts streaming requests while waiting for broker readiness', async () => {
+    const { client, brokerWindow } = createClientHarness();
+    const controller = new AbortController();
+    const response = client.fetchStream({ request: {
+      url: 'https://huggingface.co/api/models/owner/model', signal: controller.signal,
+    } });
+    controller.abort();
+    await expect(response).rejects.toMatchObject({ code: 'aborted' });
+    expect(brokerWindow.postMessage).not.toHaveBeenCalled();
+    client.dispose();
+  });
+
 });

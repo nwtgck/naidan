@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation = (): string => 'Full model downloads are disabled during investigation, even when external network access is allowed.';

@@ -1,0 +1,135 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { storageService } from '@/00-storage/service';
+import { reactive } from 'vue';
+import type { SidebarItem, ChatGroup } from '@/01-models/types';
+import { toChatGroupId } from '@/01-models/ids';
+
+// Mock storage service state
+const mockRootItems: SidebarItem[] = [];
+
+vi.mock('../00-storage/service', () => ({
+  storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    listChats: vi.fn().mockResolvedValue([]),
+    loadChat: vi.fn(),
+    saveChat: vi.fn(),
+    deleteChat: vi.fn(),
+    updateChatGroup: vi.fn(),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
+    getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
+    deleteChatGroup: vi.fn(),
+    notify: vi.fn(),
+  },
+}));
+
+vi.mock('./useSettings', () => ({
+  useSettings: () => ({
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } }, defaultModelId: 'gpt-4' } },
+  }),
+}));
+
+describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Group Collapse', () => {
+  const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+  const { setChatGroupCollapsed, rootItems, currentChatGroup, TEST_ONLY } = chatStore;
+  const { __testOnlySetCurrentChatGroup } = TEST_ONLY;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRootItems.length = 0;
+    rootItems.value = [];
+    __testOnlySetCurrentChatGroup({ group: null });
+
+    vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
+  });
+
+  it('should collapse/expand a group and update rootItems immediately', async () => {
+    const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
+    mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
+
+    await chatStore.loadChats();
+    const item = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(item).toBeDefined();
+    expect(item.type).toBe('chat_group');
+    expect(item.chatGroup.isCollapsed).toBe(false);
+
+    // Act: Collapse
+    await setChatGroupCollapsed({ groupId: toChatGroupId({ raw: 'g1' }), isCollapsed: true });
+
+    // Assert: Immediate update in rootItems
+    const itemAfterCollapse = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(itemAfterCollapse.type).toBe('chat_group');
+    expect(itemAfterCollapse.chatGroup.isCollapsed).toBe(true);
+
+    // Assert: Persisted to storage
+    expect(storageService.updateChatGroup).toHaveBeenCalledWith({ id: 'g1', updater: expect.any(Function) });
+
+    // Test the updater function passed to storageService
+    const calls = vi.mocked(storageService.updateChatGroup).mock.calls;
+    expect(calls[0]).toBeDefined();
+    const updater = calls[0]![0].updater;
+    const updatedGroup = (updater as any)({ current: group }) as ChatGroup;
+    expect(updatedGroup.isCollapsed).toBe(true);
+
+    // Act: Expand
+    await setChatGroupCollapsed({ groupId: toChatGroupId({ raw: 'g1' }), isCollapsed: false });
+    const itemAfterExpand = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(itemAfterExpand.chatGroup.isCollapsed).toBe(false);
+  });
+
+  it('should update currentChatGroup if it matches the group being toggled', async () => {
+    const group: ChatGroup = reactive({ id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 });
+    mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
+
+    await chatStore.loadChats();
+    __testOnlySetCurrentChatGroup({ group });
+
+    // Act
+    await setChatGroupCollapsed({ groupId: toChatGroupId({ raw: 'g1' }), isCollapsed: true });
+
+    // Assert
+    expect(currentChatGroup.value?.isCollapsed).toBe(true);
+  });
+
+  it('should allow toggling a group that is NOT the current group', async () => {
+    const group1: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
+    const group2: ChatGroup = { id: toChatGroupId({ raw: 'g2' }), name: 'Group 2', isCollapsed: false, items: [], updatedAt: 0 };
+
+    mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 });
+    mockRootItems.push({ id: 'chat_group:g2', type: 'chat_group', chatGroup: group2 });
+
+    await chatStore.loadChats();
+    __testOnlySetCurrentChatGroup({ group: group1 });
+
+    // Act: Toggle group 2 while group 1 is selected
+    await setChatGroupCollapsed({ groupId: toChatGroupId({ raw: 'g2' }), isCollapsed: true });
+
+    // Assert: Group 2 is collapsed
+    const item2 = rootItems.value[1] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(item2.type).toBe('chat_group');
+    expect(item2.chatGroup.isCollapsed).toBe(true);
+
+    // Assert: Group 1 (current) remains uncollapsed
+    expect(currentChatGroup.value?.id).toBe('g1');
+    expect(currentChatGroup.value?.isCollapsed).toBe(false);
+    const item1 = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(item1.chatGroup.isCollapsed).toBe(false);
+  });
+
+  it('should still update storage and currentChatGroup even if group is not in rootItems', async () => {
+    const group: ChatGroup = reactive({ id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 });
+    // Don't add to mockRootItems
+
+    __testOnlySetCurrentChatGroup({ group });
+
+    // Act
+    await setChatGroupCollapsed({ groupId: toChatGroupId({ raw: 'g1' }), isCollapsed: true });
+
+    // Assert
+    expect(currentChatGroup.value?.isCollapsed).toBe(true);
+    expect(storageService.updateChatGroup).toHaveBeenCalledWith({ id: 'g1', updater: expect.any(Function) });
+  });
+});

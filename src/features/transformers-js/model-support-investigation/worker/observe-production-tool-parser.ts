@@ -1,7 +1,9 @@
 import type { ToolCall } from "@/01-models/types";
+import { z } from 'zod';
 import type {
   ModelSupportInvestigationNormalizedToolCall,
   ModelSupportInvestigationToolParserObservation,
+  ModelSupportInvestigationJsonObject,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { ToolCallStreamParser } from "@/features/transformers-js/tool-call-parser";
 import { Qwen3_5ToolCallParser } from "@/features/transformers-js/models/qwen3_5-tool-call-parser";
@@ -16,9 +18,10 @@ function normalizeToolCalls({ toolCalls }: { toolCalls: ToolCall[] }): ModelSupp
   }));
 }
 
-export function observeProductionToolParser({ strategy, inputChunks }: {
+export function observeProductionToolParser({ strategy, inputChunks, tools }: {
   strategy: TransformersJsProductionInvestigationStrategy,
   inputChunks: string[],
+  tools: ModelSupportInvestigationJsonObject[] | undefined,
 }): Exclude<ModelSupportInvestigationToolParserObservation, { status: "failed" }> {
   switch (strategy) {
   case "standard": {
@@ -44,6 +47,10 @@ export function observeProductionToolParser({ strategy, inputChunks }: {
   case "qwen3_5": {
     const visibleChunks: string[] = [];
     const parser = new Qwen3_5ToolCallParser({
+      tools: tools === undefined ? undefined : z.array(z.object({
+        type: z.literal('function'),
+        function: z.object({ name: z.string(), description: z.string(), parameters: z.record(z.string(), z.json()) }).strict(),
+      }).strict()).parse(tools),
       onText: ({ text }) => {
         const sanitized = sanitizeQwen3_5VisibleText({ text });
         if (sanitized.length > 0) visibleChunks.push(sanitized);
@@ -91,7 +98,7 @@ export function observeProductionToolParser({ strategy, inputChunks }: {
     return {
       status: "unavailable",
       strategy,
-      reason: "The Gemma 4 production strategy does not expose a tool-call parser",
+      reason: "Gemma 4 native parser reconstruction is not implemented in this observation path",
     };
   default: {
     const exhaustive: never = strategy;

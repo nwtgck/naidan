@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { OPFS_MODELS_DIR } from '@/constants';
 import {
   getNaidanOpfsRootDirectoryName,
   getNaidanOpfsSpecialFileSystemDirectoryName,
@@ -68,6 +69,7 @@ describe('Naidan OPFS root directory registry', () => {
     ]);
     expect(NAIDAN_OPFS_STORAGE_DIRECTORY_NAME).toBe('naidan-storage');
     expect(NAIDAN_OPFS_MODELS_DIRECTORY_NAME).toBe('models');
+    expect(NAIDAN_OPFS_MODELS_DIRECTORY_NAME).toBe(OPFS_MODELS_DIR);
     expect(NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME).toBe('naidan-debug-hizofs');
     expect(NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_NAMES).not.toContain(
       NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME,

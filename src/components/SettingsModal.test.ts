@@ -16,6 +16,7 @@ import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSampleChat } from '@/composables/useSampleChat';
 import { storageService } from '@/00-storage/service';
+import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
 import type { ProviderProfile, Settings } from '@/01-models/types';
 
 beforeEach(async () => {
@@ -84,7 +85,8 @@ vi.mock('../composables/chat/ui/useChatOrganization', () => ({
   })),
 }));
 
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRouter: vi.fn(),
   useRoute: vi.fn(),
 }));
@@ -259,6 +261,37 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     vi.stubGlobal('location', { reload: vi.fn() });
     mockShowConfirm.mockClear();
     mockShowPrompt.mockClear();
+  });
+
+  it.each([false, true])('rebases the local default without losing unrelated Connection edits (dirty=%s)', async dirty => {
+    const state = ref<Settings>({ ...mockSettings, systemPrompt: 'Saved prompt' });
+    const previous = { endpoint: state.value.endpoint, modelId: state.value.defaultModelId };
+    const update = vi.fn<ReturnType<typeof useSettings>['updateGlobalModelAndEndpoint']>(async ({ endpoint, modelId }) => {
+      state.value = { ...state.value, endpoint, defaultModelId: modelId }; return 'applied';
+    });
+    vi.mocked(useSettings).mockReturnValue({ ...useSettings(), settings: state, updateGlobalModelAndEndpoint: update });
+    const wrapper = mount(SettingsModal, {
+      props: { isOpen: true },
+      global: { stubs: { ...globalStubs, LlamaCppBrowserUpsell: true, LlamaCppBrowserManager: { name: 'LlamaCppBrowserManager', props: ['modelPreset', 'defaultModel', 'applyDefaultModel'], template: '<div data-testid="local-manager-stub" />' } } },
+    });
+    await flushPromises();
+    await vi.waitFor(() => expect(wrapper.findComponent(ConnectionTab).exists()).toBe(true));
+    const connection = wrapper.getComponent(ConnectionTab);
+    if (dirty) connection.vm.$emit('update:modelValue', { ...connection.props('modelValue'), systemPrompt: 'Unsaved prompt' });
+    const route = useRoute(); route.query.settings = 'llama-cpp-browser'; await flushPromises();
+    await vi.waitFor(() => expect(wrapper.findComponent({ name: 'LlamaCppBrowserManager' }).exists()).toBe(true));
+    const manager = wrapper.getComponent({ name: 'LlamaCppBrowserManager' });
+    const apply = manager.props('applyDefaultModel') as ApplyDefaultModel;
+    const model = { id: 'user/local', name: 'Local Q4_K_M', size: 128, importedAt: 1 };
+    expect(await apply({ model, previous })).toBe('applied');
+    expect(update).toHaveBeenCalledWith({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
+    route.query.settings = 'connection'; await flushPromises();
+    await vi.waitFor(() => expect(wrapper.findComponent(ConnectionTab).exists()).toBe(true));
+    const updated = wrapper.getComponent(ConnectionTab);
+    expect(updated.props('modelValue')).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: model.name, systemPrompt: dirty ? 'Unsaved prompt' : 'Saved prompt' });
+    expect(updated.props('hasUnsavedChanges')).toBe(dirty);
+    expect(mockSave).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   describe('UI / Design Regression', () => {
@@ -759,6 +792,20 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     const connectionTab = wrapper.findComponent(ConnectionTab);
     expect(connectionTab.props('availableModels')).toEqual(['model-1', 'model-2', 'model-10']);
+  });
+
+  it('forwards the app-level model support investigation request from the developer tab', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    await wrapper.findAll('nav button').find(b => b.text().includes('Developer'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    await wrapper.find('[data-testid="open-model-support-investigation-button"]').trigger('click');
+
+    expect(wrapper.emitted('openModelSupportInvestigation')).toEqual([['']]);
   });
 
   it('triggers developer data deletion after confirmation', async () => {

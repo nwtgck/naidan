@@ -4,9 +4,11 @@ import { ref, computed, onUnmounted, watch } from 'vue';
 import { ChevronRightIcon, ChevronDownIcon, CopyIcon, CheckIcon, ImageIcon, CpuIcon, EyeIcon, EyeOffIcon, FileIcon } from 'lucide-vue-next';
 import { storageService } from '@/00-storage/service';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
-import type { GeneratedImageBlock } from '@/utils/image-generation';
+import { stripNaidanSentinels } from '@/utils/image-generation';
 import type { MessageNode } from '@/01-models/types';
+import { getMessageText } from '@/01-models/message-text';
+import { inspectDebugImages } from '@/logic/chat-debug-images';
+import { getMessagePartDisplayKey } from '@/logic/message-part-display-key';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { jsonToHighlightedHtml } from '@/logic/security/allowedHtml';
 import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
@@ -36,11 +38,24 @@ const isActive = computed(() => props.activeIds.has(props.node.id));
 const isLocallyCollapsed = ref(false);
 const finalIsCollapsed = computed(() => props.isContentCollapsed || isLocallyCollapsed.value);
 
+const rawContent = computed(() => getMessageText({ message: props.node }));
+const attachmentParts = computed(() => props.node.parts.filter(part => part.type === 'attachment'));
+const interruption = computed(() => {
+  const node = props.node;
+  switch (node.role) {
+  case 'assistant': return node.interruption;
+  case 'user':
+  case 'system':
+  case 'tool': return undefined;
+  default: { const unhandled: never = node; throw new Error(`Unhandled debug node: ${unhandled}`); }
+  }
+});
+
 // Human readable content preview
 const isCopied = ref(false);
 const copyContent = async () => {
-  if (!props.node.content) return;
-  await navigator.clipboard.writeText(props.node.content);
+  if (!rawContent.value) return;
+  await navigator.clipboard.writeText(rawContent.value);
   isCopied.value = true;
   setTimeout(() => isCopied.value = false, 2000);
 };
@@ -56,9 +71,8 @@ const jsonOutput = computed(() => {
 });
 
 const isoTimestamp = computed(() => {
-  if (!props.node.timestamp) return '';
   try {
-    return new Date(props.node.timestamp).toISOString();
+    return new Date(props.node.createdAt).toISOString();
   } catch {
     return '';
   }
@@ -69,75 +83,58 @@ const isLinear = computed(() => props.node.replies?.items?.length === 1);
 // --- Image Extraction & Thumbnail Logic ---
 const thumbnailUrls = ref<Record<string, string>>({});
 
-const inlineImages = computed(() => {
-  if (!props.node.content) return [];
-  const images: GeneratedImageBlock[] = [];
-  const regex = new RegExp('```' + IMAGE_BLOCK_LANG + '\\n([\\s\\S]*?)\\n```', 'g');
-  let match;
-  while ((match = regex.exec(props.node.content)) !== null) {
-    const jsonStr = match[1];
-    if (!jsonStr) continue;
-    try {
-      const parsed = JSON.parse(jsonStr);
-      const result = GeneratedImageBlockSchema.safeParse(parsed);
-      if (result.success) {
-        images.push(result.data);
-      } else {
-        console.warn('Failed to validate inline image schema in ChatDebugTreeNode:', result.error);
-        // TODO(strings-localize): Localize this event after inline image parsing is moved out of the synchronous computed getter.
-        addErrorEvent({
-          source: 'ChatDebugTreeNode:inlineImages',
-          message: 'Failed to validate generated image metadata.',
-          details: result.error.message,
-        });
-      }
-    } catch (e) {
-      console.error('Failed to parse inline image JSON in ChatDebugTreeNode:', e);
-      // TODO(strings-localize): Localize this event after inline image parsing is moved out of the synchronous computed getter.
-      addErrorEvent({
-        source: 'ChatDebugTreeNode:inlineImages',
-        message: 'Failed to parse generated image metadata.',
-        details: e instanceof Error ? e.message : String(e),
-      });
-    }
+const imageInspection = computed(() => inspectDebugImages({ message: props.node }));
+const inlineImages = computed(() => imageInspection.value.images);
+watch(() => imageInspection.value.errors, errors => {
+  for (const details of errors) {
+    addErrorEvent({ source: 'ChatDebugTreeNode:inlineImages', message: 'Failed to parse generated image metadata.', details });
   }
-  return images;
 });
 
 const cleanContentCompact = computed(() => {
-  if (!props.node.content) return '';
-  const stripped = stripNaidanSentinels({ content: props.node.content }).trim();
+  // Strip display markers within each part, not across unrelated part boundaries.
+  const stripped = props.node.parts.flatMap(part => {
+    switch (part.type) {
+    case 'text': return [stripNaidanSentinels({ content: part.text })];
+    case 'reasoning':
+    case 'attachment':
+    case 'tool_call':
+    case 'tool_result': return [];
+    default: { const unhandled: never = part; throw new Error(`Unhandled debug part: ${unhandled}`); }
+    }
+  }).join(' ').trim();
   return stripped.slice(0, 50) + (stripped.length > 50 ? '...' : '');
 });
 
+let thumbnailsVersion = 0;
+let disposed = false;
 async function loadThumbnails() {
-  // 1. Load from attachments
-  if (props.node.attachments) {
-    for (const att of props.node.attachments) {
-      if (att.mimeType.startsWith('image/') && !thumbnailUrls.value[idToRaw({ id: att.binaryObjectId })]) {
-        try {
-          const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
-          if (blob) {
-            thumbnailUrls.value[idToRaw({ id: att.binaryObjectId })] = URL.createObjectURL(blob);
-          }
-        } catch (e) {
-          console.error('Failed to load thumbnail:', e);
-        }
-      }
+  const version = ++thumbnailsVersion;
+  cleanupThumbnails();
+  const blobs = new Map<BinaryObjectId, Blob | undefined>();
+  for (const { attachment } of attachmentParts.value) {
+    if (!attachment.mimeType.startsWith('image/')) continue;
+    switch (attachment.status) {
+    case 'memory': blobs.set(attachment.binaryObjectId, attachment.blob); break;
+    case 'persisted': if (!blobs.has(attachment.binaryObjectId)) blobs.set(attachment.binaryObjectId, undefined); break;
+    case 'missing': break;
+    default: {
+      const unhandled: never = attachment;
+      throw new Error(`Unhandled debug attachment: ${unhandled}`);
+    }
     }
   }
-
-  // 2. Load from inline images
-  for (const img of inlineImages.value) {
-    if (!thumbnailUrls.value[img.binaryObjectId]) {
-      try {
-        const blob = await storageService.getFile({ binaryObjectId: toBinaryObjectId({ raw: img.binaryObjectId }) });
-        if (blob) {
-          thumbnailUrls.value[img.binaryObjectId] = URL.createObjectURL(blob);
-        }
-      } catch (e) {
-        console.error('Failed to load inline image:', e);
-      }
+  for (const { image } of inlineImages.value) {
+    const id = toBinaryObjectId({ raw: image.binaryObjectId });
+    if (!blobs.has(id)) blobs.set(id, undefined);
+  }
+  for (const [id, memoryBlob] of blobs) {
+    try {
+      const blob = memoryBlob ?? await storageService.getFile({ binaryObjectId: id });
+      if (disposed || version !== thumbnailsVersion) return;
+      if (blob) thumbnailUrls.value[idToRaw({ id })] = URL.createObjectURL(blob);
+    } catch (error) {
+      console.error('Failed to load debug thumbnail:', error);
     }
   }
 }
@@ -147,11 +144,12 @@ function cleanupThumbnails() {
   thumbnailUrls.value = {};
 }
 
-watch([() => props.node.attachments, () => props.node.content], () => {
+watch([attachmentParts, inlineImages], () => {
   loadThumbnails();
-}, { immediate: true });
+}, { immediate: true, deep: true });
 
 onUnmounted(() => {
+  disposed = true; thumbnailsVersion += 1;
   cleanupThumbnails();
 });
 
@@ -255,41 +253,35 @@ export default {
         <!-- Message Content & Attachments -->
         <div tw-class="p-4 bg-transparent space-y-3">
           <!-- Textual Content Group (Collapsible) -->
-          <div v-if="!finalIsCollapsed" tw-class="space-y-3">
-            <!-- Error Display -->
-            <div v-if="node.error" tw-class="p-3 bg-red-500/5 border border-red-500/20 rounded-xl text-[11px] text-red-600 dark:text-red-400 font-sans">
-              <div tw-class="font-black uppercase text-[8px] mb-1 opacity-70">{{ lazyStrings.ChatDebugTreeNode__error() }}</div>
-              {{ node.error }}
+          <div v-if="!finalIsCollapsed" tw-class="space-y-3" data-testid="debug-parts">
+            <div v-if="interruption" tw-class="text-[11px] text-red-500" data-testid="debug-interruption">
+              <span tw-class="text-[9px] font-black uppercase tracking-widest block mb-1 opacity-70">{{ interruption.type === 'error' ? 'Error' : 'Cancelled' }}:</span>
+              {{ interruption.type === 'error' ? interruption.message : '' }}
             </div>
-
-            <!-- Thinking Process -->
-            <div v-if="node.thinking" tw-class="p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl text-[11px] text-amber-700 dark:text-amber-400/80 font-sans italic">
-              <div tw-class="font-black uppercase text-[8px] not-italic mb-1 opacity-70">{{ lazyStrings.ChatDebugTreeNode__thinking_process() }}</div>
-              {{ node.thinking }}
-            </div>
-
-            <!-- Text Content -->
-            <div v-if="node.content" class="thin-scrollbar" tw-class="text-[12px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed font-sans max-h-[600px] overflow-y-auto pr-2 relative group/content">
-              <button
-                @click.stop="copyContent"
-                data-testid="copy-content-btn"
-                tw-class="absolute right-0 top-0 p-1.5 text-gray-400 hover:text-indigo-500 opacity-0 group-hover/content:opacity-100 transition-opacity bg-white/80 dark:bg-gray-800/80 rounded-md"
-              >
-                <CheckIcon v-if="isCopied" tw-class="w-3.5 h-3.5 text-green-500" />
-                <CopyIcon v-else tw-class="w-3.5 h-3.5" />
-              </button>
-              {{ node.content }}
-            </div>
+            <template v-for="part in node.parts" :key="getMessagePartDisplayKey({ part })">
+              <div v-if="part.type === 'text' || part.type === 'reasoning'" tw-class="relative group/content text-[11px] whitespace-pre-wrap font-sans leading-relaxed text-gray-700 dark:text-gray-300 break-words" data-testid="debug-part" :data-part-type="part.type">
+                <span tw-class="text-[9px] font-black uppercase tracking-widest block mb-1 opacity-70">{{ part.type === 'reasoning' ? 'Thinking Process' : 'Content' }} ({{ part.completeness }}):</span>
+                <button v-if="part.type === 'text'" @click.stop="copyContent" data-testid="copy-content-btn" tw-class="absolute right-0 top-0 p-1 opacity-0 group-hover/content:opacity-100">
+                  <CheckIcon v-if="isCopied" tw-class="w-3.5 h-3.5 text-green-500" />
+                  <CopyIcon v-else tw-class="w-3.5 h-3.5" />
+                </button>
+                <span data-testid="debug-part-text">{{ part.text }}</span>
+              </div>
+              <div v-else-if="part.type === 'tool_call' || part.type === 'tool_result'" tw-class="text-[11px] whitespace-pre-wrap break-words" data-testid="debug-part" :data-part-type="part.type">
+                <span>{{ part.type }}</span>
+                <pre>{{ JSON.stringify(part.type === 'tool_call' ? part.toolCall : part.result, null, 2) }}</pre>
+              </div>
+            </template>
           </div>
-          <div v-else-if="node.content || node.thinking || node.error" tw-class="px-3 py-1.5 rounded-lg bg-gray-50/30 dark:bg-white/[0.01] border border-dashed border-gray-200 dark:border-white/5">
+          <div v-else-if="node.parts.length || interruption" tw-class="px-3 py-1.5 rounded-lg bg-gray-50/30 dark:bg-white/[0.01] border border-dashed border-gray-200 dark:border-white/5">
             <span tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic opacity-60">{{ lazyStrings.ChatDebugTreeNode__text_content_hidden() }}</span>
           </div>
 
           <!-- Non-collapsible visual elements (Images/Attachments) -->
-          <template v-if="inlineImages.length > 0 || (node.attachments && node.attachments.length)">
+          <template v-if="inlineImages.length > 0 || attachmentParts.length">
             <!-- Inline Generated Images -->
             <div v-if="inlineImages.length > 0" tw-class="mt-4 space-y-4">
-              <div v-for="img in inlineImages" :key="img.binaryObjectId" tw-class="relative group/inline-img max-w-full overflow-hidden">
+              <div v-for="{ image: img, key } in inlineImages" :key="key" tw-class="relative group/inline-img max-w-full overflow-hidden">
                 <div tw-class="text-[8px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 flex items-center gap-2">
                   <ImageIcon tw-class="w-3 h-3" />
                   <span>{{ lazyStrings.ChatDebugTreeNode__generated_image_reference() }}</span>
@@ -314,20 +306,20 @@ export default {
               </div>
             </div>
 
-            <div v-if="node.attachments && node.attachments.length" tw-class="mt-4 flex flex-wrap gap-2">
+            <div v-if="attachmentParts.length" tw-class="mt-4 flex flex-wrap gap-2">
               <div
-                v-for="att in node.attachments"
-                :key="idToRaw({ id: att.id })"
-                @click.stop="emit('preview-attachment', att.binaryObjectId)"
+                v-for="part in attachmentParts"
+                :key="getMessagePartDisplayKey({ part })"
+                @click.stop="emit('preview-attachment', part.attachment.binaryObjectId)"
                 tw-class="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center group/att"
               >
-                <img v-if="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" :src="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" tw-class="w-full h-full object-cover" />
+                <img v-if="thumbnailUrls[idToRaw({ id: part.attachment.binaryObjectId })]" :src="thumbnailUrls[idToRaw({ id: part.attachment.binaryObjectId })]" tw-class="w-full h-full object-cover" />
                 <div v-else tw-class="flex flex-col items-center justify-center gap-1">
-                  <ImageIcon v-if="att.mimeType.startsWith('image/')" tw-class="w-4 h-4 text-gray-400" />
+                  <ImageIcon v-if="part.attachment.mimeType.startsWith('image/')" tw-class="w-4 h-4 text-gray-400" />
                   <FileIcon v-else tw-class="w-4 h-4 text-gray-400" />
                 </div>
                 <div tw-class="absolute bottom-0 inset-x-0 bg-black/40 text-[7px] text-white px-1 py-0.5 truncate text-center font-bold backdrop-blur-sm">
-                  {{ att.mimeType.split('/')[1] }}
+                  {{ part.attachment.mimeType.split('/')[1] }}
                 </div>
               </div>
             </div>
@@ -359,8 +351,8 @@ export default {
         :is-last="index === node.replies.items.length - 1"
         :mode="mode"
         :has-linear-parent="isLinear"
-        @preview-attachment="id => emit('preview-attachment', id)"
-        @select-node="n => emit('select-node', n)"
+        @preview-attachment="emit('preview-attachment', $event)"
+        @select-node="emit('select-node', $event)"
       />
     </div>
 
@@ -378,8 +370,8 @@ export default {
         :is-last="index === node.replies.items.length - 1"
         :mode="mode"
         :has-linear-parent="isLinear"
-        @select-node="n => emit('select-node', n)"
-        @preview-attachment="id => emit('preview-attachment', id)"
+        @select-node="emit('select-node', $event)"
+        @preview-attachment="emit('preview-attachment', $event)"
       />
     </div>
   </div>

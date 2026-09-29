@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "modelId": "hf.co/LiquidAI/LFM2.5-350M-ONNX",
+    "resolvedRevision": "d11593fd9eb408e322667926656598896c2d5ff9",
+    "investigationRunId": "bd78df41-cb6e-4384-9af3-7c69cce1012d",
+    "transformersJsVersion": "4.2.0"
+  },
+  "scenario": {
+    "id": "no-tools-first-turn-natural-prefix",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Template probe user message."
+      }
+    ],
+    "tools": [],
+    "lmParameters": {
+      "temperature": 0,
+      "topP": 1,
+      "maxCompletionTokens": 16
+    },
+    "boundary": {
+      "kind": "natural-prefix",
+      "lengthRelation": "equals-requested-budget",
+      "stopCause": "not-recorded"
+    }
+  },
+  "inputContract": {
+    "inputTokenIds": [
+      1,
+      6,
+      6423,
+      708,
+      23609,
+      22856,
+      5196,
+      6282,
+      523,
+      7,
+      708,
+      6,
+      64015,
+      708
+    ],
+    "inputTensorFacts": [
+      {
+        "name": "attention_mask",
+        "dtype": "int64",
+        "dims": [
+          1,
+          14
+        ],
+        "location": "cpu"
+      },
+      {
+        "name": "input_ids",
+        "dtype": "int64",
+        "dims": [
+          1,
+          14
+        ],
+        "location": "cpu"
+      }
+    ],
+    "effectiveGenerationConfig": {
+      "maxNewTokens": 16,
+      "temperature": 0,
+      "topP": 1,
+      "doSample": false
+    }
+  },
+  "modelReplay": {
+    "source": "production-lane",
+    "sourceInputTokenIds": [
+      1,
+      6,
+      6423,
+      708,
+      23609,
+      22856,
+      5196,
+      6282,
+      523,
+      7,
+      708,
+      6,
+      64015,
+      708
+    ],
+    "sourceInputSha256": "3e146a9e959b6b06567dfe93c2e44747ae0b14e29523a7b7f68d2415cd9ceb5e",
+    "generatedTokenIds": [
+      560,
+      985,
+      510,
+      6567,
+      1172,
+      902,
+      2623,
+      803,
+      768,
+      8076,
+      25175,
+      1463,
+      875,
+      768,
+      8076,
+      6423
+    ],
+    "generatedText": "Sure! Here’s an example of a **template** for a **user"
+  },
+  "expectedProviderSemantic": {
+    "basis": "production-positive-control",
+    "captureScope": "prefix",
+    "visibleContent": "Sure! Here’s an example of a **template** for a **user"
+  }
+}

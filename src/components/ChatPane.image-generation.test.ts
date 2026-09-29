@@ -12,7 +12,7 @@ import { setupScrollToMock } from '@/utils/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 
-// Mock useChat singleton
+// Mock useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction singleton
 const mockIsImageMode = ref(false);
 const mockActiveMessages = ref<any[]>([]);
 const mockCurrentChatGroup = ref(null);
@@ -84,8 +84,8 @@ vi.mock('@/composables/useAppPresentation', () => ({
   }),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(() => mockChatStore),
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: vi.fn(() => mockChatStore),
 }));
 
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({

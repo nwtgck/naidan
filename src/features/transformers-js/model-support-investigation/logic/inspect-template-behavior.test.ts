@@ -35,14 +35,16 @@ function tokenizer(): ModelSupportInvestigationTemplateTokenizer {
 }
 
 describe('inspectTemplateBehavior', () => {
-  it('loads the tokenizer from the resolved commit and records deterministic template cases', async () => {
+  it('loads the tokenizer through the normal Chat revision and records the resolved commit as evidence', async () => {
     const loadTokenizer = vi.fn().mockResolvedValue(tokenizer());
     const result = await inspectTemplateBehavior({ repository: repository(), loadTokenizer });
 
     expect(loadTokenizer).toHaveBeenCalledWith({
       modelId: 'org/model',
-      revision: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      revision: undefined,
     });
+    expect(result.resolvedRevision).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(result.loaderRevisionOption).toBeNull();
     expect(result.tokenizerClass).toBe('ProbeTokenizer');
     expect(result.cases).toHaveLength(6);
     expect(result.cases.every(item => item.status === 'passed')).toBe(true);

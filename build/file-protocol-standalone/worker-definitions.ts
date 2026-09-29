@@ -2,6 +2,19 @@ import type { NaidanStandaloneWorkerDefinition } from './plugin.js';
 
 export const FILE_PROTOCOL_STANDALONE_WORKERS = [
   {
+    name: 'llama-cpp-browser-worker',
+    entry: 'src/features/llama-cpp-browser/worker/entry.ts',
+    virtualId: 'virtual:file-protocol-standalone/worker/llama-cpp-browser',
+    defaultWorkerName: 'naidan-llama-cpp-browser',
+  },
+  {
+    name: 'llama-cpp-browser-download-worker',
+    entry: 'src/features/llama-cpp-browser/hugging-face/writer-entry.ts',
+    virtualId: 'virtual:file-protocol-standalone/worker/llama-cpp-browser-download',
+    defaultWorkerName: 'naidan-llama-cpp-browser-download',
+  },
+
+  {
     name: 'advanced-text-editor-v3-worker',
     entry: 'src/features/advanced-text-editor-v3/worker/entry.ts',
     virtualId: 'virtual:file-protocol-standalone/worker/advanced-text-editor-v3',

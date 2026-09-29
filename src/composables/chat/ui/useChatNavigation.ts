@@ -51,12 +51,12 @@ export function useChatNavigation(): ChatNavigationAdapter {
     chatId: ChatId,
     leafId?: MessageId,
   }) {
-    setCurrentChatId({ chatId });
     const chat = await chatDataStore.openChat({ id: chatId, leafId });
     if (chat === null) {
       setCurrentChatId({ chatId: null });
       return null;
     }
+    setCurrentChatId({ chatId });
 
     if (chatDerivedState.hasMountsForChat({ chat })) {
       setToolEnabled({ name: 'shell_execute', enabled: true });
@@ -71,12 +71,12 @@ export function useChatNavigation(): ChatNavigationAdapter {
     chatId: ChatId,
     messageId: MessageId,
   }) {
-    setCurrentChatId({ chatId });
     const chat = await chatDataStore.openChatAtMessage({ chatId, messageId });
     if (chat === null) {
       setCurrentChatId({ chatId: null });
       return null;
     }
+    setCurrentChatId({ chatId });
 
     if (chatDerivedState.hasMountsForChat({ chat })) {
       setToolEnabled({ name: 'shell_execute', enabled: true });

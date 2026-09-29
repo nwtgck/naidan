@@ -1,0 +1,267 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "system-user",
+  "contextSha256": "bb445f61eb23247bc1128b4ec52443c1227a8e0dea1ce99725ea3dfac8c090b7",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "system",
+          "content": "Template probe system instruction."
+        },
+        {
+          "role": "user",
+          "content": "Template probe user message."
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 1,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Hello"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              27
+            ],
+            "byteLength": 216,
+            "sha256": "c755eb96df5ca895da097c4658d0e627c1d288e5a4becf9c325abc2df20022fe"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              27
+            ],
+            "byteLength": 216,
+            "sha256": "df73626ca9ef228183ab01ba4210dd2db847e7b38680f2e78e23ada2cc818f87"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              27
+            ],
+            "byteLength": 216,
+            "sha256": "c755eb96df5ca895da097c4658d0e627c1d288e5a4becf9c325abc2df20022fe"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              27
+            ],
+            "byteLength": 216,
+            "sha256": "df73626ca9ef228183ab01ba4210dd2db847e7b38680f2e78e23ada2cc818f87"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 1,
+          "contextLimit": 262144,
+          "promptTokenCount": 27,
+          "usedContextTokenCount": 27
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "248045",
+              "8678",
+              "198",
+              "7048",
+              "21059",
+              "1785",
+              "7359",
+              "13",
+              "248046",
+              "198",
+              "248045",
+              "846",
+              "198",
+              "7048",
+              "21059",
+              "1156",
+              "1876",
+              "13",
+              "248046",
+              "198",
+              "248045",
+              "74455",
+              "198",
+              "248068",
+              "271",
+              "248069",
+              "271"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "9419"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Hello",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          28
+        ],
+        "byteLength": 224,
+        "sha256": "b54e8918783405293176c88a078b0d59b6798b4055842d57d74f253851f8d2fd",
+        "tokens": [
+          "248045",
+          "8678",
+          "198",
+          "7048",
+          "21059",
+          "1785",
+          "7359",
+          "13",
+          "248046",
+          "198",
+          "248045",
+          "846",
+          "198",
+          "7048",
+          "21059",
+          "1156",
+          "1876",
+          "13",
+          "248046",
+          "198",
+          "248045",
+          "74455",
+          "198",
+          "248068",
+          "271",
+          "248069",
+          "271",
+          "9419"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "e4ea4055d543d4e83d1f9baf900764858d2170480350ebe17822a511bd52d37b"
+}

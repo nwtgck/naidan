@@ -1,0 +1,47 @@
+{
+  "format": "provider-source-provenance-v1",
+  "sourceDigests": {
+    "native": "a08f5290a28f83ff7b6a5f8cb587dced85a530ae87fc2b0e1e2c7597b498a0fd",
+    "provider": "d7ca73ec215bfcdcc1a776c945034ce7bf6409441c3113e7f8c2de6cffbb77c2",
+    "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+  },
+  "attributions": [
+    {
+      "caseId": "first-turn",
+      "sourceDigests": {
+        "native": "a08f5290a28f83ff7b6a5f8cb587dced85a530ae87fc2b0e1e2c7597b498a0fd",
+        "provider": "d7ca73ec215bfcdcc1a776c945034ce7bf6409441c3113e7f8c2de6cffbb77c2",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    },
+    {
+      "caseId": "continuity",
+      "sourceDigests": {
+        "native": "a08f5290a28f83ff7b6a5f8cb587dced85a530ae87fc2b0e1e2c7597b498a0fd",
+        "provider": "d7ca73ec215bfcdcc1a776c945034ce7bf6409441c3113e7f8c2de6cffbb77c2",
+        "inventory": "3ab6b3654bc552cc8fa3de7faa255fb5bb0e9e9c4a6f1acbaa84bfbd4203a0ed"
+      }
+    }
+  ],
+  "requestOrder": [
+    "first-turn",
+    "continuity"
+  ],
+  "invocations": [
+    {
+      "caseId": "first-turn",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 1
+    },
+    {
+      "caseId": "continuity",
+      "localOrdinal": 1,
+      "sourceCallOrdinal": 2
+    }
+  ],
+  "inputGaps": [],
+  "optionalFields": {
+    "unavailableRecordedCalls": false,
+    "nativeInputGaps": false
+  }
+}

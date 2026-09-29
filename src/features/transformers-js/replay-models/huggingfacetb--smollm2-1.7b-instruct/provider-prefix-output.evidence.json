@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "modelId": "hf.co/HuggingFaceTB/SmolLM2-1.7B-Instruct",
+    "resolvedRevision": "31b70e2e869a7173562077fd711b654946d38674",
+    "investigationRunId": "23685c03-b461-4e73-8cfb-14e6743cd84b",
+    "transformersJsVersion": "4.2.0"
+  },
+  "scenario": {
+    "id": "no-tools-first-turn-natural-prefix",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Template probe user message."
+      }
+    ],
+    "tools": [],
+    "lmParameters": {
+      "temperature": 0,
+      "topP": 1,
+      "maxCompletionTokens": 16
+    },
+    "boundary": {
+      "kind": "natural-prefix",
+      "lengthRelation": "equals-requested-budget",
+      "stopCause": "not-recorded"
+    }
+  },
+  "inputContract": {
+    "inputTokenIds": [
+      1,
+      9690,
+      198,
+      2683,
+      359,
+      253,
+      5356,
+      5646,
+      11173,
+      3365,
+      3511,
+      308,
+      34519,
+      28,
+      7018,
+      411,
+      407,
+      19712,
+      8182,
+      2,
+      198,
+      1,
+      4093,
+      198,
+      29233,
+      14540,
+      2914,
+      3714,
+      30,
+      2,
+      198,
+      1,
+      520,
+      9531,
+      198
+    ],
+    "inputTensorFacts": [
+      {
+        "name": "attention_mask",
+        "dtype": "int64",
+        "dims": [
+          1,
+          35
+        ],
+        "location": "cpu"
+      },
+      {
+        "name": "input_ids",
+        "dtype": "int64",
+        "dims": [
+          1,
+          35
+        ],
+        "location": "cpu"
+      }
+    ],
+    "effectiveGenerationConfig": {
+      "maxNewTokens": 16,
+      "temperature": 0,
+      "topP": 1,
+      "doSample": false
+    }
+  },
+  "modelReplay": {
+    "source": "production-lane",
+    "sourceInputTokenIds": [
+      1,
+      9690,
+      198,
+      2683,
+      359,
+      253,
+      5356,
+      5646,
+      11173,
+      3365,
+      3511,
+      308,
+      34519,
+      28,
+      7018,
+      411,
+      407,
+      19712,
+      8182,
+      2,
+      198,
+      1,
+      4093,
+      198,
+      29233,
+      14540,
+      2914,
+      3714,
+      30,
+      2,
+      198,
+      1,
+      520,
+      9531,
+      198
+    ],
+    "sourceInputSha256": "456b576d4db043adf7b8665940bc428cd436dbc8e31af5e7757ce3eaebb38952",
+    "generatedTokenIds": [
+      34355,
+      28,
+      1535,
+      506,
+      253,
+      4315,
+      3714,
+      327,
+      253,
+      10289,
+      42,
+      198,
+      198,
+      18,
+      19556,
+      17
+    ],
+    "generatedText": "Sure, here's a sample message for a template:\n\n\"Hello!"
+  },
+  "expectedProviderSemantic": {
+    "basis": "production-positive-control",
+    "captureScope": "prefix",
+    "visibleContent": "Sure, here's a sample message for a template:\n\n\"Hello!"
+  }
+}

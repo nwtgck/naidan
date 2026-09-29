@@ -8,13 +8,13 @@ import {
 import type { MessageNode, BinaryObject } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import { useBinaryActions } from '@/composables/useBinaryActions';
-import { useImagePreview } from '@/composables/useImagePreview';
+import { useImagePreview, type BinaryObjectPreviewItem } from '@/composables/useImagePreview';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { ensureStrings, lazyStrings } from '@/strings';
-import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
+import { collectChatMedia, type ChatMediaItem as MediaItem } from '@/logic/chat-media';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageDownloadButton from './ImageDownloadButton.vue';
-import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
 
 const props = defineProps<{
@@ -34,117 +34,7 @@ const { addErrorEvent } = useGlobalEvents();
 type MediaOrder = 'forward' | 'reverse';
 const mediaOrder = ref<MediaOrder>('forward');
 
-interface MediaItem {
-  id: string,
-  messageId: MessageId,
-  binaryObjectId: BinaryObjectId,
-  mimeType: string,
-  size: number,
-  name?: string,
-  prompt?: string,
-  steps?: number,
-  seed?: number,
-  model?: string,
-  width?: number,
-  height?: number,
-  index: number,
-  total: number,
-}
-
-interface MediaGroup {
-  messageId: MessageId,
-  prompt?: string,
-  items: MediaItem[],
-  timestamp: number,
-}
-
-const mediaGroups = computed(() => {
-  const groups: MediaGroup[] = [];
-
-  props.messages.forEach(msg => {
-    let items: MediaItem[] = [];
-    let sharedPrompt: string | undefined;
-
-    // 1. Attachments
-    if (msg.attachments) {
-      msg.attachments.forEach(att => {
-        if (att.mimeType.startsWith('image/') && att.status !== 'missing') {
-          items.push({
-            id: idToRaw({ id: att.id }),
-            messageId: msg.id,
-            binaryObjectId: att.binaryObjectId,
-            mimeType: att.mimeType,
-            size: att.size,
-            name: att.originalName,
-            index: 0,
-            total: 0,
-          });
-        }
-      });
-    }
-
-    // 2. Generated Images in content
-    const msgContent = msg.content || '';
-    const codeBlockRegex = new RegExp('```' + IMAGE_BLOCK_LANG + '[^\\n]*\\n([\\s\\S]*?)\\n```', 'g');
-    let match;
-    while ((match = codeBlockRegex.exec(msgContent)) !== null) {
-      try {
-        const result = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1] || '{}'));
-        if (result.success) {
-          const data = result.data;
-          const binaryObjectId = toBinaryObjectId({ raw: data.binaryObjectId });
-          if (!sharedPrompt) sharedPrompt = data.prompt;
-          items.push({
-            id: data.binaryObjectId,
-            messageId: msg.id,
-            binaryObjectId,
-            mimeType: 'image/png',
-            size: 0,
-            prompt: data.prompt,
-            steps: data.steps,
-            seed: data.seed,
-            model: msg.modelId,
-            width: data.width,
-            height: data.height,
-            index: 0,
-            total: 0,
-          });
-        }
-      } catch (e) { /* ignore parse errors */ }
-    }
-
-    if (items.length > 0) {
-      if (!sharedPrompt) {
-        sharedPrompt = stripNaidanSentinels({ content: msgContent }).trim().slice(0, 100);
-      }
-
-      items.forEach((item, idx) => {
-        item.index = idx + 1;
-        item.total = items.length;
-      });
-
-      items = (() => {
-        switch (mediaOrder.value) {
-        case 'forward': return items;
-        case 'reverse': return [...items].reverse();
-        default: {
-          const _ex: never = mediaOrder.value;
-          return _ex;
-        }
-        }
-      })();
-
-      groups.push({
-        messageId: msg.id,
-        prompt: sharedPrompt || undefined,
-        items,
-        timestamp: msg.timestamp,
-      });
-    }
-  });
-
-  return groups.sort((a, b) => b.timestamp - a.timestamp);
-});
+const mediaGroups = computed(() => collectChatMedia({ messages: props.messages, order: mediaOrder.value }));
 
 const allMediaItems = computed(() => {
   return mediaGroups.value.flatMap(g => g.items);
@@ -153,17 +43,20 @@ const allMediaItems = computed(() => {
 const thumbnails = ref(new Map<BinaryObjectId, string>());
 const isSupportedMap = ref(new Map<BinaryObjectId, boolean>());
 const thumbnailObserver = ref<IntersectionObserver | null>(null);
+let disposed = false;
 
 const loadMediaDetails = async ({ item }: { item: MediaItem }) => {
   if (thumbnails.value.has(item.binaryObjectId)) return;
 
   try {
-    const blob = await storageService.getFile({ binaryObjectId: item.binaryObjectId });
-    if (blob) {
-      thumbnails.value.set(item.binaryObjectId, URL.createObjectURL(blob));
-      const support = await ImageDownloadHydrator.detectSupport({ blob });
-      isSupportedMap.value.set(item.binaryObjectId, support);
-    }
+    const blob = item.memoryBlob ?? await storageService.getFile({ binaryObjectId: item.binaryObjectId });
+    if (!blob || disposed) return;
+    const support = await ImageDownloadHydrator.detectSupport({ blob });
+    // A removed shelf or image must not retain a late object URL.
+    if (disposed || !allMediaItems.value.some(current => current.binaryObjectId === item.binaryObjectId)
+      || thumbnails.value.has(item.binaryObjectId)) return;
+    thumbnails.value.set(item.binaryObjectId, URL.createObjectURL(blob));
+    isSupportedMap.value.set(item.binaryObjectId, support);
   } catch (e) {
     console.error('Failed to load shelf media details:', e);
   }
@@ -189,7 +82,15 @@ const setupObserver = () => {
 const scrollContainer = ref<HTMLElement | null>(null);
 
 watch(mediaGroups, async () => {
+  const visibleIds = new Set(allMediaItems.value.map(item => item.binaryObjectId));
+  for (const [id, url] of thumbnails.value) {
+    if (visibleIds.has(id)) continue;
+    URL.revokeObjectURL(url);
+    thumbnails.value.delete(id);
+    isSupportedMap.value.delete(id);
+  }
   await nextTick();
+  if (disposed) return;
   if (!thumbnailObserver.value) setupObserver();
 
   const els = scrollContainer.value?.querySelectorAll('.media-item-trigger');
@@ -197,18 +98,23 @@ watch(mediaGroups, async () => {
 }, { immediate: true });
 
 onUnmounted(() => {
+  disposed = true;
   thumbnailObserver.value?.disconnect();
   thumbnails.value.forEach(url => URL.revokeObjectURL(url));
 });
 
 const handlePreview = async ({ item }: { item: MediaItem }): Promise<void> => {
+  const chatId = props.chatId;
+  const items = allMediaItems.value.map(image => ({ ...image }));
   const generatedImageName = await ensureStrings.ChatMediaShelf__generated_image();
-  const objects: BinaryObject[] = allMediaItems.value.map(i => ({
+  if (disposed || props.chatId !== chatId || !allMediaItems.value.some(image => image.id === item.id)) return;
+  const objects: BinaryObjectPreviewItem[] = items.map(i => ({
     id: i.binaryObjectId,
     mimeType: i.mimeType,
     size: i.size,
     createdAt: 0,
     name: i.name || i.prompt || generatedImageName,
+    memoryBlob: i.memoryBlob,
   }));
 
   openPreview({
@@ -222,6 +128,8 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem, withMet
     const metadataErrorMessage = await ensureStrings.ChatMediaShelf__failed_to_embed_metadata_in_image();
     await ImageDownloadHydrator.download({
       id: item.binaryObjectId,
+      name: item.name,
+      memoryBlob: item.memoryBlob,
       prompt: item.prompt || '',
       steps: item.steps,
       seed: item.seed,
@@ -242,7 +150,7 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem, withMet
       createdAt: 0,
       name: item.name || (item.prompt ? item.prompt.slice(0, 30) : 'generated-image'),
     };
-    await downloadBinaryObject({ obj });
+    await downloadBinaryObject({ obj, memoryBlob: item.memoryBlob });
   }
 };
 
@@ -380,7 +288,7 @@ defineExpose({
               v-for="item in group.items"
               :key="item.id"
               :data-id="idToRaw({ id: item.binaryObjectId })"
-              class="media-item-trigger" tw-class="relative w-36 h-36 shrink-0 group/item hover:z-40"
+              data-testid="media-preview-trigger" class="media-item-trigger" tw-class="relative w-36 h-36 shrink-0 group/item hover:z-40"
               @click="handlePreview({ item })"
             >
               <div tw-class="absolute inset-0 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-sm hover:shadow-md hover:border-blue-500/50 transition-all overflow-hidden">
@@ -402,7 +310,7 @@ defineExpose({
                 <div @click.stop>
                   <ImageDownloadButton
                     :is-supported="isSupportedMap.get(item.binaryObjectId)"
-                    :on-download="(options) => handleDownload({ item, withMetadata: options.withMetadata })"
+                    :on-download="({ withMetadata }: { withMetadata: boolean }) => handleDownload({ item, withMetadata })"
                     :align="item.index === 1 ? 'left' : 'right'"
                   />
                 </div>

@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session = (): string => "No Download timing is retained in this service session. Records are not preserved across page reloads.";

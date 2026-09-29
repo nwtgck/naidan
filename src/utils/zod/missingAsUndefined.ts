@@ -58,7 +58,9 @@ const missingAsUndefinedSentinelSchema = z.custom<symbol>(
  *
  * But Zod object inference also observes the internal `_zod.input` /
  * `_zod.output` type slots. Without replacing those slots, the private sentinel
- * type can leak into DTO output types.
+ * type can leak into DTO output types. The legacy `_input` / `_output` slots
+ * must also be replaced; intersecting their old types makes undefined-only
+ * fields infer as optional `never` instead of required `undefined`.
  *
  * We intentionally keep this compromise private to this file. Runtime behavior
  * does not depend on Zod internals; this is only a compile-time bridge so call
@@ -75,7 +77,7 @@ const missingAsUndefinedSentinelSchema = z.custom<symbol>(
  *   Zod's generated schema type and only adjust input/output type slots.
  */
 type WithZodIO<Schema extends z.ZodType, Output, Input> =
-  Omit<Schema, '_zod'> &
+  Omit<Schema, '_zod' | '_input' | '_output'> &
     z.ZodType<Output, Input> & {
       _zod: Omit<Schema['_zod'], 'output' | 'input'> & {
         output: Output,

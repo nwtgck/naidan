@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status = ({ notApplicableCount }: { notApplicableCount: number }): string => `証拠の検証範囲と調査の実行状況は別です。対象外の項目は${notApplicableCount}件です（実行待ちではありません）。`;

@@ -7,6 +7,7 @@ const {
   isConfirmOpen,
   confirmTitle,
   confirmMessage,
+  confirmDetails,
   confirmConfirmButtonText,
   confirmCancelButtonText,
   confirmButtonVariant,
@@ -44,6 +45,7 @@ defineExpose({
     :title="confirmTitle"
     :icon="confirmIcon"
     :message="confirmMessage"
+    :details="confirmDetails"
     :confirm-button-text="confirmConfirmButtonText"
     :cancel-button-text="confirmCancelButtonText"
     :confirm-button-variant="confirmButtonVariant"

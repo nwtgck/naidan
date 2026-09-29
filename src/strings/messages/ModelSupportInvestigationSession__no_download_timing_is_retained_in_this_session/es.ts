@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session = (): string => "No hay mediciones de descarga conservadas en esta sesión del servicio. Los registros no se conservan al recargar la página.";

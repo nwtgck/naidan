@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load = (): string => "Verifica a preparação de metadados pelo caminho de download, não o download completo do modelo nem seu carregamento bem-sucedido. A verificação do cache existente é um resultado separado.";

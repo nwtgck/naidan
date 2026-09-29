@@ -21,6 +21,44 @@ import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } fro
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/zh-Hans';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/zh-Hans';
 
+import { llamaCppBrowserDownloads__find_more } from '@/strings/messages/llamaCppBrowserDownloads__find_more/zh-Hans';
+import { llamaCppBrowserDownloads__active_downloads } from '@/strings/messages/llamaCppBrowserDownloads__active_downloads/zh-Hans';
+import { llamaCppBrowserDownloads__model_catalog } from '@/strings/messages/llamaCppBrowserDownloads__model_catalog/zh-Hans';
+import { llamaCppBrowserDownloads__download_contents } from '@/strings/messages/llamaCppBrowserDownloads__download_contents/zh-Hans';
+import { llamaCppBrowserDownloads__all } from '@/strings/messages/llamaCppBrowserDownloads__all/zh-Hans';
+import { llamaCppBrowserDownloads__approximately_size } from '@/strings/messages/llamaCppBrowserDownloads__approximately_size/zh-Hans';
+import { llamaCppBrowserDownloads__change_default_model } from '@/strings/messages/llamaCppBrowserDownloads__change_default_model/zh-Hans';
+import { llamaCppBrowserDownloads__check_download_contents } from '@/strings/messages/llamaCppBrowserDownloads__check_download_contents/zh-Hans';
+import { llamaCppBrowserDownloads__checking_hugging_face } from '@/strings/messages/llamaCppBrowserDownloads__checking_hugging_face/zh-Hans';
+import { llamaCppBrowserDownloads__clear_search } from '@/strings/messages/llamaCppBrowserDownloads__clear_search/zh-Hans';
+import { llamaCppBrowserDownloads__default_model } from '@/strings/messages/llamaCppBrowserDownloads__default_model/zh-Hans';
+import { llamaCppBrowserDownloads__details } from '@/strings/messages/llamaCppBrowserDownloads__details/zh-Hans';
+import { llamaCppBrowserDownloads__download } from '@/strings/messages/llamaCppBrowserDownloads__download/zh-Hans';
+import { llamaCppBrowserDownloads__endpoint_type } from '@/strings/messages/llamaCppBrowserDownloads__endpoint_type/zh-Hans';
+import { llamaCppBrowserDownloads__global_settings_scope } from '@/strings/messages/llamaCppBrowserDownloads__global_settings_scope/zh-Hans';
+import { llamaCppBrowserDownloads__in_use } from '@/strings/messages/llamaCppBrowserDownloads__in_use/zh-Hans';
+import { llamaCppBrowserDownloads__memory } from '@/strings/messages/llamaCppBrowserDownloads__memory/zh-Hans';
+import { llamaCppBrowserDownloads__no_matching_models } from '@/strings/messages/llamaCppBrowserDownloads__no_matching_models/zh-Hans';
+import { llamaCppBrowserDownloads__not_set } from '@/strings/messages/llamaCppBrowserDownloads__not_set/zh-Hans';
+import { llamaCppBrowserDownloads__pause } from '@/strings/messages/llamaCppBrowserDownloads__pause/zh-Hans';
+import { llamaCppBrowserDownloads__paused } from '@/strings/messages/llamaCppBrowserDownloads__paused/zh-Hans';
+import { llamaCppBrowserDownloads__pausing } from '@/strings/messages/llamaCppBrowserDownloads__pausing/zh-Hans';
+import { llamaCppBrowserDownloads__plan_needs_review } from '@/strings/messages/llamaCppBrowserDownloads__plan_needs_review/zh-Hans';
+import { llamaCppBrowserDownloads__queue_position } from '@/strings/messages/llamaCppBrowserDownloads__queue_position/zh-Hans';
+import { llamaCppBrowserDownloads__refresh_download_contents } from '@/strings/messages/llamaCppBrowserDownloads__refresh_download_contents/zh-Hans';
+import { llamaCppBrowserDownloads__resume } from '@/strings/messages/llamaCppBrowserDownloads__resume/zh-Hans';
+import { llamaCppBrowserDownloads__retry } from '@/strings/messages/llamaCppBrowserDownloads__retry/zh-Hans';
+import { llamaCppBrowserDownloads__save_file_to_device } from '@/strings/messages/llamaCppBrowserDownloads__save_file_to_device/zh-Hans';
+import { llamaCppBrowserDownloads__search_model_names } from '@/strings/messages/llamaCppBrowserDownloads__search_model_names/zh-Hans';
+import { llamaCppBrowserDownloads__set_as_default } from '@/strings/messages/llamaCppBrowserDownloads__set_as_default/zh-Hans';
+import { llamaCppBrowserDownloads__settings_changed_review_again } from '@/strings/messages/llamaCppBrowserDownloads__settings_changed_review_again/zh-Hans';
+import { llamaCppBrowserDownloads__total } from '@/strings/messages/llamaCppBrowserDownloads__total/zh-Hans';
+import { llamaCppBrowserDownloads__waiting } from '@/strings/messages/llamaCppBrowserDownloads__waiting/zh-Hans';
+
+import { ChatPage__failed_to_load_chat } from '@/strings/messages/ChatPage__failed_to_load_chat/zh-Hans';
+import { ChatPage__retry } from '@/strings/messages/ChatPage__retry/zh-Hans';
+import { ChatPage__loading_chat } from '@/strings/messages/ChatPage__loading_chat/zh-Hans';
+
 import { AboutTab__about_naidan } from '@/strings/messages/AboutTab__about_naidan/zh-Hans';
 import { AboutTab__built_with_open_source_software } from '@/strings/messages/AboutTab__built_with_open_source_software/zh-Hans';
 import { AboutTab__github_repository } from '@/strings/messages/AboutTab__github_repository/zh-Hans';
@@ -208,6 +246,7 @@ import { ChatPaneHeader__chat_settings_and_model_override } from '@/strings/mess
 import { ChatPaneHeader__conversation_outline } from '@/strings/messages/ChatPaneHeader__conversation_outline/zh-Hans';
 import { ChatPaneHeader__copy_shareable_chat_url } from '@/strings/messages/ChatPaneHeader__copy_shareable_chat_url/zh-Hans';
 import { ChatPaneHeader__custom_overrides_active } from '@/strings/messages/ChatPaneHeader__custom_overrides_active/zh-Hans';
+import { ChatPaneHeader__chat_inspector } from '@/strings/messages/ChatPaneHeader__chat_inspector/zh-Hans';
 import { ChatPaneHeader__debug_mode } from '@/strings/messages/ChatPaneHeader__debug_mode/zh-Hans';
 import { ChatPaneHeader__delete_chat } from '@/strings/messages/ChatPaneHeader__delete_chat/zh-Hans';
 import { ChatPaneHeader__edit_chat_title } from '@/strings/messages/ChatPaneHeader__edit_chat_title/zh-Hans';
@@ -824,6 +863,7 @@ import { OnboardingModal__endpoint_configuration } from '@/strings/messages/Onbo
 import { OnboardingModal__enter_existing_server_url } from '@/strings/messages/OnboardingModal__enter_existing_server_url/zh-Hans';
 import { OnboardingModal__enter_valid_url } from '@/strings/messages/OnboardingModal__enter_valid_url/zh-Hans';
 import { OnboardingModal__experimental } from '@/strings/messages/OnboardingModal__experimental/zh-Hans';
+import { OnboardingModal__llama_cpp_browser } from '@/strings/messages/OnboardingModal__llama_cpp_browser/zh-Hans';
 import { OnboardingModal__failed_to_connect } from '@/strings/messages/OnboardingModal__failed_to_connect/zh-Hans';
 import { OnboardingModal__failed_to_save_settings } from '@/strings/messages/OnboardingModal__failed_to_save_settings/zh-Hans';
 import { OnboardingModal__get_started } from '@/strings/messages/OnboardingModal__get_started/zh-Hans';
@@ -982,6 +1022,7 @@ import { SettingsModal__storage } from '@/strings/messages/SettingsModal__storag
 import { SettingsModal__successfully_imported_recipes_as_chat_groups } from '@/strings/messages/SettingsModal__successfully_imported_recipes_as_chat_groups/zh-Hans';
 import { SettingsModal__tools } from '@/strings/messages/SettingsModal__tools/zh-Hans';
 import { SettingsModal__transformers_js } from '@/strings/messages/SettingsModal__transformers_js/zh-Hans';
+import { SettingsModal__llama_cpp_browser } from '@/strings/messages/SettingsModal__llama_cpp_browser/zh-Hans';
 import { SidebarDebugControls__debug_events } from '@/strings/messages/SidebarDebugControls__debug_events/zh-Hans';
 import { SidebarDebugControls__file_explorer } from '@/strings/messages/SidebarDebugControls__file_explorer/zh-Hans';
 import { SidebarDebugControls__more_actions } from '@/strings/messages/SidebarDebugControls__more_actions/zh-Hans';
@@ -1116,7 +1157,10 @@ import { TransformersJsLoadingIndicator__loading_model_weights_into_browser_memo
 import { TransformersJsLoadingIndicator__model } from '@/strings/messages/TransformersJsLoadingIndicator__model/zh-Hans';
 import { TransformersJsLoadingIndicator__on_device_execution } from '@/strings/messages/TransformersJsLoadingIndicator__on_device_execution/zh-Hans';
 import { TransformersJsLoadingIndicator__transformers_js_error } from '@/strings/messages/TransformersJsLoadingIndicator__transformers_js_error/zh-Hans';
+import { ModelSupportInvestigationModal__download_verification } from '@/strings/messages/ModelSupportInvestigationModal__download_verification/zh-Hans';
 import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/zh-Hans';
+import { ModelSupportInvestigationModal__skipped } from '@/strings/messages/ModelSupportInvestigationModal__skipped/zh-Hans';
+import { ModelSupportInvestigationModal__stop_this_model_and_continue } from '@/strings/messages/ModelSupportInvestigationModal__stop_this_model_and_continue/zh-Hans';
 import { ModelSupportInvestigationModal__candidate_eligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_eligible/zh-Hans';
 import { ModelSupportInvestigationModal__candidate_ineligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_ineligible/zh-Hans';
 import { ModelSupportInvestigationModal__candidate_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__candidate_plan_summary/zh-Hans';
@@ -1128,11 +1172,12 @@ import { ModelSupportInvestigationModal__checking_same_origin_runtime_assets } f
 import { ModelSupportInvestigationModal__close } from '@/strings/messages/ModelSupportInvestigationModal__close/zh-Hans';
 import { ModelSupportInvestigationModal__current_operation } from '@/strings/messages/ModelSupportInvestigationModal__current_operation/zh-Hans';
 import { ModelSupportInvestigationModal__declaration_files_summary } from '@/strings/messages/ModelSupportInvestigationModal__declaration_files_summary/zh-Hans';
-import { ModelSupportInvestigationModal__download_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__download_partial_evidence/zh-Hans';
+import { ModelSupportInvestigationModal__download_evidence_zip } from '@/strings/messages/ModelSupportInvestigationModal__download_evidence_zip/zh-Hans';
 import { ModelSupportInvestigationModal__evidence_export } from '@/strings/messages/ModelSupportInvestigationModal__evidence_export/zh-Hans';
 import { ModelSupportInvestigationModal__environment_evidence_disclosure } from '@/strings/messages/ModelSupportInvestigationModal__environment_evidence_disclosure/zh-Hans';
 import { ModelSupportInvestigationModal__evidence_readiness } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness/zh-Hans';
 import { ModelSupportInvestigationModal__evidence_readiness_summary } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness_summary/zh-Hans';
+import { ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status } from '@/strings/messages/ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status/zh-Hans';
 import { ModelSupportInvestigationModal__existing_model_data } from '@/strings/messages/ModelSupportInvestigationModal__existing_model_data/zh-Hans';
 import { ModelSupportInvestigationModal__failed } from '@/strings/messages/ModelSupportInvestigationModal__failed/zh-Hans';
 import { ModelSupportInvestigationModal__findings } from '@/strings/messages/ModelSupportInvestigationModal__findings/zh-Hans';
@@ -1164,11 +1209,13 @@ import { ModelSupportInvestigationModal__repository } from '@/strings/messages/M
 import { ModelSupportInvestigationModal__repository_information } from '@/strings/messages/ModelSupportInvestigationModal__repository_information/zh-Hans';
 import { ModelSupportInvestigationModal__repository_summary } from '@/strings/messages/ModelSupportInvestigationModal__repository_summary/zh-Hans';
 import { ModelSupportInvestigationModal__running } from '@/strings/messages/ModelSupportInvestigationModal__running/zh-Hans';
+import { ModelSupportInvestigationModal__stop_investigation } from '@/strings/messages/ModelSupportInvestigationModal__stop_investigation/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__runtime_assets/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_control_webgpu } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_webgpu/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_no_output } from '@/strings/messages/ModelSupportInvestigationModal__runtime_no_output/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_bytes } from '@/strings/messages/ModelSupportInvestigationModal__runtime_bytes/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_control } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control/zh-Hans';
+import { ModelSupportInvestigationModal__runtime_control_inputs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_inputs/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_environment } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_environment_summary } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment_summary/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_mjs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_mjs/zh-Hans';
@@ -1183,7 +1230,52 @@ import { ModelSupportInvestigationModal__tool_protocol_probe_summary } from '@/s
 import { ModelSupportInvestigationModal__tool_result_production_continuation_failed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_failed/zh-Hans';
 import { ModelSupportInvestigationModal__tool_result_production_continuation_passed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_passed/zh-Hans';
 import { ModelSupportInvestigationModal__tool_template_provenance_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_template_provenance_summary/zh-Hans';
-import { ModelSupportInvestigationModal__this_is_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__this_is_partial_evidence/zh-Hans';
+import { ModelSupportInvestigationModal__selected_scope_execution_summary } from '@/strings/messages/ModelSupportInvestigationModal__selected_scope_execution_summary/zh-Hans';
+import { ModelSupportInvestigationSession__fresh_metadata_preparation_status } from '@/strings/messages/ModelSupportInvestigationSession__fresh_metadata_preparation_status/zh-Hans';
+import { ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness } from '@/strings/messages/ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness/zh-Hans';
+import { ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure } from '@/strings/messages/ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure/zh-Hans';
+import { ModelSupportInvestigationSession__failed_and_not_run_checks } from '@/strings/messages/ModelSupportInvestigationSession__failed_and_not_run_checks/zh-Hans';
+import { ModelSupportInvestigationSession__feature_check_result } from '@/strings/messages/ModelSupportInvestigationSession__feature_check_result/zh-Hans';
+import { ModelSupportInvestigationSession__provider_collection_progress } from '@/strings/messages/ModelSupportInvestigationSession__provider_collection_progress/zh-Hans';
+import { ModelSupportInvestigationSession__maximum_phase_deadlines } from '@/strings/messages/ModelSupportInvestigationSession__maximum_phase_deadlines/zh-Hans';
+import { ModelSupportInvestigationSession__native_recording_is_not_correctness } from '@/strings/messages/ModelSupportInvestigationSession__native_recording_is_not_correctness/zh-Hans';
+import { ModelSupportInvestigationSession__export_retained_download_timing } from '@/strings/messages/ModelSupportInvestigationSession__export_retained_download_timing/zh-Hans';
+import { ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation } from '@/strings/messages/ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation/zh-Hans';
+import { ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session } from '@/strings/messages/ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session/zh-Hans';
+import { ModelSupportInvestigationSession__some_download_timing_was_not_retained } from '@/strings/messages/ModelSupportInvestigationSession__some_download_timing_was_not_retained/zh-Hans';
+import { ModelSupportInvestigationSession__failed_to_export_retained_download_timing } from '@/strings/messages/ModelSupportInvestigationSession__failed_to_export_retained_download_timing/zh-Hans';
+import { ModelSupportInvestigationSession__recording_retention_budget } from '@/strings/messages/ModelSupportInvestigationSession__recording_retention_budget/zh-Hans';
+import { ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load } from '@/strings/messages/ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load/zh-Hans';
+import { ModelSupportInvestigationModal__start_investigation } from '@/strings/messages/ModelSupportInvestigationModal__start_investigation/zh-Hans';
+import { ModelSupportInvestigationModal__new_investigation } from '@/strings/messages/ModelSupportInvestigationModal__new_investigation/zh-Hans';
+import { ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another } from '@/strings/messages/ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another/zh-Hans';
+import { ModelSupportInvestigationModal__replace_results_and_return_to_setup } from '@/strings/messages/ModelSupportInvestigationModal__replace_results_and_return_to_setup/zh-Hans';
+import { ModelSupportInvestigationModal__ready_to_start } from '@/strings/messages/ModelSupportInvestigationModal__ready_to_start/zh-Hans';
+import { ModelSupportInvestigationModal__targets } from '@/strings/messages/ModelSupportInvestigationModal__targets/zh-Hans';
+import { ModelSupportInvestigationModal__one_model_per_line } from '@/strings/messages/ModelSupportInvestigationModal__one_model_per_line/zh-Hans';
+import { ModelSupportInvestigationModal__copy_model_list } from '@/strings/messages/ModelSupportInvestigationModal__copy_model_list/zh-Hans';
+import { ModelSupportInvestigationModal__invalid_model_line } from '@/strings/messages/ModelSupportInvestigationModal__invalid_model_line/zh-Hans';
+import { ModelSupportInvestigationModal__presets } from '@/strings/messages/ModelSupportInvestigationModal__presets/zh-Hans';
+import { ModelSupportInvestigationModal__full_investigation } from '@/strings/messages/ModelSupportInvestigationModal__full_investigation/zh-Hans';
+import { ModelSupportInvestigationModal__offline } from '@/strings/messages/ModelSupportInvestigationModal__offline/zh-Hans';
+import { ModelSupportInvestigationModal__download_focused } from '@/strings/messages/ModelSupportInvestigationModal__download_focused/zh-Hans';
+import { ModelSupportInvestigationModal__custom } from '@/strings/messages/ModelSupportInvestigationModal__custom/zh-Hans';
+import { ModelSupportInvestigationModal__execution_policy } from '@/strings/messages/ModelSupportInvestigationModal__execution_policy/zh-Hans';
+import { ModelSupportInvestigationModal__external_network_access } from '@/strings/messages/ModelSupportInvestigationModal__external_network_access/zh-Hans';
+import { ModelSupportInvestigationModal__allow } from '@/strings/messages/ModelSupportInvestigationModal__allow/zh-Hans';
+import { ModelSupportInvestigationModal__deny } from '@/strings/messages/ModelSupportInvestigationModal__deny/zh-Hans';
+import { ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation } from '@/strings/messages/ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation/zh-Hans';
+import { ModelSupportInvestigationModal__investigation_scope } from '@/strings/messages/ModelSupportInvestigationModal__investigation_scope/zh-Hans';
+import { ModelSupportInvestigationModal__repository_and_download } from '@/strings/messages/ModelSupportInvestigationModal__repository_and_download/zh-Hans';
+import { ModelSupportInvestigationModal__model_load } from '@/strings/messages/ModelSupportInvestigationModal__model_load/zh-Hans';
+import { ModelSupportInvestigationModal__generation } from '@/strings/messages/ModelSupportInvestigationModal__generation/zh-Hans';
+import { ModelSupportInvestigationModal__continuity_and_kv_cache } from '@/strings/messages/ModelSupportInvestigationModal__continuity_and_kv_cache/zh-Hans';
+import { ModelSupportInvestigationModal__capability_probes } from '@/strings/messages/ModelSupportInvestigationModal__capability_probes/zh-Hans';
+import { ModelSupportInvestigationModal__required_by_selected_scope } from '@/strings/messages/ModelSupportInvestigationModal__required_by_selected_scope/zh-Hans';
+import { ModelSupportInvestigationModal__setup } from '@/strings/messages/ModelSupportInvestigationModal__setup/zh-Hans';
+import { ModelSupportInvestigationModal__running_and_results } from '@/strings/messages/ModelSupportInvestigationModal__running_and_results/zh-Hans';
+import { ModelSupportInvestigationModal__models_are_investigated_sequentially } from '@/strings/messages/ModelSupportInvestigationModal__models_are_investigated_sequentially/zh-Hans';
+import { ModelSupportInvestigationModal__add_models_placeholder } from '@/strings/messages/ModelSupportInvestigationModal__add_models_placeholder/zh-Hans';
 import { TransformersJsManager__investigate } from '@/strings/messages/TransformersJsManager__investigate/zh-Hans';
 import { TransformersJsManager__active } from '@/strings/messages/TransformersJsManager__active/zh-Hans';
 import { TransformersJsManager__active_model } from '@/strings/messages/TransformersJsManager__active_model/zh-Hans';
@@ -1203,6 +1295,10 @@ import { TransformersJsManager__download_failed } from '@/strings/messages/Trans
 import { TransformersJsManager__download_failed_check_details_in_the_section_below } from '@/strings/messages/TransformersJsManager__download_failed_check_details_in_the_section_below/zh-Hans';
 import { TransformersJsManager__download_from_hugging_face } from '@/strings/messages/TransformersJsManager__download_from_hugging_face/zh-Hans';
 import { TransformersJsManager__download_model } from '@/strings/messages/TransformersJsManager__download_model/zh-Hans';
+import { TransformersJsManager__reusing_downloaded_file } from '@/strings/messages/TransformersJsManager__reusing_downloaded_file/zh-Hans';
+import { TransformersJsManager__download_complete } from '@/strings/messages/TransformersJsManager__download_complete/zh-Hans';
+import { TransformersJsManager__received_and_reused_bytes } from '@/strings/messages/TransformersJsManager__received_and_reused_bytes/zh-Hans';
+import { TransformersJsManager__about_time_remaining } from '@/strings/messages/TransformersJsManager__about_time_remaining/zh-Hans';
 import { TransformersJsManager__downloaded_models } from '@/strings/messages/TransformersJsManager__downloaded_models/zh-Hans';
 import { TransformersJsManager__downloading_and_compiling } from '@/strings/messages/TransformersJsManager__downloading_and_compiling/zh-Hans';
 import { TransformersJsManager__engine_control } from '@/strings/messages/TransformersJsManager__engine_control/zh-Hans';
@@ -1234,6 +1330,29 @@ import { TransformersJsManager__no_models_match_your_filter } from '@/strings/me
 import { TransformersJsManager__note } from '@/strings/messages/TransformersJsManager__note/zh-Hans';
 import { TransformersJsManager__origin_private_file_system_opfs } from '@/strings/messages/TransformersJsManager__origin_private_file_system_opfs/zh-Hans';
 import { TransformersJsManager__overall_progress } from '@/strings/messages/TransformersJsManager__overall_progress/zh-Hans';
+import { TransformersJsManager__close_error_details } from '@/strings/messages/TransformersJsManager__close_error_details/zh-Hans';
+import { TransformersJsManager__resolving_revision } from '@/strings/messages/TransformersJsManager__resolving_revision/zh-Hans';
+import { TransformersJsManager__checking_cache } from '@/strings/messages/TransformersJsManager__checking_cache/zh-Hans';
+import { TransformersJsManager__preparing_metadata } from '@/strings/messages/TransformersJsManager__preparing_metadata/zh-Hans';
+import { TransformersJsManager__checking_required_files } from '@/strings/messages/TransformersJsManager__checking_required_files/zh-Hans';
+import { TransformersJsManager__transferring } from '@/strings/messages/TransformersJsManager__transferring/zh-Hans';
+import { TransformersJsManager__saving } from '@/strings/messages/TransformersJsManager__saving/zh-Hans';
+import { TransformersJsManager__checking_runtime } from '@/strings/messages/TransformersJsManager__checking_runtime/zh-Hans';
+import { TransformersJsManager__complete } from '@/strings/messages/TransformersJsManager__complete/zh-Hans';
+import { TransformersJsManager__queued } from '@/strings/messages/TransformersJsManager__queued/zh-Hans';
+import { TransformersJsManager__cached } from '@/strings/messages/TransformersJsManager__cached/zh-Hans';
+import { TransformersJsManager__current_candidate_preparation_includes_cached_files } from '@/strings/messages/TransformersJsManager__current_candidate_preparation_includes_cached_files/zh-Hans';
+import { TransformersJsManager__total_size_unknown } from '@/strings/messages/TransformersJsManager__total_size_unknown/zh-Hans';
+import { TransformersJsManager__recalculated_after_size_update } from '@/strings/messages/TransformersJsManager__recalculated_after_size_update/zh-Hans';
+import { TransformersJsManager__recalculated_after_download_restart } from '@/strings/messages/TransformersJsManager__recalculated_after_download_restart/zh-Hans';
+import { TransformersJsManager__retrying_with_another_candidate } from '@/strings/messages/TransformersJsManager__retrying_with_another_candidate/zh-Hans';
+import { TransformersJsManager__saving_and_checks_not_included } from '@/strings/messages/TransformersJsManager__saving_and_checks_not_included/zh-Hans';
+import { TransformersJsManager__estimating_download_time } from '@/strings/messages/TransformersJsManager__estimating_download_time/zh-Hans';
+import { TransformersJsManager__recalculating_download_time } from '@/strings/messages/TransformersJsManager__recalculating_download_time/zh-Hans';
+import { TransformersJsManager__files_complete } from '@/strings/messages/TransformersJsManager__files_complete/zh-Hans';
+import { TransformersJsManager__current_candidate_download_time_remaining } from '@/strings/messages/TransformersJsManager__current_candidate_download_time_remaining/zh-Hans';
+import { TransformersJsManager__candidate_number } from '@/strings/messages/TransformersJsManager__candidate_number/zh-Hans';
+import { TransformersJsManager__current_candidate_received_and_cached_bytes } from '@/strings/messages/TransformersJsManager__current_candidate_received_and_cached_bytes/zh-Hans';
 import { TransformersJsManager__preset_model_paths } from '@/strings/messages/TransformersJsManager__preset_model_paths/zh-Hans';
 import { TransformersJsManager__refresh } from '@/strings/messages/TransformersJsManager__refresh/zh-Hans';
 import { TransformersJsManager__restart } from '@/strings/messages/TransformersJsManager__restart/zh-Hans';
@@ -1514,6 +1633,7 @@ import { formatSettingsSourceLabel__value_from_chat } from '@/strings/messages/f
 import { formatSettingsSourceLabel__none } from '@/strings/messages/formatSettingsSourceLabel__none/zh-Hans';
 import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/zh-Hans';
 import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/zh-Hans';
+import { ToolCallDraftItem__generating_tool_call } from '@/strings/messages/ToolCallDraftItem__generating_tool_call/zh-Hans';
 import { toolCall__arguments } from '@/strings/messages/toolCall__arguments/zh-Hans';
 import { toolCall__code } from '@/strings/messages/toolCall__code/zh-Hans';
 import { toolCall__disable_wrap } from '@/strings/messages/toolCall__disable_wrap/zh-Hans';
@@ -1721,6 +1841,83 @@ import { opfsEncryption__returning_to_plain_storage } from '@/strings/messages/o
 
 import type { Strings } from './en';
 
+import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/zh-Hans';
+import { llamaCppBrowser__gguf_model_files } from '@/strings/messages/llamaCppBrowser__gguf_model_files/zh-Hans';
+import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__check_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__check_model/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__multimodal_support } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_support/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__no_companion_files_available } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_companion_files_available/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download_details } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_details/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__model_variant } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_variant/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__companion_file } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__companion_file/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__choose_companion_file } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_companion_file/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__downloading_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloading_model/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__checking_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__checking_model/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download_paused } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_paused/zh-Hans';
+import { llamaCppBrowser__files_to_delete } from '@/strings/messages/llamaCppBrowser__files_to_delete/zh-Hans';
+import { llamaCppBrowser__files_changed_review_before_deleting } from '@/strings/messages/llamaCppBrowser__files_changed_review_before_deleting/zh-Hans';
+import { LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files } from '@/strings/messages/LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files/zh-Hans';
+import { LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support } from '@/strings/messages/LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__multimodal_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_quantization/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__estimating_remaining_time } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__estimating_remaining_time/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__performing_final_checks } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__performing_final_checks/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__about_seconds_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_seconds_remaining/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__about_minutes_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_minutes_remaining/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__about_hours_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_hours_remaining/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__model_files_already_exist } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_files_already_exist/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__another_download_already_exists } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__another_download_already_exists/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__repository } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__quantization/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__choose_model_files } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_model_files/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__total_download_size/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__downloaded } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloaded/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__pause } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__pause/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__resume/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__cancel_and_delete } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__cancel_and_delete/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume/zh-Hans';
+import { llamaCppBrowser__choose_model_folder } from '@/strings/messages/llamaCppBrowser__choose_model_folder/zh-Hans';
+import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBrowser__gguf_files_only/zh-Hans';
+import { llamaCppBrowser__drop_model_folders_or_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_model_folders_or_gguf_files_here/zh-Hans';
+import { llamaCppBrowser__or_choose_files_from_your_device } from '@/strings/messages/llamaCppBrowser__or_choose_files_from_your_device/zh-Hans';
+import { llamaCppBrowser__inference_settings } from '@/strings/messages/llamaCppBrowser__inference_settings/zh-Hans';
+import { llamaCppBrowser__automatic_profile } from '@/strings/messages/llamaCppBrowser__automatic_profile/zh-Hans';
+import { llamaCppBrowser__checking_browser_support } from '@/strings/messages/llamaCppBrowser__checking_browser_support/zh-Hans';
+import { llamaCppBrowser__check_browser_support } from '@/strings/messages/llamaCppBrowser__check_browser_support/zh-Hans';
+import { llamaCppBrowser__unavailable_feature } from '@/strings/messages/llamaCppBrowser__unavailable_feature/zh-Hans';
+import { llamaCppBrowser__no_compatible_runtime } from '@/strings/messages/llamaCppBrowser__no_compatible_runtime/zh-Hans';
+import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/zh-Hans';
+import { llamaCppBrowser__automatic_profile_description } from '@/strings/messages/llamaCppBrowser__automatic_profile_description/zh-Hans';
+import { llamaCppBrowser__imported_models } from '@/strings/messages/llamaCppBrowser__imported_models/zh-Hans';
+import { llamaCppBrowser__loading_model_list } from '@/strings/messages/llamaCppBrowser__loading_model_list/zh-Hans';
+import { llamaCppBrowser__manage_gguf_models } from '@/strings/messages/llamaCppBrowser__manage_gguf_models/zh-Hans';
+import { llamaCppBrowser__import_downloaded_gguf } from '@/strings/messages/llamaCppBrowser__import_downloaded_gguf/zh-Hans';
+import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/zh-Hans';
+import { llamaCppBrowser__image_chat_requires_matching_projector } from '@/strings/messages/llamaCppBrowser__image_chat_requires_matching_projector/zh-Hans';
+import { llamaCppBrowser__import_gguf } from '@/strings/messages/llamaCppBrowser__import_gguf/zh-Hans';
+import { llamaCppBrowser__profile } from '@/strings/messages/llamaCppBrowser__profile/zh-Hans';
+import { llamaCppBrowser__context_size } from '@/strings/messages/llamaCppBrowser__context_size/zh-Hans';
+import { llamaCppBrowser__no_imported_models } from '@/strings/messages/llamaCppBrowser__no_imported_models/zh-Hans';
+import { llamaCppBrowser__delete_model } from '@/strings/messages/llamaCppBrowser__delete_model/zh-Hans';
+import { llamaCppBrowser__delete_model_confirmation } from '@/strings/messages/llamaCppBrowser__delete_model_confirmation/zh-Hans';
+import { llamaCppBrowser__release_runtime } from '@/strings/messages/llamaCppBrowser__release_runtime/zh-Hans';
+import { llamaCppBrowser__refresh_models } from '@/strings/messages/llamaCppBrowser__refresh_models/zh-Hans';
+import { llamaCppBrowser__operation_failed } from '@/strings/messages/llamaCppBrowser__operation_failed/zh-Hans';
+import { llamaCppBrowser__ready } from '@/strings/messages/llamaCppBrowser__ready/zh-Hans';
+import { llamaCppBrowser__importing } from '@/strings/messages/llamaCppBrowser__importing/zh-Hans';
+import { llamaCppBrowser__initializing } from '@/strings/messages/llamaCppBrowser__initializing/zh-Hans';
+import { llamaCppBrowser__loading } from '@/strings/messages/llamaCppBrowser__loading/zh-Hans';
+import { llamaCppBrowser__prefill } from '@/strings/messages/llamaCppBrowser__prefill/zh-Hans';
+import { llamaCppBrowser__generating } from '@/strings/messages/llamaCppBrowser__generating/zh-Hans';
+import { llamaCppBrowser__import_then_select } from '@/strings/messages/llamaCppBrowser__import_then_select/zh-Hans';
+
 export const catalog = {
   SHARED__all_chats,
   SHARED__assistant,
@@ -1743,6 +1940,9 @@ export const catalog = {
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
 
+  ChatPage__failed_to_load_chat,
+  ChatPage__retry,
+  ChatPage__loading_chat,
   AboutTab__about_naidan,
   AboutTab__built_with_open_source_software,
   AboutTab__github_repository,
@@ -1930,6 +2130,7 @@ export const catalog = {
   ChatPaneHeader__conversation_outline,
   ChatPaneHeader__copy_shareable_chat_url,
   ChatPaneHeader__custom_overrides_active,
+  ChatPaneHeader__chat_inspector,
   ChatPaneHeader__debug_mode,
   ChatPaneHeader__delete_chat,
   ChatPaneHeader__edit_chat_title,
@@ -2546,6 +2747,7 @@ export const catalog = {
   OnboardingModal__enter_existing_server_url,
   OnboardingModal__enter_valid_url,
   OnboardingModal__experimental,
+  OnboardingModal__llama_cpp_browser,
   OnboardingModal__failed_to_connect,
   OnboardingModal__failed_to_save_settings,
   OnboardingModal__get_started,
@@ -2704,6 +2906,7 @@ export const catalog = {
   SettingsModal__successfully_imported_recipes_as_chat_groups,
   SettingsModal__tools,
   SettingsModal__transformers_js,
+  SettingsModal__llama_cpp_browser,
   SidebarDebugControls__debug_events,
   SidebarDebugControls__file_explorer,
   SidebarDebugControls__more_actions,
@@ -2838,7 +3041,10 @@ export const catalog = {
   TransformersJsLoadingIndicator__model,
   TransformersJsLoadingIndicator__on_device_execution,
   TransformersJsLoadingIndicator__transformers_js_error,
+  ModelSupportInvestigationModal__download_verification,
   ModelSupportInvestigationModal__blocked,
+  ModelSupportInvestigationModal__skipped,
+  ModelSupportInvestigationModal__stop_this_model_and_continue,
   ModelSupportInvestigationModal__candidate_eligible,
   ModelSupportInvestigationModal__candidate_ineligible,
   ModelSupportInvestigationModal__candidate_plan_summary,
@@ -2850,11 +3056,12 @@ export const catalog = {
   ModelSupportInvestigationModal__close,
   ModelSupportInvestigationModal__current_operation,
   ModelSupportInvestigationModal__declaration_files_summary,
-  ModelSupportInvestigationModal__download_partial_evidence,
+  ModelSupportInvestigationModal__download_evidence_zip,
   ModelSupportInvestigationModal__evidence_export,
   ModelSupportInvestigationModal__environment_evidence_disclosure,
   ModelSupportInvestigationModal__evidence_readiness,
   ModelSupportInvestigationModal__evidence_readiness_summary,
+  ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status,
   ModelSupportInvestigationModal__existing_model_data,
   ModelSupportInvestigationModal__failed,
   ModelSupportInvestigationModal__findings,
@@ -2886,11 +3093,13 @@ export const catalog = {
   ModelSupportInvestigationModal__repository_information,
   ModelSupportInvestigationModal__repository_summary,
   ModelSupportInvestigationModal__running,
+  ModelSupportInvestigationModal__stop_investigation,
   ModelSupportInvestigationModal__runtime_assets,
   ModelSupportInvestigationModal__runtime_control_webgpu,
   ModelSupportInvestigationModal__runtime_no_output,
   ModelSupportInvestigationModal__runtime_bytes,
   ModelSupportInvestigationModal__runtime_control,
+  ModelSupportInvestigationModal__runtime_control_inputs,
   ModelSupportInvestigationModal__runtime_environment,
   ModelSupportInvestigationModal__runtime_environment_summary,
   ModelSupportInvestigationModal__runtime_mjs,
@@ -2905,7 +3114,52 @@ export const catalog = {
   ModelSupportInvestigationModal__tool_result_production_continuation_failed,
   ModelSupportInvestigationModal__tool_result_production_continuation_passed,
   ModelSupportInvestigationModal__tool_template_provenance_summary,
-  ModelSupportInvestigationModal__this_is_partial_evidence,
+  ModelSupportInvestigationModal__selected_scope_execution_summary,
+  ModelSupportInvestigationSession__fresh_metadata_preparation_status,
+  ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness,
+  ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure,
+  ModelSupportInvestigationSession__failed_and_not_run_checks,
+  ModelSupportInvestigationSession__feature_check_result,
+  ModelSupportInvestigationSession__provider_collection_progress,
+  ModelSupportInvestigationSession__maximum_phase_deadlines,
+  ModelSupportInvestigationSession__native_recording_is_not_correctness,
+  ModelSupportInvestigationSession__export_retained_download_timing,
+  ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation,
+  ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session,
+  ModelSupportInvestigationSession__some_download_timing_was_not_retained,
+  ModelSupportInvestigationSession__failed_to_export_retained_download_timing,
+  ModelSupportInvestigationSession__recording_retention_budget,
+  ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load,
+  ModelSupportInvestigationModal__start_investigation,
+  ModelSupportInvestigationModal__new_investigation,
+  ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another,
+  ModelSupportInvestigationModal__replace_results_and_return_to_setup,
+  ModelSupportInvestigationModal__ready_to_start,
+  ModelSupportInvestigationModal__targets,
+  ModelSupportInvestigationModal__one_model_per_line,
+  ModelSupportInvestigationModal__copy_model_list,
+  ModelSupportInvestigationModal__invalid_model_line,
+  ModelSupportInvestigationModal__presets,
+  ModelSupportInvestigationModal__full_investigation,
+  ModelSupportInvestigationModal__offline,
+  ModelSupportInvestigationModal__download_focused,
+  ModelSupportInvestigationModal__custom,
+  ModelSupportInvestigationModal__execution_policy,
+  ModelSupportInvestigationModal__external_network_access,
+  ModelSupportInvestigationModal__allow,
+  ModelSupportInvestigationModal__deny,
+  ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation,
+  ModelSupportInvestigationModal__investigation_scope,
+  ModelSupportInvestigationModal__repository_and_download,
+  ModelSupportInvestigationModal__model_load,
+  ModelSupportInvestigationModal__generation,
+  ModelSupportInvestigationModal__continuity_and_kv_cache,
+  ModelSupportInvestigationModal__capability_probes,
+  ModelSupportInvestigationModal__required_by_selected_scope,
+  ModelSupportInvestigationModal__setup,
+  ModelSupportInvestigationModal__running_and_results,
+  ModelSupportInvestigationModal__models_are_investigated_sequentially,
+  ModelSupportInvestigationModal__add_models_placeholder,
   TransformersJsManager__investigate,
   TransformersJsManager__active,
   TransformersJsManager__active_model,
@@ -2925,6 +3179,10 @@ export const catalog = {
   TransformersJsManager__download_failed_check_details_in_the_section_below,
   TransformersJsManager__download_from_hugging_face,
   TransformersJsManager__download_model,
+  TransformersJsManager__reusing_downloaded_file,
+  TransformersJsManager__download_complete,
+  TransformersJsManager__received_and_reused_bytes,
+  TransformersJsManager__about_time_remaining,
   TransformersJsManager__downloaded_models,
   TransformersJsManager__downloading_and_compiling,
   TransformersJsManager__engine_control,
@@ -2956,6 +3214,29 @@ export const catalog = {
   TransformersJsManager__note,
   TransformersJsManager__origin_private_file_system_opfs,
   TransformersJsManager__overall_progress,
+  TransformersJsManager__close_error_details,
+  TransformersJsManager__resolving_revision,
+  TransformersJsManager__checking_cache,
+  TransformersJsManager__preparing_metadata,
+  TransformersJsManager__checking_required_files,
+  TransformersJsManager__transferring,
+  TransformersJsManager__saving,
+  TransformersJsManager__checking_runtime,
+  TransformersJsManager__complete,
+  TransformersJsManager__queued,
+  TransformersJsManager__cached,
+  TransformersJsManager__current_candidate_preparation_includes_cached_files,
+  TransformersJsManager__total_size_unknown,
+  TransformersJsManager__recalculated_after_size_update,
+  TransformersJsManager__recalculated_after_download_restart,
+  TransformersJsManager__retrying_with_another_candidate,
+  TransformersJsManager__saving_and_checks_not_included,
+  TransformersJsManager__estimating_download_time,
+  TransformersJsManager__recalculating_download_time,
+  TransformersJsManager__files_complete,
+  TransformersJsManager__current_candidate_download_time_remaining,
+  TransformersJsManager__candidate_number,
+  TransformersJsManager__current_candidate_received_and_cached_bytes,
   TransformersJsManager__preset_model_paths,
   TransformersJsManager__refresh,
   TransformersJsManager__restart,
@@ -3236,6 +3517,7 @@ export const catalog = {
   formatSettingsSourceLabel__value_from_chat,
   formatSettingsSourceLabel__value_from_global,
   formatSettingsSourceLabel__value_from_group,
+  ToolCallDraftItem__generating_tool_call,
   toolCall__arguments,
   toolCall__code,
   toolCall__disable_wrap,
@@ -3439,4 +3721,113 @@ export const catalog = {
   opfsEncryption__return_to_plain_before_authority_switch,
   opfsEncryption__stop_encryption_and_return_to_plain,
   opfsEncryption__returning_to_plain_storage,
+  llamaCppBrowser__endpoint_label,
+  llamaCppBrowser__gguf_model_files,
+  llamaCppBrowser__choose_gguf_files,
+  LlamaCppBrowserHuggingFaceManager__check_model,
+  LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
+  LlamaCppBrowserHuggingFaceManager__multimodal_support,
+  LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models,
+  LlamaCppBrowserHuggingFaceManager__no_companion_files_available,
+  LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details,
+  LlamaCppBrowserHuggingFaceManager__download_details,
+  LlamaCppBrowserHuggingFaceManager__model_variant,
+  LlamaCppBrowserHuggingFaceManager__companion_file,
+  LlamaCppBrowserHuggingFaceManager__choose_companion_file,
+  LlamaCppBrowserHuggingFaceManager__downloading_model,
+  LlamaCppBrowserHuggingFaceManager__checking_model,
+  LlamaCppBrowserHuggingFaceManager__download_paused,
+  llamaCppBrowser__files_to_delete,
+  llamaCppBrowser__files_changed_review_before_deleting,
+  LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files,
+  LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support,
+  LlamaCppBrowserHuggingFaceManager__multimodal_quantization,
+  LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict,
+  LlamaCppBrowserHuggingFaceManager__estimating_remaining_time,
+  LlamaCppBrowserHuggingFaceManager__performing_final_checks,
+  LlamaCppBrowserHuggingFaceManager__about_seconds_remaining,
+  LlamaCppBrowserHuggingFaceManager__about_minutes_remaining,
+  LlamaCppBrowserHuggingFaceManager__about_hours_remaining,
+  LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining,
+  LlamaCppBrowserHuggingFaceManager__model_files_already_exist,
+  LlamaCppBrowserHuggingFaceManager__another_download_already_exists,
+  LlamaCppBrowserHuggingFaceManager__repository,
+  LlamaCppBrowserHuggingFaceManager__quantization,
+  LlamaCppBrowserHuggingFaceManager__choose_model_files,
+  LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection,
+  LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found,
+  LlamaCppBrowserHuggingFaceManager__total_download_size,
+  LlamaCppBrowserHuggingFaceManager__download,
+  LlamaCppBrowserHuggingFaceManager__downloaded,
+  LlamaCppBrowserHuggingFaceManager__pause,
+  LlamaCppBrowserHuggingFaceManager__resume,
+  LlamaCppBrowserHuggingFaceManager__cancel_and_delete,
+  LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume,
+  llamaCppBrowser__choose_model_folder,
+  llamaCppBrowser__gguf_files_only,
+  llamaCppBrowser__drop_model_folders_or_gguf_files_here,
+  llamaCppBrowser__or_choose_files_from_your_device,
+  llamaCppBrowser__inference_settings,
+  llamaCppBrowser__automatic_profile,
+  llamaCppBrowser__checking_browser_support,
+  llamaCppBrowser__check_browser_support,
+  llamaCppBrowser__unavailable_feature,
+  llamaCppBrowser__no_compatible_runtime,
+  llamaCppBrowser__automatic_recommended,
+  llamaCppBrowser__automatic_profile_description,
+  llamaCppBrowser__imported_models,
+  llamaCppBrowser__loading_model_list,
+  llamaCppBrowser__manage_gguf_models,
+  llamaCppBrowser__import_downloaded_gguf,
+  llamaCppBrowser__unavailable_in_standalone,
+  llamaCppBrowser__image_chat_requires_matching_projector,
+  llamaCppBrowser__import_gguf,
+  llamaCppBrowser__profile,
+  llamaCppBrowser__context_size,
+  llamaCppBrowser__no_imported_models,
+  llamaCppBrowser__delete_model,
+  llamaCppBrowser__delete_model_confirmation,
+  llamaCppBrowser__release_runtime,
+  llamaCppBrowser__refresh_models,
+  llamaCppBrowser__operation_failed,
+  llamaCppBrowser__ready,
+  llamaCppBrowser__importing,
+  llamaCppBrowser__initializing,
+  llamaCppBrowser__loading,
+  llamaCppBrowser__prefill,
+  llamaCppBrowser__generating,
+  llamaCppBrowser__import_then_select,
+  llamaCppBrowserDownloads__active_downloads,
+  llamaCppBrowserDownloads__model_catalog,
+  llamaCppBrowserDownloads__download_contents,
+  llamaCppBrowserDownloads__all,
+  llamaCppBrowserDownloads__approximately_size,
+  llamaCppBrowserDownloads__change_default_model,
+  llamaCppBrowserDownloads__check_download_contents,
+  llamaCppBrowserDownloads__checking_hugging_face,
+  llamaCppBrowserDownloads__clear_search,
+  llamaCppBrowserDownloads__default_model,
+  llamaCppBrowserDownloads__details,
+  llamaCppBrowserDownloads__download,
+  llamaCppBrowserDownloads__endpoint_type,
+  llamaCppBrowserDownloads__global_settings_scope,
+  llamaCppBrowserDownloads__in_use,
+  llamaCppBrowserDownloads__memory,
+  llamaCppBrowserDownloads__no_matching_models,
+  llamaCppBrowserDownloads__not_set,
+  llamaCppBrowserDownloads__pause,
+  llamaCppBrowserDownloads__paused,
+  llamaCppBrowserDownloads__pausing,
+  llamaCppBrowserDownloads__plan_needs_review,
+  llamaCppBrowserDownloads__queue_position,
+  llamaCppBrowserDownloads__refresh_download_contents,
+  llamaCppBrowserDownloads__resume,
+  llamaCppBrowserDownloads__retry,
+  llamaCppBrowserDownloads__save_file_to_device,
+  llamaCppBrowserDownloads__search_model_names,
+  llamaCppBrowserDownloads__set_as_default,
+  llamaCppBrowserDownloads__settings_changed_review_again,
+  llamaCppBrowserDownloads__total,
+  llamaCppBrowserDownloads__waiting,
+  llamaCppBrowserDownloads__find_more,
 } satisfies Strings;

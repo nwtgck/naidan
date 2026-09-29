@@ -1,11 +1,13 @@
 import type {
   ModelSupportInvestigationJsonObject,
   ModelSupportInvestigationRepository,
+  ModelSupportInvestigationRuntimeTarget,
   ModelSupportInvestigationTemplateBehavior,
   ModelSupportInvestigationTemplateCase,
   ModelSupportInvestigationTemplateMessage,
   ModelSupportInvestigationToolTemplateProvenance,
 } from '@/features/transformers-js/model-support-investigation/types';
+import { investigationModelLoadRevision } from '@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision';
 import { parseInvestigationJson } from '@/features/transformers-js/model-support-investigation/logic/json-value-schema';
 import { serializeInvestigationError } from '@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error';
 
@@ -295,24 +297,26 @@ function deriveToolTemplateProvenance({
   };
 }
 
-export async function inspectTemplateBehavior({
-  repository,
+export async function inspectTemplateBehaviorForTarget({
+  runtimeTarget,
   loadTokenizer,
 }: {
-  repository: ModelSupportInvestigationRepository,
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
   loadTokenizer: ({ modelId, revision }: {
     modelId: string,
-    revision: string,
+    revision: string | undefined,
   }) => Promise<ModelSupportInvestigationTemplateTokenizer>,
 }): Promise<ModelSupportInvestigationTemplateBehavior> {
+  const loaderRevision = runtimeTarget.loaderRevisionOption ?? undefined;
   const tokenizer = await loadTokenizer({
-    modelId: repository.normalizedModelId,
-    revision: repository.resolvedRevision,
+    modelId: runtimeTarget.normalizedModelId,
+    revision: loaderRevision,
   });
   const cases = FIXTURES.map(fixture => inspectCase({ tokenizer, fixture }));
   return {
-    normalizedModelId: repository.normalizedModelId,
-    resolvedRevision: repository.resolvedRevision,
+    normalizedModelId: runtimeTarget.normalizedModelId,
+    resolvedRevision: runtimeTarget.evidenceRevision,
+    loaderRevisionOption: runtimeTarget.loaderRevisionOption,
     tokenizerClass: tokenizer.constructor.name,
     declaredChatTemplate: tokenizer.chat_template === undefined
       ? undefined
@@ -320,6 +324,34 @@ export async function inspectTemplateBehavior({
     cases,
     toolTemplateProvenance: deriveToolTemplateProvenance({ cases }),
   };
+}
+
+export async function inspectTemplateBehavior({
+  repository,
+  loaderRevisionOption,
+  loadTokenizer,
+}: {
+  repository: ModelSupportInvestigationRepository,
+  loaderRevisionOption?: string | null,
+  loadTokenizer: ({ modelId, revision }: {
+    modelId: string,
+    revision: string | undefined,
+  }) => Promise<ModelSupportInvestigationTemplateTokenizer>,
+}): Promise<ModelSupportInvestigationTemplateBehavior> {
+  const loaderRevision = loaderRevisionOption === undefined
+    ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null
+    : loaderRevisionOption;
+  return inspectTemplateBehaviorForTarget({
+    runtimeTarget: {
+      normalizedModelId: repository.normalizedModelId,
+      evidenceRevision: repository.resolvedRevision,
+      loaderRevisionOption: loaderRevision,
+      source: 'repository',
+      revisionIdentity: 'exact-resolved-revision',
+      pipelineTag: repository.pipelineTag,
+    },
+    loadTokenizer,
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
