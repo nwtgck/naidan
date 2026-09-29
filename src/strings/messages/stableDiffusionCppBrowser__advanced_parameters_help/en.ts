@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__advanced_parameters_help = (): string => "auto uses the loaded model’s defaults. Seed -1 requests a random seed. Qwen Image 2.1 can use substantial prefix-cache memory; model arguments can disable it with qwen_image_2_1_prefix_cache=false.";

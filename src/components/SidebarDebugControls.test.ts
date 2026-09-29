@@ -1,7 +1,9 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ref } from 'vue';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryHistory, createRouter } from 'vue-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import SidebarDebugControls from './SidebarDebugControls.vue';
 
 const mocks = vi.hoisted(() => ({
@@ -12,17 +14,6 @@ const mocks = vi.hoisted(() => ({
   openRecent: vi.fn(),
   toggleDebug: vi.fn(),
   toggleWeshTerminal: vi.fn(),
-}));
-
-vi.mock('@/strings', () => ({
-  lazyStrings: {
-    SidebarDebugControls__debug_events: () => 'Debug events',
-    SidebarDebugControls__more_actions: () => 'More actions',
-    SidebarDebugControls__quick_access: () => 'Quick Access',
-    SidebarDebugControls__recent_chats: () => 'Recent chats',
-    SidebarDebugControls__file_explorer: () => 'File Explorer',
-    SidebarDebugControls__wesh_terminal: () => 'Wesh Terminal',
-  },
 }));
 
 vi.mock('@/00-storage/service', () => ({
@@ -63,10 +54,31 @@ vi.mock('@/features/debug-opfs-encryption/composables/usePersistenceControlInspe
   }),
 }));
 
-function mountControls() {
-  return mount(SidebarDebugControls, {
+let wrapper: VueWrapper | undefined;
+
+beforeEach(async () => {
+  vi.clearAllMocks();
+  mocks.inspectOpfsEncryption.mockResolvedValue({ type: 'plain' });
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+
+afterEach(() => {
+  wrapper?.unmount();
+  wrapper = undefined;
+});
+
+async function mountControls() {
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: '/', component: { template: '<div />' } },
+    { path: '/audio-generation', component: { template: '<div />' } },
+    { path: '/image-generation-lab', component: { template: '<div />' } },
+  ] });
+  await router.push('/');
+  await router.isReady();
+  wrapper = mount(SidebarDebugControls, {
     props: { isSidebarOpen: true },
     global: {
+      plugins: [router],
       stubs: {
         MessageActionsMenu: {
           template: '<div><slot /></div>',
@@ -74,16 +86,13 @@ function mountControls() {
       },
     },
   });
+  return { wrapper, router };
 }
 
 describe('SidebarDebugControls encrypted storage quick access', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it('keeps the Naidan control inspector disabled but exposes the Workbench for plaintext storage', async () => {
     mocks.inspectOpfsEncryption.mockResolvedValue({ type: 'plain' });
-    const wrapper = mountControls();
+    const { wrapper } = await mountControls();
 
     await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
     await flushPromises();
@@ -105,7 +114,7 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
         secondSequence: 1,
       }),
     );
-    const wrapper = mountControls();
+    const { wrapper } = await mountControls();
 
     await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
     await flushPromises();
@@ -121,7 +130,7 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
       type: 'encrypted',
       state: {},
     });
-    const wrapper = mountControls();
+    const { wrapper } = await mountControls();
 
     await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
     await flushPromises();
@@ -139,4 +148,20 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
     await wrapper.get('[data-testid="sidebar-hizofs-workbench-button"]').trigger('click');
     expect(mocks.openHizoFSWorkbench).toHaveBeenCalledOnce();
   });
+});
+
+it('opens the independent audio workspace from Quick Access and closes the menu', async () => {
+  const { wrapper, router } = await mountControls();
+  await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
+  const link = wrapper.get('[data-testid="sidebar-audio-generation-link"]'); expect(link.attributes('href')).toBe('/audio-generation');
+  await link.trigger('click'); await flushPromises(); expect(router.currentRoute.value.path).toBe('/audio-generation');
+  expect(wrapper.find('[data-testid="sidebar-audio-generation-link"]').exists()).toBe(false);
+});
+
+it('opens the independent image workspace from Quick Access and closes the menu', async () => {
+  const { wrapper, router } = await mountControls();
+  await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
+  const link = wrapper.get('[data-testid="sidebar-image-generation-link"]'); expect(link.attributes('href')).toBe('/image-generation-lab');
+  await link.trigger('click'); await flushPromises(); expect(router.currentRoute.value.path).toBe('/image-generation-lab');
+  expect(wrapper.find('[data-testid="sidebar-image-generation-link"]').exists()).toBe(false);
 });

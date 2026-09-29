@@ -15,11 +15,25 @@ import { repositoryUrlPath, type DownloadSelection } from '@/features/llama-cpp-
 import LlamaCppBrowserDefaultModelAction from './LlamaCppBrowserDefaultModelAction.vue';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
 import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles.vue';
-const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean }>();
-const emit = defineEmits<{ selectDefault: [model: LocalModel] }>();
+const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, selectionAction?: 'default' | 'select' }>();
+const emit = defineEmits<{ selectDefault: [model: LocalModel], select: [model: LocalModel] }>();
 const id = useId();
 const queue = getDownloadQueue();
-const multimodal = ref<MultimodalDownload>('off');
+const companionRequired = computed(() => {
+  const requirement = props.suggestion.companion;
+  switch (requirement) {
+  case 'required': return true;
+  case undefined: return false;
+  default: { const exhaustive: never = requirement; throw new Error(String(exhaustive)); }
+  }
+});
+const optionalMultimodal = ref<MultimodalDownload>('off');
+const multimodal = computed<MultimodalDownload>({
+  get: () => companionRequired.value ? 'on' : optionalMultimodal.value,
+  set: value => {
+    optionalMultimodal.value = value;
+  },
+});
 const quantizationId = ref(preferredQuantizationHint({ suggestion: props.suggestion }).id);
 const quantization = computed(() => props.suggestion.quantizationHints.find(choice => choice.id === quantizationId.value) ?? preferredQuantizationHint({ suggestion: props.suggestion }));
 const detailsOpen = ref(false);
@@ -40,6 +54,7 @@ const job = computed(() => queue.jobs.value.find(entry => entry.key === jobKey.v
 // after a settings-tab remount. Never inspect or resume just to render this row.
 for (const choice of props.suggestion.quantizationHints) {
   for (const requestedMultimodal of ['off', 'on'] as const) {
+    if (companionRequired.value && requestedMultimodal === 'off') continue;
     const key = suggestionDownloadKey({ suggestionId: props.suggestion.id, quantization: choice, multimodal: requestedMultimodal });
     if (queue.jobs.value.some(entry => entry.key === key && (jobIsBusy({ job: entry }) || entry.status === 'paused'))) {
       quantizationId.value = choice.id; multimodal.value = requestedMultimodal;
@@ -182,7 +197,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute inset-y-0 right-1 my-auto w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
         </div>
       </div>
-      <LlamaCppBrowserDefaultModelAction v-if="installed && !busy" :model="installed" :current="defaultModel" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @select="emit('selectDefault', $event)" />
+      <button v-if="installed && !busy && selectionAction === 'select'" type="button" data-testid="llama-suggestion-use" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 disabled:opacity-50" @click="emit('select', installed)">{{ lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
+      <LlamaCppBrowserDefaultModelAction v-else-if="installed && !busy" :model="installed" :current="defaultModel" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @select="emit('selectDefault', $event)" />
       <button
         v-else-if="!busy && job?.status !== 'paused' && job?.status !== 'failed'"
         type="button"
@@ -201,7 +217,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div tw-class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="llama-suggestion-metadata">
       <p tw-class="min-w-0 break-words text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">{{ suggestion.developer }} · {{ totalLabel }}</p>
       <div tw-class="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1" data-testid="llama-suggestion-options">
-        <div v-if="quantization.approximateMultimodalBytes !== undefined || canUseMultimodal || multimodal === 'on'" tw-class="flex items-center gap-2">
+        <span v-if="companionRequired" data-testid="llama-suggestion-companion-required" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__required_companion_included() }}</span>
+        <div v-else-if="quantization.approximateMultimodalBytes !== undefined || canUseMultimodal || multimodal === 'on'" tw-class="flex items-center gap-2">
           <span :id="`${id}-multimodal`" tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__multimodal_support() }}</span>
           <button type="button" role="switch" :aria-checked="multimodal === 'on'" :aria-labelledby="`${id}-multimodal`" data-testid="llama-suggestion-multimodal" :disabled="optionsLocked || (!canUseMultimodal && multimodal === 'off')" :tw-class="['relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed', multimodal === 'on' ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-700']" @click="multimodal = multimodal === 'off' ? 'on' : 'off'"><span :tw-class="['inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 mt-0.5 motion-reduce:transition-none', multimodal === 'on' ? 'translate-x-4' : 'translate-x-0.5']" /></button>
         </div>

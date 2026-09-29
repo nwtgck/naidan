@@ -19,7 +19,7 @@ export function validateHuggingFacePrivacyFetchUrl({ url }: { url: URL }): Priva
     parts.length === 4 || (parts.length === 6 && parts[4] === 'revision')
   );
   const tree = parts[0] === 'api' && parts[1] === 'models' && parts[4] === 'tree' && parts.length >= 6;
-  const resolve = parts[2] === 'resolve' && parts.length >= 5 && parts.at(-1)?.toLowerCase().endsWith('.gguf');
+  const resolve = parts[2] === 'resolve' && parts.length >= 5 && /\.(gguf|safetensors|sft)$/i.test(parts.at(-1) ?? '');
   if (!metadata && !tree && !resolve) return reject();
   const identifiers = resolve ? [parts[0], parts[1], parts[3]] : [parts[2], parts[3], ...(parts[5] === undefined ? [] : [parts[5]])];
   if (identifiers.some(part => part === undefined || !segmentPattern.test(part))) return reject();

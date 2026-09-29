@@ -34,7 +34,7 @@ const progress = computed(() => {
   case 'importing': return importScope.value ? value : undefined;
   case 'initializing': case 'loading': return importScope.value ? undefined : value;
   // The chat already has a streaming indicator. maxTokens is not a completion estimate.
-  case 'prefill': case 'generating': return undefined;
+  case 'prefill': case 'generating': case 'decoding-audio': return undefined;
   default: { const exhaustive: never = value.phase; throw new Error(`Unhandled phase: ${exhaustive}`); }
   }
 });
@@ -45,7 +45,7 @@ const phase = computed(() => {
   case 'initializing': return lazyStrings.llamaCppBrowser__initializing();
   case 'loading': return lazyStrings.llamaCppBrowser__loading();
   case 'prefill': return lazyStrings.llamaCppBrowser__prefill();
-  case 'generating': case undefined: return undefined;
+  case 'decoding-audio': case 'generating': case undefined: return undefined;
   default: { const exhaustive: never = value; return exhaustive; }
   }
 });

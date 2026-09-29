@@ -1,96 +1,98 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import PWAManager from './PWAManager.vue';
-import { usePWAUpdate } from '@/composables/usePWAUpdate';
-import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
 
-// 1. Mock the virtual module
-vi.mock('virtual:pwa-register/vue', () => ({
-  useRegisterSW: vi.fn(),
+// Mock one public boundary, typed against the real runtime. No App/router/theme
+// substitutes are needed, and an added application dependency needs no fixture edit.
+const runtime = vi.hoisted(() => ({
+  imported: vi.fn(),
+  start: vi.fn<typeof import('@/composables/pwa-update-runtime').startPWAUpdateRuntime>(),
 }));
-
-import { useRegisterSW } from 'virtual:pwa-register/vue';
-
-// 2. Mock usePWAUpdate
-vi.mock('../composables/usePWAUpdate', () => ({
-  usePWAUpdate: vi.fn(),
-}));
-
-// 3. Mock useGlobalEvents
-vi.mock('../composables/useGlobalEvents', () => ({
-  useGlobalEvents: vi.fn(),
-}));
-
-beforeEach(async () => {
-  await ensureAllStringsForTest({ locale: 'en' });
+vi.mock('@/composables/pwa-update-runtime', () => {
+  runtime.imported();
+  return { startPWAUpdateRuntime: runtime.start };
 });
 
-describe('PWAManager', () => {
-  const offlineReady = ref(false);
-  const needRefresh = ref(false);
-  const updateServiceWorker = vi.fn();
-  const setNeedRefresh = vi.fn();
-  const addInfoEvent = vi.fn();
+enableAutoUnmount(afterEach);
+let frames: FrameRequestCallback[];
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    offlineReady.value = false;
-    needRefresh.value = false;
+beforeEach(() => {
+  frames = [];
+  vi.clearAllMocks();
+  runtime.start.mockReset();
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+    frames.push(callback);
+    return frames.length;
+  });
+});
+afterEach(() => vi.restoreAllMocks());
 
-    (useRegisterSW as any).mockReturnValue({
-      offlineReady,
-      needRefresh,
-      updateServiceWorker,
-    });
+async function paint(): Promise<void> {
+  await nextTick();
+  frames.shift()?.(0);
+  await flushPromises();
+  frames.shift()?.(16);
+  await flushPromises();
+  await vi.dynamicImportSettled();
+}
 
-    (usePWAUpdate as any).mockReturnValue({
-      setNeedRefresh,
-    });
-
-    (useGlobalEvents as any).mockReturnValue({
-      addInfoEvent,
-    });
+describe('PWAManager post-surface-paint startup', () => {
+  it('does not import or start registration before a full paint opportunity', async () => {
+    mount(PWAManager);
+    expect(runtime.imported).not.toHaveBeenCalled();
+    expect(runtime.start).not.toHaveBeenCalled();
+    await nextTick();
+    expect(frames).toHaveLength(1);
+    frames.shift()?.(0);
+    await flushPromises();
+    expect(runtime.imported).not.toHaveBeenCalled();
+    expect(runtime.start).not.toHaveBeenCalled();
+    frames.shift()?.(16);
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    expect(runtime.start).toHaveBeenCalledOnce();
   });
 
-  it('adds an info event when offlineReady becomes true', async () => {
-    mount(PWAManager);
-    offlineReady.value = true;
-
-    await vi.waitFor(() => {
-      expect(addInfoEvent).toHaveBeenCalledWith({
-        source: 'PWA',
-        message: 'App ready to work offline',
-      });
-    });
-  });
-  it('updates the PWAUpdate store when needRefresh becomes true', async () => {
-    mount(PWAManager);
-    needRefresh.value = true;
-
-    await vi.waitFor(() => {
-      expect(setNeedRefresh).toHaveBeenCalledWith(expect.objectContaining({
-        refresh: true,
-        handler: expect.any(Function),
-      }));
-    });
-
-    // Verify the handler calls updateServiceWorker
-    const { handler } = (setNeedRefresh as any).mock.calls[0][0];
-    await handler();
-    expect(updateServiceWorker).toHaveBeenCalledTimes(1);
+  it('does not start after the auxiliary UI unmounts during its paint wait', async () => {
+    const wrapper = mount(PWAManager);
+    await nextTick();
+    wrapper.unmount();
+    await paint();
+    expect(runtime.start).not.toHaveBeenCalled();
   });
 
-  it('clears the update state when needRefresh becomes false', async () => {
-    mount(PWAManager);
-    needRefresh.value = false;
+  it('does not schedule a frame if unmounted before the DOM flush', async () => {
+    const wrapper = mount(PWAManager);
+    wrapper.unmount();
+    await nextTick();
+    expect(frames).toHaveLength(0);
+    expect(runtime.start).not.toHaveBeenCalled();
+  });
 
-    await vi.waitFor(() => {
-      expect(setNeedRefresh).toHaveBeenCalledWith({
-        refresh: false,
-        handler: undefined,
-      });
+  it('isolates registration startup failure from the Vue app', async () => {
+    const error = new Error('registration failed');
+    runtime.start.mockImplementation(() => {
+      throw error;
     });
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mount(PWAManager);
+    await paint();
+    expect(logged).toHaveBeenCalledWith('[PWA] Failed to start post-paint update checks.', error);
+  });
+
+  it.each([1, 2])('isolates failure while scheduling frame %s', async failingFrame => {
+    const error = new Error('frame scheduling failed');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let calls = 0;
+    vi.mocked(window.requestAnimationFrame).mockImplementation(callback => {
+      if (++calls === failingFrame) throw error;
+      frames.push(callback);
+      return calls;
+    });
+    mount(PWAManager);
+    await paint();
+    expect(runtime.start).not.toHaveBeenCalled();
+    expect(logged).toHaveBeenCalledWith('[PWA] Failed to start post-paint update checks.', error);
   });
 });

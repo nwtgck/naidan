@@ -1,0 +1,1 @@
+export const audioGeneration__step_limit_help = (): string => "The step limit is a safety ceiling, not a target length. Generation stops earlier when the model finishes. Raising it permits longer speech but can increase waiting time if the model does not stop.";

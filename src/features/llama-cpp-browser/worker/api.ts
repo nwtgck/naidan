@@ -1,3 +1,6 @@
+import { audioGenerationResultSchema, audioPreviewEventSchema } from '@/features/audio-generation/types';
+import { generateAudio } from './audio-generation';
+import { workerTransfer } from '@/utils/worker-transport';
 import { probeRuntimeProfiles } from '@/features/llama-cpp-browser/runtime/detect-profile';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
@@ -6,11 +9,11 @@ import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model
 import { logFailure, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
-import { errorCode, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema } from "@/features/llama-cpp-browser/types";
+import { errorCode, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreLock } from "@/features/llama-cpp-browser/runtime/model-store";
 import { invalidateStoredModel, releaseSession } from "./session";
 import { generate } from "./generation";
-import { workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
+import { workerAudioCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
 
 async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   try {
@@ -47,8 +50,78 @@ function eventQueue() {
   };
 }
 export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
-  let active: { generationId: number, controller: AbortController } | undefined;
+  let active: { generationId: number, controller: AbortController, finishAudio?: () => void, previewAudio?: ({ requestVersion }: { requestVersion: number }) => void } | undefined;
+  // Single-file and folder imports must share this lifetime: cancellation is
+  // acknowledged only after the importer has closed its streams and rolled back.
+  async function importWithCancellation({ generationId, report, operation }: {
+    generationId: number,
+    report: ({ progress }: { progress: Progress }) => void | Promise<void>,
+    operation: ({ signal, onProgress }: { signal: AbortSignal, onProgress: ({ progress }: { progress: Progress }) => void }) => Promise<LocalModel>,
+  }): Promise<LocalModel> {
+    if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+    const controller = new AbortController(); active = { generationId, controller };
+    const events = eventQueue();
+    try {
+      return await guarded({ operation: async () => modelSchema.parse(await operation({ signal: controller.signal, onProgress: ({ progress }) => {
+        events.send({ operation: () => {
+          if (!controller.signal.aborted) return report({ progress });
+        } });
+      } })) });
+    } finally {
+      try {
+        await events.finish();
+      } finally {
+        active = undefined;
+      }
+    }
+  }
   return {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with top-level proxy callbacks.
+    async generateAudio(request, onProgress, onDiagnostic, onPreview) {
+      const { generationId, ...accepted } = workerAudioCallSchema.parse(request);
+      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      const controller = new AbortController(); let finishRequested = false; let previewVersion = 0;
+      active = { generationId, controller, finishAudio: () => {
+        finishRequested = true;
+      }, previewAudio: ({ requestVersion }) => {
+        if (onPreview && !finishRequested && !controller.signal.aborted) previewVersion = Math.max(previewVersion, requestVersion);
+      } };
+      const events = eventQueue();
+      const unsubscribe = subscribeDiagnostics({ debug: accepted.debug, listener: ({ diagnostic }) => {
+        if (!controller.signal.aborted) return Promise.resolve(onDiagnostic({ diagnostic }));
+        return undefined;
+      } });
+      try {
+        const result = audioGenerationResultSchema.parse(await guarded({ operation: () => generateAudio({
+          request: accepted, cancellationSignal: controller.signal, shouldComplete: () => finishRequested,
+          preview: onPreview ? {
+            requestedVersion: () => previewVersion,
+            onPreview: async ({ ...event }) => {
+              if (controller.signal.aborted) return;
+              const acceptedEvent = audioPreviewEventSchema.parse(event);
+              // Acknowledge each user-requested copy before continuing. Do not
+              // build an unbounded event queue of large audio buffers.
+              await onPreview(workerTransfer({ value: acceptedEvent, transferables: [acceptedEvent.result.wav.buffer as ArrayBuffer] }));
+            },
+          } : undefined,
+          onProgress: ({ progress }) => {
+            events.send({ operation: () => {
+              if (!controller.signal.aborted) return onProgress(progress);
+            } });
+          },
+        }) }));
+        // Native memory was already copied and released. Transfer the owned bytes,
+        // rather than cloning a second full waveform across the worker boundary.
+        return workerTransfer({ value: result, transferables: [result.wav.buffer as ArrayBuffer] });
+      } finally {
+        unsubscribe();
+        try {
+          await events.finish();
+        } finally {
+          active = undefined;
+        }
+      }
+    },
     verifyStorage,
     async probeProfiles() {
       if (active) throw new LlamaCppBrowserError({ code: 'busy' });
@@ -60,43 +133,35 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     },
     listModels: () => guarded({ operation: async () => modelsSchema.parse(await listStoredModels()) }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, callback is a top-level argument.
-    importModel: (request, onProgress) => guarded({ operation: async () => {
-      const { file } = z.object({ file: z.instanceof(File) }).strict().parse(request);
-      const events = eventQueue();
-      try {
-        return modelSchema.parse(await importStoredModel({ file, onProgress: ({ progress }) => {
-          events.send({ operation: () => onProgress(progress) });
-        } }));
-      } finally {
-        await events.finish();
-      }
-    } }),
+    importModel: async (request, onProgress) => {
+      const { file, generationId } = z.object({ file: z.instanceof(File), generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().parse(request);
+      return importWithCancellation({ generationId, report: ({ progress }) => onProgress(progress), operation: ({ signal, onProgress }) => importStoredModel({ file, signal, onProgress }) });
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with a top-level callback.
     importDirectory: async (request, onProgress) => {
       const { directory, generationId } = z.object({ directory: modelDirectoryInputSchema, generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().parse(request);
-      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
-      const controller = new AbortController(); active = { generationId, controller };
-      const events = eventQueue();
-      try {
-        return await guarded({ operation: async () => modelSchema.parse(await importModelDirectory({ directory, signal: controller.signal, onProgress: ({ progress }) => {
-          events.send({ operation: () => {
-            if (!controller.signal.aborted) return onProgress(progress);
-          } });
-        } })) });
-      } finally {
-        try {
-          await events.finish();
-        } finally {
-          active = undefined;
-        }
-      }
+      return importWithCancellation({ generationId, report: ({ progress }) => onProgress(progress), operation: ({ signal, onProgress }) => importModelDirectory({ directory, signal, onProgress }) });
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, validate the wire object before use.
     removeModel: (request) => guarded({ operation: async () => {
       const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
       await invalidateStoredModel({ id: plan.id }); return removeStoredModel({ plan });
     } }),
-    // Cancellation intentionally bypasses the store lock held by generation.
+    // Like cancellation, this control must bypass the lock held by synthesis.
+    // Only its owning audio request is affected, never a chat or import.
+    async finishAudioGeneration({ generationId }) {
+      const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(generationId);
+      if (active?.generationId === id) active.finishAudio?.();
+    },
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Validate the complete untrusted Comlink request, including extra fields.
+    async requestAudioPreview(request) {
+      const { generationId, requestVersion } = z.object({
+        generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        requestVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      }).strict().parse(request);
+      if (active?.generationId === generationId) active.previewAudio?.({ requestVersion });
+    },
+    // Cancellation intentionally bypasses the store lock held by generation or imports.
     async cancelGeneration({ generationId }) {
       const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(generationId);
       if (active?.generationId === id) active.controller.abort();

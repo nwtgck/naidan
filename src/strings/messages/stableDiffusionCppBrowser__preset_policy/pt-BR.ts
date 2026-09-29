@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preset_policy = (): string => "Usa estrutura e metadados ou recibo verificado, não nomes. Prévia, resolução e memória são padrões do Naidan. Preserva textos, semente, ativação da prévia, perfil e orçamento.";

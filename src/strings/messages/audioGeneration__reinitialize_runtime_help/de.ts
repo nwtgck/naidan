@@ -1,0 +1,1 @@
+export const audioGeneration__reinitialize_runtime_help = (): string => "Nach einem Laufzeitfehler ohne Neuladen dieser Seite neu initialisieren. Gespeicherte Modelle, Text und Audioverlauf bleiben erhalten. Andere laufende Aufgaben werden nicht unterbrochen.";

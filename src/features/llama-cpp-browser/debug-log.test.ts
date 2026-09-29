@@ -5,6 +5,13 @@ import { errorCode, LlamaCppBrowserError } from './types';
 
 afterEach(() => vi.restoreAllMocks());
 describe('private browser diagnostics', () => {
+  it('reports a handled dispatch split as information, not a device failure', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const diagnostic = { event: 'native-info', nativeOperation: 'dispatch-split', nativeBackend: 'WebGPU',
+      dispatchAxis: 'x', dispatchCount: 116100, dispatchLimit: 65535, chunkCount: 2 } as const;
+    logDiagnostic({ diagnostic });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
+  });
   it('logs safe technical fields with the common prefix', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' } });

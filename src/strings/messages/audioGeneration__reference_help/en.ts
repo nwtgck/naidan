@@ -1,0 +1,1 @@
+export const audioGeneration__reference_help = (): string => "Optional for Qwen Base; required for Pocket. Each file must be at most 16 MiB; the selected audio must total at most 30 seconds. WAV, MP3 and FLAC work directly as a single reference. Other formats and concatenation require browser decoding. Use only voices you have permission to use.";

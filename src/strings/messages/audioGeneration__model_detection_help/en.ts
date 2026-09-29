@@ -1,0 +1,1 @@
+export const audioGeneration__model_detection_help = (): string => "Candidates are identified from metadata in the local model and its selected audio companion. This does not guarantee compatibility or audio quality. No models are loaded for inference or downloaded for this check.";

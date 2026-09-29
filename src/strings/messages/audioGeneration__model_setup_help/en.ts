@@ -1,0 +1,1 @@
+export const audioGeneration__model_setup_help = (): string => "Import a matching backbone GGUF and audio mmproj together as one model folder, or download the pair with the repository browser below. Keep only one backbone (or its shards) and one matching mmproj in the folder. Chat model suggestions are not shown here.";

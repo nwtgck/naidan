@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_z_image = (): string => "São necessários três arquivos: modelo de difusão, VAE compatível com Z-Image/FLUX.1 e codificador de texto Qwen3-4B. Comece com 8 etapas e orientação 1. O VAE abaixo vem da distribuição Z-Image.";

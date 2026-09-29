@@ -1,0 +1,1 @@
+export const audioGeneration__sampling_help = (): string => "トークンのサンプリング設定はQwenの本体に適用します。top K・top P・シードはネイティブの音声処理にも渡します。Pocketはトークンのサンプリング設定を使用せず、ネイティブの既定値で動作します。temperatureを0にしても音声の完全な再現性は保証されません。ステップ数は完了までの割合や固定の秒数ではありません。";

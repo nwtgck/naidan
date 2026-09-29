@@ -1,0 +1,1 @@
+export const audioGeneration__context_help = (): string => "Hier wird die gewünschte Kontextgröße angegeben. Sie wird auf den Trainingskontext des Modells begrenzt und kann bei Speichermangel kleiner ausfallen. Ein größerer Kontext benötigt mehr Speicher und beschleunigt die Erzeugung nicht. Die Audio-Schrittgrenze ist eine separate Einstellung.";

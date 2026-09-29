@@ -1,0 +1,1 @@
+export const audioGeneration__recorded_settings_help = (): string => "Dies sind die beim Start angeforderten Einstellungen. Der tatsächlich zugewiesene Kontext und das gewählte Profil können abweichen. Referenzaudio wird nicht im Verlauf gespeichert; ein zufälliger Seed lässt sich aus diesem Eintrag nicht rekonstruieren.";

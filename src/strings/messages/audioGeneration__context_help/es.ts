@@ -1,0 +1,1 @@
+export const audioGeneration__context_help = (): string => "Este es el tamaño de contexto solicitado. Se limita al contexto de entrenamiento del modelo y puede reducirse si falta memoria. Un contexto mayor usa más memoria y no acelera la generación. Es independiente del límite de pasos de audio.";

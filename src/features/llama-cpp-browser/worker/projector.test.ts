@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
-import { loadProjector } from './projector';
+import { loadProjector, loadProjectorForBackend } from './projector';
 
 const mount = vi.hoisted(() => ({ remove: vi.fn() }));
 vi.mock('../runtime/read-only-file', () => ({ mountReadOnlyFile: () => ({ remove: mount.remove }) }));
@@ -76,4 +76,13 @@ describe('projector callback ownership', () => {
     await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: undefined })).rejects.toThrow('close failed');
     expect(f.order).toEqual(['native-free', 'callback-free']);
   });
+});
+
+
+it.each(['cpu', 'profile'] as const)('applies the explicit %s audio backend independently of a WebGPU backbone', async backend => {
+  const f = fixture({ pointerBytes: 8 });
+  const projector = await loadProjectorForBackend({ core: f.core, model: 1n, file: f.file, profile: 'webgpu-wasm64-jspi', debug: 'off', signal: undefined, backend });
+  expect(f.fields.get('use_gpu')).toBe(backend === 'profile' ? 1 : 0);
+  expect(f.fields.get('n_threads')).toBe(1);
+  await projector.release(); expect(f.api.mtmd_free).toHaveBeenCalledExactlyOnceWith(500n);
 });

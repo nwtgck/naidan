@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_drop_help = (): string => "Create the three repository folders shown above, preserve every inner path, then drop those three folders into the local library (together or separately). Do not drop their common parent. Select the diffusion model; matching components are found across the imported repositories.";

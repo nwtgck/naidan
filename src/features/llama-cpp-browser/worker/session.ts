@@ -1,3 +1,4 @@
+import type { AudioBackend } from '@/features/audio-generation/types';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { Core } from "@/features/llama-cpp-browser/runtime/core";
 import { mountReadOnlyFile } from "@/features/llama-cpp-browser/runtime/read-only-file";
@@ -7,7 +8,7 @@ import { loadRuntime } from "@/features/llama-cpp-browser/runtime/load-runtime";
 import { resolveRuntimeProfile } from "@/features/llama-cpp-browser/runtime/detect-profile";
 import { logDiagnostic, logFailure } from "@/features/llama-cpp-browser/debug-log";
 import type { WorkerGenerateInput } from "./types";
-import { loadProjector, type ResidentProjector } from "./projector";
+import { loadProjector, loadProjectorForBackend, type ResidentProjector } from "./projector";
 import { probeNewContextSequenceRemoval, type SequenceRemoval } from './cache-capabilities';
 import { disposePromptCheckpoint, type PromptCheckpoint } from './prompt-checkpoint';
 
@@ -47,9 +48,32 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
 export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
   if (resident && resident.id === id) await releaseSession({ releaseRuntime: false });
 }
+type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBaseURL' | 'debug'>;
+type SessionPurpose = { kind: 'chat' } | { kind: 'audio', contextTokens: number, audioBackend: AudioBackend };
+
 export async function prepareSession({ request, onProgress, signal }: {
   request: WorkerGenerateInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
 }): Promise<{ core: Core, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval, slidingWindow: number, cache: PromptCache, projector: bigint }> {
+  const session = await prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'chat' } });
+  if (session.sequenceRemoval === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+  return { ...session, sequenceRemoval: session.sequenceRemoval };
+}
+
+/** Audio is a fresh, bounded context, never a chat-cache continuation. The caller
+ * owns releaseSession in a finally block, including failures during preparation. */
+export async function prepareAudioSession({ request, contextTokens, audioBackend, onProgress, signal }: {
+  request: SessionRequest, contextTokens: number, audioBackend: AudioBackend,
+  onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
+}) {
+  if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+  await releaseSession({ releaseRuntime: false });
+  return prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'audio', contextTokens, audioBackend } });
+}
+
+async function prepareResidentSession({ request, purpose, onProgress, signal }: {
+  request: SessionRequest, purpose: SessionPurpose,
+  onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
+}) {
   const checkCancelled = (): void => {
     if (signal?.aborted) {
       if (resident) {
@@ -72,6 +96,7 @@ export async function prepareSession({ request, onProgress, signal }: {
   runtime.requestedProfile = request.options.profile;
   const core = runtime.core; const api = core.api;
   const directory = await storedModelDirectory({ name: request.model });
+  if (purpose.kind === 'audio' && !directory.projectorPath) throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
   let unchanged = resident?.id === directory.id && resident.files.length === directory.files.length;
   if (unchanged && resident) {
     for (let index = 0; index < directory.files.length; index++) {
@@ -166,7 +191,11 @@ export async function prepareSession({ request, onProgress, signal }: {
     checkCancelled();
     const file = directory.files.find(file => file.path === directory.projectorPath);
     if (!file) throw new LlamaCppBrowserError({ code: 'storage-error' });
-    current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal });
+    switch (purpose.kind) {
+    case 'chat': current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal }); break;
+    case 'audio': current.projector = await loadProjectorForBackend({ core, model: current.model, file, profile, debug, signal, backend: purpose.audioBackend }); break;
+    default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+    }
   }
   checkCancelled();
   if (current.context === 0n) {
@@ -189,7 +218,17 @@ export async function prepareSession({ request, onProgress, signal }: {
       // This is an application allocation target, not an estimate of free device memory.
       // Reject unknown metadata; n_ctx=0 delegates to the model training capacity.
       if (!Number.isSafeInteger(trainingSize) || trainingSize < 1) throw new LlamaCppBrowserError({ code: "runtime-error" });
-      const target = Math.min(32768, trainingSize);
+      let contextTarget: number;
+      switch (purpose.kind) {
+      case 'chat': contextTarget = 32768; break;
+      case 'audio':
+        contextTarget = purpose.contextTokens;
+        core.setField({ name: 'llama_context_params', pointer: cp, field: 'embeddings', value: 1 });
+        core.setField({ name: 'llama_context_params', pointer: cp, field: 'pooling_type', value: core.constant({ name: 'LLAMA_POOLING_TYPE_NONE' }) });
+        break;
+      default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+      }
+      const target = Math.min(contextTarget, trainingSize);
       const floor = Math.min(4096, target);
       let requested = target;
       while (true) {
@@ -203,7 +242,11 @@ export async function prepareSession({ request, onProgress, signal }: {
         logDiagnostic({ diagnostic: { event: "context-retry", contextTokens: requested, reason: 'context-allocation' } });
       }
       try {
-        current.sequenceRemoval = await probeNewContextSequenceRemoval({ core, context: current.context });
+        switch (purpose.kind) {
+        case 'chat': current.sequenceRemoval = await probeNewContextSequenceRemoval({ core, context: current.context }); break;
+        case 'audio': break;
+        default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+        }
       } catch (error) {
         logFailure({ stage: 'cache-probe', error });
         throw error;
@@ -222,7 +265,6 @@ export async function prepareSession({ request, onProgress, signal }: {
     }
   }
   checkCancelled();
-  if (current.sequenceRemoval === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
   return { core, model: current.model, context: current.context, sequenceRemoval: current.sequenceRemoval, slidingWindow: current.slidingWindow, cache: current.cache, projector: current.projector?.pointer ?? 0n };
 }
 export const TEST_ONLY = {

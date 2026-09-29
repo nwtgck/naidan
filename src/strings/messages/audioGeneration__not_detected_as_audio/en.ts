@@ -1,0 +1,1 @@
+export const audioGeneration__not_detected_as_audio = (): string => "Not detected as audio";

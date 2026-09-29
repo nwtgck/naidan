@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__qwen_vae_help = (): string => "Für Qwen Image 2.1 mit aktivierten Kacheln. Behält die Ausgabeauflösung bei und vermeidet große Einzelkacheln. Eine Kompatibilitätsmaßnahme, keine Garantie gegen einfarbige Ergebnisse.";

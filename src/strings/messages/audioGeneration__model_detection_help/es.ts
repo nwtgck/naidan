@@ -1,0 +1,1 @@
+export const audioGeneration__model_detection_help = (): string => "Los candidatos se identifican mediante los metadatos del modelo local y su componente de audio seleccionado. Esto no garantiza compatibilidad ni calidad. La comprobación no carga modelos para inferencia ni los descarga.";

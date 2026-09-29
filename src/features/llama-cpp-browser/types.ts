@@ -28,7 +28,7 @@ export const modelsSchema = z.array(modelSchema);
 export const errorCodeSchema = z.enum([
   'unavailable', 'invalid-gguf', 'duplicate-model', 'missing-model', 'storage-error',
   'runtime-error', 'template-unsupported', 'context-full', 'unsupported-input',
-  'busy', 'aborted', 'worker-failed',
+  'busy', 'aborted', 'worker-failed', 'audio-model-unsupported', 'audio-reference-required', 'audio-reference-invalid', 'audio-output-empty',
 ]);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 export class LlamaCppBrowserError extends Error {
@@ -47,7 +47,7 @@ export function errorCode({ error }: { error: unknown }): ErrorCode {
   return 'runtime-error';
 }
 export const progressSchema = z.object({
-  phase: z.enum(['importing', 'initializing', 'loading', 'prefill', 'generating']),
+  phase: z.enum(['importing', 'initializing', 'loading', 'prefill', 'generating', 'decoding-audio']),
   completed: z.number().nonnegative().finite(), total: z.number().nonnegative().finite(),
 }).strict();
 export type Progress = z.infer<typeof progressSchema>;

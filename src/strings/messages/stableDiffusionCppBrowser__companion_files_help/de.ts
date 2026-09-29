@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__companion_files_help = (): string => "Manuelle Dateien umgehen die automatische Komponentenauswahl. Unterstützte GGUF- oder safetensors-Dateien verwenden. Shards und Indexdateien als vollständigen Ordner importieren.";

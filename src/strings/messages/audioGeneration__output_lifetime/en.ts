@@ -1,0 +1,1 @@
+export const audioGeneration__output_lifetime = (): string => "Completed audio and its settings stay in memory while this page is open, including during the next generation. Delete individual results or all results to release them. Nothing is saved automatically; save any WAV you need before leaving or reloading. Playback never starts automatically.";

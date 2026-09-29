@@ -1,0 +1,1 @@
+export const audioGeneration__finish_audio_help = (): string => "Finish generation and keep audio ends further steps. Cancel and discard drops audio not yet captured. Audio already added to history remains.";

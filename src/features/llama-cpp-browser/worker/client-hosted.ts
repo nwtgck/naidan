@@ -8,7 +8,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     const unavailable = async (): Promise<never> => {
       throw new LlamaCppBrowserError({ code: 'unavailable' });
     };
-    return { subscribeDisposed: () => () => {}, probeProfiles: unavailable, listModels: unavailable, importModel: unavailable, importDirectory: unavailable, removeModel: unavailable, generate: unavailable, canReuse: () => false, dispose() {} };
+    return { subscribeDisposed: () => () => {}, probeProfiles: unavailable, listModels: unavailable, importModel: unavailable, importDirectory: unavailable, removeModel: unavailable, generate: unavailable, generateAudio: unavailable, canReuse: () => false, dispose() {} };
   }
   const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-llama-cpp-browser' });
   const remote = wrapWorkerRemote<LlamaCppWorkerApi>({ endpoint: worker });

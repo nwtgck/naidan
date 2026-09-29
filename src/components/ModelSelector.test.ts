@@ -616,3 +616,36 @@ describe('ModelSelector.vue', () => {
     });
   });
 });
+
+describe('controlled local-model choices', () => {
+  const internalFetch = vi.fn();
+  beforeEach(() => {
+    vi.mocked(useSettings, { partial: true }).mockReturnValue({ availableModels: ref(['chat-only']), isFetchingModels: ref(true), fetchModels: internalFetch });
+    internalFetch.mockClear();
+  });
+  it('searches friendly labels and stable IDs while emitting the ID', async () => {
+    const wrapper = mount(ModelSelector, { props: { modelValue: 'a/1', models: ['a/1', 'b/2'], modelLabels: { 'a/1': 'Voice 日本語', 'b/2': 'Voice English' } } });
+    expect(wrapper.text()).toContain('Voice 日本語');
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click'); await flushPromises();
+    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
+    filter.value = 'English'; filter.dispatchEvent(new Event('input', { bubbles: true })); await nextTick();
+    const options = [...document.body.querySelectorAll<HTMLButtonElement>('[data-testid="model-selector-option"]')];
+    expect(options).toHaveLength(1); options[0]!.click(); await nextTick();
+    expect(wrapper.emitted('update:modelValue')).toEqual([['b/2']]);
+  });
+  it('does not refresh the chat provider when given an explicit local list', async () => {
+    const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models: ['local'], loading: false } });
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click'); await flushPromises();
+    const refresh = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-refresh"]')!;
+    expect(refresh.disabled).toBe(false); refresh.click(); await flushPromises();
+    expect(internalFetch).not.toHaveBeenCalled();
+  });
+  it('closes a teleported selector when disabled and cannot emit a programmatic selection', async () => {
+    const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models: ['local'] } });
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click'); await flushPromises();
+    const staleOption = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-option"]')!;
+    await wrapper.setProps({ disabled: true }); staleOption.click(); await nextTick();
+    expect(document.body.querySelector('[data-testid="model-selector-filter"]')).toBeNull();
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+  });
+});

@@ -123,8 +123,9 @@ async function buildFixture({ plugins, root }: {
   return outputChunks({ output });
 }
 
-async function createFixtureServer({ root }: {
+async function createFixtureServer({ root, manualWatchEvents = false }: {
   root: string;
+  manualWatchEvents?: boolean;
 }): Promise<ViteDevServer> {
   const server = await createServer({
     configFile: false,
@@ -139,6 +140,7 @@ async function createFixtureServer({ root }: {
     server: {
       hmr: false,
       middlewareMode: true,
+      ...(manualWatchEvents ? { watch: null } : {}),
     },
   });
   fixtureServers.push(server);
@@ -514,6 +516,43 @@ export const message = lazyStrings.${nextMessageKey}();
 
     await expect(server.ssrLoadModule('/src/main.ts')).resolves.toBeDefined();
   });
+
+  it.each(['en', 'ja'] as const)('recovers a cached missing-%s diagnostic on a change-only restoration', async (locale) => {
+    const root = createFixtureRoot();
+    const messagePath = path.join(root, `src/strings/messages/${messageKey}/${locale}.ts`);
+    const originalSource = fs.readFileSync(messagePath, 'utf8');
+    fs.rmSync(messagePath);
+    writeFile({
+      filePath: path.join(root, 'src/main.ts'),
+      source: `import { lazyStrings } from '@/strings';
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+    // Model a watcher's atomic unlink/add normalization deterministically.
+    // Real catalogs, files, Vite transforms and virtual modules remain in use.
+    const server = await createFixtureServer({ root, manualWatchEvents: true });
+    const transformed = await server.transformRequest('/src/main.ts');
+    const boundaryId = boundaryVirtualModuleId({ code: transformed?.code ?? '' });
+    const broken = await server.transformRequest(boundaryId);
+    expect(broken?.code).toContain(`Missing ${locale}.ts for catalog message`);
+    await expect(server.ssrLoadModule(boundaryId)).rejects.toThrow(
+      `Missing ${locale}.ts for catalog message`,
+    );
+
+    writeFile({ filePath: messagePath, source: originalSource });
+    server.watcher.emit('change', messagePath);
+    await waitForAsyncCondition({
+      condition: async () => {
+        const repaired = await server.transformRequest(boundaryId);
+        return repaired !== null && !repaired.code.includes('BoundaryStringDiagnosticError');
+      },
+      message: 'A restored locale is still serving its cached missing-file diagnostic.',
+    });
+    await expect(server.ssrLoadModule(boundaryId)).resolves.toBeDefined();
+    const identity = boundaryId.slice('virtual:naidan-boundary-strings/boundary/'.length);
+    const pack = await server.ssrLoadModule(`virtual:naidan-boundary-strings/pack/${locale}/${identity}`) as Record<string, () => string>;
+    expect(pack[messageKey]?.()).toBe(`${locale} message`);
+  }, 10_000);
 
   it('invalidates a source module when a watched catalog removes its key', async () => {
     const root = createFixtureRoot();

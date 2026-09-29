@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_help = (): string => "É possível mudar a ativação, o intervalo e o lado máximo durante a geração. Projeções pequenas são ampliadas apenas na tela, sem acrescentar detalhes ou pixels à imagem salva. Prévias detalhadas exigem decodificação extra; uma exibição menor não reduz esse trabalho.";

@@ -236,7 +236,12 @@ onMounted(() => {
 onUnmounted(() => {
   disposed = true; active.value?.abort(); window.removeEventListener('focus', recheckLocalFiles);
 });
-defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
+async function inspectRepository({ input: requestedInput }: { input: string }): Promise<void> {
+  if (props.disabled || active.value || deleting.value || disposed) return;
+  input.value = requestedInput;
+  await inspect();
+}
+defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <section tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="llama-hf-manager">

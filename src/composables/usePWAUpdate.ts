@@ -1,36 +1,38 @@
-import { ref } from 'vue';
+import { computed, shallowRef } from 'vue';
 
-const needRefresh = ref(false);
-const updateHandler = ref<(() => Promise<void>) | undefined>(undefined);
+export type PWAUpdateState =
+  | { kind: 'idle' }
+  | { kind: 'preparing'; handler?: () => Promise<void> }
+  | { kind: 'ready'; handler: () => Promise<void> };
+
+// Availability and the in-flight click are independent. Lifecycle events may
+// replace the action while it runs, without allowing a second concurrent click.
+const state = shallowRef<PWAUpdateState>({ kind: 'idle' });
+const applying = shallowRef(false);
+const status = computed(() => applying.value ? 'applying' : state.value.kind);
+const canUpdate = computed(() => !applying.value && state.value.kind !== 'idle' && state.value.handler !== undefined);
 
 export function usePWAUpdate() {
-  const setNeedRefresh = ({ refresh, handler }: {
-    refresh: boolean,
-    handler: (() => Promise<void>) | undefined,
-  }) => {
-    needRefresh.value = refresh;
-    updateHandler.value = handler;
-  };
-
-  const update = async () => {
-    if (updateHandler.value) {
-      await updateHandler.value();
+  function setUpdateState({ next }: { next: PWAUpdateState }): void {
+    state.value = next;
+  }
+  async function update(): Promise<void> {
+    const current = state.value;
+    if (applying.value || current.kind === 'idle' || !current.handler) return;
+    applying.value = true;
+    try {
+      await current.handler();
+    } finally {
+      // Handlers await actual activation/acknowledgement and request the reload.
+      // If navigation is cancelled, keep the CURRENT action usable, not an
+      // everlasting "applying" flag or a restored obsolete action.
+      applying.value = false;
     }
-  };
-
-  return {
-    needRefresh,
-    update,
-    setNeedRefresh,
-    ...((__BUILD_MODE_IS_TEST__ && {
-      TEST_ONLY: {
-        // Export internal state and logic used only for testing here. Do not reference these in production logic.
-      },
-    }) || {}),
+  }
+  return { status, canUpdate, update, setUpdateState,
+    ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }
 
-// Export internal state and logic used only for testing here. Do not reference these in production logic.
-// ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
 };

@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_drop_help = (): string => "Crie as três pastas de repositório acima e preserve os caminhos internos. Arraste as três pastas juntas ou separadamente para a biblioteca local, não a pasta pai comum. Selecione o modelo de difusão; os componentes compatíveis serão procurados nos repositórios importados.";

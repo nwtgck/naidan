@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_qwen_image = (): string => "텍스트 기반 생성에는 확산 모델, Qwen Image 2.1 전용 VAE, Qwen3-VL-8B 텍스트 인코더의 세 파일이 필요합니다. 이전 Qwen Image VAE는 사용할 수 없습니다. 텍스트 기반 생성에는 mmproj가 필요하지 않으며 이 화면은 이미지 편집을 지원하지 않습니다.";

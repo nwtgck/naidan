@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__advanced_parameters_help = (): string => "auto verwendet die Modellvorgaben. Seed -1 wählt einen Zufallswert. Der Präfix-Cache von Qwen Image 2.1 kann viel Speicher belegen; qwen_image_2_1_prefix_cache=false deaktiviert ihn in den Modellargumenten.";

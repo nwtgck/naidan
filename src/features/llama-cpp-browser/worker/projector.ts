@@ -1,3 +1,4 @@
+import type { AudioBackend } from '@/features/audio-generation/types';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { mountReadOnlyFile } from '@/features/llama-cpp-browser/runtime/read-only-file';
@@ -8,6 +9,11 @@ import { createProjectorTrace } from './projector-trace';
 export type ResidentProjector = { pointer: bigint, debug: 'off' | 'on', release: () => Promise<void> };
 export async function loadProjector({ core, model, file, profile, debug, signal }: {
   core: Core, model: bigint, file: ModelFile, profile: LlamaCppProfile, debug: 'off' | 'on', signal: AbortSignal | undefined,
+}): Promise<ResidentProjector> {
+  return loadProjectorForBackend({ core, model, file, profile, debug, signal, backend: 'profile' });
+}
+export async function loadProjectorForBackend({ core, model, file, profile, debug, signal, backend }: {
+  core: Core, model: bigint, file: ModelFile, profile: LlamaCppProfile, debug: 'off' | 'on', signal: AbortSignal | undefined, backend: AudioBackend,
 }): Promise<ResidentProjector> {
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -66,7 +72,7 @@ export async function loadProjector({ core, model, file, profile, debug, signal 
     } }, maxChunkBytes: 8 * 1024 * 1024 });
     const params = core.allocRecord({ name: 'mtmd_context_params' }); allocations.push(params);
     await core.api.mtmd_context_params_default(params);
-    core.setField({ name: 'mtmd_context_params', pointer: params, field: 'use_gpu', value: usesWebGpu({ profile }) ? 1 : 0 });
+    core.setField({ name: 'mtmd_context_params', pointer: params, field: 'use_gpu', value: backend === 'profile' && usesWebGpu({ profile }) ? 1 : 0 });
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'n_threads', value: 1 });
     switch (debug) {
     case 'on': trace = createProjectorTrace({ core }); break;

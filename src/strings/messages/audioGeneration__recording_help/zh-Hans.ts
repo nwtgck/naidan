@@ -1,0 +1,1 @@
+export const audioGeneration__recording_help = (): string => "Recording starts only after you press Record and allow microphone access. It stops automatically at about 30 seconds. No recording is sent to a server.";

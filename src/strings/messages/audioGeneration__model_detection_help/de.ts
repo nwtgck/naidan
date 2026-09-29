@@ -1,0 +1,1 @@
+export const audioGeneration__model_detection_help = (): string => "Kandidaten werden anhand der Metadaten des lokalen Modells und seiner ausgewählten Audiokomponente erkannt. Dies garantiert weder Kompatibilität noch Audioqualität. Dabei werden keine Modelle für die Inferenz geladen oder heruntergeladen.";

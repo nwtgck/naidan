@@ -25,6 +25,9 @@ export type SuggestedQuantization = {
   suggestedMultimodalMemoryGiB: number | undefined,
 };
 export type ModelSuggestion = {
+  // Some pipelines require a companion even for text-only inputs (e.g. TTS).
+  // Its presence is resolved on an explicit download, never by mounting a row.
+  companion?: 'required',
   id: string,
   name: string,
   developer: string,

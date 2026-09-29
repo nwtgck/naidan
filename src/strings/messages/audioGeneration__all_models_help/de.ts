@@ -1,0 +1,1 @@
+export const audioGeneration__all_models_help = (): string => "Für fehlende, unbekannte oder nicht lesbare Metadaten. Nicht erkannte Modelle bleiben auswählbar; bei der Erzeugung werden sie weiterhin geprüft und können als nicht unterstützt gemeldet werden.";

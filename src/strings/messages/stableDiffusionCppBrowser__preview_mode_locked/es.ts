@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preview_mode_locked = (): string => "Este motor fija el decodificador al iniciar el muestreo. Cambia el modo antes de la siguiente generación; los demás controles siguen activos.";

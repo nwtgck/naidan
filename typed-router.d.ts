@@ -38,6 +38,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/audio-generation': RouteRecordInfo<
+      '/audio-generation',
+      '/audio-generation',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/chat/[id]': RouteRecordInfo<
       '/chat/[id]',
       '/chat/:id',
@@ -62,6 +69,13 @@ declare module 'vue-router/auto-routes' {
     '/debug/standalone': RouteRecordInfo<
       '/debug/standalone',
       '/debug/standalone',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/image-generation-lab': RouteRecordInfo<
+      '/image-generation-lab',
+      '/image-generation-lab',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -101,6 +115,14 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/audio-generation.vue': {
+      routes:
+        | '/audio-generation'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/chat/[id].vue': {
       routes:
         | '/chat/[id]'
@@ -128,6 +150,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/debug/standalone.vue': {
       routes:
         | '/debug/standalone'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/image-generation-lab.vue': {
+      routes:
+        | '/image-generation-lab'
       views:
         | never
       pathParamNames:

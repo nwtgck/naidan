@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__uniform_image_warning = (): string => "Die ausgegebenen Pixel sind einfarbig. Falls unbeabsichtigt, prüfen Sie das Diagnoseprotokoll. Keine automatische Neugenerierung.";

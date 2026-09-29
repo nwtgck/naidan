@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__companion_files_help = (): string => "Arquivos manuais ignoram a seleção automática. Use GGUF ou safetensors compatíveis. Para fragmentos ou índices, importe a pasta completa acima.";

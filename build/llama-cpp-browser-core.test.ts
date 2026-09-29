@@ -36,7 +36,11 @@ describe('shared browser core adapter', () => {
       const source = readFileSync(realPath, 'utf8');
       const start = source.indexOf('var ENVIRONMENT_IS_WEB=');
       const adapted = transformBrowserCore({ source, id: realPath, profile }).code;
-      expect(adapted.slice(0, start)).toBe(source.slice(0, start));
+      const injection = 'var navigator=Module["naidanNavigator"]??globalThis.navigator;';
+      expect(adapted.split(injection)).toHaveLength(profile.startsWith('webgpu-') ? 2 : 1);
+      // All other loader prologue bytes remain untouched; the hash guard still
+      // rejects every unreviewed native artifact before this scoped insertion.
+      expect(adapted.replace(injection, '').slice(0, start)).toBe(source.slice(0, start));
       expect(() => transformBrowserCore({ source: source + '\n', id: realPath, profile })).toThrow('Unreviewed');
     } finally {
       await server.close(); rmSync(root, { recursive: true, force: true });

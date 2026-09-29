@@ -1,0 +1,1 @@
+export const audioGeneration__language_help = (): string => "El idioma inicial coincide con el de la aplicación cuando es compatible. Selecciona el idioma explícitamente. El valor predeterminado del modelo usa inglés en Qwen, no detección automática. Pocket usa el idioma con el que se entrenó, independientemente de este ajuste.";

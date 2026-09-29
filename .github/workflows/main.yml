@@ -359,8 +359,15 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           # Curated access is intentionally an access-range superset of
           # local-only: keep local-only script/style/img/font/connect
-          # allowances, then add only the Wikipedia/Wikimedia endpoints and
-          # the sandbox broker requirements.
+          # allowances, then add Wikipedia/Wikimedia, Hugging Face model
+          # downloads, and the sandbox broker requirements.
+          # Hugging Face Hub metadata and /resolve/ download redirects use
+          # huggingface.co; model-file storage/CDN hosts use *.hf.co (for
+          # example, us.aws.cdn.hf.co). Do not pin a region or cloud provider.
+          # In CSP, *.hf.co includes nested subdomains, but not hf.co itself.
+          # Keep these additions in connect-src only; they allow connections
+          # to these hosts, not download-only paths or HTTP methods.
+          # Do not add hf.co, *.huggingface.co, or *.hf.space.
           # Safari may not treat script-src 'self' as sufficient for module
           # scripts loaded inside an opaque-origin sandbox iframe, so keep the
           # explicit naidan-curated origins in script-src.
@@ -381,7 +388,7 @@ jobs:
           /*
             Cross-Origin-Opener-Policy: same-origin
             Cross-Origin-Embedder-Policy: require-corp
-            Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://naidan-curated.pages.dev https://*.naidan-curated.pages.dev; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.wikipedia.org https://*.wikimedia.org; frame-src 'self'; child-src 'self'; worker-src 'self' blob:; frame-ancestors 'self'; form-action 'none'; manifest-src 'self'
+            Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://naidan-curated.pages.dev https://*.naidan-curated.pages.dev; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.wikipedia.org https://*.wikimedia.org https://huggingface.co https://*.hf.co; frame-src 'self'; child-src 'self'; worker-src 'self' blob:; frame-ancestors 'self'; form-action 'none'; manifest-src 'self'
 
           /privacy-fetch-broker.html
             Cross-Origin-Resource-Policy: cross-origin

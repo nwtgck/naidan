@@ -1,0 +1,1 @@
+export const audioGeneration__all_models_help = (): string => "Use quando os metadados estiverem ausentes, forem desconhecidos ou não puderem ser lidos. Modelos não detectados continuam selecionáveis; a geração ainda os verifica e pode informar que não são compatíveis.";

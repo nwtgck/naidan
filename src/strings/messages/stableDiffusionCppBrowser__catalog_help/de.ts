@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_help = (): string => "Wählen Sie Diffusionsmodell, Bilddecoder und Textencoder. Herunterladen und auswählen lädt nur diese Dateien in den lokalen Speicher. Öffnen und Ändern von Optionen verursacht keine Netzwerkanfragen. Gespeicherte Dateien werden offline ausgewählt.";

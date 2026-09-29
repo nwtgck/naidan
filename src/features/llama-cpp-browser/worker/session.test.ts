@@ -1,22 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
-import type { loadProjector } from './projector';
+import type { loadProjector, loadProjectorForBackend } from './projector';
 import type { WorkerGenerateInput } from './types';
-import { prepareSession, releaseSession } from './session';
+import { prepareSession, prepareAudioSession, releaseSession } from './session';
 
-const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as ModelDirectory | undefined, load: vi.fn<typeof loadProjector>() }));
+const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as ModelDirectory | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
 vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => host.core }));
 vi.mock('../runtime/detect-profile', () => ({ resolveRuntimeProfile: async () => 'cpu-wasm32' }));
 vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => host.directory }));
 vi.mock('../runtime/read-only-file', () => ({ mountReadOnlyFile: () => ({ remove: () => {} }) }));
-vi.mock('./projector', () => ({ loadProjector: host.load }));
+vi.mock('./projector', () => ({ loadProjector: host.load, loadProjectorForBackend: host.loadAudio }));
 function request({ debug }: { debug: 'off' | 'on' }): WorkerGenerateInput {
   return { debug, model: 'Model', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/' };
 }
 const releases: ReturnType<typeof vi.fn>[] = [];
 beforeEach(() => {
-  releases.length = 0; host.load.mockReset(); let pointer = 100n;
+  releases.length = 0; host.load.mockReset(); host.loadAudio.mockReset(); let pointer = 100n;
   host.core = {
     api: { llama_model_default_params: vi.fn(async () => {}), llama_model_load_from_file: vi.fn(async () => 10n),
       llama_context_default_params: vi.fn(async () => {}), llama_model_n_ctx_train: vi.fn(async () => 64),
@@ -30,7 +30,7 @@ beforeEach(() => {
     pointerBytes: 4, module: { addFunction: vi.fn(() => 1), removeFunction: vi.fn() },
     alloc: () => ++pointer, bytes: () => new Uint8Array(8).fill(1),
     fieldLayout: () => ({ offset: 0n, size: 1, kind: 'boolean' }),
-    allocRecord: () => ++pointer, utf8: () => ++pointer, setField: () => {}, free: () => {}, constant: () => 0,
+    allocRecord: () => ++pointer, utf8: () => ++pointer, setField: vi.fn(() => {}), free: () => {}, constant: () => 0,
   } as unknown as Core;
   host.directory = { id: 'Model', name: 'Model', modelPath: 'model.gguf', projectorPath: 'mmproj.gguf', files: ['model.gguf', 'mmproj.gguf'].map(path => ({ path, file: new File(['x'], path, { lastModified: 1 }),
     handle: { isSameEntry: async () => true, createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close: () => {} }) } as unknown as FileSystemFileHandle,
@@ -39,6 +39,9 @@ beforeEach(() => {
     const release = vi.fn(async () => {}); releases.push(release);
     return { pointer: BigInt(30 + releases.length), debug, release };
   });
+});
+beforeEach(() => {
+  host.loadAudio.mockImplementation(host.load);
 });
 afterEach(async () => {
   await releaseSession({ releaseRuntime: true });
@@ -121,5 +124,31 @@ describe('resident projector debug changes', () => {
     expect(retried.sequenceRemoval).toBe('partial');
     expect(retried.cache).toEqual({ tokens: [], validity: 'invalid', checkpoint: undefined });
     expect(core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('dedicated audio context configuration', () => {
+  it('uses embeddings, bounded context and no chat cache-removal probe', async () => {
+    const core = host.core!; vi.mocked(core.api.llama_model_n_ctx_train).mockResolvedValue(32768);
+    const loaded = await prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 4096, audioBackend: 'cpu', onProgress: () => {}, signal: undefined });
+    expect(loaded.projector).not.toBe(0n);
+    expect(core.setField).toHaveBeenCalledWith(expect.objectContaining({ name: 'llama_context_params', field: 'n_ctx', value: 4096 }));
+    expect(core.setField).toHaveBeenCalledWith(expect.objectContaining({ name: 'llama_context_params', field: 'embeddings', value: 1 }));
+    expect(core.setField).toHaveBeenCalledWith(expect.objectContaining({ name: 'llama_context_params', field: 'pooling_type' }));
+    expect(host.loadAudio).toHaveBeenCalledWith(expect.objectContaining({ backend: 'cpu' }));
+    expect(host.load).toHaveBeenCalledOnce(); // The test's audio loader delegates to the common fixture.
+    expect(core.api.llama_decode).not.toHaveBeenCalled(); expect(core.api.llama_memory_seq_rm).not.toHaveBeenCalled();
+  });
+  it('releases resident chat state before allocating an audio context and honors the explicit backend', async () => {
+    const core = host.core!; await prepareSession({ request: request({ debug: 'off' }), onProgress: () => {}, signal: undefined });
+    await prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 2048, audioBackend: 'profile', onProgress: () => {}, signal: undefined });
+    expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(20n); expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
+    expect(releases[0]).toHaveBeenCalledOnce(); expect(host.loadAudio).toHaveBeenCalledWith(expect.objectContaining({ backend: 'profile' }));
+    expect(core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
+  });
+  it('rejects missing audio companions before native model allocation', async () => {
+    host.directory!.projectorPath = undefined;
+    await expect(prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 4096, audioBackend: 'cpu', onProgress: () => {}, signal: undefined })).rejects.toThrow('audio-model-unsupported');
+    expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
   });
 });

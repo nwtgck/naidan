@@ -1,0 +1,1 @@
+export const audioGeneration__reference_collection_help = (): string => "References stay in this page’s memory only. The newest file is selected; check others to join them in displayed order (not simultaneous mixing, 30 seconds total). Prefer recordings of the same speaker. Adding speakers does not guarantee a useful blended voice.";

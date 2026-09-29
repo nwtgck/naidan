@@ -243,6 +243,13 @@ export function createBoundaryStringServeCoordinator({
       const kindOfEvent = fileEventKind({ event });
       switch (kindOfEvent) {
       case 'content':
+        // Atomic unlink/add pairs can be reported as one change. A virtual
+        // diagnostic emitted while the locale was absent must not survive its
+        // restoration. Do not turn ordinary edits of a valid catalog into a
+        // full reload or a filesystem-wide catalog read.
+        if (catalogState.markDirtyIfInvalid()) {
+          requestSignal({ signal: 'revision' });
+        }
         break;
       case 'topology':
         markStructureDirty();

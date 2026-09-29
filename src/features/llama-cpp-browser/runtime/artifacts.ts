@@ -3,6 +3,8 @@ import { LlamaCppBrowserError, type LlamaCppProfile } from '@/features/llama-cpp
 
 export type CoreModuleOptions = {
   wasmBinary: Uint8Array;
+  // Consumed by Naidan's build adapter, not an upstream Emscripten option.
+  naidanNavigator?: Pick<Navigator, 'gpu'>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.
   print: (message: unknown) => void;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.

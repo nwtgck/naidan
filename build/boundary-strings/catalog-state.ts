@@ -17,6 +17,7 @@ export type BoundaryStringCatalogResolution =
 
 export type BoundaryStringCatalogState = {
   markDirty(): void;
+  markDirtyIfInvalid(): boolean;
   resolve(): BoundaryStringCatalogResolution;
   resolveForBoundary({ keys, moduleId }: {
     keys: readonly string[];
@@ -36,6 +37,26 @@ export function createBoundaryStringCatalogState({ readCatalog }: {
     generation += 1;
     resolvedGeneration = undefined;
     unknownProbeGeneration = undefined;
+  }
+
+  /** A restored locale can arrive as a content change after an atomic file
+   * replacement. Valid catalogs keep normal content-only module updates; an
+   * already-invalid snapshot must be revalidated instead of cached forever. */
+  function markDirtyIfInvalid(): boolean {
+    if (resolution === undefined) {
+      return false;
+    }
+    switch (resolution.status) {
+    case 'valid':
+      return false;
+    case 'invalid':
+      markDirty();
+      return true;
+    default: {
+      const _exhaustive: never = resolution;
+      throw new Error(`Unsupported Boundary Strings catalog resolution: ${String(_exhaustive)}`);
+    }
+    }
   }
 
   function readAndCache(): BoundaryStringCatalogResolution {
@@ -132,6 +153,7 @@ export function createBoundaryStringCatalogState({ readCatalog }: {
 
   return {
     markDirty,
+    markDirtyIfInvalid,
     resolve,
     resolveForBoundary,
   };

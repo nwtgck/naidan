@@ -66,7 +66,8 @@ describe('pinned standalone native artifacts', () => {
     const source = readFileSync(coreId, 'utf8');
     const transformed = transformBrowserCore({ source, id: coreId, profile: 'webgpu-wasm64-jspi' }).code;
     const guardsEnd = source.indexOf('var ENVIRONMENT_IS_WEB=');
-    expect(transformed.slice(0, guardsEnd)).toBe(source.slice(0, guardsEnd));
+    expect(transformed).toContain('var navigator=Module["naidanNavigator"]??globalThis.navigator;');
+    expect(transformed.replace('var navigator=Module["naidanNavigator"]??globalThis.navigator;', '').slice(0, guardsEnd)).toBe(source.slice(0, guardsEnd));
     expect(transformed).not.toContain('This page was compiled without support for Safari browser');
     expect(transformed).not.toContain('import("node:module")');
     expect(transformed).not.toContain('require("node:fs")');

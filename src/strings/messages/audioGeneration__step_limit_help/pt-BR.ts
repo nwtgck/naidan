@@ -1,0 +1,1 @@
+export const audioGeneration__step_limit_help = (): string => "O limite de etapas é um teto de segurança, não uma duração desejada. A geração para antes quando o modelo termina. Aumentá-lo permite falas mais longas, mas pode aumentar a espera se o modelo não parar.";
