@@ -36,7 +36,10 @@ it('keeps the entire image form visible and disabled in standalone', async () =>
   expect(wrapper.get('[data-testid="image-unavailable"]').text()).toContain('hosted');
   expect(wrapper.find('[data-testid="image-file-model"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="image-prompt"]').exists()).toBe(true);
-  expect(wrapper.findAll('fieldset')).toHaveLength(4);
+  // Model, basic draft, sampling, runtime, and benchmark controls stay locked.
+  const fieldsets = wrapper.findAll<HTMLFieldSetElement>('fieldset');
+  expect(fieldsets).toHaveLength(5);
+  for (const fieldset of fieldsets) expect(fieldset.element.disabled).toBe(true);
   expect(wrapper.get('[data-testid="image-input-initial"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.get('[data-testid="image-input-references"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.get('[data-testid="image-lora-files"]').element.matches(':disabled')).toBe(true);
