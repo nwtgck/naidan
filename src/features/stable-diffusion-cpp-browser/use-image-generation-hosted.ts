@@ -112,6 +112,9 @@ export function useImageGeneration(): ImageGenerationView {
   let generateStartedAt = 0;
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const busy = computed(() => controller.value !== undefined);
+  // Basic inputs are a draft for the next immutable request. Context changes
+  // and submission retain the stricter formDisabled guard below.
+  const draftDisabled = computed(() => preferenceRestoring.value || benchmarkActive.value || historyActions.busy.value || configuration.kind === 'unavailable');
   const formDisabled = computed(() => preferenceRestoring.value || busy.value || benchmarkActive.value || historyActions.busy.value || historySaving.status.value === 'saving' || configuration.kind === 'unavailable');
   const library = useImageLibrary({ downloadsBlocked: () => configuration.kind === 'unavailable', blocked: () => formDisabled.value, dependencies: undefined,
     onSelection({ family, turbo }) {
@@ -181,7 +184,7 @@ export function useImageGeneration(): ImageGenerationView {
     return String(Math.max(1, crypto.getRandomValues(new Uint32Array(1))[0] ?? 1));
   }
   function randomizeSeed(): void {
-    if (formDisabled.value || disposed) return;
+    if (draftDisabled.value || disposed) return;
     parameters.value.seed = randomSeed();
     seedMode.value = 'fixed';
   }
@@ -663,7 +666,7 @@ export function useImageGeneration(): ImageGenerationView {
     savedHistoryIds.value.clear();
     modelResident.value = false; finalGallery.clear(); clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, draftDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

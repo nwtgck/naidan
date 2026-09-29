@@ -75,6 +75,7 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
   },
   {
     id: 'anima-turbo-1.1', title: 'Anima Turbo 1.1',
+    recommendation: 'maintainer-tested',
     source: 'https://huggingface.co/circlestone-labs/Anima',
     files: [
       { role: 'diffusion', repository: 'circlestone-labs/Anima', revision: 'f973fc41ec7545364ac9776c2440285f43ff2a30', path: 'split_files/diffusion_models/anima-turbo-v1.1.safetensors', directory: 'Anima', approximateBytes: 4182000000 },

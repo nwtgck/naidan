@@ -85,6 +85,13 @@ it('keeps restored OPFS history lazy while another tab is active', async () => {
   expect(wrapper.get('[data-testid="image-history-workspace"]').text()).toContain('saved forest');
 });
 
+it('passes a separate record-delete lock while form and binary actions remain disabled', async () => {
+  wrapper = mount(ImageGenerationLab, { props: { tab: 'history' } }); await flushPromises();
+  const history = wrapper.getComponent(ImageGenerationHistory);
+  expect(history.props('disabled')).toBe(true);
+  expect(history.props('recordDeleteDisabled')).toBe(false);
+});
+
 it('ignores an old query and refreshes the visible tab after OPFS returns', async () => {
   const pending = Promise.withResolvers<ImageGenerationHistoryPage>();
   mocks.query.mockReturnValueOnce(pending.promise);

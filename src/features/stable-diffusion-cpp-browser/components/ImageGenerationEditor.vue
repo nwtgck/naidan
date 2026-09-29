@@ -13,7 +13,7 @@ const props = defineProps<{ view: ImageGenerationView, active: boolean }>();
 const emit = defineEmits<{ manageModels: [] }>();
 const id = useId();
 const configurationOpen = ref(false);
-const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
+const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
 const inferenceRunning = computed(() => busy.value && progress.value !== undefined);
 const hasModel = computed(() => !!library.main.value || !!files.value.model || !!files.value.diffusion);
 const slots = computed(() => {
@@ -40,7 +40,7 @@ const weightResidencyOptions = computed(() => [
 ]);
 const resolutions = [{ width: 256, height: 256 }, { width: 512, height: 512 }, { width: 768, height: 768 }, { width: 1024, height: 1024 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }];
 function setResolution({ width, height }: { width: number, height: number }): void {
-  if (formDisabled.value) return;
+  if (draftDisabled.value) return;
   parameters.value.width = width;
   parameters.value.height = height;
 }
@@ -52,7 +52,7 @@ function chooseResolution({ event }: { event: Event }): void {
   if (size) setResolution(size);
 }
 function changeSeed({ event }: { event: Event }): void {
-  if (formDisabled.value || !(event.target instanceof HTMLInputElement)) return;
+  if (draftDisabled.value || !(event.target instanceof HTMLInputElement)) return;
   parameters.value.seed = event.target.value;
   seedMode.value = 'fixed';
 }
@@ -91,9 +91,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </section>
     <section tw-class="space-y-2" data-testid="image-prompt-section">
       <label :for="id + '-prompt'" tw-class="sr-only">{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</label>
-      <textarea :id="id + '-prompt'" :placeholder="lazyStrings.stableDiffusionCppBrowser__prompt()" :disabled="formDisabled" v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full resize-y rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-base leading-relaxed text-gray-800 dark:text-gray-100 shadow-sm outline-none transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed" />
+      <textarea :id="id + '-prompt'" :placeholder="lazyStrings.stableDiffusionCppBrowser__prompt()" :disabled="draftDisabled" v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full resize-y rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-base leading-relaxed text-gray-800 dark:text-gray-100 shadow-sm outline-none transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed" />
       <label :for="id + '-negative-prompt'" tw-class="sr-only">{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</label>
-      <textarea :id="id + '-negative-prompt'" :disabled="formDisabled" :placeholder="lazyStrings.stableDiffusionCppBrowser__negative_prompt()" v-model="parameters.negativePrompt" rows="1" maxlength="4096" data-testid="image-negative-prompt" tw-class="block w-full resize-y rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-gray-800 dark:text-gray-100 shadow-sm outline-none transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed" />
+      <textarea :id="id + '-negative-prompt'" :disabled="draftDisabled" :placeholder="lazyStrings.stableDiffusionCppBrowser__negative_prompt()" v-model="parameters.negativePrompt" rows="1" maxlength="4096" data-testid="image-negative-prompt" tw-class="block w-full resize-y rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-gray-800 dark:text-gray-100 shadow-sm outline-none transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed" />
       <div tw-class="flex flex-wrap items-center gap-2" data-testid="image-generation-actions">
         <button type="submit" :disabled="formDisabled || !supported || !hasModel || library.importing.value || (!!library.main.value && !library.ready.value)" data-testid="image-generate" tw-class="flex-1 min-h-11 flex items-center justify-center gap-2 rounded-xl md:rounded-2xl px-5 py-2.5 bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold shadow-lg shadow-blue-500/30 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none motion-reduce:transition-none motion-reduce:transform-none"><ImageIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
 
@@ -103,13 +103,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <OctagonXIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.stableDiffusionCppBrowser__force_stop() }}</button>
 
       </div>
+      <p v-if="busy" data-testid="image-next-generation-draft" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationEditor__edits_apply_to_next_generation() }}</p>
       <div v-if="cancelled" tw-class="flex flex-wrap items-center justify-between gap-2">
         <p v-if="cancelled" role="status" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__cancelled() }}</p>
       </div>
       <p v-if="stopping" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__cancel_wait_help() }}</p>
       <p v-if="invalid" role="alert" tw-class="text-red-600 dark:text-red-400 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
     </section>
-    <fieldset :disabled="formDisabled" tw-class="min-w-0 space-y-4">
+    <fieldset :disabled="draftDisabled" tw-class="min-w-0 space-y-4">
       <ImageInputControls :active="active" v-model="imageInputs" :disabled="formDisabled || !supported || library.importing.value" />
       <section tw-class="space-y-2" data-testid="image-resolution">
         <div tw-class="flex flex-wrap items-end gap-2">
@@ -127,8 +128,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-if="resolutionInvalid" role="alert" tw-class="text-xs text-amber-700 dark:text-amber-300" data-testid="image-resolution-warning">{{ lazyStrings.ImageGenerationEditor__resolution_must_use_supported_dimensions() }}</p>
       </section>
       <div tw-class="grid grid-cols-2 gap-3">
-        <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__steps() }}</span><input v-model.number="parameters.steps" type="number" min="1" max="100" step="1" required tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600" /></label>
-        <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__guidance() }}</span><input v-model.number="parameters.guidance" type="number" min="0" max="30" step="0.1" required tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600" /></label>
+        <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__steps() }}</span><input v-model.number="parameters.steps" data-testid="image-steps" type="number" min="1" max="100" step="1" required tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600" /></label>
+        <label tw-class="text-sm space-y-1"><span>{{ lazyStrings.stableDiffusionCppBrowser__guidance() }}</span><input v-model.number="parameters.guidance" data-testid="image-guidance" type="number" min="0" max="30" step="0.1" required tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600" /></label>
       </div>
       <div tw-class="space-y-1.5">
         <label :for="id + '-seed'" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__seed() }}</label>
@@ -139,27 +140,29 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </div>
     </fieldset>
-    <fieldset :disabled="formDisabled" tw-class="min-w-0 space-y-2">
+    <fieldset :disabled="draftDisabled" tw-class="min-w-0 space-y-2">
       <ImageSettingsSection :title="lazyStrings.ImageGenerationEditor__sampling_settings()" :summary="parameters.sampler + ' · ' + parameters.scheduler" data-testid="image-sampling-settings">
         <div tw-class="grid sm:grid-cols-2 gap-3">
           <label tw-class="block text-sm space-y-1">
             <span>{{ lazyStrings.stableDiffusionCppBrowser__sampler() }}</span>
-            <span tw-class="relative block"><select v-model="parameters.sampler" tw-class="appearance-none cursor-pointer pr-9 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600">
+            <span tw-class="relative block"><select v-model="parameters.sampler" data-testid="image-sampler" tw-class="appearance-none cursor-pointer pr-9 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600">
               <option v-for="value in samplerOptions" :key="value" :value="value">{{ value }}</option>
             </select><ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /></span>
           </label>
           <label tw-class="block text-sm space-y-1">
             <span>{{ lazyStrings.stableDiffusionCppBrowser__scheduler() }}</span>
-            <span tw-class="relative block"><select v-model="parameters.scheduler" tw-class="appearance-none cursor-pointer pr-9 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600">
+            <span tw-class="relative block"><select v-model="parameters.scheduler" data-testid="image-scheduler" tw-class="appearance-none cursor-pointer pr-9 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600">
               <option v-for="value in schedulerOptions" :key="value" :value="value">{{ value }}</option>
             </select><ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /></span>
           </label>
           <label tw-class="text-sm space-y-1">
             <span>{{ lazyStrings.stableDiffusionCppBrowser__distilled_guidance() }}</span>
-            <input v-model.number="parameters.distilledGuidance" type="number" min="0" max="30" step="0.1" required tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600" />
+            <input v-model.number="parameters.distilledGuidance" data-testid="image-distilled-guidance" type="number" min="0" max="30" step="0.1" required tw-class="outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 text-gray-800 dark:text-gray-100 shadow-sm transition-all hover:border-gray-300 dark:hover:border-gray-600" />
           </label>
         </div>
       </ImageSettingsSection>
+    </fieldset>
+    <fieldset :disabled="formDisabled" tw-class="min-w-0 space-y-2">
       <ImageSettingsSection :title="lazyStrings.stableDiffusionCppBrowser__runtime_settings()" :summary="parameters.bf16WeightType.toUpperCase() + ' · ' + profile">
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__advanced_parameters_help() }}</p>
         <div tw-class="grid sm:grid-cols-2 gap-4">

@@ -14,10 +14,35 @@ afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
 
+it('keeps next-run fields editable while context controls and generation remain locked', async () => {
+  const view = useImageGeneration(), restoring = ref(false);
+  view.supported = computed(() => true); view.formDisabled = computed(() => true);
+  view.draftDisabled = computed(() => restoring.value); view.busy = computed(() => true);
+  view.progress.value = { phase: 'model', step: 0, steps: 0 };
+  view.seedMode.value = 'fixed';
+  wrapper = mount(ImageGenerationEditor, { props: { view, active: true } });
+  for (const key of ['prompt', 'negative-prompt', 'width', 'height', 'steps', 'guidance', 'distilled-guidance', 'sampler', 'scheduler', 'seed', 'seed-mode', 'resolution-presets', 'swap-resolution', 'randomize-seed']) {
+    expect(wrapper.get(`[data-testid="image-${key}"]`).element.matches(':disabled')).toBe(false);
+  }
+  for (const key of ['generate', 'file-model', 'bf16-weight-type', 'weight-residency', 'release-model']) {
+    expect(wrapper.get(`[data-testid="image-${key}"]`).element.matches(':disabled')).toBe(true);
+  }
+  await wrapper.get('[data-testid="image-resolution-presets"]').setValue('768x1024');
+  await wrapper.get('[data-testid="image-swap-resolution"]').trigger('click');
+  expect([view.parameters.value.width, view.parameters.value.height]).toEqual([1024, 768]);
+  restoring.value = true; await flushPromises();
+  expect(wrapper.get('[data-testid="image-prompt"]').element.matches(':disabled')).toBe(true);
+  expect(wrapper.get('[data-testid="image-width"]').element.matches(':disabled')).toBe(true);
+  const dimensions = [view.parameters.value.width, view.parameters.value.height];
+  await wrapper.get('[data-testid="image-swap-resolution"]').trigger('click');
+  expect([view.parameters.value.width, view.parameters.value.height]).toEqual(dimensions);
+});
+
 it.each(['import', 'download'])('only locks conflicting model layout and preset actions during %s', async transfer => {
   const pending = ref(true);
   const view = useImageGeneration();
   view.formDisabled = computed(() => false);
+  view.draftDisabled = computed(() => false);
   view.supported = computed(() => true);
   view.library.importing = computed(() => pending.value && transfer === 'import');
   view.library.downloading = computed(() => pending.value && transfer === 'download');

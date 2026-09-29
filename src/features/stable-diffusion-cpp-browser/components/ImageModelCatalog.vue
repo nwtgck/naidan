@@ -94,7 +94,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
     <div :id="id + '-content'" class="catalog-disclosure" :class="{ 'catalog-disclosure-open': open }" :inert="open ? undefined : true" :aria-hidden="!open">
       <div class="catalog-disclosure-inner">
         <div tw-class="px-4 pb-2">
-          <ImageHostModelDirectories :view="view.hostDirectories" :opfs-supported="opfsSupported" :disabled="downloadDisabled || importing" :downloading="downloading" :layout-file="layoutFile" />
+          <ImageHostModelDirectories :view="view.hostDirectories" :opfs-supported="opfsSupported" :disabled="downloadDisabled || importing" :mutation-disabled="disabled" :downloading="downloading" :layout-file="layoutFile" />
           <div v-if="queuedDownloads.length" data-testid="image-download-queue" tw-class="border-t border-gray-100 dark:border-gray-800 py-3 space-y-2">
             <h4 tw-class="text-xs font-semibold text-gray-700 dark:text-gray-200">{{ lazyStrings.ImageModelCatalog__download_queue() }}</h4>
             <ul tw-class="space-y-1.5">
@@ -103,7 +103,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                 <span tw-class="text-gray-500 dark:text-gray-400">{{ queueStatus({ state: job.state }) }}</span>
                 <button v-if="job.state === 'paused'" type="button" :disabled="downloadDisabled || importing" :data-testid="'image-download-queue-resume-' + job.id" @click="view.resumeDownload()" tw-class="rounded-md px-2 py-1 font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50">{{ lazyStrings.llamaCppBrowserDownloads__resume() }}</button>
                 <button v-if="job.state === 'failed' || job.state === 'incomplete'" type="button" :disabled="downloadDisabled || importing" :data-testid="'image-download-queue-retry-' + job.id" @click="view.retryQueuedDownload({ id: job.id })" tw-class="rounded-md px-2 py-1 font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50">{{ lazyStrings.llamaCppBrowserDownloads__retry() }}</button>
-                <button type="button" :disabled="downloadDisabled || importing" :data-testid="'image-download-queue-remove-' + job.id" @click="view.removeQueuedDownload({ id: job.id })" tw-class="rounded-md px-2 py-1 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">{{ lazyStrings.stableDiffusionCppBrowser__remove() }}</button>
+                <button type="button" :disabled="downloadDisabled" :data-testid="'image-download-queue-remove-' + job.id" @click="view.removeQueuedDownload({ id: job.id })" tw-class="rounded-md px-2 py-1 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">{{ lazyStrings.stableDiffusionCppBrowser__remove() }}</button>
                 <p v-if="job.error" tw-class="w-full break-words text-amber-700 dark:text-amber-400">{{ job.error }}</p>
               </li>
             </ul>

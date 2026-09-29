@@ -53,6 +53,7 @@ export type ImageGenerationView = ReturnType<typeof createImageForm> & {
   busy: ComputedRef<boolean>;
   supported: ComputedRef<boolean>;
   formDisabled: ComputedRef<boolean>;
+  draftDisabled: ComputedRef<boolean>;
   unavailable: ComputedRef<string | undefined>;
   recommendation: ComputedRef<ImageGenerationRecommendation | undefined>;
   manualInspectionState: Ref<'idle' | 'scanning' | 'failed'>;

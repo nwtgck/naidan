@@ -146,7 +146,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
           </div>
           <div v-show="activeTab === 'history'" role="tabpanel" :id="id + '-panel-history'" :aria-labelledby="id + '-tab-history'" data-testid="image-history-workspace">
             <!-- Import publication locks editor changes; downloads do not lock history reuse or browsing. -->
-            <ImageGenerationHistory v-if="historyVisited" :view="view.history" :active="activeTab === 'history'" :disabled="formDisabled || view.historyActions.busy.value" :editor-disabled="library.importing.value" @reuse="reuseHistory" @use-image="useHistoryImage" :on-download="view.downloadHistory" :download-preferences="view.imageDownloadPreferences" :on-download-preferences-change="view.setImageDownloadPreferences" />
+            <ImageGenerationHistory v-if="historyVisited" :view="view.history" :active="activeTab === 'history'" :disabled="formDisabled || view.historyActions.busy.value" :record-delete-disabled="view.historyActions.busy.value" :editor-disabled="library.importing.value" @reuse="reuseHistory" @use-image="useHistoryImage" :on-download="view.downloadHistory" :download-preferences="view.imageDownloadPreferences" :on-download-preferences-change="view.setImageDownloadPreferences" />
           </div>
           <div v-show="activeTab === 'measure'" role="tabpanel" :id="id + '-panel-measure'" :aria-labelledby="id + '-tab-measure'">
             <ImageBenchmark :active="activeTab === 'measure'" v-if="benchmarkVisited" :bench="benchmark" :generation="view" />

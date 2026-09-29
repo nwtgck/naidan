@@ -36,6 +36,7 @@ export function useImageGeneration(): ImageGenerationView {
     busy: computed(() => false),
     supported: computed(() => false),
     formDisabled: computed(() => true),
+    draftDisabled: computed(() => true),
     unavailable: computed(() => lazyStrings.stableDiffusionCppBrowser__hosted_build_required()),
     recommendation: computed(() => undefined),
     manualInspectionState: ref('idle'), async inspectManualFiles() {},

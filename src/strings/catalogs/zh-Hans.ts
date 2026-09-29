@@ -2305,6 +2305,7 @@ import { ImageGenerationLab__select_missing_files } from '@/strings/messages/Ima
 import { ImageGenerationLab__continue_without_missing_files } from '@/strings/messages/ImageGenerationLab__continue_without_missing_files/zh-Hans';
 import { ImageGenerationResults__save_generation_history } from '@/strings/messages/ImageGenerationResults__save_generation_history/zh-Hans';
 import { ImageGenerationResults__saving_history } from '@/strings/messages/ImageGenerationResults__saving_history/zh-Hans';
+import { ImageGenerationResults__history_setting_applies_to_next_generation } from '@/strings/messages/ImageGenerationResults__history_setting_applies_to_next_generation/zh-Hans';
 import { ImageGenerationResults__saved_to_history } from '@/strings/messages/ImageGenerationResults__saved_to_history/zh-Hans';
 import { ImageGenerationResults__history_save_failed_download_image } from '@/strings/messages/ImageGenerationResults__history_save_failed_download_image/zh-Hans';
 import { ImageGenerationResults__retry_saving } from '@/strings/messages/ImageGenerationResults__retry_saving/zh-Hans';
@@ -2333,6 +2334,7 @@ import { ImageInputControls__choose_image } from '@/strings/messages/ImageInputC
 import { ImageLoraControls__selected_adapters } from '@/strings/messages/ImageLoraControls__selected_adapters/zh-Hans';
 import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/zh-Hans';
 import { ImageGenerationEditor__view_result } from '@/strings/messages/ImageGenerationEditor__view_result/zh-Hans';
+import { ImageGenerationEditor__edits_apply_to_next_generation } from '@/strings/messages/ImageGenerationEditor__edits_apply_to_next_generation/zh-Hans';
 import { ImageGenerationEditor__pick_new_seed } from '@/strings/messages/ImageGenerationEditor__pick_new_seed/zh-Hans';
 import { ImageGenerationEditor__fixed_seed } from '@/strings/messages/ImageGenerationEditor__fixed_seed/zh-Hans';
 import { ImageGenerationEditor__new_seed_each_time } from '@/strings/messages/ImageGenerationEditor__new_seed_each_time/zh-Hans';
@@ -4621,6 +4623,7 @@ export const catalog = {
   ImageGenerationLab__continue_without_missing_files,
   ImageGenerationResults__save_generation_history,
   ImageGenerationResults__saving_history,
+  ImageGenerationResults__history_setting_applies_to_next_generation,
   ImageGenerationResults__saved_to_history,
   ImageGenerationResults__history_save_failed_download_image,
   ImageGenerationResults__retry_saving,
@@ -4649,6 +4652,7 @@ export const catalog = {
   ImageLoraControls__selected_adapters,
   ImageGenerationLab__saved_models,
   ImageGenerationEditor__view_result,
+  ImageGenerationEditor__edits_apply_to_next_generation,
   ImageGenerationEditor__pick_new_seed,
   ImageGenerationEditor__fixed_seed,
   ImageGenerationEditor__new_seed_each_time,

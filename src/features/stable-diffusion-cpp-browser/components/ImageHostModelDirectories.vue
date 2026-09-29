@@ -10,6 +10,7 @@ const props = defineProps<{
   view: HostModelDirectoriesView,
   opfsSupported: boolean,
   disabled: boolean,
+  mutationDisabled: boolean,
   downloading: boolean,
   layoutFile: Pick<ImageRecipeFile, 'repository' | 'path'> | undefined,
 }>();
@@ -44,7 +45,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <option v-if="!entries.length" value="" disabled>{{ lazyStrings.ImageHostModelDirectories__linked_folder() }}</option>
         <option v-for="entry in entries" :key="entry.id" :value="entry.id" :disabled="!supported || ['missing', 'error', 'unsupported'].includes(entry.access)">{{ entry.name }}</option>
       </select>
-      <button type="button" :disabled="disabled || busy || downloading || !supported" @click="view.add()" data-testid="image-add-model-directory" tw-class="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 shadow-sm transition-colors hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
+      <button type="button" :disabled="disabled || mutationDisabled || busy || downloading || !supported" @click="view.add()" data-testid="image-add-model-directory" tw-class="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 shadow-sm transition-colors hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
         <FolderPlusIcon aria-hidden="true" tw-class="w-3.5 h-3.5" />{{ lazyStrings.ImageHostModelDirectories__link_folder() }}
       </button>
     </div>
@@ -64,9 +65,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <span tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageHostModelDirectories__folder_access({ access: entry.access }) }}</span>
             <p v-if="entry.error" tw-class="break-words text-[11px] text-red-600 dark:text-red-400">{{ entry.error }}</p>
           </div>
-          <button type="button" :disabled="disabled || busy || downloading || !supported" @click="view.reconnect({ id: entry.id })" :data-testid="'image-reconnect-model-directory-' + entry.id" tw-class="inline-flex min-h-9 items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 font-medium text-blue-600 dark:text-blue-400 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageHostModelDirectories__reconnect() }}</button>
+          <button type="button" :disabled="disabled || mutationDisabled || busy || downloading || !supported" @click="view.reconnect({ id: entry.id })" :data-testid="'image-reconnect-model-directory-' + entry.id" tw-class="inline-flex min-h-9 items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 font-medium text-blue-600 dark:text-blue-400 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageHostModelDirectories__reconnect() }}</button>
           <!-- Unregister owns cancellation of an in-flight download. It never removes files. -->
-          <button type="button" :disabled="disabled || busy || !supported" @click="view.remove({ id: entry.id })" :data-testid="'image-unregister-model-directory-' + entry.id" tw-class="inline-flex min-h-9 items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 font-medium text-gray-600 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageHostModelDirectories__unlink() }}</button>
+          <button type="button" :disabled="disabled || mutationDisabled || busy || !supported" @click="view.remove({ id: entry.id })" :data-testid="'image-unregister-model-directory-' + entry.id" tw-class="inline-flex min-h-9 items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 font-medium text-gray-600 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageHostModelDirectories__unlink() }}</button>
         </li>
       </ul>
     </ImageSettingsSection>

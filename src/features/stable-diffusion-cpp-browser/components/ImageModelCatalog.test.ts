@@ -52,7 +52,7 @@ it('shows all static recipes without networking or remote resources when opened'
   expect(wrapper.text()).toContain('FLUX.2 [klein] 4B Distilled'); expect(wrapper.text()).toContain('Anima Turbo 1.1');
   expect(wrapper.text()).toContain('Krea 2 Turbo'); expect(wrapper.text()).toContain('ERNIE-Image-Turbo');
   expect(wrapper.findAll('[data-testid^="recipe-recommended-"]').map(mark => mark.attributes('data-testid'))).toEqual([
-    'recipe-recommended-z-image-turbo', 'recipe-recommended-qwen-image-2.1', 'recipe-recommended-krea2-turbo',
+    'recipe-recommended-z-image-turbo', 'recipe-recommended-qwen-image-2.1', 'recipe-recommended-anima-turbo-1.1', 'recipe-recommended-krea2-turbo',
   ]);
   for (const mark of wrapper.findAll('[data-testid^="recipe-recommended-"]')) expect(mark.text()).toBe('Recommended');
   expect(wrapper.text()).toContain('split_files/vae/ae.safetensors');
@@ -212,4 +212,48 @@ it('shows queued and failed snapshots while allowing a new variant to be enqueue
   expect(view.retryQueuedDownload).toHaveBeenCalledWith({ id: 'failed' });
   await list.get('[data-testid="image-download-queue-remove-next"]').trigger('click');
   expect(view.removeQueuedDownload).toHaveBeenCalledWith({ id: 'next' });
+});
+
+it('removes non-active queue entries during import without enabling retry or starting another transfer', async () => {
+  const view = createDisabledImageLibrary();
+  view.importing = computed(() => true);
+  view.downloadQueue = computed<ImageDownloadQueueEntry[]>(() => [
+    { id: 'active', label: 'Active', destination: 'OPFS', state: 'downloading', error: '' },
+    { id: 'queued', label: 'Queued', destination: 'OPFS', state: 'queued', error: '' },
+    { id: 'failed', label: 'Failed', destination: 'OPFS', state: 'failed', error: 'Connection lost' },
+  ]);
+  view.removeQueuedDownload = vi.fn(); view.retryQueuedDownload = vi.fn(); view.downloadRecipe = vi.fn();
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
+  expect(wrapper.find('[data-testid="image-download-queue-remove-active"]').exists()).toBe(false);
+  const queued = wrapper.get<HTMLButtonElement>('[data-testid="image-download-queue-remove-queued"]');
+  const failed = wrapper.get<HTMLButtonElement>('[data-testid="image-download-queue-remove-failed"]');
+  expect(queued.element.disabled).toBe(false); expect(failed.element.disabled).toBe(false);
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-download-queue-retry-failed"]').element.disabled).toBe(true);
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]').element.disabled).toBe(true);
+  await queued.trigger('click'); await failed.trigger('click');
+  expect(view.removeQueuedDownload).toHaveBeenCalledWith({ id: 'queued' });
+  expect(view.removeQueuedDownload).toHaveBeenCalledWith({ id: 'failed' });
+  expect(view.retryQueuedDownload).not.toHaveBeenCalled(); expect(view.downloadRecipe).not.toHaveBeenCalled();
+  await wrapper.setProps({ downloadDisabled: true });
+  expect(queued.element.disabled).toBe(true); expect(failed.element.disabled).toBe(true);
+});
+
+it('keeps host mutation buttons aligned with the editor guard without blocking destination changes', async () => {
+  const view = createDisabledImageLibrary();
+  view.hostDirectories = { ...view.hostDirectories, supported: computed(() => true),
+    entries: computed(() => [{ id: 'root-a', name: 'models', access: 'readwrite' as const, error: undefined }]),
+    add: vi.fn(), reconnect: vi.fn(), remove: vi.fn(), selectDestination: vi.fn() };
+  wrapper = mount(ImageModelCatalog, { props: { disabled: true, downloadDisabled: false, view } });
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-reconnect-model-directory-root-a"]').element.disabled).toBe(true);
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-unregister-model-directory-root-a"]').element.disabled).toBe(true);
+  const destination = wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]');
+  expect(destination.element.disabled).toBe(false);
+  await destination.setValue('root-a');
+  expect(view.hostDirectories.selectDestination).toHaveBeenCalledWith({ id: 'root-a' });
+  await wrapper.setProps({ disabled: false });
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(false);
+  await wrapper.setProps({ disabled: true, downloadDisabled: true });
+  expect(destination.element.disabled).toBe(true);
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
 });

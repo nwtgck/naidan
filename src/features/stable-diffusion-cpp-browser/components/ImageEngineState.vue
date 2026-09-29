@@ -38,7 +38,7 @@ const summary = computed(() => {
   case 'unsupported': return lazyStrings.ImageEngineState__unavailable();
   case 'released': return lazyStrings.ImageEngineState__released();
   case 'not-loaded': return lazyStrings.ImageEngineState__no_model_loaded();
-  case 'busy': return lazyStrings.ImageEngineState__engine_busy_until_idle();
+  case 'busy': if (!state.canRefresh.value) return lazyStrings.ImageEngineState__engine_busy_until_idle(); break;
   case undefined: break;
   default: { const exhaustive: never = state.reason.value; throw new Error(String(exhaustive)); }
   }
@@ -85,8 +85,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p v-if="state.snapshot.value && observedTime" data-testid="image-engine-observed-at" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageEngineState__observed_at({ time: observedTime }) }}</p>
       <button type="button" :disabled="!state.canRefresh.value" @click="state.refresh()" data-testid="image-engine-refresh" tw-class="ml-auto min-h-10 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 shadow-sm transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">{{ state.status.value === 'refreshing' ? lazyStrings.ImageEngineState__refreshing() : lazyStrings.ImageEngineState__refresh_state() }}</button>
     </div>
-    <p v-if="view.busy.value" role="status" data-testid="image-engine-busy" tw-class="text-xs leading-relaxed text-amber-700 dark:text-amber-300">{{ lazyStrings.ImageEngineState__busy_during_generation({ phase: phase ?? '' }) }}</p>
-    <p v-else-if="state.reason.value === 'busy'" role="status" data-testid="image-engine-busy" tw-class="text-xs leading-relaxed text-amber-700 dark:text-amber-300">{{ lazyStrings.ImageEngineState__engine_busy_until_idle() }}</p>
+    <p v-if="view.progress.value" role="status" data-testid="image-engine-busy" tw-class="text-xs leading-relaxed text-amber-700 dark:text-amber-300">{{ lazyStrings.ImageEngineState__busy_during_generation({ phase: phase ?? '' }) }}</p>
+    <p v-else-if="state.reason.value === 'busy' && !state.canRefresh.value" role="status" data-testid="image-engine-busy" tw-class="text-xs leading-relaxed text-amber-700 dark:text-amber-300">{{ lazyStrings.ImageEngineState__engine_busy_until_idle() }}</p>
     <p v-else-if="state.reason.value === 'unsupported' || !view.supported.value" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageEngineState__unavailable() }}</p>
     <p v-else-if="state.reason.value === 'released'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageEngineState__released() }}</p>
     <p v-else-if="state.reason.value === 'not-loaded' || !view.modelResident.value" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageEngineState__no_model_loaded() }}</p>

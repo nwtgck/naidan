@@ -15,7 +15,7 @@ import ImageGenerationViewer from './ImageGenerationViewer.vue';
 import ImageDownloadMenu from './ImageDownloadMenu.vue';
 import ImageHistoryImage from './ImageHistoryImage.vue';
 const props = defineProps<{
-  view: ImageGenerationHistoryView, disabled: boolean, editorDisabled: boolean, active: boolean,
+  view: ImageGenerationHistoryView, disabled: boolean, recordDeleteDisabled: boolean, editorDisabled: boolean, active: boolean,
   downloadPreferences: Ref<ImageDownloadPreferences>,
   onDownloadPreferencesChange: ({ preferences }: { preferences: ImageDownloadPreferences }) => void,
   onDownload: ImageGenerationView['downloadHistory'],
@@ -90,7 +90,7 @@ function dateLabel({ timestamp }: { timestamp: number }): string {
   return new Date(timestamp).toLocaleString();
 }
 async function removeSelected(): Promise<void> {
-  if (!selected.value || deleting.value || deletingImage.value || detailLoading.value || props.disabled) return;
+  if (!selected.value || deleting.value || deletingImage.value || detailLoading.value || props.recordDeleteDisabled || !props.active || !available.value) return;
   const id = selected.value.id;
   deleting.value = true;
   deleteError.value = '';
@@ -239,7 +239,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </ImageSettingsSection>
           <section tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 px-3" data-testid="image-history-delete-section">
             <div tw-class="flex min-h-10 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1.5">
-              <button type="button" @click="removeSelected" :disabled="disabled || deleting || deletingImage || detailLoading" data-testid="image-history-delete" tw-class="inline-flex min-h-10 items-center rounded-xl border border-red-100 dark:border-red-900/30 bg-red-50/40 dark:bg-red-900/10 px-3 py-2 text-xs font-bold leading-tight text-red-600 dark:text-red-400 transition-colors hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageGenerationHistory__remove_from_history() }}</button>
+              <button type="button" @click="removeSelected" :disabled="recordDeleteDisabled || deleting || deletingImage || detailLoading || !active || !available" data-testid="image-history-delete" tw-class="inline-flex min-h-10 items-center rounded-xl border border-red-100 dark:border-red-900/30 bg-red-50/40 dark:bg-red-900/10 px-3 py-2 text-xs font-bold leading-tight text-red-600 dark:text-red-400 transition-colors hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageGenerationHistory__remove_from_history() }}</button>
               <button type="button" :aria-expanded="deleteHelpOpen" :aria-controls="deleteHelpId" data-testid="image-history-delete-help-toggle" @click="deleteHelpOpen = !deleteHelpOpen" tw-class="inline-flex min-h-10 items-center self-center gap-1.5 rounded-lg px-2 text-xs font-medium leading-tight text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                 {{ lazyStrings.llamaCppBrowserDownloads__details() }}
                 <ChevronDownIcon aria-hidden="true" :tw-class="['h-4 w-4 transition-transform motion-reduce:transition-none', deleteHelpOpen ? 'rotate-180' : '']" />

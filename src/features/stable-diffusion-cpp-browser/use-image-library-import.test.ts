@@ -101,3 +101,29 @@ it('waits for an import to publish before a queued transfer starts after host op
     scope.stop();
   }
 });
+
+it('removes a queued transfer during import without starting its download or touching stored files', async () => {
+  const importing = Promise.withResolvers<string>();
+  const download = vi.fn(async () => undefined), list = vi.fn(async () => []);
+  const scope = effectScope();
+  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: {
+    list, scan: scanImageRepositories, import: () => importing.promise, download,
+  } }))!;
+  try {
+    library.hostDirectories.busy.value = true;
+    const transfer = library.downloadRecipe({ recipeId: 'z-image-turbo', selections: {} });
+    const queued = library.downloadQueue.value[0]!;
+    expect(queued.state).toBe('queued');
+    const operation = library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
+    expect(library.importing.value).toBe(true);
+    library.removeQueuedDownload({ id: queued.id });
+    await transfer;
+    expect(library.downloadQueue.value).toEqual([]);
+    expect(download).not.toHaveBeenCalled();
+    library.hostDirectories.busy.value = false;
+    importing.resolve('user/imported'); await operation;
+    expect(download).not.toHaveBeenCalled();
+  } finally {
+    scope.stop();
+  }
+});

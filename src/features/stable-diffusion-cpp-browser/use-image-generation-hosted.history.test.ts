@@ -12,6 +12,7 @@ import { snapshotImageGeneration, finishImageGenerationSnapshot } from './histor
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
 import ImageGenerationResults from './components/ImageGenerationResults.vue';
+import ImageGenerationProgress from './components/ImageGenerationProgress.vue';
 const mocks = vi.hoisted(() => {
   const models: Request['models'] = [];
   let selection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void = () => {};
@@ -119,6 +120,72 @@ afterEach(() => {
 });
 
 describe('hosted image history integration with a synthetic inference client', () => {
+  it('keeps the running request, result and saved/exported metadata fixed while editing the next request', async () => {
+    const view = open(); view.retainModel.value = true; view.seedMode.value = 'fixed';
+    const accepted = { ...view.parameters.value };
+    const inference = Promise.withResolvers<ReturnType<typeof result>>(), saving = Promise.withResolvers<void>();
+    mocks.generate.mockImplementationOnce(({ onProgress }: Parameters<ImageClient['generate']>[0]) => {
+      onProgress({ event: { phase: 'model', step: 0, steps: 0 } }); return inference.promise;
+    });
+    mocks.save.mockReturnValueOnce(saving.promise);
+    editor = mount(ImageGenerationEditor, { props: { view, active: true } });
+    resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
+    const generation = view.generate(); await flushPromises();
+    const request: Request = mocks.generate.mock.calls[0]![0].request;
+    mocks.release.mockClear();
+    expect(view.formDisabled.value).toBe(true); expect(view.draftDisabled.value).toBe(false);
+    const edits = [
+      { key: 'prompt', value: 'next prompt' }, { key: 'negative-prompt', value: 'next negative' },
+      { key: 'width', value: 512 }, { key: 'height', value: 768 }, { key: 'steps', value: 12 },
+      { key: 'guidance', value: 3 }, { key: 'distilled-guidance', value: 2 },
+      { key: 'sampler', value: 'euler' }, { key: 'scheduler', value: 'karras' }, { key: 'seed', value: '99' },
+    ];
+    for (const { key, value } of edits) await editor.get(`[data-testid="image-${key}"]`).setValue(value);
+    await resultsPanel.get('[data-testid="image-save-history"]').setValue(false);
+    expect(resultsPanel.get('[data-testid="image-history-next-generation"]').text()).toContain('next generation');
+    expect(request.parameters).toEqual(accepted);
+    mocks.generate.mock.calls[0]![0].onProgress({ event: { phase: 'sampling', step: 1, steps: accepted.steps } });
+    await flushPromises();
+    expect(resultsPanel.getComponent(ImageGenerationProgress).props()).toMatchObject({ width: accepted.width, height: accepted.height, progress: { step: 1, steps: accepted.steps } });
+    expect(mocks.release).not.toHaveBeenCalled();
+    await view.generate(); expect(mocks.generate).toHaveBeenCalledOnce();
+    inference.resolve(result()); await flushPromises();
+    expect(view.busy.value).toBe(true); expect(view.progress.value).toBeUndefined();
+    expect(view.historySaving.status.value).toBe('saving');
+    expect(mocks.save.mock.calls[0]![0].record.request.parameters).toEqual(accepted);
+    expect(view.results.value[0]!.parameters).toEqual(accepted);
+    expect(resultsPanel.get('[data-testid="image-generated-result"]').text()).toContain(`Seed: ${accepted.seed}`);
+    await editor.get('[data-testid="image-prompt"]').setValue('draft during save');
+    await editor.get('[data-testid="image-width"]').setValue(640);
+    for (const format of ['png', 'webp', 'jpeg'] as const) {
+      await view.downloadResult({ resultId: view.results.value[0]!.id, format, includeMetadata: true });
+      expect(mocks.downloadBlob.mock.calls.at(-1)![0]).toMatchObject({ request: { parameters: accepted }, format, includeMetadata: true });
+    }
+    saving.resolve(); await generation;
+    expect(view.parameters.value.prompt).toBe('draft during save');
+    expect(view.parameters.value.seed).toBe('99');
+    const next = { ...view.parameters.value }; await view.generate();
+    expect(mocks.generate.mock.calls[1]![0].request.parameters).toEqual(next);
+    expect(mocks.save).toHaveBeenCalledOnce();
+  });
+
+  it.each(['failed', 'cancelled'] as const)('does not roll back the next draft when the active run is %s', async outcome => {
+    const view = open(); view.seedMode.value = 'fixed';
+    const accepted = { ...view.parameters.value };
+    const inference = Promise.withResolvers<Awaited<ReturnType<ImageClient['generate']>>>();
+    mocks.generate.mockReturnValueOnce(inference.promise);
+    const generation = view.generate();
+    view.parameters.value.prompt = 'keep next prompt'; view.parameters.value.seed = '77';
+    if (outcome === 'failed') inference.reject(new Error('Native generation failed'));
+    else {
+      view.cancel(); inference.resolve({ cancelled: true, modelResident: true });
+    }
+    await generation;
+    expect(mocks.generate.mock.calls[0]![0].request.parameters).toEqual(accepted);
+    expect(view.parameters.value).toMatchObject({ prompt: 'keep next prompt', seed: '77' });
+    expect(view.draftDisabled.value).toBe(false); expect(view.busy.value).toBe(false);
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
   it('observes only an existing idle model and drops observations after explicit release', async () => {
     const view = open(); view.retainModel.value = true;
     view.engineState.setOpened({ opened: true });
@@ -881,7 +948,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.parameters.value.seed).toBe(seed);
     expect(mocks.save.mock.calls[0]?.[0].record.request.parameters.seed).toBe(seed);
   });
-  it('respects fixed seeds and does not change settings for an invalid request or a busy reroll', async () => {
+  it('respects fixed seeds, leaves invalid requests unchanged and rerolls only the next draft while busy', async () => {
     const view = open(); view.seedMode.value = 'fixed'; view.parameters.value.seed = '9223372036854775807';
     await view.generate();
     expect(mocks.generate.mock.calls[0]?.[0].request.parameters.seed).toBe('9223372036854775807');
@@ -891,8 +958,14 @@ describe('hosted image history integration with a synthetic inference client', (
     view.parameters.value.width = 256; view.randomizeSeed(); expect(view.seedMode.value).toBe('fixed');
     const seed = view.parameters.value.seed;
     const pending = Promise.withResolvers<ReturnType<typeof result>>(); mocks.generate.mockReturnValueOnce(pending.promise);
-    const generation = view.generate(); view.randomizeSeed(); expect(view.parameters.value.seed).toBe(seed);
+    const generation = view.generate(); view.seedMode.value = 'random'; view.randomizeSeed();
+    expect(view.seedMode.value).toBe('fixed');
+    expect(view.parameters.value.seed).toMatch(/^[1-9][0-9]*$/);
+    expect(mocks.generate.mock.calls[1]![0].request.parameters.seed).toBe(seed);
     pending.resolve(result()); await generation;
+    view.historyActions.busy.value = true;
+    const draft = view.parameters.value.seed; view.randomizeSeed();
+    expect(view.draftDisabled.value).toBe(true); expect(view.parameters.value.seed).toBe(draft);
   });
 });
 

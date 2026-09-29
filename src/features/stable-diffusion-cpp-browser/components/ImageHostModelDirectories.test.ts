@@ -27,7 +27,7 @@ function createView({ supported, entries }: { supported: boolean, entries: HostM
 
 it('defaults to browser storage and keeps unsupported folder controls visible and disabled', () => {
   const view = createView({ supported: false, entries: [] });
-  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: false, layoutFile: undefined } });
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: false, layoutFile: undefined } });
   expect(wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]').element.value).toBe('opfs');
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
   expect(wrapper.get('[data-testid="image-host-folders-unavailable"]').text()).toContain('unavailable');
@@ -39,7 +39,7 @@ it('defaults to browser storage and keeps unsupported folder controls visible an
 it('selects a registered root and shows its real repository-relative nested layout', async () => {
   const view = createView({ supported: true, entries: [{ id: 'root-a', name: 'my-image-models', access: 'readwrite', error: undefined }] });
   wrapper = mount(ImageHostModelDirectories, { props: {
-    view, opfsSupported: true, disabled: false, downloading: false,
+    view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: false,
     layoutFile: { repository: 'example-owner/image-model', path: 'split_files/vae/model.safetensors' },
   } });
   await wrapper.get('[data-testid="image-download-destination"]').setValue('root-a');
@@ -63,7 +63,7 @@ it('keeps missing registrations visible for reconnect and distinguishes them by 
     { id: 'missing-a', name: 'models', access: 'missing', error: undefined },
     { id: 'available-b', name: 'models', access: 'readwrite', error: undefined },
   ] });
-  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: false, layoutFile: undefined } });
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: false, layoutFile: undefined } });
   expect(wrapper.get<HTMLOptionElement>('option[value="missing-a"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLOptionElement>('option[value="available-b"]').element.disabled).toBe(false);
   expect(wrapper.get('[data-testid="image-model-directory-missing-a"]').text()).toContain('Select the folder again');
@@ -76,7 +76,7 @@ it('keeps missing registrations visible for reconnect and distinguishes them by 
 it('shows an unregistered restored destination instead of silently selecting OPFS', async () => {
   const view = createView({ supported: true, entries: [{ id: 'available-b', name: 'other-models', access: 'readwrite', error: undefined }] });
   view.destination.value = 'removed-a';
-  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: false, layoutFile: undefined } });
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: false, layoutFile: undefined } });
   const select = wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]');
   expect(select.element.value).toBe('removed-a');
   const missing = wrapper.get<HTMLOptionElement>('[data-testid="image-missing-download-destination"]');
@@ -98,7 +98,7 @@ it('shows an unregistered restored destination instead of silently selecting OPF
 
 it('allows the next download destination to change while unregister can cancel its owned write', async () => {
   const view = createView({ supported: true, entries: [{ id: 'root-a', name: 'models', access: 'readwrite', error: undefined }] });
-  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, downloading: true, layoutFile: undefined } });
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: true, layoutFile: undefined } });
   expect(wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]').element.disabled).toBe(false);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-reconnect-model-directory-root-a"]').element.disabled).toBe(true);
@@ -108,4 +108,23 @@ it('allows the next download destination to change while unregister can cancel i
   expect(view.remove).toHaveBeenCalledWith({ id: 'root-a' });
   await wrapper.setProps({ disabled: true });
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-unregister-model-directory-root-a"]').element.disabled).toBe(true);
+});
+
+it('blocks host registration mutations while the editor is owned but still changes the next download destination', async () => {
+  const view = createView({ supported: true, entries: [{ id: 'root-a', name: 'models', access: 'readwrite', error: undefined }] });
+  wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, mutationDisabled: true, downloading: false, layoutFile: undefined } });
+  const add = wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]');
+  const reconnect = wrapper.get<HTMLButtonElement>('[data-testid="image-reconnect-model-directory-root-a"]');
+  const remove = wrapper.get<HTMLButtonElement>('[data-testid="image-unregister-model-directory-root-a"]');
+  expect(add.element.disabled).toBe(true);
+  expect(reconnect.element.disabled).toBe(true);
+  expect(remove.element.disabled).toBe(true);
+  await add.trigger('click'); await reconnect.trigger('click'); await remove.trigger('click');
+  expect(view.add).not.toHaveBeenCalled(); expect(view.reconnect).not.toHaveBeenCalled(); expect(view.remove).not.toHaveBeenCalled();
+  const destination = wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]');
+  expect(destination.element.disabled).toBe(false);
+  await destination.setValue('root-a');
+  expect(view.selectDestination).toHaveBeenCalledWith({ id: 'root-a' });
+  await wrapper.setProps({ mutationDisabled: false });
+  expect(add.element.disabled).toBe(false); expect(reconnect.element.disabled).toBe(false); expect(remove.element.disabled).toBe(false);
 });

@@ -214,6 +214,7 @@ it('keeps pending saves visible but disables retries until OPFS storage is avail
 
 it('opens history details independently of the save switch', async () => {
   const view = useImageGeneration();
+  view.draftDisabled = computed(() => false);
   view.historySaving.supported = computed(() => true);
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
   const panel = wrapper.get('[data-testid="image-history-saving"]');
@@ -341,16 +342,23 @@ it('caps a small final image at its generated dimensions while preserving viewer
   expect(wrapper.find('[data-testid="image-viewer"] [data-testid="image-viewer-zoom-in"]').exists()).toBe(true);
 });
 
-it('locks the history policy during a run and restores editing afterward only in supported storage', async () => {
-  const view = useImageGeneration(), busy = ref(false), supported = ref(true);
+it('edits the next history policy during generation or saving, while protecting restoration and unsupported storage', async () => {
+  const view = useImageGeneration(), busy = ref(false), supported = ref(true), restoring = ref(false);
   view.busy = computed(() => busy.value); view.historySaving.supported = computed(() => supported.value);
+  view.draftDisabled = computed(() => restoring.value);
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
   const toggle = wrapper.get<HTMLInputElement>('[data-testid="image-save-history"]');
   await toggle.setValue(false); expect(view.historySaving.enabled.value).toBe(false);
   busy.value = true; await flushPromises();
-  expect(toggle.element.disabled).toBe(true); expect(toggle.element.checked).toBe(false);
+  expect(toggle.element.disabled).toBe(false); expect(toggle.element.checked).toBe(false);
+  expect(wrapper.get('[data-testid="image-history-next-generation"]').text()).toContain('next generation');
+  await toggle.setValue(true); expect(view.historySaving.enabled.value).toBe(true);
   busy.value = false; await flushPromises();
   expect(toggle.element.disabled).toBe(false);
-  await toggle.setValue(true); expect(view.historySaving.enabled.value).toBe(true);
+  view.historySaving.status.value = 'saving'; await flushPromises();
+  expect(toggle.element.disabled).toBe(false);
+  expect(wrapper.get('[data-testid="image-history-next-generation"]').text()).toContain('next generation');
+  restoring.value = true; await flushPromises(); expect(toggle.element.disabled).toBe(true);
+  restoring.value = false;
   supported.value = false; await flushPromises(); expect(toggle.element.disabled).toBe(true);
 });

@@ -86,6 +86,20 @@ it('shows separate observed memory categories and marks a busy reading as previo
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-engine-refresh"]').element.disabled).toBe(true);
 });
 
+it('allows an idle engine refresh while the generated image is still being saved', async () => {
+  const { view, engineState, refresh, wrapper } = setup({ busy: true, captured: true });
+  engineState.setOpened({ opened: true });
+  engineState.reason.value = 'busy';
+  engineState.canRefresh = computed(() => true);
+  view.historySaving.status.value = 'saving';
+  expect(view.progress.value).toBeUndefined();
+  await flushPromises();
+  expect(wrapper.find('[data-testid="image-engine-busy"]').exists()).toBe(false);
+  const button = wrapper.get<HTMLButtonElement>('[data-testid="image-engine-refresh"]');
+  expect(button.element.disabled).toBe(false);
+  await button.trigger('click'); expect(refresh).toHaveBeenCalledOnce();
+});
+
 it.each([
   { loaded: false, supported: true, text: 'No model is loaded' },
   { loaded: false, supported: false, text: 'unavailable' },
