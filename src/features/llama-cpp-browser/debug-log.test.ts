@@ -1,6 +1,6 @@
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { logDiagnostic, logFailure, logNativeDiagnostic, logOperation, subscribeDiagnostics } from './debug-log';
+import { diagnosticSchema, logDiagnostic, logFailure, logNativeDiagnostic, logOperation, subscribeDiagnostics } from './debug-log';
 import { errorCode, LlamaCppBrowserError } from './types';
 
 afterEach(() => vi.restoreAllMocks());
@@ -275,6 +275,39 @@ describe('projector diagnostic boundaries', () => {
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
     const input = { index: 0 as const, type: 30, shape: [1152, 4304, 1, 1], name: 'private-tensor', data: [42] };
     logDiagnostic({ diagnostic: { event: 'native-node-start', nativeTensorInputs: [input] } });
+    expect(debug).not.toHaveBeenCalled();
+  });
+});
+
+describe('bounded progress delivery diagnostics', () => {
+  it('allows only bounded aggregate counts, never progress histories or user data', () => {
+    const delivery = { received: 10000, sent: 2, settled: 2, coalesced: 9998,
+      discarded: 0, callbackFailures: 0, peakInFlight: 1, peakPending: 1 };
+    const report = { event: 'generation-progress' as const, progressDelivery: delivery };
+    expect(diagnosticSchema.safeParse(report).success).toBe(true);
+    for (const extra of [{ text: 'private' }, { tokens: [1] }, { history: [1, 2] },
+      { received: -1 }, { sent: 0.5 }, { peakInFlight: 3 }, { peakPending: 2 }, { callbackFailures: 3 }]) {
+      expect(diagnosticSchema.safeParse({ ...report, progressDelivery: { ...delivery, ...extra } }).success).toBe(false);
+    }
+  });
+});
+
+
+describe('bounded model read diagnostics', () => {
+  const fileReads = { target: 'model' as const, mode: 'read-ahead' as const, requests: 1024, sourceCalls: 17,
+    sourceBytes: 1048576, deliveredBytes: 1048576, directReads: 1, fills: 16, hits: 1007, hitBytes: 1031168,
+    peakBufferBytes: 65536, allocationFallbacks: 0, sourceReadMs: 12 };
+  it('publishes count-only snapshots for model and projector loads', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    for (const target of ['model', 'projector'] as const) logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, target } } });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toEqual(['model', 'projector'].map(target => ({ event: 'file-read-performance', fileReads: { ...fileReads, target } })));
+  });
+  it.each([
+    { peakBufferBytes: 65537 }, { sourceReadMs: NaN }, { sourceReadMs: -1 }, { hits: -1 },
+    { allocationFallbacks: 2 }, { fileName: 'private model.gguf' }, { bytes: [1, 2, 3] }, { source: { path: 'private' } },
+  ])('rejects invalid or private read details: %o', extra => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, ...extra } } });
     expect(debug).not.toHaveBeenCalled();
   });
 });

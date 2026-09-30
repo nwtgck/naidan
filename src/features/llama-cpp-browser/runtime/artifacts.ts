@@ -18,6 +18,20 @@ export async function loadWasmBinary({ profile, assetBaseURL }: { profile: Llama
   return new Uint8Array(await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
 }
 
+/** Import only the selected factory while its Wasm bytes are in transit. The
+ * module loader owns deduplication; never cache an instantiated native module. */
+export async function preloadCoreModule({ profile, baseURL }: { profile: LlamaCppProfile, baseURL: URL | string | undefined }): Promise<void> {
+  if (baseURL === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+  switch (profile) {
+  case 'cpu-wasm32': await import('virtual:llama-cpp-browser-core/cpu-wasm32'); return;
+  case 'cpu-wasm64': await import('virtual:llama-cpp-browser-core/cpu-wasm64'); return;
+  case 'webgpu-wasm32-asyncify': await import('virtual:llama-cpp-browser-core/webgpu-wasm32-asyncify'); return;
+  case 'webgpu-wasm32-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm32-jspi'); return;
+  case 'webgpu-wasm64-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi'); return;
+  default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  }
+}
+
 export async function loadCoreModule({ profile, baseURL, moduleOptions }: {
   profile: LlamaCppProfile, baseURL: URL | string | undefined, moduleOptions: CoreModuleOptions,
 }) {

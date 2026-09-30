@@ -23,6 +23,17 @@ export async function loadWasmBinary({ profile, assetBaseURL }: { profile: Llama
   })();
   return decodeEmbeddedBrotli({ base64, byteLength, sha256 });
 }
+/** Share the existing standalone module graph, without invoking the factory,
+ * decoding another profile, or acquiring any external runtime assets. */
+export async function preloadCoreModule({ profile, baseURL }: { profile: LlamaCppProfile, baseURL: URL | string | undefined }): Promise<void> {
+  const embedded = embeddedProfile({ profile, baseURL });
+  switch (embedded) {
+  case 'webgpu-wasm32-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm32-jspi'); return;
+  case 'webgpu-wasm64-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi'); return;
+  default: { const exhaustive: never = embedded; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  }
+}
+
 export async function loadCoreModule({ profile, baseURL, moduleOptions }: {
   profile: LlamaCppProfile, baseURL: URL | string | undefined, moduleOptions: CoreModuleOptions,
 }) {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
+import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import { loadProjector, loadProjectorForBackend } from './projector';
 
 const mount = vi.hoisted(() => ({ remove: vi.fn() }));
@@ -85,4 +86,32 @@ it.each(['cpu', 'profile'] as const)('applies the explicit %s audio backend inde
   expect(f.fields.get('use_gpu')).toBe(backend === 'profile' ? 1 : 0);
   expect(f.fields.get('n_threads')).toBe(1);
   await projector.release(); expect(f.api.mtmd_free).toHaveBeenCalledExactlyOnceWith(500n);
+});
+
+
+it.each(['success', 'native-failure', 'close-failure'] as const)('owns and clears a projector read window on %s', async outcome => {
+  const f = fixture({ pointerBytes: 4 });
+  const original = modelReadModule.createModelReadCache;
+  const caches: ReturnType<typeof original>[] = [];
+  vi.spyOn(modelReadModule, 'createModelReadCache').mockImplementation(args => {
+    const cache = original(args); caches.push(cache);
+    const dispose = cache.dispose;
+    cache.dispose = vi.fn(() => {
+      expect(f.close).toHaveBeenCalledOnce(); dispose();
+    });
+    return cache;
+  });
+  switch (outcome) {
+  case 'success': break;
+  case 'native-failure': f.api.mtmd_init_from_file.mockRejectedValueOnce(new Error('native failure')); break;
+  case 'close-failure': f.close.mockImplementationOnce(() => {
+    throw new Error('close failure');
+  }); break;
+  default: { const exhaustive: never = outcome; throw new Error(exhaustive); }
+  }
+  const loading = loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'off', signal: undefined });
+  if (outcome === 'success') await (await loading).release();
+  else await expect(loading).rejects.toThrow(outcome === 'native-failure' ? 'native failure' : 'close failure');
+  expect(caches).toHaveLength(1); expect(caches[0]!.dispose).toHaveBeenCalledOnce();
+  expect(() => caches[0]!.wrap({ source: { size: 0, read: () => 0 } })).toThrow('disposed');
 });

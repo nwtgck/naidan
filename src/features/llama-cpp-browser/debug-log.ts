@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { errorCode, errorCodeSchema, profileSchema } from './types';
 
-const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'audio-prompt', 'audio-frame', 'audio-output', 'media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-probe', 'cache-checkpoint', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
+const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'audio-prompt', 'audio-frame', 'audio-output', 'media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-prepare', 'cache-probe', 'cache-checkpoint', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
   'reasoning-state', 'grammar-switch', 'native-sample', 'reasoning-accept', 'reasoning-replay',
-  'token-render', 'partial-parse', 'stream-emit', 'generation-decode', 'final-parse', 'cleanup',
+  'token-render', 'partial-parse', 'stream-emit', 'generation-decode', 'generation-overlap', 'final-parse', 'cleanup', 'event-loop-yield',
   'worker-operation', 'worker-callback', 'worker-rpc', 'worker-error', 'worker-messageerror']);
 export type DiagnosticStage = z.infer<typeof stageSchema>;
 const failureKindSchema = z.enum(['wasm-trap', 'native-exception', 'binding-error', 'type-error', 'range-error',
@@ -11,9 +11,119 @@ const failureKindSchema = z.enum(['wasm-trap', 'native-exception', 'binding-erro
 const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'compute_buffer_mib', 'model_buffer_mib']);
 
 const eventSchema = z.enum(['import-start', 'import-complete', 'runtime-ready', 'load-complete',
-  'load-start', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'checkpoint-created', 'checkpoint-restored', 'checkpoint-skipped', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-complete', 'cancelled', 'released', 'failed', 'operation-start', 'operation-complete', 'operation-waiting', 'native-error', 'native-info', 'native-node-start', 'native-node-complete']);
+  'load-start', 'file-read-performance', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'checkpoint-created', 'checkpoint-restored', 'checkpoint-skipped', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-performance', 'generation-progress', 'generation-complete', 'cancelled', 'released', 'failed', 'operation-start', 'operation-complete', 'operation-waiting', 'native-error', 'native-info', 'native-node-start', 'native-node-complete']);
 export const diagnosticSchema = z.object({
   event: eventSchema,
+  fileReads: z.object({
+    target: z.enum(['model', 'projector']),
+    mode: z.enum(['read-ahead', 'direct']),
+    requests: z.number().int().nonnegative(),
+    sourceCalls: z.number().int().nonnegative(),
+    sourceBytes: z.number().int().nonnegative(),
+    deliveredBytes: z.number().int().nonnegative(),
+    directReads: z.number().int().nonnegative(),
+    fills: z.number().int().nonnegative(),
+    hits: z.number().int().nonnegative(),
+    hitBytes: z.number().int().nonnegative(),
+    peakBufferBytes: z.number().int().nonnegative().max(65536),
+    allocationFallbacks: z.number().int().nonnegative().max(1),
+    sourceReadMs: z.number().finite().nonnegative().optional(),
+  }).strict().optional(),
+  progressDelivery: z.object({
+    received: z.number().int().nonnegative(),
+    sent: z.number().int().nonnegative(),
+    settled: z.number().int().nonnegative(),
+    coalesced: z.number().int().nonnegative(),
+    discarded: z.number().int().nonnegative(),
+    callbackFailures: z.number().int().nonnegative().max(2),
+    peakInFlight: z.number().int().nonnegative().max(2),
+    peakPending: z.number().int().nonnegative().max(1),
+  }).strict().optional(),
+  performance: z.object({
+    version: z.literal(1),
+    outcome: z.enum(['completed', 'aborted', 'failed']),
+    input: z.enum(['text', 'multimodal', 'unknown']),
+    sessionPreparation: z.object({
+      projector: z.enum(['absent', 'deferred', 'retained', 'loaded', 'reused']),
+      releasedTextContext: z.boolean(),
+    }).strict().optional(),
+    contextTokens: z.number().int().positive().optional(),
+    maximumTokens: z.number().int().nonnegative().optional(),
+    sampling: z.object({
+      temperature: z.number().finite().min(0).max(10),
+      topP: z.number().finite().min(0).max(1),
+      presencePenalty: z.number().finite().min(-2).max(2),
+      frequencyPenalty: z.number().finite().min(-2).max(2),
+      // The generated seed is recorded, never overridden by measurement.
+      seed: z.number().int().min(0).max(4294967295).optional(),
+    }).strict().optional(),
+    sampledTokens: z.number().int().nonnegative(),
+    decodedTokens: z.number().int().nonnegative(),
+    prefillDecodedTokens: z.number().int().nonnegative(),
+    prefillDecodeCalls: z.number().int().nonnegative(),
+    maximumPrefillBatchTokens: z.number().int().nonnegative(),
+    promptTokens: z.number().int().nonnegative().optional(),
+    reusedTokens: z.number().int().nonnegative().optional(),
+    tokenizeCalls: z.number().int().nonnegative(),
+    checkpointTokenizeCalls: z.number().int().nonnegative(),
+    terminalDecodeDeferred: z.boolean(),
+    // Additive v1 field: older summaries need not contain streaming counters.
+    // Counts/lengths only; never retain parser snapshots or emitted content.
+    streaming: z.object({
+      mode: z.enum(['per-token', 'coalesced']),
+      partialParseCalls: z.number().int().nonnegative(),
+      finalParseCalls: z.number().int().nonnegative(),
+      parsedCodeUnits: z.number().int().nonnegative(),
+      skippedPartialParses: z.number().int().nonnegative(),
+      deliveredEvents: z.number().int().nonnegative(),
+    }).strict().optional(),
+    generationYield: z.object({
+      mode: z.enum(['per-token', 'coalesced']),
+      checks: z.number().int().nonnegative(),
+      requestedYields: z.number().int().nonnegative(),
+      completedYields: z.number().int().nonnegative(),
+      coalescedYields: z.number().int().nonnegative(),
+      maximumDecodesBetweenYields: z.number().int().nonnegative().max(4),
+    }).strict().optional(),
+    // Child durations overlap each other; do not add them to exclusive stages.
+    deliveryDecode: z.object({
+      mode: z.enum(['serial', 'overlap']),
+      pairedSteps: z.number().int().nonnegative(),
+      settledPairs: z.number().int().nonnegative(),
+      serialSteps: z.number().int().nonnegative(),
+      deliveryWaitMs: z.number().finite().nonnegative().optional(),
+      decodeWaitMs: z.number().finite().nonnegative().optional(),
+      jointWaitMs: z.number().finite().nonnegative().optional(),
+    }).strict().optional(),
+    memoryReset: z.object({
+      requestedClears: z.number().int().nonnegative().max(1),
+      skippedInitialClears: z.number().int().nonnegative().max(1),
+    }).strict().optional(),
+    prefillOutputs: z.object({
+      requestedLogits: z.number().int().nonnegative(),
+      skippedLogits: z.number().int().nonnegative(),
+      allocationFallbacks: z.number().int().nonnegative().max(1),
+    }).strict().optional(),
+    tokenRendering: z.object({
+      cacheHits: z.number().int().nonnegative(),
+      cacheMisses: z.number().int().nonnegative(),
+      eogCalls: z.number().int().nonnegative(),
+      pieceCalls: z.number().int().nonnegative(),
+      evictions: z.number().int().nonnegative(),
+      oversizedPieces: z.number().int().nonnegative(),
+      peakEntries: z.number().int().nonnegative().max(1024),
+      peakCachedBytes: z.number().int().nonnegative().max(256 * 1024),
+    }).strict().optional(),
+    firstSampleMs: z.number().finite().nonnegative().optional(),
+    firstDeliveryMs: z.number().finite().nonnegative().optional(),
+    // Exclusive Worker wall-clock intervals, not GPU kernel durations. Missing
+    // stages were not observed; visits do not count native calls.
+    stages: z.array(z.object({
+      stage: stageSchema,
+      visits: z.number().int().positive(),
+      elapsedMs: z.number().finite().nonnegative(),
+    }).strict()).max(stageSchema.options.length),
+  }).strict().optional(),
   lastStage: stageSchema.optional(),
   lastEvent: eventSchema.optional(),
   stage: stageSchema.optional(),
@@ -124,7 +234,10 @@ const stageDescriptions = {
   'partial-parse': 'parsing partial generated output with the native chat parser',
   'stream-emit': 'delivering parsed output to the response stream',
   'generation-decode': 'evaluating the next generated token',
+  'generation-overlap': 'delivering owned output while evaluating one generated token',
   'final-parse': 'parsing the completed generated output',
+  'event-loop-yield': 'yielding to the Worker event loop',
+  'cache-prepare': 'checking and preparing the reusable prompt state',
   cleanup: 'releasing generation resources',
   'worker-operation': 'running an operation inside the inference worker',
   'worker-callback': 'delivering a worker progress or output callback',
@@ -213,10 +326,10 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
   }
   case 'operation-start': case 'operation-complete': case 'operation-waiting': case 'native-error': case 'native-info': case 'native-node-start': case 'native-node-complete':
   case 'import-start': case 'import-complete': case 'runtime-ready': case 'load-complete':
-  case 'load-start': case 'model-reused': case 'context-start': case 'context-ready':
+  case 'load-start': case 'file-read-performance': case 'model-reused': case 'context-start': case 'context-ready':
   case 'prefill-start': case 'prefill-complete': case 'generation-start': case 'sampler-ready':
   case 'context-retry': case 'cache-reuse': case 'checkpoint-created': case 'checkpoint-restored': case 'checkpoint-skipped':
-  case 'first-token-sampled': case 'generation-complete': case 'cancelled': case 'released':
+  case 'generation-progress': case 'generation-performance': case 'first-token-sampled': case 'generation-complete': case 'cancelled': case 'released':
     console.log(`[llama-cpp-browser] ${JSON.stringify(safe.data)}`); return;
   default: { const exhaustive: never = safe.data.event; throw new Error(`Unknown diagnostic event: ${exhaustive}`); }
   }

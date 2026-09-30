@@ -38,17 +38,32 @@ export function bindNativeChat<
   common_chat_parse(text: string, partial: boolean, parser: Parser): ParsedMessage;
 } }) {
   /* eslint-enable local-rules-named-args/require-named-args */
+  const templatesByModel = new Map<bigint, InstanceType<typeof native.common_chat_templates>>();
+  const templateFor = ({ assertIdle, model }: { assertIdle: () => void, model: bigint }) => {
+    assertIdle();
+    const existing = templatesByModel.get(model);
+    if (existing) return existing;
+    const created = new native.common_chat_templates(model, '', '', '');
+    templatesByModel.set(model, created);
+    return created;
+  };
   return {
+    releaseModel({ assertIdle, model }: { assertIdle: () => void, model: bigint }): void {
+      assertIdle();
+      const templates = templatesByModel.get(model);
+      if (!templates) return;
+      templatesByModel.delete(model);
+      templates.delete();
+    },
     prepare({ assertIdle, model, request }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'> }) {
       assertIdle();
-      let templates: InstanceType<typeof native.common_chat_templates> | undefined;
       let params: Params | undefined;
       let parser: Parser | undefined;
       const dispose = (): void => {
-        parser?.delete(); params?.delete(); templates?.delete();
+        parser?.delete(); params?.delete();
       };
       try {
-        templates = new native.common_chat_templates(model, '', '', '');
+        const templates = templateFor({ assertIdle, model });
         const images: { marker: string, blob: Blob }[] = [];
         const messages = request.messages.map(message => ({ ...message, content: typeof message.content === 'string' ? message.content : message.content.map(part => {
           switch (part.type) {
