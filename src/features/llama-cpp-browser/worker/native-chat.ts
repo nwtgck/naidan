@@ -1,3 +1,4 @@
+import { copyNativeUtf8 } from '@/features/llama-cpp-browser/runtime/native-utf8';
 import type { ChatParams } from '@/features/llama-cpp-browser/runtime/chat-bindings';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { GenerateInput } from '@/features/llama-cpp-browser/types';
@@ -66,20 +67,55 @@ export async function createGrammarSampler({ core, vocab, params, preservedToken
     for (const pointer of allocations.reverse()) core.free({ pointer });
   }
 }
+const maximumChatTokenSpeculation = 65536;
+const maximumNativeTokenCount = 2147483647;
+
 export async function tokenizeChatText({ core, vocab, text }: { core: Core, vocab: bigint, text: string }): Promise<number[]> {
   const api = core.api;
   if (!text) return [];
-  const pointer = core.utf8({ text }); let tokens = 0n;
+  let pointer: bigint;
+  let length: number;
+  {
+    const data = new TextEncoder().encode(text);
+    length = data.byteLength;
+    if (length > maximumNativeTokenCount) throw new RangeError('Native chat text is too large');
+    pointer = copyNativeUtf8({ core, data });
+  }
+  let capacity = Math.min(Math.max(1, length), maximumChatTokenSpeculation);
+  let tokens: bigint | undefined;
+  const tokenize = async (): Promise<number> => {
+    const count = await api.llama_tokenize(vocab, pointer, length, tokens ?? 0n, tokens === undefined ? 0 : capacity, 0, 1);
+    if (!Number.isInteger(count) || count < -2147483648 || count > maximumNativeTokenCount || count === -2147483648) {
+      throw new Error('Invalid native prefix token count');
+    }
+    return count;
+  };
   try {
-    const length = new TextEncoder().encode(text).length;
-    const count = Math.abs(await api.llama_tokenize(vocab, pointer, length, 0n, 0, 0, 1));
-    if (!count) return [];
-    tokens = core.alloc({ bytes: count * 4 });
-    if (await api.llama_tokenize(vocab, pointer, length, tokens, count, 0, 1) !== count) throw new Error('Native prefix tokenization failed');
+    // The text is already owned, so even an allocation trap must unwind here.
+    tokens = core.tryAlloc({ bytes: capacity * 4 });
+    let count = await tokenize();
+    if (count === 0) return [];
+    if (count < 0) {
+      const required = -count;
+      if (tokens !== undefined && required <= capacity) throw new Error('Invalid native prefix token count');
+      const previous = tokens;
+      tokens = undefined;
+      if (previous !== undefined) core.free({ pointer: previous });
+      capacity = required;
+      tokens = core.tryAlloc({ bytes: capacity * 4 });
+      if (tokens === undefined) throw new Error('Native prefix token allocation failed');
+      count = await tokenize();
+      if (count !== required) throw new Error('Native prefix tokenization changed size');
+    }
+    if (tokens === undefined || count > capacity) throw new Error('Invalid native prefix token count');
     const bytes = core.bytes({ pointer: tokens, length: count * 4 }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     return Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true));
   } finally {
-    if (tokens) core.free({ pointer: tokens }); core.free({ pointer });
+    try {
+      if (tokens !== undefined) core.free({ pointer: tokens });
+    } finally {
+      core.free({ pointer });
+    }
   }
 }
 

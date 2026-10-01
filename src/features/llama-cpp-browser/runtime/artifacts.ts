@@ -11,11 +11,26 @@ export type CoreModuleOptions = {
   printErr: (message: unknown) => void;
 };
 
-export async function loadWasmBinary({ profile, assetBaseURL }: { profile: LlamaCppProfile, assetBaseURL: string | undefined }): Promise<Uint8Array> {
+export async function loadWasmBinary({ profile, assetBaseURL, signal }: { profile: LlamaCppProfile, assetBaseURL: string | undefined, signal: AbortSignal | undefined }): Promise<Uint8Array> {
+  signal?.throwIfAborted();
   if (assetBaseURL === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-  const response = await fetch(new URL(`${profile}/core.wasm.gz`, assetBaseURL));
+  const response = await fetch(new URL(`${profile}/core.wasm.gz`, assetBaseURL), { signal });
   if (!response.ok || !response.body) throw new LlamaCppBrowserError({ code: 'runtime-error' });
   return new Uint8Array(await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+}
+
+/** Import only the selected factory while its Wasm bytes are in transit. The
+ * module loader owns deduplication; never cache an instantiated native module. */
+export async function preloadCoreModule({ profile, baseURL }: { profile: LlamaCppProfile, baseURL: URL | string | undefined }): Promise<void> {
+  if (baseURL === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+  switch (profile) {
+  case 'cpu-wasm32': await import('virtual:llama-cpp-browser-core/cpu-wasm32'); return;
+  case 'cpu-wasm64': await import('virtual:llama-cpp-browser-core/cpu-wasm64'); return;
+  case 'webgpu-wasm32-asyncify': await import('virtual:llama-cpp-browser-core/webgpu-wasm32-asyncify'); return;
+  case 'webgpu-wasm32-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm32-jspi'); return;
+  case 'webgpu-wasm64-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi'); return;
+  default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  }
 }
 
 export async function loadCoreModule({ profile, baseURL, moduleOptions }: {

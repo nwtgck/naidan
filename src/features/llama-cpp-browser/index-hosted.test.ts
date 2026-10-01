@@ -205,6 +205,16 @@ describe('resident Worker reuse at the service boundary', () => {
   });
 });
 
+describe('failed preparation runtime is not reused by generation', () => {
+  it('disposes after a native preparation trap and reacquires a worker for the next public send', async () => {
+    worker.prepareModel.mockRejectedValueOnce(new WebAssembly.RuntimeError('context destruction trap'));
+    await expect(service.prepareModel({ model: 'local.gguf', signal: undefined })).rejects.toThrow('runtime-error');
+    expect(worker.dispose).toHaveBeenCalledOnce(); expect(factory).toHaveBeenCalledOnce();
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).resolves.toHaveProperty('finishReason', 'stop');
+    expect(factory).toHaveBeenCalledTimes(2); expect(worker.probeProfiles).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('tool work holds the generation lane', () => {
   it('keeps queued requests behind tool completion and the following model turn', async () => {
     let finish: () => void = () => {};
