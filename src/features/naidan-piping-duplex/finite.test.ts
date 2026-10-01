@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AttemptError, FiniteEndpoint, needsSenderRepair, readBounded } from '@/features/naidan-piping-duplex/finite';
 
 // All requests terminate at this mock; these tests never open a socket or launch a server.
@@ -27,12 +27,12 @@ function responseStream({ chunks, status }: { chunks: Uint8Array[]; status: numb
 }
 
 for (const kind of ['waiting-sender', 'waiting-receiver', 'established', 'transient', 'fatal'] as const) {
-  test(`only waiting-sender permits self-GET repair: ${kind}`, () => {
+  it(`only waiting-sender permits self-GET repair: ${kind}`, () => {
     expect(needsSenderRepair({ kind })).toBe(kind === 'waiting-sender');
   });
 }
 
-test('POST snapshots a finite body and uses constrained fetch options', async () => {
+it('POST snapshots a finite body and uses constrained fetch options', async () => {
   const instance = endpoint(), stop = new AbortController();
   vi.mocked(fetch).mockResolvedValue(new Response('sent', { status: 200 }));
   const backing = new Uint8Array([9, 1, 2, 9]);
@@ -49,7 +49,7 @@ test('POST snapshots a finite body and uses constrained fetch options', async ()
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test('GET joins HTTP body fragments without treating them as application records', async () => {
+it('GET joins HTTP body fragments without treating them as application records', async () => {
   const stop = new AbortController();
   const { response } = responseStream({ chunks: [new Uint8Array([1]), new Uint8Array(), new Uint8Array([2, 3])], status: 200 });
   vi.mocked(fetch).mockResolvedValue(response);
@@ -59,7 +59,7 @@ test('GET joins HTTP body fragments without treating them as application records
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test('the exact read limit is allowed and the public buffer is independently owned', async () => {
+it('the exact read limit is allowed and the public buffer is independently owned', async () => {
   const source = new Uint8Array(65536).fill(7);
   const { response } = responseStream({ chunks: [source], status: 200 });
   const received = await readBounded({ response, maxBytes: 65536 });
@@ -68,7 +68,7 @@ test('the exact read limit is allowed and the public buffer is independently own
   expect(received.every(byte => byte === 7)).toBe(true);
 });
 
-test('an oversized body is cancelled, not returned as a partial success', async () => {
+it('an oversized body is cancelled, not returned as a partial success', async () => {
   const cancel = vi.fn();
   const response = new Response(new ReadableStream<Uint8Array>({
     start(controller) {
@@ -84,7 +84,7 @@ test('an oversized body is cancelled, not returned as a partial success', async 
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test('a broken response body cannot publish its already-read prefix', async () => {
+it('a broken response body cannot publish its already-read prefix', async () => {
   let pulls = 0;
   const response = new Response(new ReadableStream<Uint8Array>({
     pull(controller) {
@@ -105,7 +105,7 @@ for (const [diagnostic, kind] of [
   ["[ERROR] Another sender has been connected on '/other'.", 'fatal'],
   ['Bad Request', 'fatal'],
 ] as const) {
-  test(`classifies a bounded 400 without guessing from the status alone: ${diagnostic}`, async () => {
+  it(`classifies a bounded 400 without guessing from the status alone: ${diagnostic}`, async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(diagnostic, { status: 400 }));
     await expect(endpoint().send({ route: 'slot', bytes: new Uint8Array([1]), signal: new AbortController().signal }))
       .rejects.toMatchObject({ kind });
@@ -115,7 +115,7 @@ for (const [diagnostic, kind] of [
 }
 
 for (const [status, kind] of [[401, 'fatal'], [403, 'fatal'], [404, 'fatal'], [408, 'transient'], [429, 'transient'], [503, 'transient']] as const) {
-  test(`HTTP ${status} classification does not depend on completing an error page`, async () => {
+  it(`HTTP ${status} classification does not depend on completing an error page`, async () => {
     const cancel = vi.fn();
     let bodyController!: ReadableStreamDefaultController<Uint8Array>;
     const response = new Response(new ReadableStream<Uint8Array>({
@@ -151,7 +151,7 @@ for (const [status, kind] of [[401, 'fatal'], [403, 'fatal'], [404, 'fatal'], [4
   });
 }
 
-test('pre-cancelled operations do not enter fetch or allocate a deadline', async () => {
+it('pre-cancelled operations do not enter fetch or allocate a deadline', async () => {
   const instance = endpoint(), stop = new AbortController(), reason = new Error('Already cancelled');
   stop.abort(reason);
   await expect(instance.receive({ route: 'slot', signal: stop.signal })).rejects.toBe(reason);
@@ -161,12 +161,12 @@ test('pre-cancelled operations do not enter fetch or allocate a deadline', async
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test('invalid repair routes are caller errors, not successful repairs', async () => {
+it('invalid repair routes are caller errors, not successful repairs', async () => {
   await expect(endpoint().repair({ route: '../other', signal: new AbortController().signal })).rejects.toThrow('Invalid route');
   expect(fetch).not.toHaveBeenCalled();
 });
 
-test('request deadline and repair deadline bound absent counterparts and release ownership', async () => {
+it('request deadline and repair deadline bound absent counterparts and release ownership', async () => {
   const signals: AbortSignal[] = [];
   vi.mocked(fetch).mockImplementation((_input, init) => {
     const signal = init?.signal;
@@ -189,7 +189,7 @@ test('request deadline and repair deadline bound absent counterparts and release
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test('a deadline covers stalled response-body reading after headers arrive', async () => {
+it('a deadline covers stalled response-body reading after headers arrive', async () => {
   vi.mocked(fetch).mockImplementation(async (_input, init) => {
     const signal = init?.signal;
     if (!signal) throw new Error('Missing request signal');
@@ -206,7 +206,7 @@ test('a deadline covers stalled response-body reading after headers arrive', asy
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test('parent cancellation is preserved and releases POST ownership', async () => {
+it('parent cancellation is preserved and releases POST ownership', async () => {
   vi.mocked(fetch).mockImplementation((_input, init) => {
     const signal = init?.signal;
     if (!signal) throw new Error('Missing request signal');
@@ -222,7 +222,7 @@ test('parent cancellation is preserved and releases POST ownership', async () =>
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test('self-GET drains bytes but never reports them as a peer receive or starts its own POST', async () => {
+it('self-GET drains bytes but never reports them as a peer receive or starts its own POST', async () => {
   const instance = endpoint(), signal = new AbortController().signal;
   const { response } = responseStream({ chunks: [new Uint8Array([99]), new Uint8Array([98])], status: 200 });
   vi.mocked(fetch).mockResolvedValue(response);
@@ -231,7 +231,7 @@ test('self-GET drains bytes but never reports them as a peer receive or starts i
   expect(response.bodyUsed).toBe(true);
 });
 
-test('invalid paths and oversized request bodies never reach fetch', async () => {
+it('invalid paths and oversized request bodies never reach fetch', async () => {
   const instance = endpoint(), signal = new AbortController().signal;
   for (const route of ['../a', 'a?secret=1', 'a/b', '', 'a'.repeat(97)]) {
     await expect(instance.send({ route, bytes: new Uint8Array([1]), signal })).rejects.toThrow('Invalid route');
@@ -241,7 +241,7 @@ test('invalid paths and oversized request bodies never reach fetch', async () =>
 });
 
 
-test('a large forbidden response remains fatal instead of becoming a size-limit retry', async () => {
+it('a large forbidden response remains fatal instead of becoming a size-limit retry', async () => {
   vi.mocked(fetch).mockResolvedValue(new Response(new Uint8Array(8193), { status: 403 }));
   await expect(endpoint().receive({ route: 'slot', signal: new AbortController().signal }))
     .rejects.toMatchObject({ kind: 'fatal' });

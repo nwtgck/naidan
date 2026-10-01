@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import * as api from '@/features/naidan-piping-duplex';
 import * as peerKeys from '@/features/naidan-piping-duplex/peer-key';
 
@@ -8,7 +8,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-test('the public duplex facade has a functional name and keeps key-only access separate', () => {
+it('the public duplex facade has a functional name and keeps key-only access separate', () => {
   expect(Object.keys(api).sort()).toEqual([
     'NaidanPipingDuplexSession',
     'TEST_ONLY',

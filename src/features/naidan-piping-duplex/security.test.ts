@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { runDuplex } from '@/features/naidan-piping-duplex/runner';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { promiseAllKeyed } from '@/utils/promise';
 import { Pulse } from '@/features/naidan-piping-duplex/bytes';
 import { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
@@ -63,7 +63,7 @@ function empty({ goaway }: { goaway: boolean }): Uint8Array {
 }
 
 for (const usage of ['encrypt', 'decrypt'] as const) {
-  test(`record ${usage} ownership cannot be reconstructed to reset its security state`, async () => {
+  it(`record ${usage} ownership cannot be reconstructed to reset its security state`, async () => {
     const keys = await pair({ identities: undefined, binding: undefined });
     const key = keys.a, domain = key.createDomain({ label: 'test/owner', context: new Uint8Array() });
     new Records({ domain, context: key.contextId, direction: 1, usage });
@@ -74,7 +74,7 @@ for (const usage of ['encrypt', 'decrypt'] as const) {
   });
 }
 
-test('an invalid record context does not consume the valid owner', async () => {
+it('an invalid record context does not consume the valid owner', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const domain = keys.a.createDomain({ label: 'test/owner-context', context: new Uint8Array() });
   expect(() => new Records({ domain, context: new Uint8Array(31), direction: 1, usage: 'encrypt' })).toThrow();
@@ -83,7 +83,7 @@ test('an invalid record context does not consume the valid owner', async () => {
   keys.a.dispose(); keys.b.dispose();
 });
 
-test('duplicate authenticated records apply exactly once to a living receiver', async () => {
+it('duplicate authenticated records apply exactly once to a living receiver', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const { tx, rx } = codecs({ keys, label: 'test/replay' });
   const capsule = await tx.seal({ plaintext: empty({ goaway: false }) });
@@ -98,7 +98,7 @@ test('duplicate authenticated records apply exactly once to a living receiver', 
   keys.a.dispose(); keys.b.dispose();
 });
 
-test('a forged high record number cannot poison the replay watermark', async () => {
+it('a forged high record number cannot poison the replay watermark', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const { tx, rx } = codecs({ keys, label: 'test/high-number' });
   const capsule = await tx.seal({ plaintext: empty({ goaway: false }) });
@@ -112,7 +112,7 @@ test('a forged high record number cannot poison the replay watermark', async () 
   keys.a.dispose(); keys.b.dispose();
 });
 
-test('old records fail across fresh handshakes even with identical identities and rendezvous binding', async () => {
+it('old records fail across fresh handshakes even with identical identities and rendezvous binding', async () => {
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const binding = new Uint8Array(32);
   const first = await pair({ identities, binding }), second = await pair({ identities, binding });
@@ -126,7 +126,7 @@ test('old records fail across fresh handshakes even with identical identities an
   first.a.dispose(); first.b.dispose(); second.a.dispose(); second.b.dispose();
 });
 
-test('direction reflection and domain substitution are rejected', async () => {
+it('direction reflection and domain substitution are rejected', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const { tx, right } = codecs({ keys, label: 'test/reflect' });
   const reflected = new Records({ domain: right, context: keys.b.contextId, direction: 2, usage: 'decrypt' });
@@ -140,7 +140,7 @@ test('direction reflection and domain substitution are rejected', async () => {
   keys.a.dispose(); keys.b.dispose();
 });
 
-test('an old decrypt finishing late cannot roll back already committed state', async () => {
+it('an old decrypt finishing late cannot roll back already committed state', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const { tx, rx } = codecs({ keys, label: 'test/reorder' });
   const old = await tx.seal({ plaintext: empty({ goaway: false }) }), newer = await tx.seal({ plaintext: empty({ goaway: true }) });
@@ -172,7 +172,7 @@ test('an old decrypt finishing late cannot roll back already committed state', a
   keys.a.dispose(); keys.b.dispose();
 });
 
-test('disposal during authentication prevents publishing plaintext state', async () => {
+it('disposal during authentication prevents publishing plaintext state', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const { tx, rx } = codecs({ keys, label: 'test/dispose-decrypt' });
   const capsule = await tx.seal({ plaintext: empty({ goaway: false }) });
@@ -186,14 +186,14 @@ test('disposal during authentication prevents publishing plaintext state', async
   expect(rx.high).toBe(-1n); keys.a.dispose();
 });
 
-test('a session cannot be reconstructed from an already consumed key context', async () => {
+it('a session cannot be reconstructed from an already consumed key context', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const session = await StreamSession.create({ keys: keys.a });
   await expect(StreamSession.create({ keys: keys.a })).rejects.toThrow('consumed');
   session.abort({ reason: 'Test complete' }); keys.a.dispose(); keys.b.dispose();
 });
 
-test('a failed encryption burns its record number rather than reusing its nonce', async () => {
+it('a failed encryption burns its record number rather than reusing its nonce', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const { tx, rx } = codecs({ keys, label: 'test/burn' });
   vi.spyOn(crypto.subtle, 'encrypt').mockRejectedValueOnce(new Error('Injected encryption failure'));
@@ -206,7 +206,7 @@ test('a failed encryption burns its record number rather than reusing its nonce'
 });
 
 
-test('authenticated protocol violations reject the runner lifetime instead of looking like a clean stop', async () => {
+it('authenticated protocol violations reject the runner lifetime instead of looking like a clean stop', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const session = await StreamSession.create({ keys: keys.b });
   const domain = keys.a.createDomain({ label: 'piping-duplex-record/v2', context: keys.a.contextId });
@@ -228,7 +228,7 @@ test('authenticated protocol violations reject the runner lifetime instead of lo
   }
 });
 
-test('an all-zero remote X25519 input fails closed rather than establishing a known shared secret', async () => {
+it('an all-zero remote X25519 input fails closed rather than establishing a known shared secret', async () => {
   const { NoiseXX } = await import('@/features/naidan-piping-duplex/noise-xx');
   const identities = await promiseAllKeyed({ identity: createNaidanPipingIdentity(), ephemeral: createNaidanPipingIdentity() });
   const state = await NoiseXX.create({ role: 'responder', ...identities, prologue: new Uint8Array() });
