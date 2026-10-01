@@ -18,8 +18,9 @@ export function createTokenRenderer({ core, vocab, cacheMode }: {
   const decoder = new TextDecoder();
   const entries = new Map<number, { bytes: Uint8Array, endOfGeneration: boolean }>();
   const counters = { cacheHits: 0, cacheMisses: 0, eogCalls: 0, pieceCalls: 0,
-    evictions: 0, oversizedPieces: 0, peakEntries: 0, peakCachedBytes: 0 };
+    evictions: 0, oversizedPieces: 0, peakEntries: 0, peakCachedBytes: 0, allocationFallbacks: 0 };
   let cachedBytes = 0;
+  let cacheState: 'active' | 'allocation-failed' = 'active';
   let scratch: bigint | undefined;
   let capacity = 256;
   let busy = false;
@@ -84,14 +85,32 @@ export function createTokenRenderer({ core, vocab, cacheMode }: {
         switch (cacheMode) {
         case 'disabled': break;
         case 'bounded':
-          if (length > maximumCachedPieceBytes) counters.oversizedPieces++;
-          else {
-            while (entries.size >= maximumEntries || cachedBytes + length > maximumCachedBytes) evict();
-            // Copy before another native call can overwrite or detach the heap.
-            entries.set(key, { bytes: bytes.slice(), endOfGeneration });
-            cachedBytes += length;
-            counters.peakEntries = Math.max(counters.peakEntries, entries.size);
-            counters.peakCachedBytes = Math.max(counters.peakCachedBytes, cachedBytes);
+          switch (cacheState) {
+          case 'allocation-failed': break;
+          case 'active':
+            if (length > maximumCachedPieceBytes) counters.oversizedPieces++;
+            else {
+              while (entries.size >= maximumEntries || cachedBytes + length > maximumCachedBytes) evict();
+              // Copy before another native call can overwrite or detach the heap.
+              let copied: Uint8Array;
+              try {
+                copied = bytes.slice();
+              } catch (error) {
+                // Memoization is optional. Release its memory and stop retrying
+                // allocation for this request, without resetting UTF-8 state.
+                // Native/heap access above stays outside this narrow fallback.
+                if (!(error instanceof RangeError)) throw error;
+                entries.clear(); cachedBytes = 0;
+                cacheState = 'allocation-failed'; counters.allocationFallbacks++;
+                break;
+              }
+              entries.set(key, { bytes: copied, endOfGeneration });
+              cachedBytes += length;
+              counters.peakEntries = Math.max(counters.peakEntries, entries.size);
+              counters.peakCachedBytes = Math.max(counters.peakCachedBytes, cachedBytes);
+            }
+            break;
+          default: { const exhaustive: never = cacheState; throw new Error(String(exhaustive)); }
           }
           break;
         default: { const exhaustive: never = cacheMode; throw new Error(String(exhaustive)); }

@@ -33,7 +33,7 @@ describe('selected runtime startup inputs', () => {
     const binary = Promise.withResolvers<Uint8Array>(); const factory = Promise.withResolvers<void>();
     host.binary.mockReturnValueOnce(binary.promise); host.factory.mockReturnValueOnce(factory.promise);
     const pending = loadRuntime({ profile, assetBaseURL });
-    expect(host.binary).toHaveBeenCalledExactlyOnceWith({ profile, assetBaseURL });
+    expect(host.binary).toHaveBeenCalledExactlyOnceWith({ profile, assetBaseURL, signal: expect.any(AbortSignal) });
     expect(host.factory).toHaveBeenCalledExactlyOnceWith({ profile, baseURL: assetBaseURL });
     expect(host.create).not.toHaveBeenCalled();
     switch (first) {
@@ -49,7 +49,7 @@ describe('selected runtime startup inputs', () => {
     expect(core.api.llama_backend_init).toHaveBeenCalledOnce();
   });
 
-  it.each(['binary', 'factory'] as const)('drains the other input when %s fails and never creates native state', async branch => {
+  it.each(['binary', 'factory'] as const)('reports %s failure without waiting for its sibling or creating native state', async branch => {
     const binary = Promise.withResolvers<Uint8Array>(); const factory = Promise.withResolvers<void>();
     host.binary.mockReturnValueOnce(binary.promise); host.factory.mockReturnValueOnce(factory.promise);
     const failure = new Error('fixture failure'); let settled = false;
@@ -61,23 +61,24 @@ describe('selected runtime startup inputs', () => {
     case 'factory': factory.reject(failure); break;
     default: { const exhaustive: never = branch; throw new Error(String(exhaustive)); }
     }
-    await turn(); expect(settled).toBe(false); expect(host.create).not.toHaveBeenCalled();
+    await turn(); expect(settled).toBe(true); expect(host.create).not.toHaveBeenCalled();
+    expect(host.binary.mock.calls[0]?.[0].signal?.aborted).toBe(true);
     binary.resolve(bytes); factory.resolve();
     expect(await pending).toEqual({ status: 'failed', error: failure });
     expect(host.create).not.toHaveBeenCalled(); expect(core.api.llama_backend_init).not.toHaveBeenCalled();
   });
 
-  it.each(['binary', 'factory'] as const)('keeps binary error precedence when %s rejects first', async first => {
+  it.each(['binary', 'factory'] as const)('preserves the first observed error when %s rejects first', async first => {
     const binary = Promise.withResolvers<Uint8Array>(); const factory = Promise.withResolvers<void>();
     host.binary.mockReturnValueOnce(binary.promise); host.factory.mockReturnValueOnce(factory.promise);
     const binaryFailure = new Error('binary'); const factoryFailure = new Error('factory');
     const pending = loadRuntime({ profile, assetBaseURL }).catch(error => error);
     if (first === 'binary') binary.reject(binaryFailure); else factory.reject(factoryFailure);
     await turn(); binary.reject(binaryFailure); factory.reject(factoryFailure);
-    expect(await pending).toBe(binaryFailure); expect(host.create).not.toHaveBeenCalled();
+    expect(await pending).toBe(first === 'binary' ? binaryFailure : factoryFailure); expect(host.create).not.toHaveBeenCalled();
   });
 
-  it.each(['binary', 'factory'] as const)('observes a synchronous %s throw and still drains the other started input', async branch => {
+  it.each(['binary', 'factory'] as const)('observes a synchronous %s throw without waiting for the other started input', async branch => {
     const failure = new Error('synchronous fixture failure');
     const binary = Promise.withResolvers<Uint8Array>(); const factory = Promise.withResolvers<void>();
     host.binary.mockReturnValueOnce(binary.promise); host.factory.mockReturnValueOnce(factory.promise);
@@ -91,7 +92,7 @@ describe('selected runtime startup inputs', () => {
     const pending = loadRuntime({ profile, assetBaseURL }).catch(error => error).finally(() => {
       settled = true;
     });
-    await turn(); expect(settled).toBe(false);
+    await turn(); expect(settled).toBe(true);
     expect(host.binary).toHaveBeenCalledOnce(); expect(host.factory).toHaveBeenCalledOnce();
     binary.resolve(bytes); factory.resolve();
     expect(await pending).toBe(failure); expect(host.create).not.toHaveBeenCalled();
@@ -99,7 +100,7 @@ describe('selected runtime startup inputs', () => {
 
   it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi', 'webgpu-wasm32-asyncify'] as const)('acquires only %s and keeps module options and backend checks', async selected => {
     expect(await loadRuntime({ profile: selected, assetBaseURL })).toBe(core);
-    expect(host.binary).toHaveBeenCalledExactlyOnceWith({ profile: selected, assetBaseURL });
+    expect(host.binary).toHaveBeenCalledExactlyOnceWith({ profile: selected, assetBaseURL, signal: expect.any(AbortSignal) });
     expect(host.factory).toHaveBeenCalledExactlyOnceWith({ profile: selected, baseURL: assetBaseURL });
     expect(host.create.mock.calls[0]![0]).toMatchObject({ profile: selected, baseURL: assetBaseURL, moduleOptions: { wasmBinary: bytes } });
     expect(core.api.ggml_backend_dev_by_type).toHaveBeenCalledTimes(selected.startsWith('webgpu') ? 1 : 0);
@@ -108,7 +109,7 @@ describe('selected runtime startup inputs', () => {
   it('retains the standalone undefined URL for both acquisition paths', async () => {
     await loadRuntime({ profile: 'webgpu-wasm64-jspi', assetBaseURL: undefined });
     expect(host.factory).toHaveBeenCalledExactlyOnceWith({ profile: 'webgpu-wasm64-jspi', baseURL: undefined });
-    expect(host.binary).toHaveBeenCalledExactlyOnceWith({ profile: 'webgpu-wasm64-jspi', assetBaseURL: undefined });
+    expect(host.binary).toHaveBeenCalledExactlyOnceWith({ profile: 'webgpu-wasm64-jspi', assetBaseURL: undefined, signal: expect.any(AbortSignal) });
   });
 
   it.each(['webgpu-missing', 'jspi-missing'] as const)('checks %s before either startup input is acquired', async missing => {
@@ -131,5 +132,33 @@ describe('selected runtime startup inputs', () => {
     expect(core.api.llama_backend_init).not.toHaveBeenCalled();
     vi.mocked(core.api.llama_backend_init).mockRejectedValueOnce(new Error('backend failed'));
     await expect(loadRuntime({ profile, assetBaseURL })).rejects.toThrow('backend failed');
+  });
+});
+
+
+describe('late startup input completion', () => {
+  it.each(['binary', 'factory'] as const)('observes a late %s rejection after the owning error has returned', async late => {
+    const binary = Promise.withResolvers<Uint8Array>(); const factory = Promise.withResolvers<void>();
+    host.binary.mockReturnValueOnce(binary.promise); host.factory.mockReturnValueOnce(factory.promise);
+    const failure = new Error('first failure'); const siblingFailure = new Error('late failure');
+    const pending = loadRuntime({ profile, assetBaseURL });
+    const rejected = expect(pending).rejects.toBe(failure);
+    if (late === 'binary') factory.reject(failure); else binary.reject(failure);
+    await rejected;
+    if (late === 'binary') binary.reject(siblingFailure); else factory.reject(siblingFailure);
+    await turn();
+    expect(host.create).not.toHaveBeenCalled();
+  });
+  it('never instantiates a late factory after a failed startup or interferes with a retry', async () => {
+    const firstFactory = Promise.withResolvers<void>();
+    host.factory.mockReturnValueOnce(firstFactory.promise);
+    host.binary.mockRejectedValueOnce(new Error('binary failed'));
+    await expect(loadRuntime({ profile, assetBaseURL })).rejects.toThrow('binary failed');
+    const firstSignal = host.binary.mock.calls[0]?.[0].signal;
+    await expect(loadRuntime({ profile, assetBaseURL })).resolves.toBe(core);
+    firstFactory.resolve(); await turn();
+    expect(host.create).toHaveBeenCalledOnce();
+    expect(firstSignal?.aborted).toBe(true);
+    expect(host.binary.mock.calls[1]?.[0].signal?.aborted).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
-import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
+import { logFailure } from '@/features/llama-cpp-browser/debug-log';
+import { errorCode, LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 
 /** At most one owned JS delivery and one decode. Every started operation must
  * settle before the caller can sample, parse, reuse a batch, or free memory. */
@@ -77,8 +78,15 @@ export function createDeliveryDecode({ mode, signal, now }: {
         const [delivered, decoded] = await Promise.allSettled([delivery, decoding]);
         counters.settledPairs++;
         if (counters.jointWaitMs !== undefined) counters.jointWaitMs += elapsed({ start });
-        checkCancelled();
-        // Delivery failure wins deterministically, but only after both settle.
+        // Real failures take precedence over cooperative cancellation, just as
+        // in serial mode. A simultaneous delivery failure wins, but retain a
+        // separate, sanitized diagnostic for any native failure it masks.
+        if (decoded.status === 'rejected' && errorCode({ error: decoded.reason }) !== 'aborted') {
+          if (delivered.status !== 'rejected' || errorCode({ error: delivered.reason }) === 'aborted') throw decoded.reason;
+          try {
+            logFailure({ stage: 'generation-decode', error: decoded.reason });
+          } catch { /* Diagnostics must not replace the owning failure. */ }
+        }
         // decode() must also reject nonzero native statuses, not merely traps.
         switch (delivered.status) {
         case 'rejected': throw delivered.reason;
@@ -87,7 +95,7 @@ export function createDeliveryDecode({ mode, signal, now }: {
         }
         switch (decoded.status) {
         case 'rejected': throw decoded.reason;
-        case 'fulfilled': return;
+        case 'fulfilled': checkCancelled(); return;
         default: { const exhaustive: never = decoded; throw new Error(String(exhaustive)); }
         }
       } finally {

@@ -11,9 +11,10 @@ export type CoreModuleOptions = {
   printErr: (message: unknown) => void;
 };
 
-export async function loadWasmBinary({ profile, assetBaseURL }: { profile: LlamaCppProfile, assetBaseURL: string | undefined }): Promise<Uint8Array> {
+export async function loadWasmBinary({ profile, assetBaseURL, signal }: { profile: LlamaCppProfile, assetBaseURL: string | undefined, signal: AbortSignal | undefined }): Promise<Uint8Array> {
+  signal?.throwIfAborted();
   if (assetBaseURL === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-  const response = await fetch(new URL(`${profile}/core.wasm.gz`, assetBaseURL));
+  const response = await fetch(new URL(`${profile}/core.wasm.gz`, assetBaseURL), { signal });
   if (!response.ok || !response.body) throw new LlamaCppBrowserError({ code: 'runtime-error' });
   return new Uint8Array(await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
 }

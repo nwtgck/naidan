@@ -38,16 +38,16 @@ describe('bounded single-pass prompt tokenization', () => {
     const { core, allocations, onTokenize, run } = fixture();
     const result = await run({ contextTokens: 32 });
     expect(result).toEqual({ pointer: 100n, tokens: [1, 200, 999] });
-    expect(core.tryAlloc).toHaveBeenCalledExactlyOnceWith({ bytes: 31 * 4 });
-    expect(core.api.llama_tokenize).toHaveBeenCalledExactlyOnceWith(1n, 2n, 8, 100n, 31, 1, 1);
+    expect(core.tryAlloc).toHaveBeenCalledExactlyOnceWith({ bytes: 16 * 4 });
+    expect(core.api.llama_tokenize).toHaveBeenCalledExactlyOnceWith(1n, 2n, 8, 100n, 16, 1, 1);
     expect(onTokenize).toHaveBeenCalledOnce();
     expect(core.free).not.toHaveBeenCalled();
     core.free({ pointer: result.pointer });
     expect(allocations.size).toBe(0);
   });
   it('caps the speculative allocation independently of a huge context', async () => {
-    const { core, run } = fixture();
-    const result = await run({ contextTokens: 2147483647 });
+    const { core, onTokenize } = fixture();
+    const result = await tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 1000000, contextTokens: 2147483647, onTokenize });
     expect(core.tryAlloc).toHaveBeenCalledExactlyOnceWith({ bytes: 262144 });
     core.free({ pointer: result.pointer });
   });
@@ -56,7 +56,7 @@ describe('bounded single-pass prompt tokenization', () => {
     core.api.llama_tokenize.mockResolvedValueOnce(-65537).mockResolvedValueOnce(65537);
     const result = await run({ contextTokens: 100000 });
     expect(result.tokens).toHaveLength(65537);
-    expect(core.tryAlloc.mock.calls).toEqual([[{ bytes: 262144 }], [{ bytes: 65537 * 4 }]]);
+    expect(core.tryAlloc.mock.calls).toEqual([[{ bytes: 16 * 4 }], [{ bytes: 65537 * 4 }]]);
     expect(core.free.mock.invocationCallOrder[0]).toBeLessThan(core.tryAlloc.mock.invocationCallOrder[1]!);
     expect(onTokenize).toHaveBeenCalledTimes(2);
     expect(allocations.size).toBe(1);
@@ -156,4 +156,35 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(core.tryAlloc).toHaveBeenCalledOnce(); expect(core.api.llama_tokenize).toHaveBeenCalledOnce(); expect(allocations.size).toBe(0);
   });
 
+});
+
+
+describe('prompt-sized speculation and deallocation failures', () => {
+  it('does not allocate a context-sized buffer for a short prompt', async () => {
+    const { core, run } = fixture();
+    const result = await run({ contextTokens: 32768 });
+    expect(core.tryAlloc).toHaveBeenCalledExactlyOnceWith({ bytes: 64 });
+    expect(core.api.llama_tokenize).toHaveBeenCalledOnce();
+    core.free({ pointer: result.pointer });
+  });
+  it('retries from the native count when special tokens exceed the hint', async () => {
+    const { core, onTokenize } = fixture();
+    core.api.llama_tokenize.mockResolvedValueOnce(-17).mockResolvedValueOnce(17);
+    const result = await tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 0, contextTokens: 32, onTokenize });
+    expect(core.tryAlloc.mock.calls).toEqual([[{ bytes: 8 * 4 }], [{ bytes: 17 * 4 }]]);
+    expect(result.tokens).toHaveLength(17);
+    core.free({ pointer: result.pointer });
+  });
+  it('never retries a throwing deallocator during resizing', async () => {
+    const { core, allocations, run } = fixture();
+    const failure = new WebAssembly.RuntimeError('free trap');
+    core.api.llama_tokenize.mockResolvedValueOnce(-17);
+    core.free.mockImplementationOnce(({ pointer }) => {
+      allocations.delete(pointer); throw failure;
+    });
+    await expect(run({ contextTokens: 32 })).rejects.toBe(failure);
+    expect(core.free).toHaveBeenCalledOnce();
+    expect(core.tryAlloc).toHaveBeenCalledOnce();
+    expect(allocations.size).toBe(0);
+  });
 });

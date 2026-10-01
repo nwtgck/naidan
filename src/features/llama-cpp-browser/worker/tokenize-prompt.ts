@@ -22,7 +22,10 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
     throw new LlamaCppBrowserError({ code: 'runtime-error' });
   }
   const maximumTokens = contextTokens - 1;
-  let capacity = Math.min(maximumTokens, speculativeTokens);
+  // Size the speculative buffer for this prompt, not the resident context.
+  // The small special-token allowance is only a hint; native negative counts
+  // still trigger the exact-size retry, including unusual tokenizer families.
+  let capacity = Math.min(maximumTokens, speculativeTokens, promptBytes + 8);
   let pointer = core.tryAlloc({ bytes: capacity * 4 });
   let transferred = false;
   const tokenize = async (): Promise<number> => {

@@ -105,6 +105,7 @@ export const diagnosticSchema = z.object({
       allocationFallbacks: z.number().int().nonnegative().max(1),
     }).strict().optional(),
     tokenRendering: z.object({
+      allocationFallbacks: z.number().int().nonnegative().max(1).optional(),
       cacheHits: z.number().int().nonnegative(),
       cacheMisses: z.number().int().nonnegative(),
       eogCalls: z.number().int().nonnegative(),

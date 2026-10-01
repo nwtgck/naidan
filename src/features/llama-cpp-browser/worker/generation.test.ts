@@ -128,6 +128,37 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       referenceFactory?.mockRestore(); log.mockRestore();
     }
   }, 30000);
+  it('keeps real native output and logits when optional token caching cannot allocate a copy', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: 'chatml' }));
+    const req = { ...request({ messages: [{ role: 'user' as const, content: 'native cache fallback' }] }), maxTokens: 17, debug: 'on' as const };
+    const expected = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const logits = await readNativeLogits();
+    const position = await sequencePosition();
+    await releaseSession({ releaseRuntime: false });
+    const create = renderingModule.createTokenRenderer;
+    const copy = vi.fn(() => {
+      throw new RangeError('controlled optional copy allocation failure');
+    });
+    const factory = vi.spyOn(renderingModule, 'createTokenRenderer').mockImplementation(({ core, vocab, cacheMode }) => create({
+      core: { ...core, bytes({ pointer, length }) {
+        const view = core.bytes({ pointer, length });
+        view.slice = copy;
+        return view;
+      } }, vocab, cacheMode,
+    }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(expected);
+      expect(await readNativeLogits()).toEqual(logits);
+      expect(await sequencePosition()).toBe(position);
+      expect(copy).toHaveBeenCalledOnce();
+      const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance'));
+      expect(report.performance?.tokenRendering).toMatchObject({ allocationFallbacks: 1, cacheHits: 0, pieceCalls: 17 });
+    } finally {
+      factory.mockRestore(); log.mockRestore();
+    }
+  }, 30000);
   it('renders every native byte token and both special modes equivalently with and without caching', async () => {
     const req = request({ messages: [{ role: 'user', content: 'rendering fixture' }] });
     const { core, vocab } = await prepareSession({ request: req, onProgress: () => {}, signal: undefined });

@@ -153,6 +153,32 @@ describe('cooperative generation cancellation', () => {
   });
 });
 
+describe('concurrent native failure and cancellation ownership', () => {
+  it.each(['generate', 'prepare'] as const)('discards a failed %s worker even though Stop remains the user-facing result', async operation => {
+    const gate = Promise.withResolvers<never>();
+    const controller = new AbortController();
+    const client = createLlamaCppWorkerClient();
+    const pending = (() => {
+      switch (operation) {
+      case 'generate':
+        transport.remote.generate.mockReturnValueOnce(gate.promise);
+        return client.generate({ request: generationInput(), onEvent: () => {}, onProgress: () => {}, signal: controller.signal });
+      case 'prepare':
+        transport.remote.prepareModel.mockReturnValueOnce(gate.promise);
+        return client.prepareModel({ request: { model: 'local.gguf', options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: controller.signal });
+      default: { const exhaustive: never = operation; throw new Error(String(exhaustive)); }
+      }
+    })();
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    controller.abort();
+    expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
+    gate.reject(new LlamaCppBrowserError({ code: 'runtime-error' }));
+    await rejected;
+    expect(client.canReuse()).toBe(false); expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
+    client.dispose(); expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
+  });
+});
+
 describe('directory import cancellation', () => {
   it('requests cooperative cancellation so the worker can roll back before responding', async () => {
     let rejectImport: (error: Error) => void = () => {};

@@ -235,3 +235,40 @@ describe('bounded request-local token rendering', () => {
     await expect(renderer.render({ token: 1, special: false })).rejects.toThrow('disposed');
   });
 });
+
+
+describe('optional token cache allocation failure', () => {
+  it('disables caching once, releases cached bytes and preserves partial UTF-8 state', async () => {
+    const f = fixture({ cacheMode: 'bounded' });
+    [0xe6, 0x97, 0xa5].forEach((byte, index) => f.pieces.set(index + 1, Uint8Array.of(byte)));
+    expect((await f.renderer.render({ token: 1, special: false })).text).toBe('');
+    const original = f.core.bytes.getMockImplementation()!;
+    const copy = vi.fn(() => {
+      throw new RangeError('controlled optional copy allocation failure');
+    });
+    f.core.bytes.mockImplementation(args => {
+      const view = original(args);
+      view.slice = copy;
+      return view;
+    });
+    const output: string[] = [];
+    for (const token of [2, 3, 1, 2, 3]) output.push((await f.renderer.render({ token, special: false })).text);
+    expect(output.join('') + f.renderer.finish()).toBe('日日');
+    expect(copy).toHaveBeenCalledOnce();
+    expect(f.core.api.llama_token_to_piece).toHaveBeenCalledTimes(6);
+    expect(f.renderer.counters).toMatchObject({ allocationFallbacks: 1, cacheHits: 0, peakCachedBytes: 1 });
+    f.renderer.dispose();
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it('does not swallow a native or heap-range failure as a cache allocation decline', async () => {
+    const f = fixture({ cacheMode: 'bounded' });
+    const failure = new RangeError('controlled invalid heap span');
+    f.core.bytes.mockImplementationOnce(() => {
+      throw failure;
+    });
+    await expect(f.renderer.render({ token: 1, special: false })).rejects.toBe(failure);
+    f.renderer.dispose();
+    expect(f.allocations.size).toBe(0);
+  });
+});

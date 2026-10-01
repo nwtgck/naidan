@@ -4,24 +4,10 @@ import { createCore, type Core } from './core';
 import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import { logDiagnostic, logNativeDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 
-type SettledInput<T> = { status: 'ready', value: T } | { status: 'failed', error: unknown };
-
-// Both non-native inputs must settle before returning ownership on failure.
-// Keep a failed branch observed even while the other import/download is pending.
-async function settleInput<T>({ operation }: { operation: () => Promise<T> }): Promise<SettledInput<T>> {
-  try {
-    return { status: 'ready', value: await operation() };
-  } catch (error) {
-    return { status: 'failed', error };
-  }
-}
-
-function requireInput<T>({ input }: { input: SettledInput<T> }): T {
-  switch (input.status) {
-  case 'ready': return input.value;
-  case 'failed': throw input.error;
-  default: { const exhaustive: never = input; throw new Error(String(exhaustive)); }
-  }
+// Invoke both inputs immediately and turn synchronous throws into rejections.
+// These operations only acquire bytes/factories; neither creates native state.
+async function acquireInput<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
+  return operation();
 }
 
 export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCppProfile, assetBaseURL: string | undefined }): Promise<Core> {
@@ -32,14 +18,17 @@ export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCpp
   if ((profile === 'webgpu-wasm64-jspi' || profile === 'webgpu-wasm32-jspi') && (!('promising' in wasmFeatures) || typeof wasmFeatures.promising !== 'function' || !('Suspending' in wasmFeatures) || typeof wasmFeatures.Suspending !== 'function')) {
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
-  const inputs = await promiseAllKeyed({
-    binary: settleInput({ operation: () => loadWasmBinary({ profile, assetBaseURL }) }),
-    factory: settleInput({ operation: () => preloadCoreModule({ profile, baseURL: assetBaseURL }) }),
+  const acquisition = new AbortController();
+  const { binary: wasmBinary } = await promiseAllKeyed({
+    binary: acquireInput({ operation: () => loadWasmBinary({ profile, assetBaseURL, signal: acquisition.signal }) }),
+    factory: acquireInput({ operation: () => preloadCoreModule({ profile, baseURL: assetBaseURL }) }),
+  }).catch(error => {
+    // Do not hide a known startup failure behind a stalled sibling. Stop the
+    // byte download; the import remains observed and can never instantiate a
+    // late native module. The first observed failure remains the owning error.
+    acquisition.abort();
+    throw error;
   });
-  // Binary failures retain the serial path's precedence. Neither branch has
-  // created native memory, a backend, or a GPU device at this point.
-  const wasmBinary = requireInput({ input: inputs.binary });
-  requireInput({ input: inputs.factory });
   const core = await createCore({
     profile,
     baseURL: assetBaseURL,

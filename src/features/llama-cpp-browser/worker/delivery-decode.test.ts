@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDeliveryDecode } from './delivery-decode';
+import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 
 async function tick(): Promise<void> {
   for (let i = 0; i < 12; i++) await Promise.resolve();
@@ -151,5 +152,41 @@ describe('one delivery paired with one decode', () => {
     const decode = vi.fn(async () => {});
     await pair.run({ deliver: () => {}, decode });
     expect(decode).toHaveBeenCalledOnce(); expect(pair.counters).toMatchObject({ settledPairs: 1, jointWaitMs: 0 });
+  });
+});
+
+
+describe('delivery/decode error identity during cancellation', () => {
+  it.each(['serial', 'overlap'] as const)('preserves a synchronous delivery failure in %s mode', async mode => {
+    const controller = new AbortController();
+    const failure = new Error('delivery failed');
+    const decode = vi.fn(async () => {});
+    const pair = createDeliveryDecode({ mode, signal: controller.signal, now: undefined });
+    await expect(pair.run({ deliver: () => {
+      controller.abort(); throw failure;
+    }, decode })).rejects.toBe(failure);
+    expect(decode).not.toHaveBeenCalled();
+  });
+
+  it.each(['ok', 'abort', 'failure'] as const)('keeps a native failure after cancellation with %s delivery', async deliveryOutcome => {
+    const controller = new AbortController();
+    const delivery = Promise.withResolvers<void>(); const native = Promise.withResolvers<void>();
+    const decodeFailure = new WebAssembly.RuntimeError('decode trap');
+    const deliveryFailure = new Error('delivery failed');
+    const pair = createDeliveryDecode({ mode: 'overlap', signal: controller.signal, now: undefined });
+    let finished = false;
+    const pending = pair.run({ deliver: () => delivery.promise, decode: () => native.promise }).catch(error => {
+      finished = true; return error;
+    });
+    await tick(); controller.abort(); native.reject(decodeFailure);
+    await tick(); expect(finished).toBe(false);
+    switch (deliveryOutcome) {
+    case 'ok': delivery.resolve(); break;
+    case 'abort': delivery.reject(new LlamaCppBrowserError({ code: 'aborted' })); break;
+    case 'failure': delivery.reject(deliveryFailure); break;
+    default: { const exhaustive: never = deliveryOutcome; throw new Error(String(exhaustive)); }
+    }
+    expect(await pending).toBe(deliveryOutcome === 'failure' ? deliveryFailure : decodeFailure);
+    expect(pair.counters.settledPairs).toBe(1);
   });
 });

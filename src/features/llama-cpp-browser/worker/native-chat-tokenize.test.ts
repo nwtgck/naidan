@@ -133,3 +133,40 @@ describe('chat text tokenization', () => {
   });
 
 });
+
+
+describe('chat tokenization allocation failures', () => {
+  it('releases the acquired text when the first speculative allocation throws', async () => {
+    const { core, allocations, tryAlloc, llama_tokenize } = fixture();
+    const failure = new WebAssembly.RuntimeError('allocation trap');
+    tryAlloc.mockImplementationOnce(() => {
+      throw failure;
+    });
+    await expect(tokenizeChatText({ core, vocab: 1n, text: 'prefix' })).rejects.toBe(failure);
+    expect(llama_tokenize).not.toHaveBeenCalled();
+    expect(allocations.size).toBe(0);
+  });
+
+  it('does not free the old token buffer twice when releasing it throws', async () => {
+    const { core, allocations, free, llama_tokenize } = fixture();
+    const failure = new WebAssembly.RuntimeError('free trap');
+    llama_tokenize.mockResolvedValueOnce(-12);
+    free.mockImplementationOnce(({ pointer }) => {
+      allocations.delete(pointer); throw failure;
+    });
+    await expect(tokenizeChatText({ core, vocab: 1n, text: 'x' })).rejects.toBe(failure);
+    expect(free.mock.calls.map(([{ pointer }]) => pointer)).toEqual([101n, 100n]);
+    expect(allocations.size).toBe(0);
+  });
+
+  it('still releases the text when the final token-buffer free throws', async () => {
+    const { core, allocations, free } = fixture();
+    const failure = new WebAssembly.RuntimeError('free trap');
+    free.mockImplementationOnce(({ pointer }) => {
+      allocations.delete(pointer); throw failure;
+    });
+    await expect(tokenizeChatText({ core, vocab: 1n, text: 'prefix' })).rejects.toBe(failure);
+    expect(free.mock.calls.map(([{ pointer }]) => pointer)).toEqual([101n, 100n]);
+    expect(allocations.size).toBe(0);
+  });
+});

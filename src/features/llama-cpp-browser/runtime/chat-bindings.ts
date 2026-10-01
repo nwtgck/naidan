@@ -60,7 +60,15 @@ export function bindNativeChat<
       let params: Params | undefined;
       let parser: Parser | undefined;
       const dispose = (): void => {
-        parser?.delete(); params?.delete();
+        // Release ownership before destructors run. A failed parser cleanup
+        // must neither leak the parameters nor retry the same handle later.
+        const ownedParser = parser; const ownedParams = params;
+        parser = undefined; params = undefined;
+        try {
+          ownedParser?.delete();
+        } finally {
+          ownedParams?.delete();
+        }
       };
       try {
         const templates = templateFor({ assertIdle, model });
@@ -173,7 +181,12 @@ export function bindNativeChat<
         };
       } catch (error) {
         logFailure({ stage: 'template', error });
-        dispose(); throw new LlamaCppBrowserError({ code: 'template-unsupported' });
+        dispose();
+        // Unsupported template inputs are recoverable; a Wasm trap is not.
+        // Keep the original failure so the service retires the resident runtime
+        // instead of reusing its cached template and native state.
+        if (error instanceof WebAssembly.RuntimeError) throw error;
+        throw new LlamaCppBrowserError({ code: 'template-unsupported' });
       }
     }
   };

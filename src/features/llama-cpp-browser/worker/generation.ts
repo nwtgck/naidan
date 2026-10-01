@@ -8,7 +8,7 @@ import { createPrefillYieldPacing } from './prefill-yield-pacing';
 import { createGenerationPerformance } from './generation-performance';
 import { tokenizePrompt } from './tokenize-prompt';
 import { prepareMultimodal } from './multimodal';
-import { LlamaCppBrowserError, usesWebGpu, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
+import { errorCode, LlamaCppBrowserError, usesWebGpu, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
 import { logDiagnostic, logFailure, type Diagnostic, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
 import { createOutputStream } from './output-stream';
@@ -16,6 +16,20 @@ import { prepareGenerationSession } from './session';
 import { prepareChat } from './native-chat';
 import { createChatSampler } from './chat-sampler';
 import { capturePromptCheckpoint, disposePromptCheckpoint, promptCheckpointBoundary, restorePromptCheckpoint } from './prompt-checkpoint';
+
+/** Cancellation describes the actual error, not merely a concurrently set
+ * signal. This keeps native failures visible to diagnostics and recovery. */
+function failureOutcome({ error }: { error: unknown }): 'aborted' | 'failed' {
+  const code = errorCode({ error });
+  switch (code) {
+  case 'aborted': return 'aborted';
+  case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model':
+  case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'context-full':
+  case 'unsupported-input': case 'busy': case 'worker-failed': case 'audio-model-unsupported':
+  case 'audio-reference-required': case 'audio-reference-invalid': case 'audio-output-empty': return 'failed';
+  default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
+  }
+}
 
 /** Reuse only a verified decoded prefix; sampling and parsing stay request-local. */
 export async function generate({ request, onEvent, onProgress, signal }: {
@@ -50,7 +64,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
   try {
     session = await prepareGenerationSession({ request, onProgress, signal });
   } catch (error) {
-    outcome = signal?.aborted ? 'aborted' : 'failed';
+    outcome = failureOutcome({ error });
     reportPerformance();
     throw error;
   }
@@ -314,11 +328,12 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       measurements.counters.prefillDecodeCalls++;
       measurements.counters.maximumPrefillBatchTokens = Math.max(measurements.counters.maximumPrefillBatchTokens, count);
       if (status === 0) measurements.counters.prefillDecodedTokens += count;
-      checkCancelled();
+      if (status === 2) checkCancelled();
       if (status !== 0) {
         logDiagnostic({ diagnostic: { event: 'failed', stage, reason: 'decode-status' } });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
+      checkCancelled();
       cache.tokens.push(...promptTokens.slice(offset, offset + count));
       offset += count;
       await captureAtBoundary({ offset });
@@ -489,11 +504,12 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       }
       const status = await api.llama_decode(context, batch);
       if (status === 0) measurements.counters.decodedTokens++;
-      checkCancelled();
+      if (status === 2) checkCancelled();
       if (status !== 0) {
         logDiagnostic({ diagnostic: { event: 'failed', stage: 'generation-decode', reason: 'decode-status' } });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
+      checkCancelled();
     };
     for (; generated < maximum; generated++) {
       checkCancelled();
@@ -585,7 +601,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     outcome = 'completed';
     return { ...parsed, finishReason };
   } catch (error) {
-    outcome = signal?.aborted ? 'aborted' : 'failed';
+    outcome = failureOutcome({ error });
     const failedStage = stage;
     // Drain already accepted bytes before reporting a cooperative cancellation or failure.
     // Do not retry delivery after a consumer failure or replace the original error.

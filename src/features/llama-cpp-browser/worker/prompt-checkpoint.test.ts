@@ -177,3 +177,19 @@ describe('owned host prompt checkpoints', () => {
   });
 
 });
+
+
+describe('checkpoint boundary deallocation failure', () => {
+  it('does not free a discarded speculative pointer twice', async () => {
+    const { core, api } = fixture();
+    const failure = new WebAssembly.RuntimeError('free trap');
+    api.llama_tokenize.mockResolvedValueOnce(-65537);
+    core.free.mockImplementationOnce(() => {
+      throw failure;
+    });
+    await expect(promptCheckpointBoundary({ core, vocab: 1n, prompt: 'prefix suffix', promptPointer: 1n,
+      generationPrompt: 'suffix', tokens: Array.from({ length: 70000 }, () => 1), onTokenize: () => {} })).rejects.toBe(failure);
+    expect(core.free).toHaveBeenCalledOnce();
+    expect(core.tryAlloc).toHaveBeenCalledOnce();
+  });
+});

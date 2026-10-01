@@ -116,8 +116,12 @@ describe('token rendering work counters', () => {
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     tokenRendering.cacheHits = 100;
     expect(report.performance!.tokenRendering!.cacheHits).toBe(32);
-    for (const extra of [{ token: 123 }, { bytes: [65] }, { peakEntries: 1025 }, { peakCachedBytes: 262145 }, { cacheHits: -1 }]) {
+    for (const extra of [{ token: 123 }, { bytes: [65] }, { peakEntries: 1025 }, { peakCachedBytes: 262145 }, { cacheHits: -1 },
+      { allocationFallbacks: -1 }, { allocationFallbacks: 0.5 }, { allocationFallbacks: 2 }]) {
       expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, tokenRendering: { ...tokenRendering, ...extra } } }).success).toBe(false);
+    }
+    for (const allocationFallbacks of [undefined, 0, 1]) {
+      expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, tokenRendering: { ...tokenRendering, allocationFallbacks } } }).success).toBe(true);
     }
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, tokenRendering: undefined } }).success).toBe(true);
   });

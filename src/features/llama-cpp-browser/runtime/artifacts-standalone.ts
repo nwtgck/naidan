@@ -11,7 +11,8 @@ function embeddedProfile({ profile, baseURL }: { profile: LlamaCppProfile, baseU
   default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }
-export async function loadWasmBinary({ profile, assetBaseURL }: { profile: LlamaCppProfile, assetBaseURL: string | undefined }): Promise<Uint8Array> {
+export async function loadWasmBinary({ profile, assetBaseURL, signal }: { profile: LlamaCppProfile, assetBaseURL: string | undefined, signal: AbortSignal | undefined }): Promise<Uint8Array> {
+  signal?.throwIfAborted();
   const embedded = embeddedProfile({ profile, baseURL: assetBaseURL });
   // Both runtimes stay lazy; only the selected profile is decoded in the Worker.
   const { base64, byteLength, sha256 } = await (async () => {
@@ -21,7 +22,10 @@ export async function loadWasmBinary({ profile, assetBaseURL }: { profile: Llama
     default: { const exhaustive: never = embedded; throw new Error(`Unhandled profile: ${exhaustive}`); }
     }
   })();
-  return decodeEmbeddedBrotli({ base64, byteLength, sha256 });
+  signal?.throwIfAborted();
+  const bytes = await decodeEmbeddedBrotli({ base64, byteLength, sha256 });
+  signal?.throwIfAborted();
+  return bytes;
 }
 /** Share the existing standalone module graph, without invoking the factory,
  * decoding another profile, or acquiring any external runtime assets. */
